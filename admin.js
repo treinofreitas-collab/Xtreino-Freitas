@@ -124,11 +124,13 @@
     const sectionKPIs = document.getElementById('sectionKPIs');
     const sectionFilters = document.getElementById('sectionFilters');
     const sectionCharts = document.getElementById('sectionCharts');
+    const sectionUsers = document.getElementById('sectionUsers');
     const sectionTokenStats = document.getElementById('sectionTokenStats');
     const sectionUsersManagement = document.getElementById('sectionUsersManagement');
     const sectionTokens = document.getElementById('sectionTokens');
     const sectionCoupons = document.getElementById('sectionCoupons');
     const sectionCouponUsage = document.getElementById('sectionCouponUsage');
+    const sectionPasseBooyah = document.getElementById('sectionPasseBooyah');
     const sectionHighlights = document.getElementById('sectionHighlights');
     const sectionNews = document.getElementById('sectionNews');
     const sectionProducts = document.getElementById('sectionProducts');
@@ -142,11 +144,13 @@
       if (sectionKPIs) sectionKPIs.style.display = 'none';
       if (sectionFilters) sectionFilters.style.display = 'none';
       if (sectionCharts) sectionCharts.style.display = 'none';
+      if (sectionUsers) sectionUsers.style.display = 'none';
       if (sectionTokenStats) sectionTokenStats.style.display = 'none';
       if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
       if (sectionTokens) sectionTokens.style.display = 'none';
       if (sectionCoupons) sectionCoupons.style.display = 'none';
       if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
       if (sectionProducts) sectionProducts.style.display = 'none';
       if (sectionSchedules) sectionSchedules.style.display = 'none';
       
