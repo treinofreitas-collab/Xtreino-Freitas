@@ -393,13 +393,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             Treinos competitivos com 2 quedas consecutivas (15 times) em salas Modo Liga. Top 1 de cada horário ganha vaga no Camp Freitas.
                         </p>
-                        <button onclick="toggleFAQ('faq1')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq1" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>Os <strong>Treinos Modo Liga</strong> são compostos por <strong>2 quedas consecutivas</strong> (15 times) no formato competitivo.</p>
-                            <p>As partidas acontecem em <strong>salas Modo Liga</strong>, com visibilidade ativa, simulando o ambiente dos grandes campeonatos.</p>
-                            <p>O <strong>Top 1 de cada horário</strong> ganha vaga no <strong>Camp Freitas</strong> como premiação.</p>
-                            <p class="text-blue-600 font-medium">💡 <strong>Ideal para equipes que buscam treinar em formato profissional e conquistar espaço no cenário.</strong></p>
-                        </div>
+                        <button onclick="openFAQModal('faq1')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
 
                     <!-- Card 2: Cancelamento de Inscrição -->
@@ -411,12 +405,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             Após o pagamento, a inscrição não pode ser cancelada, pois o slot é reservado exclusivamente para sua equipe.
                         </p>
-                        <button onclick="toggleFAQ('faq2')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq2" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>Após o pagamento, a inscrição não pode ser cancelada, pois o slot é reservado exclusivamente para sua equipe.</p>
-                            <p>Porém, se houver erro de horário, duplicidade ou imprevisto, entre em contato com o suporte antes do início da sala — analisamos caso a caso.</p>
-                            <p class="text-orange-600 font-medium">⚠ Sempre confirme o horário e nome da equipe antes de finalizar o pagamento.</p>
-                        </div>
+                        <button onclick="openFAQModal('faq2')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
 
                     <!-- Card 3: Formas de Pagamento -->
@@ -428,17 +417,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             Aceitamos PIX, transferência bancária e PayPal. Pagamentos confirmados garantem a vaga automaticamente.
                         </p>
-                        <button onclick="toggleFAQ('faq3')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq3" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>Aceitamos:</p>
-                            <ul class="list-disc list-inside space-y-1 ml-4">
-                                <li>Pix (instantâneo)</li>
-                                <li>Pix Copia e Cola</li>
-                                <li>Transferência bancária</li>
-                                <li>PAYPAL (em casos específicos)</li>
-                            </ul>
-                            <p class="text-green-600 font-medium">⚡ Pagamentos confirmados garantem a vaga automaticamente.</p>
-                        </div>
+                        <button onclick="openFAQModal('faq3')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
 
                     <!-- Card 4: Grupos das Salas -->
@@ -450,12 +429,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             Após confirmação, você recebe o link do grupo oficial no WhatsApp com ID, senha e atualizações do cronograma.
                         </p>
-                        <button onclick="toggleFAQ('faq4')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq4" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>Assim que sua inscrição é confirmada, você recebe o link do grupo oficial (whatsapp), aqui mesmo no site. Vá em "meus pedidos" e clique em "acessar grupo de whatsapp"</p>
-                            <p>Lá serão enviadas as informações da sala (ID e senha) e as atualizações do cronograma.</p>
-                            <p class="text-blue-600 font-medium">💬 Fique atento — o ID e a Senha são enviados cerca de 10 minutos antes do início da partida.</p>
-                        </div>
+                        <button onclick="openFAQModal('faq4')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
 
                     <!-- Card 5: Premiações -->
@@ -467,12 +441,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             Top 1 dos treinos recebem vagas gratuitas para campeonatos. Associados participam de premiações exclusivas e sorteios mensais.
                         </p>
-                        <button onclick="toggleFAQ('faq5')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq5" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>Sim! Em muitos horários, os Top 1 dos treinos recebem vagas gratuitas para os campeonatos ou bônus especiais.</p>
-                            <p>Além disso, os associados participam de premiações exclusivas e sorteios mensais.</p>
-                            <p class="text-yellow-600 font-medium">🎁 Treine, ganhe destaque e conquiste prêmios com a Org Freitas.</p>
-                        </div>
+                        <button onclick="openFAQModal('faq5')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
 
                     <!-- Card 6: Benefícios de Associado -->
@@ -484,17 +453,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             Acesso a campeonatos com vantagens, troféus personalizados, até 10 horários por dia e ranking das melhores equipes.
                         </p>
-                        <button onclick="toggleFAQ('faq6')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq6" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>Os associados têm acesso a benefícios exclusivos, como:</p>
-                            <ul class="list-disc list-inside space-y-1 ml-4">
-                                <li>Concorrer a campeonatos com vantagens</li>
-                                <li>Concorrer a troféus e banners personalizados</li>
-                                <li>Jogar até 10 horários por dia</li>
-                                <li>Participar de ranking geral das melhores equipes do Mês</li>
-                            </ul>
-                            <p class="text-purple-600 font-medium">📢 Ser associado é ter prioridade e visibilidade dentro da comunidade Freitas.</p>
-                        </div>
+                        <button onclick="openFAQModal('faq6')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
 
                     <!-- Card 7: Horários dos Treinos -->
@@ -506,12 +465,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             X Treinos Freitas acontecem de segunda a sexta, das 14h às 23h (horário de Brasília). Vagas limitadas por horário.
                         </p>
-                        <button onclick="toggleFAQ('faq7')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq7" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>Os X Treinos Freitas acontecem de segunda a sexta, das 14h às 23h (horário de Brasília).</p>
-                            <p>As vagas são limitadas e organizadas por horário.</p>
-                            <p class="text-blue-600 font-medium">💡 Compre suas vagas com antecedência e garanta seu espaço.</p>
-                        </div>
+                        <button onclick="openFAQModal('faq7')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
 
                     <!-- Card 8: Resgate da Premiação -->
@@ -523,12 +477,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             Após o resultado oficial, um representante entra em contato via WhatsApp para confirmar os dados de pagamento.
                         </p>
-                        <button onclick="toggleFAQ('faq8')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq8" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>Após o resultado oficial ser divulgado, um representante da Org Freitas entrará em contato com o líder da equipe premiada via WhatsApp para confirmar os dados de pagamento.</p>
-                            <p>O prêmio é enviado diretamente ao responsável cadastrado na inscrição, dentro do prazo informado no regulamento.</p>
-                            <p class="text-green-600 font-medium">💬 Certifique-se de que o número de contato esteja correto no momento da inscrição para evitar atrasos no resgate.</p>
-                        </div>
+                        <button onclick="openFAQModal('faq8')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
 
                     <!-- Card 9: Modalidade do Jogo -->
@@ -540,11 +489,7 @@
                         <p class="text-gray-600 text-center mb-6 leading-relaxed">
                             A modalidade é Misto, permitindo jogadores de todas as plataformas (mobile, emulador e iPad).
                         </p>
-                        <button onclick="toggleFAQ('faq9')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
-                        <div id="faq9" class="hidden mt-4 text-gray-700 space-y-3 text-left">
-                            <p>A modalidade é Misto, ou seja, permitimos jogadores de todas as plataformas (mobile, emulador e iPad).</p>
-                            <p class="text-blue-600 font-medium">💡 O foco é oferecer treinos equilibrados, acessíveis e competitivos para todos os estilos de jogo.</p>
-                        </div>
+                        <button onclick="openFAQModal('faq9')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
                     </div>
                 </div>
             </div>
@@ -798,6 +743,21 @@
 
     
 
+
+    <!-- FAQ Modal -->
+    <div id="faqModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="faqModalTitle" class="text-2xl font-bold text-blue-matte">Pergunta</h3>
+                <button onclick="closeFAQModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div id="faqModalContent" class="text-gray-700 space-y-4">
+                <!-- Conteúdo será preenchido dinamicamente -->
+            </div>
+        </div>
+    </div>
 
     <!-- Client Area Modal (placeholder removido de login) -->
     <div id="clientAreaModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">

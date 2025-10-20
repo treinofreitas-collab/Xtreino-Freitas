@@ -1899,7 +1899,7 @@ function initChat() {
             },
             {
                 match: ['planilha','planilhas','analise','análise','coach','analista'],
-                reply: 'Planilhas de Análise: R$ 19,90. Para coaches e analistas. Inclui dados precisos e gráficos. Download em Minha Conta > Meus Produtos.'
+                reply: 'Planilhas de Análise: R$ 19,00. Para coaches e analistas. Inclui dados precisos e gráficos. Download em Minha Conta > Meus Produtos.'
             },
             {
                 match: ['passe','booyah','player id','id do jogador'],
@@ -2286,22 +2286,104 @@ window.closeNewsModal = function(){
     if (m) m.classList.add('hidden');
 }
 
-// Função para toggle das perguntas frequentes
-window.toggleFAQ = function(faqId) {
-    const faqElement = document.getElementById(faqId);
-    if (faqElement) {
-        faqElement.classList.toggle('hidden');
-        
-        // Atualizar o texto do botão
-        const button = faqElement.previousElementSibling;
-        if (button) {
-            if (faqElement.classList.contains('hidden')) {
-                button.textContent = 'Saiba mais →';
-            } else {
-                button.textContent = 'Ocultar ↑';
-            }
+// Função para abrir modal do FAQ
+window.openFAQModal = function(faqId) {
+    const faqData = {
+        'faq1': {
+            title: 'Treinos Modo Liga',
+            content: `
+                <p>Os <strong>Treinos Modo Liga</strong> são compostos por <strong>2 quedas consecutivas</strong> (15 times) no formato competitivo.</p>
+                <p>As partidas acontecem em <strong>salas Modo Liga</strong>, com visibilidade ativa, simulando o ambiente dos grandes campeonatos.</p>
+                <p>O <strong>Top 1 de cada horário</strong> ganha vaga no <strong>Camp Freitas</strong> como premiação.</p>
+                <p class="text-blue-600 font-medium">💡 <strong>Ideal para equipes que buscam treinar em formato profissional e conquistar espaço no cenário.</strong></p>
+            `
+        },
+        'faq2': {
+            title: 'Cancelamento de Inscrição',
+            content: `
+                <p>Após o pagamento, a inscrição não pode ser cancelada, pois o slot é reservado exclusivamente para sua equipe.</p>
+                <p>Porém, se houver erro de horário, duplicidade ou imprevisto, entre em contato com o suporte antes do início da sala — analisamos caso a caso.</p>
+                <p class="text-orange-600 font-medium">⚠ Sempre confirme o horário e nome da equipe antes de finalizar o pagamento.</p>
+            `
+        },
+        'faq3': {
+            title: 'Formas de Pagamento',
+            content: `
+                <p>Aceitamos:</p>
+                <ul class="list-disc list-inside space-y-1 ml-4">
+                    <li>Pix (instantâneo)</li>
+                    <li>Pix Copia e Cola</li>
+                    <li>Transferência bancária</li>
+                    <li>PAYPAL (em casos específicos)</li>
+                </ul>
+                <p class="text-green-600 font-medium">⚡ Pagamentos confirmados garantem a vaga automaticamente.</p>
+            `
+        },
+        'faq4': {
+            title: 'Grupos das Salas',
+            content: `
+                <p>Assim que sua inscrição é confirmada, você recebe o link do grupo oficial (whatsapp), aqui mesmo no site. Vá em "meus pedidos" e clique em "acessar grupo de whatsapp"</p>
+                <p>Lá serão enviadas as informações da sala (ID e senha) e as atualizações do cronograma.</p>
+                <p class="text-blue-600 font-medium">💬 Fique atento — o ID e a Senha são enviados cerca de 10 minutos antes do início da partida.</p>
+            `
+        },
+        'faq5': {
+            title: 'Premiações',
+            content: `
+                <p>Sim! Em muitos horários, os Top 1 dos treinos recebem vagas gratuitas para os campeonatos ou bônus especiais.</p>
+                <p>Além disso, os associados participam de premiações exclusivas e sorteios mensais.</p>
+                <p class="text-yellow-600 font-medium">🎁 Treine, ganhe destaque e conquiste prêmios com a Org Freitas.</p>
+            `
+        },
+        'faq6': {
+            title: 'Benefícios de Associado',
+            content: `
+                <p>Os associados têm acesso a benefícios exclusivos, como:</p>
+                <ul class="list-disc list-inside space-y-1 ml-4">
+                    <li>Concorrer a campeonatos com vantagens</li>
+                    <li>Concorrer a troféus e banners personalizados</li>
+                    <li>Jogar até 10 horários por dia</li>
+                    <li>Participar de ranking geral das melhores equipes do Mês</li>
+                </ul>
+                <p class="text-purple-600 font-medium">📢 Ser associado é ter prioridade e visibilidade dentro da comunidade Freitas.</p>
+            `
+        },
+        'faq7': {
+            title: 'Horários dos Treinos',
+            content: `
+                <p>Os X Treinos Freitas acontecem de segunda a sexta, das 14h às 23h (horário de Brasília).</p>
+                <p>As vagas são limitadas e organizadas por horário.</p>
+                <p class="text-blue-600 font-medium">💡 Compre suas vagas com antecedência e garanta seu espaço.</p>
+            `
+        },
+        'faq8': {
+            title: 'Resgate da Premiação',
+            content: `
+                <p>Após o resultado oficial ser divulgado, um representante da Org Freitas entrará em contato com o líder da equipe premiada via WhatsApp para confirmar os dados de pagamento.</p>
+                <p>O prêmio é enviado diretamente ao responsável cadastrado na inscrição, dentro do prazo informado no regulamento.</p>
+                <p class="text-green-600 font-medium">💬 Certifique-se de que o número de contato esteja correto no momento da inscrição para evitar atrasos no resgate.</p>
+            `
+        },
+        'faq9': {
+            title: 'Modalidade do Jogo',
+            content: `
+                <p>A modalidade é Misto, ou seja, permitimos jogadores de todas as plataformas (mobile, emulador e iPad).</p>
+                <p class="text-blue-600 font-medium">💡 O foco é oferecer treinos equilibrados, acessíveis e competitivos para todos os estilos de jogo.</p>
+            `
         }
+    };
+
+    const faq = faqData[faqId];
+    if (faq) {
+        document.getElementById('faqModalTitle').textContent = faq.title;
+        document.getElementById('faqModalContent').innerHTML = faq.content;
+        document.getElementById('faqModal').classList.remove('hidden');
     }
+}
+
+// Função para fechar modal do FAQ
+window.closeFAQModal = function() {
+    document.getElementById('faqModal').classList.add('hidden');
 }
 
 
