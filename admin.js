@@ -3584,6 +3584,13 @@ window.saveProducts = saveProducts;
           loadProducts();
         }
       }, 2000);
+
+      // Load Passe Booyah controls
+      setTimeout(() => {
+        if (window.firebaseDb && document.getElementById('booyahTbody')) {
+          try { loadPasseBooyahControls(); } catch (_) {}
+        }
+      }, 2500);
       
       // Load users and setup guards
       setTimeout(() => {
@@ -4882,7 +4889,7 @@ async function createCoupon(event) {
         expirationDate: document.getElementById('expirationDate').value ? 
             new Date(document.getElementById('expirationDate').value) : null,
         usageType: document.getElementById('couponUsageType').value,
-        specificEvents: Array.from(document.getElementById('specificEvents').selectedOptions).map(option => option.value),
+        specificEvents: [],
         isActive: true,
         usageCount: 0,
         createdAt: new Date(),
@@ -5294,5 +5301,71 @@ document.addEventListener('DOMContentLoaded', function() {
     createCouponForm.addEventListener('submit', createCoupon);
   }
 });
+
+// ==================== PASSE BOOYAH CONTROLS ====================
+async function loadPasseBooyahControls(){
+  try{
+    const tbody = document.getElementById('booyahTbody');
+    const countEl = document.getElementById('booyahCount');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-gray-500">Carregando registros...</td></tr>';
+
+    const { collection, query, where, orderBy, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+
+    // Buscar pedidos de Passe Booyah aprovados/pendentes de confirmação
+    const ordersRef = collection(window.firebaseDb, 'orders');
+    const q = query(ordersRef, where('productId','==','passe-booyah'));
+    const snap = await getDocs(q);
+
+    const rows = [];
+    let total = 0;
+    snap.forEach(d => {
+      const o = d.data() || {};
+      const status = (o.status||'').toLowerCase();
+      const isPaid = status==='paid' || status==='approved' || status==='confirmed';
+      // Mostrar todos, mas com ação apenas para pagos não confirmados
+      const confirmed = !!o.booyahConfirmed;
+      const playerId = (o.productOptions && (o.productOptions.playerId || o.productOptions.id || o.playerId)) || '';
+      rows.push({ id:d.id, name:o.customerName||'-', email:o.customer||o.buyerEmail||'-', playerId, confirmed, canConfirm: isPaid && !confirmed });
+      total++;
+    });
+
+    if (countEl) countEl.textContent = `${total} registros`;
+
+    if (rows.length === 0){
+      tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-gray-500">Nenhum registro encontrado</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => `
+      <tr class="border-b border-gray-100">
+        <td class="py-2 px-2">${r.name}</td>
+        <td class="py-2 px-2">${r.email}</td>
+        <td class="py-2 px-2">${r.playerId || '<span class="text-gray-400">—</span>'}</td>
+        <td class="py-2 px-2">${r.confirmed ? '<span class="px-2 py-1 text-[10px] rounded-full bg-green-100 text-green-700">Confirmado</span>' : '<span class="px-2 py-1 text-[10px] rounded-full bg-yellow-100 text-yellow-700">Pendente</span>'}</td>
+        <td class="py-2 px-2">
+          ${r.canConfirm ? `<button class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs" onclick="confirmPasseBooyah('${r.id}')">Confirmar</button>` : '<span class="text-gray-400 text-xs">—</span>'}
+        </td>
+      </tr>
+    `).join('');
+
+    // Expor função no escopo global
+    window.confirmPasseBooyah = async function(orderId){
+      try{
+        const ok = confirm('Confirmar entrega do Passe Booyah?');
+        if (!ok) return;
+        const ref = doc(window.firebaseDb, 'orders', orderId);
+        await updateDoc(ref, { booyahConfirmed: true, booyahConfirmedAt: new Date() });
+        await loadPasseBooyahControls();
+      }catch(err){
+        console.error('Erro ao confirmar Passe Booyah:', err);
+        alert('Erro ao confirmar. Tente novamente.');
+      }
+    }
+  }catch(err){
+    console.error('Erro ao carregar Passe Booyah:', err);
+  }
+}
 
 
