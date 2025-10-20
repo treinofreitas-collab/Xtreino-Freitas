@@ -2057,7 +2057,7 @@ function initChat() {
             } else if (textLower.includes('cupom') || textLower.includes('desconto') || textLower.includes('promocao') || textLower.includes('promo')) {
                 matchedReply = 'Cupons de desconto disponíveis! Digite o código na compra. Alguns são específicos para eventos ou loja.';
             } else {
-                matchedReply = `Não consegui responder sua dúvida por aqui. Pode falar conosco no WhatsApp?\n\n📱 WhatsApp: (11) 94983-0454\n\nClique aqui para abrir: ${whatsLink}`;
+                matchedReply = `❌ Não temos essa resposta no chat.\n\nChame no WhatsApp para saber melhor:\n\n📱 (11) 94983-0454\n\n🔗 [Clique aqui para abrir o WhatsApp](${whatsLink})`;
             }
         }
         addMessage(matchedReply, 'support');
@@ -2107,9 +2107,12 @@ function addMessage(text, sender) {
     });
     
     messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+    // Converter links markdown para HTML clicável
+    const textWithLinks = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
+    
     messageDiv.innerHTML = `
         <div class="${isUser ? 'bg-blue-matte text-white' : 'bg-gray-100'} rounded-lg p-3 max-w-xs">
-            <p class="text-sm">${text}</p>
+            <p class="text-sm whitespace-pre-line">${textWithLinks}</p>
             <span class="text-xs ${isUser ? 'text-blue-100' : 'text-gray-500'}">${time}</span>
         </div>
     `;
