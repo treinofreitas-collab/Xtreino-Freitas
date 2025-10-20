@@ -118,9 +118,6 @@
   // Control section visibility based on role
   function controlSectionVisibility(userRole) {
     const role = (userRole || '').toLowerCase();
-    console.log('🎭 Configurando visibilidade para cargo:', role);
-    console.log('🎭 Role original:', userRole);
-    console.log('🎭 Role lowercase:', role);
     
     // Get all section elements
     const sectionKPIs = document.getElementById('sectionKPIs');
@@ -137,78 +134,69 @@
     const sectionNews = document.getElementById('sectionNews');
     const sectionProducts = document.getElementById('sectionProducts');
     const sectionSchedules = document.getElementById('sectionSchedules');
+    const sectionAdminHistory = document.getElementById('sectionAdminHistory');
+    
+    // Ocultar todas as seções por padrão
+    if (sectionKPIs) sectionKPIs.style.display = 'none';
+    if (sectionFilters) sectionFilters.style.display = 'none';
+    if (sectionCharts) sectionCharts.style.display = 'none';
+    if (sectionUsers) sectionUsers.style.display = 'none';
+    if (sectionTokenStats) sectionTokenStats.style.display = 'none';
+    if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
+    if (sectionTokens) sectionTokens.style.display = 'none';
+    if (sectionCoupons) sectionCoupons.style.display = 'none';
+    if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
+    if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
+    if (sectionProducts) sectionProducts.style.display = 'none';
+    if (sectionSchedules) sectionSchedules.style.display = 'none';
+    if (sectionHighlights) sectionHighlights.style.display = 'none';
+    if (sectionNews) sectionNews.style.display = 'none';
+    if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
     
     // Design: Can only edit highlights and news
     if (role === 'design' || role === 'desgin') {
-      console.log('🎨 Configurando visão para Design - apenas Notícias e Destaques');
-      console.log('🎨 Role detectado:', role);
-      console.log('🎨 Condição design:', role === 'design');
-      console.log('🎨 Condição desgin:', role === 'desgin');
-      
-      // Ocultar todas as seções administrativas
-      if (sectionKPIs) sectionKPIs.style.display = 'none';
-      if (sectionFilters) sectionFilters.style.display = 'none';
-      if (sectionCharts) sectionCharts.style.display = 'none';
-      if (sectionUsers) sectionUsers.style.display = 'none';
-      if (sectionTokenStats) sectionTokenStats.style.display = 'none';
-      if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
-      if (sectionTokens) sectionTokens.style.display = 'none';
-      if (sectionCoupons) sectionCoupons.style.display = 'none';
-      if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
-      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
-      if (sectionProducts) sectionProducts.style.display = 'none';
-      if (sectionSchedules) sectionSchedules.style.display = 'none';
-      
       // Mostrar apenas Notícias e Destaques
       if (sectionHighlights) sectionHighlights.style.display = 'block';
       if (sectionNews) sectionNews.style.display = 'block';
-      
-      console.log('🎨 Seções ocultadas para design');
-      console.log('🎨 Highlights visível:', sectionHighlights ? sectionHighlights.style.display : 'não encontrado');
-      console.log('🎨 News visível:', sectionNews ? sectionNews.style.display : 'não encontrado');
-    } 
+    }
     // Sócio: Can see everything but cannot edit (read-only)
     else if (role === 'socio' || role === 'sócio') {
-      console.log('👥 Configurando visão para Sócio - visualização completa (somente leitura)');
-      
-      // Mostrar todas as seções
+      // Mostrar todas as seções, mas desabilitar edições (lógica de desabilitação não está aqui)
+      // Apenas garantir que estejam visíveis
       if (sectionKPIs) sectionKPIs.style.display = 'block';
       if (sectionFilters) sectionFilters.style.display = 'block';
       if (sectionCharts) sectionCharts.style.display = 'block';
+      if (sectionUsers) sectionUsers.style.display = 'block';
       if (sectionTokenStats) sectionTokenStats.style.display = 'block';
       if (sectionUsersManagement) sectionUsersManagement.style.display = 'block';
       if (sectionTokens) sectionTokens.style.display = 'block';
       if (sectionCoupons) sectionCoupons.style.display = 'block';
       if (sectionCouponUsage) sectionCouponUsage.style.display = 'block';
-      if (sectionHighlights) sectionHighlights.style.display = 'block';
-      if (sectionNews) sectionNews.style.display = 'block';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'block';
       if (sectionProducts) sectionProducts.style.display = 'block';
       if (sectionSchedules) sectionSchedules.style.display = 'block';
-      
-      // Disable all edit buttons for sócio
-      const editButtons = document.querySelectorAll('button[onclick*="edit"], button[onclick*="add"], button[onclick*="delete"], button[onclick*="save"], button[onclick*="update"], button[onclick*="remove"]');
-      editButtons.forEach(btn => {
-        btn.disabled = true;
-        btn.classList.add('opacity-50', 'cursor-not-allowed');
-      });
+      if (sectionHighlights) sectionHighlights.style.display = 'block';
+      if (sectionNews) sectionNews.style.display = 'block';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'block';
     }
-    // Other roles (CEO, Admin, Gerente, Vendedor): Show all sections
-    else {
-      console.log('👑 Configurando visão completa para:', role);
-      
+    // Admin: Can see and edit everything
+    else if (role === 'admin') {
       // Mostrar todas as seções
       if (sectionKPIs) sectionKPIs.style.display = 'block';
       if (sectionFilters) sectionFilters.style.display = 'block';
       if (sectionCharts) sectionCharts.style.display = 'block';
+      if (sectionUsers) sectionUsers.style.display = 'block';
       if (sectionTokenStats) sectionTokenStats.style.display = 'block';
       if (sectionUsersManagement) sectionUsersManagement.style.display = 'block';
       if (sectionTokens) sectionTokens.style.display = 'block';
       if (sectionCoupons) sectionCoupons.style.display = 'block';
       if (sectionCouponUsage) sectionCouponUsage.style.display = 'block';
-      if (sectionHighlights) sectionHighlights.style.display = 'block';
-      if (sectionNews) sectionNews.style.display = 'block';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'block';
       if (sectionProducts) sectionProducts.style.display = 'block';
       if (sectionSchedules) sectionSchedules.style.display = 'block';
+      if (sectionHighlights) sectionHighlights.style.display = 'block';
+      if (sectionNews) sectionNews.style.display = 'block';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'block';
     }
   }
 
