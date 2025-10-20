@@ -31,9 +31,6 @@
                     <a href="#sobre" class="text-black hover:text-blue-matte transition-colors">SOBRE NÓS</a>
                     <a href="#contato" class="text-black hover:text-blue-matte transition-colors">CONTATO</a>
                     <a href="#" onclick="requestAdminAccess()" id="adminLink" class="text-black hover:text-blue-matte transition-colors hidden">ADMIN</a>
-                    <button onclick="toggleCart(true)" class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--brand-yellow)] text-[var(--brand-black)] shadow hover:opacity-90" aria-label="Abrir carrinho">
-                        <i class="fas fa-shopping-cart"></i>
-                    </button>
                     <button id="loginBtnDesktop" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
                         LOGIN
                     </button>
@@ -56,9 +53,6 @@
                     <a href="#loja" class="text-black hover:text-blue-matte transition-colors">LOJA</a>
                     <a href="#sobre" class="text-black hover:text-blue-matte transition-colors">SOBRE NÓS</a>
                     <a href="#contato" class="text-black hover:text-blue-matte transition-colors">CONTATO</a>
-                    <button onclick="toggleCart(true)" class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--brand-yellow)] text-[var(--brand-black)] shadow self-start" aria-label="Abrir carrinho">
-                        <i class="fas fa-shopping-cart"></i>
-                    </button>
                     <button id="loginBtnMobile" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors w-full">
                         LOGIN
                     </button>
@@ -724,23 +718,6 @@
 
     
 
-    <!-- Cart Drawer -->
-    <div id="cartDrawer" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
-        <div class="absolute right-0 top-0 h-full w-full sm:w-[420px] bg-white p-6 overflow-y-auto">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-xl font-bold">Carrinho</h3>
-                <button onclick="toggleCart(false)" class="text-gray-500"><i class="fas fa-times"></i></button>
-            </div>
-            <div id="cartItems" class="space-y-4 mb-6"></div>
-            <div class="flex items-center justify-between font-bold text-lg mb-4">
-                <span>Total</span>
-                <span id="cartTotal">R$ 0,00</span>
-            </div>
-            <div class="space-y-3">
-                <button onclick="checkoutCart()" class="w-full bg-blue-matte hover-blue-matte text-white py-3 rounded-lg font-semibold">Pagar com Mercado Pago</button>
-            </div>
-        </div>
-    </div>
 
     <!-- Client Area Modal (placeholder removido de login) -->
     <div id="clientAreaModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">

@@ -2282,104 +2282,9 @@ window.closeNewsModal = function(){
     if (m) m.classList.add('hidden');
 }
 
-// Cart
-const cart = [];
-function formatBRL(v){ return (v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
-function toggleCart(open){
-    const drawer = document.getElementById('cartDrawer');
-    if (!drawer) return;
-    if (open === undefined) drawer.classList.toggle('hidden');
-    else drawer.classList[open ? 'remove' : 'add']('hidden');
-    // marcar estado de modal no mobile quando carrinho visível
-    if (window.innerWidth <= 767) {
-        if (!drawer.classList.contains('hidden')) document.body.classList.add('modal-open-mobile');
-        else maybeClearMobileModalState();
-    }
-}
-const cartFab = document.getElementById('cartFab');
-if (cartFab){ cartFab.addEventListener('click', ()=> toggleCart(true)); }
 
-function renderCart(){
-    const list = document.getElementById('cartItems');
-    const totalEl = document.getElementById('cartTotal');
-    if (!list || !totalEl) return;
-    list.innerHTML = '';
-    let total = 0;
-    cart.forEach((item, idx)=>{
-        total += item.price * item.qty;
-        const row = document.createElement('div');
-        row.className = 'flex items-center justify-between border-b pb-3';
-        row.innerHTML = `<div><div class="font-semibold">${item.name}</div><div class="text-sm text-gray-500">${item.qty} x ${formatBRL(item.price)}</div></div>
-        <button class="text-red-600" data-remove="${idx}"><i class="fas fa-trash"></i></button>`;
-        list.appendChild(row);
-    });
-    list.addEventListener('click', (e)=>{
-        const btn = e.target.closest('[data-remove]');
-        if (!btn) return;
-        const i = Number(btn.getAttribute('data-remove'));
-        cart.splice(i,1);
-        renderCart();
-    }, { once: true });
-    totalEl.textContent = formatBRL(total);
-}
 
-function addToCartByProductId(productId){
-    const map = {
-        'aim-training': { name:'XTreino - Aim Training', price:49.90 },
-        'estrategia': { name:'XTreino - Estratégia', price:79.90 },
-        'mentalidade': { name:'XTreino - Mentalidade', price:39.90 },
-        'camisa': { name:'Camisa Oficial', price:89.90 },
-        'planilhas': { name:'Planilhas de Análise', price:19.90 },
-        'imagens': { name:'Imagens Aéreas', price:2.00 },
-        'sensibilidades': { name:'Sensibilidades', price:14.90 },
-        'camp-fases': { name:'Camp de Fases', price:99.90 }
-    };
-    const p = map[productId];
-    if (!p) return;
-    const existing = cart.find(c=>c.name===p.name);
-    if (existing) existing.qty += 1; else cart.push({ ...p, qty: 1 });
-    renderCart();
-    toggleCart(true);
-}
 
-// Hook da loja → adicionar ao carrinho (executa após scheduleConfig existir)
-function initShopCartHook(){
-    document.querySelectorAll('#loja .product-card button').forEach(btn=>{
-        const onClick = btn.getAttribute('onclick') || '';
-        const m = onClick.match(/openScheduleModal\('([^']+)'\)/);
-        if (!m) return;
-        const pid = m[1];
-    btn.addEventListener('click', (e)=>{
-            try{
-                if (!window.scheduleConfig || !window.scheduleConfig[pid] || !window.scheduleConfig[pid].isProduct) return; // deixa eventos intactos
-        e.preventDefault();
-                const sc = window.scheduleConfig[pid];
-                const p = { name: sc.label, price: Number(sc.price) };
-                const exists = cart.find(c=>c.name===p.name);
-                if (exists) exists.qty += 1; else cart.push({ ...p, qty: 1 });
-                renderCart();
-                toggleCart(true);
-            }catch(_){ }
-    });
-});
-}
-
-function checkoutCart(){
-    const total = cart.reduce((s,i)=> s + i.price*i.qty, 0);
-    // Mercado Pago preference via Function
-    fetch('/.netlify/functions/create-preference', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            title: 'Carrinho XTreino', 
-            unit_price: Number(total.toFixed(2)), 
-            currency_id: 'BRL', 
-            quantity: 1,
-            back_url: window.location.origin + window.location.pathname
-        })
-    }).then(async (res)=>{ if(!res.ok) throw new Error(await res.text()); return res.json(); })
-    .then(data=>{ if (data.init_point) window.location.href = data.init_point; else alert('Erro ao iniciar checkout.'); })
-    .catch(()=> alert('Falha no checkout.'));
-}
 
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
@@ -4021,7 +3926,6 @@ function maybeClearMobileModalState(){
         document.getElementById('loginModal'),
         document.getElementById('purchaseModal'),
         document.getElementById('clientAreaModal'),
-        document.getElementById('cartDrawer'),
         document.getElementById('tokensModal'),
         document.getElementById('freeWhatsModal'),
         document.getElementById('scheduleModal')
