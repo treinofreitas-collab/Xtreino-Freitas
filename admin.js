@@ -4862,7 +4862,7 @@ function renderCouponUsageTable() {
                 <td class="py-2 px-2">
                     <span class="font-mono text-xs bg-blue-100 px-2 py-1 rounded">${usage.couponCode || 'N/A'}</span>
                 </td>
-                <td class="py-2 px-2 text-xs">${usage.customerName || usage.customerEmail || 'N/A'}</td>
+                <td class="py-2 px-2 text-xs">${usage.customerName ? usage.customerName.split(' ')[0] : (usage.customerEmail ? usage.customerEmail.split('@')[0] : 'N/A')}</td>
                 <td class="py-2 px-2 text-xs">R$ ${orderValue.toFixed(2)}</td>
                 <td class="py-2 px-2 text-xs text-green-600">-${discountText}</td>
                 <td class="py-2 px-2 text-xs font-medium">R$ ${finalValue.toFixed(2)}</td>
