@@ -47,10 +47,10 @@ async function generateDownloadLinks(productId, productOptions = {}) {
                         const siteBase = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://freitasteste.netlify.app';
                         const mapToFilename = (m) => {
                             const slug = (m || '').toString().toLowerCase().replace(/\s+/g,'-');
-                            if (slug.includes('bermuda')) return 'BERMUDA.zip';
-                            if (slug.includes('kalahari')) return 'KALAHARI.zip';
-                            if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'ALPINE.zip';
-                            if (slug.includes('purg')) return 'PURGATORIO.zip';
+                            if (slug.includes('bermuda')) return 'assets/downloads/BERMUDA.zip';
+                            if (slug.includes('kalahari')) return 'assets/downloads/KALAHARI.zip';
+                            if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'assets/downloads/ALPINE.zip';
+                            if (slug.includes('purg')) return 'assets/downloads/PURGATORIO.zip';
                             return `imagens-${slug}.zip`;
                         };
                         return maps.map(map => ({
@@ -121,10 +121,10 @@ async function generateDownloadLinks(productId, productOptions = {}) {
                 const maps = productOptions.maps || [];
                 const mapToFilename = (m) => {
                     const slug = (m || '').toString().toLowerCase().replace(/\s+/g,'-');
-                    if (slug.includes('bermuda')) return 'BERMUDA.zip';
-                    if (slug.includes('kalahari')) return 'KALAHARI.zip';
-                    if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'ALPINE.zip';
-                    if (slug.includes('purg')) return 'PURGATORIO.zip';
+                    if (slug.includes('bermuda')) return 'assets/downloads/BERMUDA.zip';
+                    if (slug.includes('kalahari')) return 'assets/downloads/KALAHARI.zip';
+                    if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'assets/downloads/ALPINE.zip';
+                    if (slug.includes('purg')) return 'assets/downloads/PURGATORIO.zip';
                     return `imagens-${slug}.zip`;
                 };
                 return maps.map(map => ({

@@ -1081,16 +1081,16 @@ function showProductModal(productId){
 
     // imagem do produto
     const imgMap = {
-        'sensibilidades': 'BANNER FREITAS SENSIBILIDADE.png',
-        'imagens': 'BANNER FREITAS VENDA DE MAPAS.png',
-        'planilhas': 'PLANILHAS FREITAS FINALIZADO VERMELHO.png',
-        'passe-booyah': 'PASSE ORG FREITAS FEED.png',
-        'camisa': 'DIVULGAÇÃO MANTO FREITAS.jpg',
+        'sensibilidades': 'assets/images/products/BANNER FREITAS SENSIBILIDADE.png',
+        'imagens': 'assets/images/products/BANNER FREITAS VENDA DE MAPAS.png',
+        'planilhas': 'assets/images/products/PLANILHAS FREITAS FINALIZADO VERMELHO.png',
+        'passe-booyah': 'assets/images/products/PASSE ORG FREITAS FEED.png',
+        'camisa': 'assets/images/products/DIVULGAÇÃO MANTO FREITAS.jpg',
         // imagens dos eventos (JPGs no projeto)
-        'evt-xtreino-gratuito': 'XTREINO FREITAS GRATUITO E ASSOCIADO.jpg',
-        'evt-modo-liga': '𝑿𝑻𝑹𝑬𝑰𝑵𝑶 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 𝑴𝑶𝑫𝑶 𝑳𝑰𝑮𝑨.jpg',
-        'evt-camp-freitas': '𝑪𝑨𝑴𝑷 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 .jpg',
-        'evt-semanal-freitas': '𝙎𝙀𝙈𝘼𝙉𝘼𝙇 𝙁𝙍𝙀𝙄𝙏𝘼𝙎.jpg'
+        'evt-xtreino-gratuito': 'assets/images/events/XTREINO FREITAS GRATUITO E ASSOCIADO.jpg',
+        'evt-modo-liga': 'assets/images/events/XTREINO FREITAS MODO LIGA.jpg',
+        'evt-camp-freitas': 'assets/images/events/CAMP FREITAS.jpg',
+        'evt-semanal-freitas': 'assets/images/events/SEMANAL FREITAS.jpg'
     };
     const imgEl = document.getElementById('purchaseImage');
     if (imgEl) imgEl.src = imgMap[productId] || '';
