@@ -5054,8 +5054,6 @@ function renderAdminHistoryTable() {
       <td class="py-3 px-2">
         <div class="space-y-1">
           <div class="font-medium text-xs text-gray-900">${entry.adminName || 'N/A'}</div>
-          <div class="text-xs text-gray-500">${entry.adminEmail || 'N/A'}</div>
-          <span class="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">${getRoleDisplayName(entry.adminRole)}</span>
         </div>
       </td>
       <td class="py-3 px-2">
@@ -5087,16 +5085,21 @@ async function logAdminAction(action, details) {
     const { collection, addDoc, serverTimestamp, doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const historyCol = collection(window.firebaseDb, 'adminHistory');
     
-    const currentUser = JSON.parse(sessionStorage.getItem('adminSession') || '{}');
-    console.log('👤 Usuário atual da sessão:', currentUser);
-    console.log('👤 UID do usuário:', currentUser.uid);
+    // Coleta robusta dos dados do admin
+    const sessionUser = JSON.parse(sessionStorage.getItem('adminSession') || '{}');
+    const authUser = (window.firebaseAuth && window.firebaseAuth.currentUser) ? window.firebaseAuth.currentUser : {};
+    const uid = sessionUser.uid || authUser?.uid || null;
+    let adminEmail = sessionUser.email || authUser?.email || 'N/A';
+    let adminRole = sessionUser.role || (window.adminRoleLower || '').toLowerCase() || 'N/A';
+    console.log('👤 Session user:', sessionUser);
+    console.log('👤 Auth user:', { uid: authUser?.uid, email: authUser?.email });
     
     // Buscar dados completos do usuário para obter o nome
     let adminName = 'N/A';
-    if (currentUser.uid) {
+    if (uid) {
       try {
         console.log('🔍 Buscando dados do usuário no Firebase...');
-        const userRef = doc(window.firebaseDb, 'users', currentUser.uid);
+        const userRef = doc(window.firebaseDb, 'users', uid);
         const userSnap = await getDoc(userRef);
         console.log('📄 Documento do usuário existe:', userSnap.exists());
         
@@ -5115,13 +5118,17 @@ async function logAdminAction(action, details) {
           } else {
             adminName = 'Usuário';
           }
+
+          // Completar email/role se faltarem
+          if (adminEmail === 'N/A' && userData.email) adminEmail = userData.email;
+          if (!adminRole || adminRole === 'N/A') adminRole = (userData.role || '').toLowerCase() || 'N/A';
           
           console.log('👤 Nome extraído:', adminName);
         } else {
           console.warn('⚠️ Documento do usuário não existe no Firebase');
           // Usar parte do email como nome
-          if (currentUser.email) {
-            adminName = currentUser.email.split('@')[0];
+          if (adminEmail && adminEmail !== 'N/A') {
+            adminName = adminEmail.split('@')[0];
           } else {
             adminName = 'Usuário';
           }
@@ -5129,8 +5136,8 @@ async function logAdminAction(action, details) {
       } catch (error) {
         console.warn('⚠️ Erro ao buscar nome do usuário:', error);
         // Usar parte do email como nome
-        if (currentUser.email) {
-          adminName = currentUser.email.split('@')[0];
+        if (adminEmail && adminEmail !== 'N/A') {
+          adminName = adminEmail.split('@')[0];
         } else {
           adminName = 'Usuário';
         }
@@ -5138,8 +5145,8 @@ async function logAdminAction(action, details) {
     } else {
       console.warn('⚠️ UID não encontrado na sessão');
       // Usar parte do email como nome
-      if (currentUser.email) {
-        adminName = currentUser.email.split('@')[0];
+      if (adminEmail && adminEmail !== 'N/A') {
+        adminName = adminEmail.split('@')[0];
       } else {
         adminName = 'Usuário';
       }
@@ -5148,9 +5155,7 @@ async function logAdminAction(action, details) {
     const logData = {
       action: action,
       details: details,
-      adminEmail: currentUser.email || 'N/A',
       adminName: adminName,
-      adminRole: currentUser.role || 'N/A',
       timestamp: serverTimestamp()
     };
     
