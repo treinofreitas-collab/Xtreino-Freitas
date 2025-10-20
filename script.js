@@ -1866,17 +1866,17 @@ function initChat() {
         const canned = [
             // Preços e valores
             {
-                match: ['preço','valor','quanto','cust','custa','quanto custa'],
+                match: ['preço','preços','valor','valores','quanto','cust','custa','quanto custa','quanto é','quanto vale','cobrança','cobrar','pagar','pagamento','dinheiro','reais','r$','barato','caro','econômico','custo','gasto','investimento','vale a pena','compensa','financeiro','monetário','tarifa','taxa','valor total','preço final','desconto','promoção','oferta','liquidação','sale','price','cost','money','cheap','expensive','affordable'],
                 reply: 'Tokens: R$ 1,00 cada. Planilhas: R$ 19,90. Sensibilidades: R$ 8,00. Imagens Aéreas: R$ 2,00 por mapa. Camisa: R$ 89,90. Passe Booyah: R$ 11,00. Eventos: R$ 3,00-5,00.'
             },
             {
-                match: ['token','tokens','comprar tokens','meus tokens','saldo'],
+                match: ['token','tokens','comprar tokens','meus tokens','saldo','saldo de tokens','quantos tokens','tenho tokens','token balance','balance','crédito','créditos','moeda','moedas','pontos','pontuação','coin','coins','currency','wallet','carteira','dinheiro virtual','moeda virtual','comprar','adicionar tokens','recarregar','recarga','depositar','depósito','investir','investimento em tokens','token system','sistema de tokens','pagamento com token','pagar com token','usar token','gastar token','consumir token','token usado','tokens usados','token gasto','tokens gastos'],
                 reply: 'Tokens custam R$ 1,00 cada. Compre e veja seu saldo em Minha Conta > Meus Tokens. Use tokens para pagar eventos!'
             },
             
             // Horários e funcionamento
             {
-                match: ['horário','hora','que horas','funcionamento','atendimento','quando'],
+                match: ['horário','horários','hora','horas','que horas','funcionamento','atendimento','quando','disponível','disponibilidade','aberto','fechado','funciona','trabalha','atende','expediente','jornada','turno','período','tempo','schedule','time','hours','working','available','open','closed','business hours','operating hours'],
                 reply: 'Atendimento: Segunda a Sexta, 08h às 23h. Treinos geralmente entre 14h-23h. Fora do horário, use o WhatsApp!'
             },
             {
@@ -1886,7 +1886,7 @@ function initChat() {
             
             // Produtos digitais
             {
-                match: ['sensibilidade','sensis','configuração','config'],
+                match: ['sensibilidade','sensibilidades','sensis','configuração','config','configs','ajuste','ajustes','calibração','calibrar','mouse','teclado','dpi','fps','fps boost','otimização','otimizar','performance','rendimento','melhorar','melhoria','setup','settings','configurar','configurações','sens','sensibilidade do mouse','mouse sens','sens do mouse','sensibilidade da mira','mira','aim','apontar','apontamento','precisão','preciso','estabilidade','estável','controle','controlar','movimento','movimentação','crosshair','mira personalizada','personalizar','customizar','custom','personalização','personalizações','sensitivity','mouse sensitivity','aim sensitivity','game settings','jogo','gaming','gamer','free fire','ff','mobile','pc','android','ios','celular','computador','notebook','desktop','laptop','device','dispositivo','aparelho','equipamento','hardware','periférico','periféricos','mouse pad','mousepad','teclado mecânico','mechanical keyboard','gaming mouse','mouse gamer','teclado gamer','gaming keyboard','headset','fone','microfone','microphone','headphone','fone de ouvido','audio','som','sound','volume','vol','microfone','mic','micro','microfone gamer','gaming headset','headset gamer','fone gamer','gaming audio','audio gamer','som gamer','sound gamer','volume gamer','audio settings','configurações de áudio','configurações de som','configurações de audio','configurações de volume','configurações de microfone','configurações de mic','configurações de fone','configurações de headset','configurações de headphone','configurações de audio','configurações de som','configurações de volume','configurações de microfone','configurações de mic','configurações de fone','configurações de headset','configurações de headphone'],
                 reply: 'Sensibilidades: R$ 8,00. Inclui configuração para PC/Android/iOS. Após compra, baixe em Minha Conta > Meus Produtos.'
             },
             {
@@ -1978,15 +1978,87 @@ function initChat() {
         ];
 
         let matchedReply = '';
+        
+        // Sistema mais inteligente de matching
         for (const c of canned){
+            let matchFound = false;
+            
+            // Verificar matches exatos
             if (c.match.some(k => textLower.includes(k))){
+                matchFound = true;
+            }
+            
+            // Verificar variações comuns
+            if (!matchFound) {
+                for (const keyword of c.match) {
+                    // Variações com acentos
+                    const variations = [
+                        keyword,
+                        keyword.replace('ç', 'c'),
+                        keyword.replace('ã', 'a'),
+                        keyword.replace('é', 'e'),
+                        keyword.replace('í', 'i'),
+                        keyword.replace('ó', 'o'),
+                        keyword.replace('ú', 'u'),
+                        keyword.replace('á', 'a'),
+                        keyword.replace('ê', 'e'),
+                        keyword.replace('ô', 'o'),
+                        keyword.replace('â', 'a'),
+                        keyword.replace('õ', 'o'),
+                        keyword.replace('à', 'a'),
+                        keyword.replace('è', 'e'),
+                        keyword.replace('ì', 'i'),
+                        keyword.replace('ò', 'o'),
+                        keyword.replace('ù', 'u')
+                    ];
+                    
+                    if (variations.some(v => textLower.includes(v))) {
+                        matchFound = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Verificar palavras similares (primeiras 3 letras)
+            if (!matchFound) {
+                for (const keyword of c.match) {
+                    if (keyword.length >= 3) {
+                        const prefix = keyword.substring(0, 3);
+                        if (textLower.includes(prefix)) {
+                            matchFound = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (matchFound) {
                 matchedReply = c.reply;
                 break;
             }
         }
 
         if (!matchedReply){
-            matchedReply = `Não consegui responder sua dúvida por aqui. Pode falar conosco no WhatsApp?\n\n📱 WhatsApp: (11) 94983-0454\n\nClique aqui para abrir: ${whatsLink}`;
+            // Tentar responder com base em palavras-chave genéricas
+            if (textLower.includes('planilha') || textLower.includes('analise') || textLower.includes('analise') || textLower.includes('coach') || textLower.includes('analista')) {
+                matchedReply = 'Planilhas de Análise: R$ 19,90. Para coaches e analistas. Inclui dados precisos e gráficos. Download em Minha Conta > Meus Produtos.';
+            } else if (textLower.includes('mapa') || textLower.includes('call') || textLower.includes('bermuda') || textLower.includes('purgatorio') || textLower.includes('kalahari') || textLower.includes('alpine') || textLower.includes('nova terra')) {
+                matchedReply = 'Imagens Aéreas: R$ 2,00 por mapa. Escolha: Bermuda, Purgatório, Kalahari, Nova Terra, Alpine. Baixe em Minha Conta > Meus Produtos.';
+            } else if (textLower.includes('evento') || textLower.includes('treino') || textLower.includes('xtreino') || textLower.includes('liga') || textLower.includes('camp') || textLower.includes('semanal')) {
+                matchedReply = 'Eventos: XTreino Gratuito (R$ 0,00), Modo Liga (R$ 3,00), Camp Freitas (R$ 5,00), Semanal Freitas (R$ 3,50). Veja na seção Eventos!';
+            } else if (textLower.includes('conta') || textLower.includes('login') || textLower.includes('cadastro') || textLower.includes('registro')) {
+                matchedReply = 'Acesse Minha Conta no menu. Faça login ou cadastre-se. Lá você vê pedidos, tokens, downloads e mais!';
+            } else if (textLower.includes('download') || textLower.includes('baixar') || textLower.includes('produto')) {
+                matchedReply = 'Downloads ficam em Minha Conta > Meus Produtos. Sensibilidades, mapas, planilhas - tudo lá!';
+            } else if (textLower.includes('whatsapp') || textLower.includes('grupo') || textLower.includes('sala')) {
+                matchedReply = 'Links de WhatsApp das salas aparecem em Minha Conta > Meus Pedidos quando seu pedido estiver confirmado.';
+            } else if (textLower.includes('pagamento') || textLower.includes('pagar') || textLower.includes('mercado pago') || textLower.includes('cartao') || textLower.includes('pix')) {
+                matchedReply = 'Aceitamos Mercado Pago (cartão, PIX, boleto). Pagamento seguro e rápido. Cupons de desconto disponíveis!';
+            } else if (textLower.includes('cupom') || textLower.includes('desconto') || textLower.includes('promocao') || textLower.includes('promo')) {
+                matchedReply = 'Cupons de desconto disponíveis! Digite o código na compra. Alguns são específicos para eventos ou loja.';
+            } else {
+                matchedReply = `Não consegui responder sua dúvida por aqui. Pode falar conosco no WhatsApp?\n\n📱 WhatsApp: (11) 94983-0454\n\nClique aqui para abrir: ${whatsLink}`;
+            }
         }
         addMessage(matchedReply, 'support');
     }
