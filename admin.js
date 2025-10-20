@@ -4847,20 +4847,25 @@ function renderCouponUsageTable() {
     if (countElement) countElement.textContent = `${couponUsageData.length} usos`;
     
     tbody.innerHTML = couponUsageData.map(usage => {
-        const discountText = usage.discountType === 'percentage' 
-            ? `${usage.discountValue}%` 
-            : `R$ ${usage.discountValue.toFixed(2)}`;
+        // Usar os campos que realmente existem no banco
+        const orderValue = usage.orderValue || 0;
+        const discountAmount = usage.discountAmount || 0;
+        const finalValue = usage.finalValue || (orderValue - discountAmount);
+        
+        // Calcular percentual se possível
+        const discountPercentage = orderValue > 0 ? ((discountAmount / orderValue) * 100).toFixed(1) : 0;
+        const discountText = discountAmount > 0 ? `R$ ${discountAmount.toFixed(2)} (${discountPercentage}%)` : 'R$ 0,00';
         
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50">
-                <td class="py-2 px-2 text-xs">${formatDateTime(usage.usedAt)}</td>
+                <td class="py-2 px-2 text-xs">${usage.usedAt ? formatDateTime(usage.usedAt) : 'N/A'}</td>
                 <td class="py-2 px-2">
-                    <span class="font-mono text-xs bg-blue-100 px-2 py-1 rounded">${usage.couponCode}</span>
+                    <span class="font-mono text-xs bg-blue-100 px-2 py-1 rounded">${usage.couponCode || 'N/A'}</span>
                 </td>
-                <td class="py-2 px-2 text-xs">${usage.customerName || usage.customerEmail}</td>
-                <td class="py-2 px-2 text-xs">R$ ${usage.originalValue.toFixed(2)}</td>
+                <td class="py-2 px-2 text-xs">${usage.customerName || usage.customerEmail || 'N/A'}</td>
+                <td class="py-2 px-2 text-xs">R$ ${orderValue.toFixed(2)}</td>
                 <td class="py-2 px-2 text-xs text-green-600">-${discountText}</td>
-                <td class="py-2 px-2 text-xs font-medium">R$ ${usage.finalValue.toFixed(2)}</td>
+                <td class="py-2 px-2 text-xs font-medium">R$ ${finalValue.toFixed(2)}</td>
             </tr>
         `;
     }).join('');
