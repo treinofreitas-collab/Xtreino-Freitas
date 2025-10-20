@@ -1864,37 +1864,116 @@ function initChat() {
         const whatsLink = `https://wa.me/${whatsNumber}?text=${encodeURIComponent('Olá! Preciso de ajuda no site XTreino Freitas.')}`;
 
         const canned = [
+            // Preços e valores
             {
-                match: ['preço','valor','quanto','cust','custa'],
-                reply: 'Tokens custam R$ 1,00 por unidade. Os eventos têm valores na seção Eventos. Posso ajudar com algo específico?'
+                match: ['preço','valor','quanto','cust','custa','quanto custa'],
+                reply: 'Tokens: R$ 1,00 cada. Planilhas: R$ 19,90. Sensibilidades: R$ 8,00. Imagens Aéreas: R$ 2,00 por mapa. Camisa: R$ 89,90. Passe Booyah: R$ 11,00. Eventos: R$ 3,00-5,00.'
             },
             {
-                match: ['token','tokens','comprar tokens','meus tokens'],
-                reply: 'Você pode comprar e ver seu saldo em Minha Conta > Meus Tokens. 1 token = R$ 1,00.'
+                match: ['token','tokens','comprar tokens','meus tokens','saldo'],
+                reply: 'Tokens custam R$ 1,00 cada. Compre e veja seu saldo em Minha Conta > Meus Tokens. Use tokens para pagar eventos!'
+            },
+            
+            // Horários e funcionamento
+            {
+                match: ['horário','hora','que horas','funcionamento','atendimento','quando'],
+                reply: 'Atendimento: Segunda a Sexta, 08h às 23h. Treinos geralmente entre 14h-23h. Fora do horário, use o WhatsApp!'
             },
             {
-                match: ['horário','hora','que horas','funcionamento','atendimento'],
-                reply: 'Atendimento: seg-sex, 08h–23h. Treinos geralmente entre 14h–23h.'
+                match: ['online','disponível','atendendo','suporte'],
+                reply: 'Estou online agora! Atendimento de seg-sex, 08h-23h. Fora do horário, respondo via WhatsApp.'
+            },
+            
+            // Produtos digitais
+            {
+                match: ['sensibilidade','sensis','configuração','config'],
+                reply: 'Sensibilidades: R$ 8,00. Inclui configuração para PC/Android/iOS. Após compra, baixe em Minha Conta > Meus Produtos.'
             },
             {
-                match: ['whatsapp','grupo','link do grupo','id e senha'],
-                reply: 'Os links de WhatsApp das salas aparecem em Minha Conta > Meus Pedidos quando seu pedido estiver confirmado.'
+                match: ['imagens aéreas','mapa','mapas','calls','bermuda','purgatório','kalahari','nova terra','alpine'],
+                reply: 'Imagens Aéreas: R$ 2,00 por mapa. Escolha: Bermuda, Purgatório, Kalahari, Nova Terra, Alpine. Baixe em Minha Conta > Meus Produtos.'
             },
             {
-                match: ['sensibilidade','sensis'],
-                reply: 'O pacote de Sensibilidades está na Loja. Após a compra, o download fica em Minha Conta > Meus Produtos.'
+                match: ['planilha','planilhas','analise','análise','coach','analista'],
+                reply: 'Planilhas de Análise: R$ 19,90. Para coaches e analistas. Inclui dados precisos e gráficos. Download em Minha Conta > Meus Produtos.'
             },
             {
-                match: ['imagens aéreas','mapa','mapas','calls'],
-                reply: 'Imagens Aéreas: escolha os mapas na compra. Depois, baixe em Minha Conta > Meus Produtos.'
+                match: ['passe','booyah','player id','id do jogador'],
+                reply: 'Passe Booyah: R$ 11,00. Informe seu Player ID na compra. Após confirmação, um admin valida e entrega.'
             },
             {
-                match: ['planilha','planilhas','analise','análise'],
-                reply: 'As Planilhas de Análise ficam disponíveis para download em Minha Conta > Meus Produtos após a compra.'
+                match: ['camisa','camiseta','roupa','física','entrega'],
+                reply: 'Camisa Oficial: R$ 89,90. Produto físico com entrega. Escolha tamanho, cor, nome e endereço na compra.'
+            },
+            
+            // Eventos e treinos
+            {
+                match: ['evento','eventos','treino','treinos','xtreino'],
+                reply: 'Eventos: XTreino Gratuito (R$ 0,00), Modo Liga (R$ 3,00), Camp Freitas (R$ 5,00), Semanal Freitas (R$ 3,50). Veja na seção Eventos!'
             },
             {
-                match: ['passe','booyah'],
-                reply: 'Passe Booyah: informe o Player ID na compra. Após confirmação, um admin valida e entrega.'
+                match: ['modo liga','liga','competitivo'],
+                reply: 'Modo Liga: R$ 3,00. Tabela + premiações, narração e transmissão. Horário: 14h-23h.'
+            },
+            {
+                match: ['camp freitas','camp','campeonato'],
+                reply: 'Camp Freitas: R$ 5,00. Inscrição com premiação total R$ 2.000,00 + troféu.'
+            },
+            {
+                match: ['semanal','semanal freitas'],
+                reply: 'Semanal Freitas: R$ 3,50. 2 quedas, premiação R$ 65,00. Fases: 19h-22h.'
+            },
+            
+            // Conta e pedidos
+            {
+                match: ['minha conta','conta','login','entrar','cadastro','registro'],
+                reply: 'Acesse Minha Conta no menu. Faça login ou cadastre-se. Lá você vê pedidos, tokens, downloads e mais!'
+            },
+            {
+                match: ['pedido','pedidos','compra','compras','histórico'],
+                reply: 'Veja seus pedidos em Minha Conta > Meus Pedidos. Lá aparecem links de WhatsApp e status dos pagamentos.'
+            },
+            {
+                match: ['download','baixar','meus produtos','produtos'],
+                reply: 'Downloads ficam em Minha Conta > Meus Produtos. Sensibilidades, mapas, planilhas - tudo lá!'
+            },
+            
+            // WhatsApp e grupos
+            {
+                match: ['whatsapp','grupo','link do grupo','id e senha','sala','discord'],
+                reply: 'Links de WhatsApp das salas aparecem em Minha Conta > Meus Pedidos quando seu pedido estiver confirmado.'
+            },
+            {
+                match: ['contato','falar','ajuda','suporte','problema'],
+                reply: 'Precisa de ajuda? Use este chat ou WhatsApp: (11) 94983-0454. Atendimento seg-sex, 08h-23h.'
+            },
+            
+            // Pagamento e cupons
+            {
+                match: ['pagamento','pagar','mercado pago','cartão','pix'],
+                reply: 'Aceitamos Mercado Pago (cartão, PIX, boleto). Pagamento seguro e rápido. Cupons de desconto disponíveis!'
+            },
+            {
+                match: ['cupom','desconto','promoção','promo','código'],
+                reply: 'Cupons de desconto disponíveis! Digite o código na compra. Alguns são específicos para eventos ou loja.'
+            },
+            
+            // Informações gerais
+            {
+                match: ['freitas','mario','quem é','sobre','empresa'],
+                reply: 'XTreino Freitas - Treinamentos e produtos para Free Fire. Mario Freitas e equipe especializada em estratégia e performance.'
+            },
+            {
+                match: ['free fire','ff','jogo','gaming'],
+                reply: 'Especialistas em Free Fire! Treinos, estratégias, sensibilidades, mapas e muito mais para melhorar sua performance.'
+            },
+            {
+                match: ['obrigado','valeu','thanks','obg'],
+                reply: 'De nada! Fico feliz em ajudar. Qualquer dúvida, estou aqui! 😊'
+            },
+            {
+                match: ['oi','olá','hello','hi','bom dia','boa tarde','boa noite'],
+                reply: 'Olá! Bem-vindo ao XTreino Freitas! Como posso te ajudar hoje? 😊'
             }
         ];
 
@@ -1907,7 +1986,7 @@ function initChat() {
         }
 
         if (!matchedReply){
-            matchedReply = `Não consegui responder sua dúvida por aqui. Pode falar conosco no WhatsApp?\n\nAbra: ${whatsLink}`;
+            matchedReply = `Não consegui responder sua dúvida por aqui. Pode falar conosco no WhatsApp?\n\n📱 WhatsApp: (11) 94983-0454\n\nClique aqui para abrir: ${whatsLink}`;
         }
         addMessage(matchedReply, 'support');
     }
