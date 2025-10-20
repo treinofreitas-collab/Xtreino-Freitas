@@ -2286,6 +2286,24 @@ window.closeNewsModal = function(){
     if (m) m.classList.add('hidden');
 }
 
+// Função para toggle das perguntas frequentes
+window.toggleFAQ = function(faqId) {
+    const faqElement = document.getElementById(faqId);
+    if (faqElement) {
+        faqElement.classList.toggle('hidden');
+        
+        // Atualizar o texto do botão
+        const button = faqElement.previousElementSibling;
+        if (button) {
+            if (faqElement.classList.contains('hidden')) {
+                button.textContent = 'Saiba mais →';
+            } else {
+                button.textContent = 'Ocultar ↑';
+            }
+        }
+    }
+}
+
 
 
 
