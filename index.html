@@ -657,12 +657,7 @@
         </div>
     </footer>
 
-    <!-- WhatsApp Float Button -->
-    <div class="fixed bottom-6 right-6 z-50">
-        <a href="https://wa.me/5511999999999" target="_blank" rel="noopener noreferrer" class="bg-green-500 hover:bg-green-600 w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl shadow-lg transition-colors neon-glow">
-            <i class="fab fa-whatsapp"></i>
-        </a>
-    </div>
+    <!-- WhatsApp Float Button removido -->
 
     <!-- Back To Top Button -->
     <button id="backToTop" class="back-to-top hidden w-12 h-12 rounded-full bg-blue-matte text-white shadow-lg flex items-center justify-center hover-blue-matte" aria-label="Voltar ao topo">
@@ -1253,14 +1248,14 @@
 </div>
 
 <!-- Chat Interno -->
-<div id="chatWidget" class="fixed bottom-6 right-6 z-50">
+    <div id="chatWidget" class="fixed bottom-6 right-6 z-50">
     <!-- Botão do Chat -->
     <button id="chatToggle" class="bg-blue-matte hover:bg-blue-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300">
         <i class="fas fa-comments text-2xl"></i>
     </button>
     
     <!-- Janela do Chat -->
-    <div id="chatWindow" class="hidden absolute bottom-20 right-0 w-80 h-96 bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col">
+        <div id="chatWindow" class="hidden fixed bottom-24 right-2 left-2 md:left-auto md:right-6 md:bottom-24 w-auto md:w-[400px] max-w-[calc(100vw-1rem)] h-[65vh] md:h-[560px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col">
         <!-- Header do Chat -->
         <div class="bg-blue-matte text-white p-4 rounded-t-lg flex items-center justify-between">
             <div class="flex items-center">

@@ -1813,7 +1813,7 @@ function initChat() {
     if (!chatToggle || !chatWindow) return;
     
     // Verificar horário de atendimento
-    const isOnline = isBusinessHours();
+    let isOnline = isBusinessHours();
     
     if (isOnline) {
         onlineStatus.classList.remove('hidden');
@@ -1851,17 +1851,58 @@ function initChat() {
         addMessage(message, 'user');
         chatInput.value = '';
         
-        // Simular resposta automática
-        setTimeout(() => {
-            const responses = [
-                'Obrigado pela sua mensagem! Nossa equipe responderá em breve.',
-                'Recebemos sua mensagem. Aguarde um momento que já respondemos.',
-                'Sua mensagem foi enviada com sucesso! Em breve entraremos em contato.',
-                'Mensagem recebida! Nossa equipe de suporte está verificando sua solicitação.'
-            ];
-            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-            addMessage(randomResponse, 'support');
-        }, 1000);
+        // Respostas prontas (FAQ curto). Se não bater, encaminha para WhatsApp
+        const textLower = message.toLowerCase();
+        const whatsNumber = '5511949830454';
+        const whatsLink = `https://wa.me/${whatsNumber}?text=${encodeURIComponent('Olá! Preciso de ajuda no site XTreino Freitas.')}`;
+
+        const canned = [
+            {
+                match: ['preço','valor','quanto','cust','custa'],
+                reply: 'Tokens custam R$ 1,00 por unidade. Os eventos têm valores na seção Eventos. Posso ajudar com algo específico?'
+            },
+            {
+                match: ['token','tokens','comprar tokens','meus tokens'],
+                reply: 'Você pode comprar e ver seu saldo em Minha Conta > Meus Tokens. 1 token = R$ 1,00.'
+            },
+            {
+                match: ['horário','hora','que horas','funcionamento','atendimento'],
+                reply: 'Atendimento: seg-sex, 08h–23h. Treinos geralmente entre 14h–23h.'
+            },
+            {
+                match: ['whatsapp','grupo','link do grupo','id e senha'],
+                reply: 'Os links de WhatsApp das salas aparecem em Minha Conta > Meus Pedidos quando seu pedido estiver confirmado.'
+            },
+            {
+                match: ['sensibilidade','sensis'],
+                reply: 'O pacote de Sensibilidades está na Loja. Após a compra, o download fica em Minha Conta > Meus Produtos.'
+            },
+            {
+                match: ['imagens aéreas','mapa','mapas','calls'],
+                reply: 'Imagens Aéreas: escolha os mapas na compra. Depois, baixe em Minha Conta > Meus Produtos.'
+            },
+            {
+                match: ['planilha','planilhas','analise','análise'],
+                reply: 'As Planilhas de Análise ficam disponíveis para download em Minha Conta > Meus Produtos após a compra.'
+            },
+            {
+                match: ['passe','booyah'],
+                reply: 'Passe Booyah: informe o Player ID na compra. Após confirmação, um admin valida e entrega.'
+            }
+        ];
+
+        let matchedReply = '';
+        for (const c of canned){
+            if (c.match.some(k => textLower.includes(k))){
+                matchedReply = c.reply;
+                break;
+            }
+        }
+
+        if (!matchedReply){
+            matchedReply = `Não consegui responder sua dúvida por aqui. Pode falar conosco no WhatsApp?\n\nAbra: ${whatsLink}`;
+        }
+        addMessage(matchedReply, 'support');
     }
     
     // Event listeners
@@ -1877,7 +1918,20 @@ function initChat() {
     setInterval(() => {
         const isOnlineNow = isBusinessHours();
         if (isOnlineNow !== isOnline) {
-            location.reload(); // Recarregar para atualizar status
+            isOnline = isOnlineNow;
+            if (isOnline) {
+                onlineStatus.classList.remove('hidden');
+                offlineStatus.classList.add('hidden');
+                chatInput.disabled = false;
+                chatSend.disabled = false;
+                chatInput.placeholder = 'Digite sua mensagem...';
+            } else {
+                onlineStatus.classList.add('hidden');
+                offlineStatus.classList.remove('hidden');
+                chatInput.disabled = true;
+                chatSend.disabled = true;
+                chatInput.placeholder = 'Fora do horário de atendimento';
+            }
         }
     }, 60000);
 }
