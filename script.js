@@ -946,14 +946,15 @@ function showClientTab(tabName) {
 }
 
 function downloadFile(fileType) {
-    // Simula download de arquivo
-    const files = {
-        'planilhas': 'Planilhas_Analise_v2.1.xlsx',
-        'sensibilidades': 'Sensibilidades_Pro.cfg',
-        'imagens': 'Imagens_Aereas_HD.zip'
-    };
-    
-    alert(`Download iniciado: ${files[fileType]}\n\nEm uma implementação real, o arquivo seria baixado automaticamente.`);
+    // Direciona o usuário para a área de cliente, onde os downloads reais
+    // consultam os pedidos e liberam arquivos via Netlify Function.
+    try {
+        const url = new URL('client.html', window.location.origin);
+        url.searchParams.set('tab', 'products');
+        window.location.href = url.toString();
+    } catch (_) {
+        window.location.href = 'client.html?tab=products';
+    }
 }
 
 function viewOnline(contentType) {
@@ -1094,23 +1095,67 @@ function showProductModal(productId){
     // opções dinâmicas
     const optContainer = document.getElementById('purchaseOptions');
     optContainer.innerHTML = '';
-    // Opções para camisa (tamanho)
+    // Opções para camisa (campos adicionais)
     if (productId === 'camisa' && details.options){
-        const label = document.createElement('label');
-        label.className = 'block text-sm font-medium mb-2';
-        label.textContent = 'Tamanho';
-        const select = document.createElement('select');
-        select.className = 'w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black focus:border-blue-matte focus:outline-none';
-        details.options.forEach(o=>{ const op = document.createElement('option'); op.textContent = o; select.appendChild(op); });
-        optContainer.appendChild(label);
-        optContainer.appendChild(select);
+        // Tamanho
+        const sizeLabel = document.createElement('label');
+        sizeLabel.className = 'block text-sm font-medium mb-2';
+        sizeLabel.textContent = 'Tamanho';
+        const sizeSelect = document.createElement('select');
+        sizeSelect.id = 'shirtSize';
+        sizeSelect.className = 'w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black focus:border-blue-matte focus:outline-none';
+        details.options.forEach(o=>{ const op = document.createElement('option'); op.value = o; op.textContent = o; sizeSelect.appendChild(op); });
+        optContainer.appendChild(sizeLabel);
+        optContainer.appendChild(sizeSelect);
+        // Nome (opcional)
+        const nameLabel = document.createElement('label'); nameLabel.className='block text-sm font-medium mb-2 mt-4'; nameLabel.textContent='Nome (camisa) — opcional';
+        const nameInput = document.createElement('input'); nameInput.id='shirtName'; nameInput.type='text'; nameInput.placeholder='Ex.: FREITAS'; nameInput.className='w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none';
+        optContainer.appendChild(nameLabel); optContainer.appendChild(nameInput);
+
+        // Quantidade
+        const qtyLabel = document.createElement('label'); qtyLabel.className='block text-sm font-medium mb-2 mt-4'; qtyLabel.textContent='Quantidade';
+        const qtyInput = document.createElement('input'); qtyInput.id='shirtQty'; qtyInput.type='number'; qtyInput.min='1'; qtyInput.value='1'; qtyInput.className='w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black focus:border-blue-matte focus:outline-none';
+        optContainer.appendChild(qtyLabel); optContainer.appendChild(qtyInput);
+
+        // Endereço de Entrega — campos separados + CPF
+        const addrGrid = document.createElement('div'); addrGrid.className='grid grid-cols-1 md:grid-cols-2 gap-3 mt-4';
+        const ruaDiv = document.createElement('div'); const ruaLabel = document.createElement('label'); ruaLabel.className='block text-sm font-medium mb-2'; ruaLabel.textContent='Rua'; const ruaInput = document.createElement('input'); ruaInput.id='addrRua'; ruaInput.type='text'; ruaInput.placeholder='Rua Exemplo'; ruaInput.className='w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none'; ruaDiv.appendChild(ruaLabel); ruaDiv.appendChild(ruaInput);
+        const numDiv = document.createElement('div'); const numLabel = document.createElement('label'); numLabel.className='block text-sm font-medium mb-2'; numLabel.textContent='Número'; const numInput = document.createElement('input'); numInput.id='addrNumero'; numInput.type='text'; numInput.placeholder='123'; numInput.className='w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none'; numDiv.appendChild(numLabel); numDiv.appendChild(numInput);
+        addrGrid.appendChild(ruaDiv); addrGrid.appendChild(numDiv);
+        optContainer.appendChild(addrGrid);
+
+        const refLabel = document.createElement('label'); refLabel.className='block text-sm font-medium mb-2 mt-3'; refLabel.textContent='Ponto de referência (opcional)';
+        const refInput = document.createElement('input'); refInput.id='addrReferencia'; refInput.type='text'; refInput.placeholder='Próximo à praça...'; refInput.className='w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none';
+        optContainer.appendChild(refLabel); optContainer.appendChild(refInput);
+
+        const cpfLabel = document.createElement('label'); cpfLabel.className='block text-sm font-medium mb-2 mt-3'; cpfLabel.textContent='CPF';
+        const cpfInput = document.createElement('input'); cpfInput.id='customerCPF'; cpfInput.type='text'; cpfInput.placeholder='000.000.000-00'; cpfInput.className='w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none';
+        optContainer.appendChild(cpfLabel); optContainer.appendChild(cpfInput);
+
+        // Observações
+        const obsLabel = document.createElement('label'); obsLabel.className='block text-sm font-medium mb-2 mt-4'; obsLabel.textContent='Observações (opcional)';
+        const obsInput = document.createElement('textarea'); obsInput.id='shirtNotes'; obsInput.rows=2; obsInput.placeholder='Ex.: Ajustar modelagem, presente, etc.'; obsInput.className='w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none';
+        optContainer.appendChild(obsLabel); optContainer.appendChild(obsInput);
     }
 
     // Opções para imagens: campo texto para mapas + quantidade
     if (productId === 'imagens'){
+        // Seleção múltipla de mapas
+        const hint = document.createElement('div'); hint.className='text-sm text-gray-600 mb-2'; hint.textContent='Selecione um ou mais mapas ou digite os nomes.';
+        optContainer.appendChild(hint);
+        const maps = ['Bermuda','Purgatório','Kalahari','Nova Terra','Alpine'];
+        const grid = document.createElement('div'); grid.className='grid grid-cols-2 gap-2 mb-3';
+        maps.forEach(m=>{
+            const label = document.createElement('label'); label.className='flex items-center gap-2';
+            const cb = document.createElement('input'); cb.type='checkbox'; cb.name='mapOption'; cb.value=m;
+            const span = document.createElement('span'); span.className='text-sm'; span.textContent=m;
+            label.appendChild(cb); label.appendChild(span); grid.appendChild(label);
+        });
+        optContainer.appendChild(grid);
+
         const mapsLabel = document.createElement('label');
         mapsLabel.className = 'block text-sm font-medium mb-2';
-        mapsLabel.textContent = 'Mapas desejados (separe por vírgula)';
+        mapsLabel.textContent = 'Ou digite os mapas (separe por vírgula)';
         const mapsInput = document.createElement('input');
         mapsInput.id = 'mapsNames';
         mapsInput.type = 'text';
@@ -1424,6 +1469,14 @@ async function handlePurchase(event) {
         const selected = Array.from(document.querySelectorAll('input[name="mapOption"]:checked')).map(i=>i.value);
         productOptions.maps = selected;
         productOptions.quantity = selected.length || 1;
+    } else if (currentProduct === 'camisa') {
+        productOptions.size = document.getElementById('shirtSize')?.value || '';
+        productOptions.color = document.getElementById('shirtColor')?.value || '';
+        productOptions.name = document.getElementById('shirtName')?.value || '';
+        productOptions.number = document.getElementById('shirtNumber')?.value || '';
+        productOptions.quantity = Number(document.getElementById('shirtQty')?.value || 1);
+        productOptions.deliveryAddress = document.getElementById('deliveryAddress')?.value || '';
+        productOptions.notes = document.getElementById('shirtNotes')?.value || '';
     }
 
     try {
@@ -1431,6 +1484,16 @@ async function handlePurchase(event) {
         if (window.firebaseDb) {
             const { addDoc, collection, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             
+            // Validação de formato de CPF para camisa (obrigatório no padrão 000.000.000-00)
+            if (currentProduct === 'camisa') {
+                const cpfVal = (document.getElementById('customerCPF')?.value || '').trim();
+                const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
+                if (!cpfVal || !cpfRegex.test(cpfVal)) {
+                    alert('CPF inválido. Use o formato 000.000.000-00.');
+                    return;
+                }
+            }
+
             const orderData = {
                 title: product.name,
                 description: product.description,
@@ -2998,9 +3061,16 @@ async function handleProductPurchase(productId, cfg) {
             productOptions.playerId = playerId;
         } else if (productId === 'camisa') {
             const shirtSize = document.getElementById('shirtSize')?.value || 'M';
-            const deliveryAddress = document.getElementById('deliveryAddress')?.value || '';
+            const rua = document.getElementById('addrRua')?.value || '';
+            const numero = document.getElementById('addrNumero')?.value || '';
+            const referencia = document.getElementById('addrReferencia')?.value || '';
+            const cpf = document.getElementById('customerCPF')?.value || '';
+            const qty = Number(document.getElementById('shirtQty')?.value || 1);
+            const nameOnShirt = document.getElementById('shirtName')?.value || '';
             productOptions.size = shirtSize;
-            productOptions.deliveryAddress = deliveryAddress;
+            productOptions.quantity = qty;
+            productOptions.name = nameOnShirt;
+            productOptions.delivery = { rua, numero, referencia, cpf };
         }
 
         // Salvar order no Firestore ANTES de redirecionar
