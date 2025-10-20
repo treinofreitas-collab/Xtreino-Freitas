@@ -3592,6 +3592,13 @@ window.saveProducts = saveProducts;
         }
       }, 2500);
       
+      // Recomputar totais de tokens (evita contagens duplicadas)
+      setTimeout(() => {
+        if (window.firebaseDb) {
+          try { recomputeTokenTotals(); } catch (_) {}
+        }
+      }, 2800);
+
       // Load users and setup guards
       setTimeout(() => {
         if (window.firebaseDb) {
@@ -5370,6 +5377,52 @@ async function loadPasseBooyahControls(){
     }
   }catch(err){
     console.error('Erro ao carregar Passe Booyah:', err);
+  }
+}
+
+// ==================== TOKEN TOTALS RECOMPUTE ====================
+async function recomputeTokenTotals(){
+  try{
+    const { collection, getDocsFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+
+    // 1) Total de tokens comprados: somar explicitamente a quantidade do título/item
+    const ordersSnap = await getDocsFromServer(collection(window.firebaseDb,'orders'));
+    let totalPurchased = 0;
+    ordersSnap.forEach(d => {
+      const o = d.data() || {};
+      const title = (o.title||'') + ' ' + (o.item||'') + ' ' + (o.description||'');
+      const lower = title.toLowerCase();
+      if (lower.includes('token') && (o.status==='paid' || o.status==='approved' || o.status==='confirmed')){
+        // Busca padrão: "NN Token" no texto
+        const m = title.match(/(\d+)\s*Token/i);
+        const qty = m ? parseInt(m[1],10) : (Number(o.quantity)||1);
+        totalPurchased += isFinite(qty) ? qty : 0;
+      }
+    });
+
+    // 2) Total de tokens usados: contar registrations com paidWithTokens
+    const regsSnap = await getDocsFromServer(collection(window.firebaseDb,'registrations'));
+    let totalUsed = 0;
+    regsSnap.forEach(d => {
+      const r = d.data() || {};
+      if (r.paidWithTokens === true){
+        totalUsed += Number(r.tokensUsed || r.tokenCost || 1);
+      }
+    });
+
+    // 3) Atualizar UI
+    const purchasedEl = document.getElementById('totalTokensPurchased');
+    const usedEl = document.getElementById('totalTokensUsed');
+    if (purchasedEl) purchasedEl.textContent = totalPurchased;
+    if (usedEl) usedEl.textContent = totalUsed;
+
+    // 4) Atualizar contagem de compras (cards e paginação)
+    const countEl = document.getElementById('tokensCount');
+    if (countEl) countEl.textContent = `${totalPurchased} compras`;
+
+    console.log('✅ Tokens recomputed:', { totalPurchased, totalUsed });
+  }catch(err){
+    console.error('❌ Error recomputing tokens:', err);
   }
 }
 
