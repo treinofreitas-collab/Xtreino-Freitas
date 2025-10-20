@@ -867,7 +867,7 @@
                         <div id="purchaseOptions"></div>
                         <div>
                             <label class="block text-sm font-medium mb-2">Nome Completo</label>
-                            <input type="text" required class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none" placeholder="Seu nome completo">
+                            <input type="text" class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none" placeholder="Seu nome completo">
                         </div>
                         <div>
                             <label class="block text-sm font-medium mb-2">Email (opcional)</label>
@@ -1232,6 +1232,15 @@
         }
     </script>
     <script src="script.js"></script>
+    
+    <style>
+        /* Esconder botões flutuantes no mobile quando modal estiver aberto */
+        @media (max-width: 768px) {
+            .modal-open #chatWidget {
+                display: none !important;
+            }
+        }
+    </style>
 </body>
 </html>
 <!-- Modal Confirmação de Pagamento -->

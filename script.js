@@ -1048,6 +1048,9 @@ function showProductModal(productId){
     currentProduct = productId;
     const product = products[productId];
     if (!product) return;
+    
+    // Adicionar classe para esconder botões flutuantes no mobile
+    document.body.classList.add('modal-open');
     const detailsMap = {
         'sensibilidades': {
             desc: '⚠ Apenas R$8,00! ⚠\nPrecisão, estabilidade e controle máximo.\nInclui: Sensibilidade otimizada (PC/Android/iOS), Pack de Otimização, Configuração Completa, Aprimoramento de Mira e Reação.',
@@ -1245,6 +1248,10 @@ function closePurchaseModal() {
     currentProduct = null;
     appliedCoupon = null;
     originalPrice = 0;
+    
+    // Remover classe para mostrar botões flutuantes novamente
+    document.body.classList.remove('modal-open');
+    
     // Limpar campos de cupom
     const couponInput = document.getElementById('couponCodeInput');
     const couponMessage = document.getElementById('couponMessage');
