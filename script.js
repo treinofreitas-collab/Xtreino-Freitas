@@ -1030,7 +1030,7 @@ const products = {
     'estrategia': { name: 'XTreino - Estratégia', price: 'R$ 79,90', description: 'Sessão de 3 horas de treinamento' },
     'mentalidade': { name: 'XTreino - Mentalidade', price: 'R$ 39,90', description: 'Sessão de 1.5 horas de treinamento' },
     'camisa': { name: 'Camisa Oficial', price: 'R$ 89,90', description: 'Produto físico - Camisa premium' },
-    'planilhas': { name: 'Planilhas de Análise', price: 'R$ 29,90', description: 'Download digital imediato' },
+    'planilhas': { name: 'Planilhas de Análise', price: 'R$ 19,90', description: 'Download digital imediato' },
     'imagens': { name: 'Imagens Aéreas', price: 'R$ 2,00', description: 'Download digital imediato' },
     'sensibilidades': { name: 'Sensibilidades', price: 'R$ 8,00', description: 'Download digital imediato' },
     // Eventos e Reservas (cupom ADMFALL = 5% off)
@@ -1493,7 +1493,7 @@ async function handlePurchase(event) {
                     return;
                 }
             }
-
+            
             const orderData = {
                 title: product.name,
                 description: product.description,
@@ -2168,7 +2168,7 @@ function addToCartByProductId(productId){
         'estrategia': { name:'XTreino - Estratégia', price:79.90 },
         'mentalidade': { name:'XTreino - Mentalidade', price:39.90 },
         'camisa': { name:'Camisa Oficial', price:89.90 },
-        'planilhas': { name:'Planilhas de Análise', price:29.90 },
+        'planilhas': { name:'Planilhas de Análise', price:19.90 },
         'imagens': { name:'Imagens Aéreas', price:2.00 },
         'sensibilidades': { name:'Sensibilidades', price:14.90 },
         'camp-fases': { name:'Camp de Fases', price:99.90 }
@@ -2229,7 +2229,7 @@ const scheduleConfig = {
     // Produtos da loja virtual
     'sensibilidades': { label: 'Sensis Freitas – PC / Android / iOS', price: 8.00, isProduct: true },
     'imagens': { label: 'Imagens Aéreas', price: 2.00, isProduct: true },
-    'planilhas': { label: 'Planilhas de Análises', price: 29.90, isProduct: true },
+    'planilhas': { label: 'Planilhas de Análises', price: 19.90, isProduct: true },
     'passe-booyah': { label: 'Passe Booyah', price: 11.00, isProduct: true },
     'camisa': { label: 'Camisa Oficial', price: 89.90, isProduct: true }
 };
