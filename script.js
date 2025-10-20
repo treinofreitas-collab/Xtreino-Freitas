@@ -3094,10 +3094,7 @@ async function handleProductPurchase(productId, cfg) {
         const email = emailElement ? emailElement.value.trim() : '';
         const phone = phoneElement ? phoneElement.value.trim() : '';
         
-        if (!email) {
-            alert('Email é obrigatório.');
-            return;
-        }
+        // Email não é mais obrigatório
         
         // Coletar opções específicas do produto
         let productOptions = {};
