@@ -166,9 +166,7 @@
       console.log('🎨 Seções ocultadas para design');
       console.log('🎨 Highlights visível:', sectionHighlights ? sectionHighlights.style.display : 'não encontrado');
       console.log('🎨 News visível:', sectionNews ? sectionNews.style.display : 'não encontrado');
-    } else {
-      console.log('🎨 Usuário não é design, role:', role);
-    }
+    } 
     // Sócio: Can see everything but cannot edit (read-only)
     else if (role === 'socio' || role === 'sócio') {
       console.log('👥 Configurando visão para Sócio - visualização completa (somente leitura)');
