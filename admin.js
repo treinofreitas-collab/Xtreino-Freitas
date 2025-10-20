@@ -119,6 +119,8 @@
   function controlSectionVisibility(userRole) {
     const role = (userRole || '').toLowerCase();
     console.log('🎭 Configurando visibilidade para cargo:', role);
+    console.log('🎭 Role original:', userRole);
+    console.log('🎭 Role lowercase:', role);
     
     // Get all section elements
     const sectionKPIs = document.getElementById('sectionKPIs');
@@ -139,6 +141,9 @@
     // Design: Can only edit highlights and news
     if (role === 'design' || role === 'desgin') {
       console.log('🎨 Configurando visão para Design - apenas Notícias e Destaques');
+      console.log('🎨 Role detectado:', role);
+      console.log('🎨 Condição design:', role === 'design');
+      console.log('🎨 Condição desgin:', role === 'desgin');
       
       // Ocultar todas as seções administrativas
       if (sectionKPIs) sectionKPIs.style.display = 'none';
@@ -157,6 +162,12 @@
       // Mostrar apenas Notícias e Destaques
       if (sectionHighlights) sectionHighlights.style.display = 'block';
       if (sectionNews) sectionNews.style.display = 'block';
+      
+      console.log('🎨 Seções ocultadas para design');
+      console.log('🎨 Highlights visível:', sectionHighlights ? sectionHighlights.style.display : 'não encontrado');
+      console.log('🎨 News visível:', sectionNews ? sectionNews.style.display : 'não encontrado');
+    } else {
+      console.log('🎨 Usuário não é design, role:', role);
     }
     // Sócio: Can see everything but cannot edit (read-only)
     else if (role === 'socio' || role === 'sócio') {
