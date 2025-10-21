@@ -1631,6 +1631,10 @@
       const eventType = typeEl.value;
       tbody.innerHTML = '';
       if (!date) return;
+      
+      // Definir horários padrão para mostrar mesmo quando não há registros
+      const defaultHours = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00'];
+      
       const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const regs = collection(window.firebaseDb,'registrations');
       // status pago/confirmado para computar ocupação
@@ -1644,12 +1648,17 @@
         const key = r.schedule || r.hour || '—';
         map[key] = (map[key]||0) + 1;
       });
-      const entries = Object.entries(map).sort((a,b)=>{
-        const na = parseInt(String(a[0]).replace(/\D/g,''))||0;
-        const nb = parseInt(String(b[0]).replace(/\D/g,''))||0;
+      
+      // Criar entradas para todos os horários padrão, mesmo os vazios
+      const allHours = new Set([...defaultHours, ...Object.keys(map)]);
+      const entries = Array.from(allHours).sort((a,b)=>{
+        const na = parseInt(String(a).replace(/\D/g,''))||0;
+        const nb = parseInt(String(b).replace(/\D/g,''))||0;
         return na-nb;
       });
-      entries.forEach(([hour, cnt])=>{
+      
+      entries.forEach((hour)=>{
+        const cnt = map[hour] || 0;
         const tr = document.createElement('tr');
         tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/12</td><td class="py-2 space-x-2">
           <button class="px-2 py-1 bg-blue-600 text-white rounded text-xs" data-add-hour="${hour}">Adicionar</button>
