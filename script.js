@@ -1868,17 +1868,7 @@ function initChat() {
         const whatsLink = `https://wa.me/${whatsNumber}?text=${encodeURIComponent('Olá! Preciso de ajuda no site XTreino Freitas.')}`;
 
         const canned = [
-            // Preços e valores
-            {
-                match: ['preço','preços','valor','valores','quanto','cust','custa','quanto custa','quanto é','quanto vale','cobrança','cobrar','pagar','pagamento','dinheiro','reais','r$','barato','caro','econômico','custo','gasto','investimento','vale a pena','compensa','financeiro','monetário','tarifa','taxa','valor total','preço final','desconto','promoção','oferta','liquidação','sale','price','cost','money','cheap','expensive','affordable'],
-                reply: 'Tokens: R$ 1,00 cada. Planilhas: R$ 19,90. Sensibilidades: R$ 8,00. Imagens Aéreas: R$ 2,00 por mapa. Camisa: R$ 89,90. Passe Booyah: R$ 11,00. Eventos: R$ 3,00-5,00.'
-            },
-            {
-                match: ['token','tokens','comprar tokens','meus tokens','saldo','saldo de tokens','quantos tokens','tenho tokens','token balance','balance','crédito','créditos','moeda','moedas','pontos','pontuação','coin','coins','currency','wallet','carteira','dinheiro virtual','moeda virtual','comprar','adicionar tokens','recarregar','recarga','depositar','depósito','investir','investimento em tokens','token system','sistema de tokens','pagamento com token','pagar com token','usar token','gastar token','consumir token','token usado','tokens usados','token gasto','tokens gastos'],
-                reply: 'Tokens custam R$ 1,00 cada. Compre e veja seu saldo em Minha Conta > Meus Tokens. Use tokens para pagar eventos!'
-            },
-            
-            // Horários e funcionamento
+            // Horários e funcionamento (prioridade alta)
             {
                 match: ['horário','horários','hora','horas','que horas','funcionamento','atendimento','quando','disponível','disponibilidade','aberto','fechado','funciona','trabalha','atende','expediente','jornada','turno','período','tempo','schedule','time','hours','working','available','open','closed','business hours','operating hours'],
                 reply: 'Atendimento: Segunda a Sexta, 08h às 23h. Treinos geralmente entre 14h-23h. Fora do horário, use o WhatsApp!'
@@ -1886,6 +1876,18 @@ function initChat() {
             {
                 match: ['online','disponível','atendendo','suporte'],
                 reply: 'Estou online agora! Atendimento de seg-sex, 08h-23h. Fora do horário, respondo via WhatsApp.'
+            },
+            
+            // Tokens (prioridade alta)
+            {
+                match: ['token','tokens','comprar tokens','meus tokens','saldo','saldo de tokens','quantos tokens','tenho tokens','token balance','balance','crédito','créditos','moeda','moedas','pontos','pontuação','coin','coins','currency','wallet','carteira','dinheiro virtual','moeda virtual','comprar','adicionar tokens','recarregar','recarga','depositar','depósito','investir','investimento em tokens','token system','sistema de tokens','pagamento com token','pagar com token','usar token','gastar token','consumir token','token usado','tokens usados','token gasto','tokens gastos'],
+                reply: 'Tokens custam R$ 1,00 cada. Compre e veja seu saldo em Minha Conta > Meus Tokens. Use tokens para pagar eventos!'
+            },
+            
+            // Preços e valores (prioridade baixa - só se não for horário ou token)
+            {
+                match: ['preço','preços','valor','valores','quanto','cust','custa','quanto custa','quanto é','quanto vale','cobrança','cobrar','pagar','pagamento','dinheiro','reais','r$','barato','caro','econômico','custo','gasto','investimento','vale a pena','compensa','financeiro','monetário','tarifa','taxa','valor total','preço final','desconto','promoção','oferta','liquidação','sale','price','cost','money','cheap','expensive','affordable'],
+                reply: 'Tokens: R$ 1,00 cada. Planilhas: R$ 19,00. Sensibilidades: R$ 8,00. Imagens Aéreas: R$ 2,00 por mapa. Camisa: R$ 89,90. Passe Booyah: R$ 11,00. Eventos: R$ 3,00-5,00.'
             },
             
             // Produtos digitais
