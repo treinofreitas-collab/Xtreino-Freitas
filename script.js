@@ -2817,6 +2817,25 @@ function closeScheduleModal(){
             grid.classList.remove('grid-cols-1');
             if (!grid.classList.contains('lg:grid-cols-2')) grid.classList.add('lg:grid-cols-2');
         }
+        
+        // Limpar times e resetar contador quando fechar o modal
+        const teamsContainer = document.getElementById('teamsContainer');
+        if (teamsContainer) {
+            teamsContainer.innerHTML = '';
+        }
+        teams = [];
+        teamCounter = 0;
+        selectedTimes = [];
+        
+        // Limpar resumo de reservas
+        const summaryContainer = document.getElementById('reservationsSummary');
+        if (summaryContainer) {
+            summaryContainer.innerHTML = '<p class="text-gray-600">Nenhuma reserva selecionada</p>';
+        }
+        const totalPriceElement = document.getElementById('totalPrice');
+        if (totalPriceElement) {
+            totalPriceElement.textContent = 'R$ 0,00';
+        }
     }
     if (window.innerWidth <= 767) maybeClearMobileModalState();
 }
