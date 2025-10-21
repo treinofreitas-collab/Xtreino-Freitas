@@ -21,7 +21,8 @@
     'cleitondouglass@gmail.com',
     'cleitondouglass123@hotmail.com',
     'gilmariofreitas378@gmail.com',
-    'gilmariofreitas387@gmail.com'
+    'gilmariofreitas387@gmail.com',
+    'flavetyr@gmail.com'
   ];
 
   // Security: Session timeout (30 minutes)
@@ -61,7 +62,7 @@
       
       console.log('🎭 Cargo encontrado:', role);
       
-      const isAuthorized = ['admin', 'gerente', 'vendedor', 'design', 'socio'].includes(role);
+      const isAuthorized = ['admin', 'gerente', 'vendedor', 'design', 'designer', 'desgin', 'socio', 'sócio'].includes(role);
       console.log('🔐 Autorizado:', isAuthorized);
       
       return isAuthorized;
@@ -154,7 +155,7 @@
     if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
     
     // Design: Can only edit highlights and news
-    if (role === 'design' || role === 'desgin') {
+    if (role === 'design' || role === 'desgin' || role === 'designer') {
       // Mostrar apenas Notícias e Destaques
       if (sectionHighlights) sectionHighlights.style.display = 'block';
       if (sectionNews) sectionNews.style.display = 'block';
@@ -723,7 +724,7 @@
     }catch(e){}
 
     // console.log('ADMIN UID:', uid, 'ROLE:', role);
-    if (!['ceo','gerente','vendedor','design','socio'].includes((role||'').toLowerCase())){
+    if (!['ceo','gerente','vendedor','design','designer','desgin','socio','sócio'].includes((role||'').toLowerCase())){
       authGate.classList.remove('hidden');
       dashboard.classList.add('hidden');
       return;
@@ -3440,7 +3441,8 @@ window.saveProducts = saveProducts;
           'cleitondouglass@gmail.com',
           'cleitondouglass123@hotmail.com',
           'gilmariofreitas378@gmail.com',
-          'gilmariofreitas387@gmail.com'
+          'gilmariofreitas387@gmail.com',
+          'flavetyr@gmail.com'
         ];
         
         console.log('🔍 Verificando email:', user.email, 'na lista:', ADMIN_EMAILS);
