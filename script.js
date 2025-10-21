@@ -1864,14 +1864,20 @@ function initChat() {
         const whatsLink = `https://wa.me/${whatsNumber}?text=${encodeURIComponent('Olá! Preciso de ajuda no site XTreino Freitas.')}`;
 
         const canned = [
+            // Valores e preços (prioridade alta)
+            {
+                match: ['valor','valores','preço','preços','quanto','custa','custo','precificar','orçamento','tabela','tabela de preços','preço dos','valor dos','quanto custa','quanto é','quanto sai','quanto fica','preço do','valor do','custo do','preço da','valor da','custo da','preço das','valor das','custo das','preço dos','valor dos','custo dos'],
+                reply: '💰 **VALORES DOS PRODUTOS:**\n\n📱 **Sensibilidade no Free Fire:** R$ 8,00\n🗺️ **Imagens Aéreas:** A partir de R$ 2,00\n📊 **Planilha de Análise:** R$ 19,90\n🎮 **Passe de Elite:** R$ 11,00\n👕 **Camisa Oficial:** R$ 89,90\n\n🎯 **EVENTOS:**\n• XTreino Gratuito: R$ 0,00\n• XTreino Modo Liga: R$ 3,00\n• Camp Freitas: R$ 5,00\n• Semanal Freitas: R$ 3,50\n• XTreino Tokens: R$ 1,00 (por token)\n\n💡 Precisa de mais detalhes sobre algum produto específico?'
+            },
+            
             // Horários e funcionamento (prioridade alta)
             {
                 match: ['horário','horários','hora','horas','que horas','funcionamento','atendimento','quando','disponível','disponibilidade','aberto','fechado','funciona','trabalha','atende','expediente','jornada','turno','período','tempo','schedule','time','hours','working','available','open','closed','business hours','operating hours'],
-                reply: 'Chat disponível 24 horas! Treinos geralmente entre 14h-23h. Para dúvidas específicas, use o WhatsApp!'
+                reply: '⏰ **HORÁRIOS DE FUNCIONAMENTO:**\n\n🕐 **Chat:** Disponível 24 horas\n🎮 **Treinos:** Geralmente entre 14h-23h\n📞 **WhatsApp:** Para dúvidas específicas\n\n💡 **DICAS:**\n• Eventos têm horários específicos\n• Tokens podem ser usados a qualquer hora\n• Suporte via WhatsApp é mais rápido para questões complexas'
             },
             {
                 match: ['online','disponível','atendendo','suporte'],
-                reply: 'Estou online 24 horas! Chat sempre disponível. Para dúvidas específicas, use o WhatsApp!'
+                reply: '✅ **SUPORTE DISPONÍVEL:**\n\n🤖 **Chat:** Online 24 horas (respostas automáticas)\n📱 **WhatsApp:** Para atendimento personalizado\n🎮 **Treinos:** Segunda a sexta, 14h-23h\n\n💡 Para dúvidas específicas sobre pedidos, use o WhatsApp!'
             },
             
             // Tokens (prioridade alta)
@@ -2068,7 +2074,7 @@ function initChat() {
         setTimeout(() => {
             hideTypingIndicator();
             addMessage(matchedReply, 'support');
-        }, 4000);
+        }, 3000);
     }
     
     // Event listeners

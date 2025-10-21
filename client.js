@@ -933,6 +933,32 @@ function getProductActionButton(product) {
         `;
     }
     
+    // Check if it's Passe Booyah/Elite
+    if (title.includes('passe') || title.includes('booyah') || title.includes('elite') || item.includes('passe') || item.includes('booyah') || item.includes('elite')) {
+        const isConfirmed = product.booyahConfirmed || false;
+        const statusText = isConfirmed ? 'Enviado' : 'Processando';
+        const statusColor = isConfirmed ? 'text-green-700 bg-green-100' : 'text-yellow-700 bg-yellow-100';
+        
+        return `
+            <div class="mt-3">
+                <div class="flex items-center justify-between">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}">
+                        ${statusText}
+                    </span>
+                    ${isConfirmed ? `
+                        <span class="text-xs text-gray-500">
+                            Enviado em: ${product.booyahConfirmedAt ? new Date(product.booyahConfirmedAt).toLocaleDateString('pt-BR') : 'Data não disponível'}
+                        </span>
+                    ` : `
+                        <span class="text-xs text-gray-500">
+                            Aguardando confirmação
+                        </span>
+                    `}
+                </div>
+            </div>
+        `;
+    }
+    
     return '';
 }
 
@@ -1433,6 +1459,15 @@ function getStatusColor(status, orderData = null) {
         if (title.includes('xtreino tokens') || item.includes('xtreino tokens') || eventType === 'xtreino-tokens') {
             return 'bg-yellow-100 text-yellow-800';
         }
+        
+        // Caso especial para Passe Booyah/Elite
+        if (title.includes('passe') || title.includes('booyah') || title.includes('elite') || item.includes('passe') || item.includes('booyah') || item.includes('elite')) {
+            if (orderData.booyahConfirmed) {
+                return 'bg-green-100 text-green-800';
+            } else {
+                return 'bg-yellow-100 text-yellow-800';
+            }
+        }
     }
     
     switch(status) {
@@ -1456,7 +1491,8 @@ function getStatusText(status, orderData = null) {
         orderData: orderData ? {
             title: orderData.title,
             item: orderData.item,
-            eventType: orderData.eventType
+            eventType: orderData.eventType,
+            booyahConfirmed: orderData.booyahConfirmed
         } : null
     });
     
@@ -1472,6 +1508,15 @@ function getStatusText(status, orderData = null) {
         if (title.includes('xtreino tokens') || item.includes('xtreino tokens') || eventType === 'xtreino-tokens') {
             console.log('✅ Found XTreino Tokens, returning "Token"');
             return 'Token';
+        }
+        
+        // Caso especial para Passe Booyah/Elite
+        if (title.includes('passe') || title.includes('booyah') || title.includes('elite') || item.includes('passe') || item.includes('booyah') || item.includes('elite')) {
+            if (orderData.booyahConfirmed) {
+                return 'Enviado';
+            } else {
+                return 'Processando';
+            }
         }
     }
     
