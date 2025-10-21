@@ -101,7 +101,7 @@ exports.handler = async (event) => {
       const delivery = snapshot.docs[0].data();
       links = Array.isArray(delivery.downloadLinks) ? delivery.downloadLinks : [];
       
-      // Incluir plataforma nos dados retornados para sensibilidades
+      // Incluir plataforma e marca nos dados retornados para sensibilidades
       if (delivery.productId === 'sensibilidades' && delivery.productOptions?.platform) {
         return {
           statusCode: 200,
@@ -110,9 +110,11 @@ exports.handler = async (event) => {
             files: links.map((link, index) => ({
               ...link,
               index: index,
-              platform: delivery.productOptions.platform
+              platform: delivery.productOptions.platform,
+              brand: delivery.productOptions.brand || null
             })),
-            platform: delivery.productOptions.platform
+            platform: delivery.productOptions.platform,
+            brand: delivery.productOptions.brand || null
           })
         };
       }

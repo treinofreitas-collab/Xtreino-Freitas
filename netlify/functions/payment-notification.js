@@ -86,6 +86,8 @@ async function generateDownloadLinks(productId, productOptions = {}) {
     switch (productId) {
         case 'sensibilidades':
             const platform = productOptions.platform || 'pc';
+            const brand = productOptions.brand || '';
+            
             const platformFiles = {
                 'pc': {
                     name: 'Sensibilidade PC',
@@ -94,10 +96,11 @@ async function generateDownloadLinks(productId, productOptions = {}) {
                     platform: 'pc'
                 },
                 'android': {
-                    name: 'Sensibilidade Android',
-                    url: `${siteBase}/sensibilidade-android.zip`,
-                    description: 'Arquivo de configuração para Android',
-                    platform: 'android'
+                    name: `Sensibilidade Android - ${brand.charAt(0).toUpperCase() + brand.slice(1)}`,
+                    url: `${siteBase}/sensibilidade-android-${brand}.zip`,
+                    description: `Arquivo de configuração para Android (${brand.charAt(0).toUpperCase() + brand.slice(1)})`,
+                    platform: 'android',
+                    brand: brand
                 },
                 'ios': {
                     name: 'Sensibilidade iOS',

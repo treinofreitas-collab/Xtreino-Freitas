@@ -2449,6 +2449,24 @@ const scheduleConfig = {
     'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
 };
 
+// Função para controlar a exibição da seleção de marcas Android
+function handlePlatformChange() {
+    const platformSelect = document.getElementById('platformSelect');
+    const androidBrandContainer = document.getElementById('androidBrandContainer');
+    const androidBrandSelect = document.getElementById('androidBrandSelect');
+    
+    if (platformSelect && androidBrandContainer && androidBrandSelect) {
+        if (platformSelect.value === 'android') {
+            androidBrandContainer.classList.remove('hidden');
+            androidBrandSelect.required = true;
+        } else {
+            androidBrandContainer.classList.add('hidden');
+            androidBrandSelect.required = false;
+            androidBrandSelect.value = '';
+        }
+    }
+}
+
 // Função para adicionar opções específicas de cada produto
 function addProductOptions(productId) {
     // Limpar opções anteriores
@@ -2499,13 +2517,30 @@ function addProductOptions(productId) {
                             </svg>
                             Escolha sua plataforma:
                         </label>
-                        <select id="platformSelect" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-700">
+                        <select id="platformSelect" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-700" onchange="handlePlatformChange()">
                             <option value="">Selecione uma plataforma</option>
                             <option value="pc">🖥️ PC (Windows)</option>
                             <option value="android">📱 Android</option>
                             <option value="ios">🍎 iOS (iPhone/iPad)</option>
                         </select>
-                        <p class="text-xs text-gray-500">O arquivo será personalizado para sua plataforma escolhida</p>
+                        
+                        <div id="androidBrandContainer" class="hidden">
+                            <label class="block text-sm font-medium text-gray-700">
+                                <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                </svg>
+                                Escolha a marca do seu dispositivo:
+                            </label>
+                            <select id="androidBrandSelect" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-700">
+                                <option value="">Selecione a marca</option>
+                                <option value="samsung">📱 Samsung</option>
+                                <option value="motorola">📱 Motorola</option>
+                                <option value="lg">📱 LG</option>
+                                <option value="xiaomi">📱 Xiaomi</option>
+                            </select>
+                        </div>
+                        
+                        <p class="text-xs text-gray-500">O arquivo será personalizado para sua plataforma e dispositivo escolhidos</p>
                     </div>
                 </div>
             `;
@@ -3334,6 +3369,16 @@ async function handleProductPurchase(productId, cfg) {
                 return;
             }
             productOptions.platform = platform;
+            
+            // Se for Android, coletar também a marca
+            if (platform === 'android') {
+                const brand = document.getElementById('androidBrandSelect').value;
+                if (!brand) {
+                    alert('Por favor, selecione a marca do seu dispositivo Android.');
+                    return;
+                }
+                productOptions.brand = brand;
+            }
         } else if (productId === 'imagens') {
             const selected = Array.from(document.querySelectorAll('input[name="mapOption"]:checked')).map(i=>i.value);
             productOptions.maps = selected;
