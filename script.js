@@ -1801,14 +1801,10 @@ if (window.firebaseReady) {
 
 // ==================== CHAT INTERNO ====================
 
-// Verificar se está no horário de atendimento (Seg-Sex 08h-23h)
+// Chat sempre disponível 24 horas
 function isBusinessHours() {
-    const now = new Date();
-    const day = now.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
-    const hour = now.getHours();
-    
-    // Segunda a Sexta (1-5) das 08h às 23h
-    return day >= 1 && day <= 5 && hour >= 8 && hour < 23;
+    // Chat sempre online
+    return true;
 }
 
 // Inicializar chat
@@ -1871,11 +1867,11 @@ function initChat() {
             // Horários e funcionamento (prioridade alta)
             {
                 match: ['horário','horários','hora','horas','que horas','funcionamento','atendimento','quando','disponível','disponibilidade','aberto','fechado','funciona','trabalha','atende','expediente','jornada','turno','período','tempo','schedule','time','hours','working','available','open','closed','business hours','operating hours'],
-                reply: 'Atendimento: Segunda a Sexta, 08h às 23h. Treinos geralmente entre 14h-23h. Fora do horário, use o WhatsApp!'
+                reply: 'Chat disponível 24 horas! Treinos geralmente entre 14h-23h. Para dúvidas específicas, use o WhatsApp!'
             },
             {
                 match: ['online','disponível','atendendo','suporte'],
-                reply: 'Estou online agora! Atendimento de seg-sex, 08h-23h. Fora do horário, respondo via WhatsApp.'
+                reply: 'Estou online 24 horas! Chat sempre disponível. Para dúvidas específicas, use o WhatsApp!'
             },
             
             // Tokens (prioridade alta)
@@ -1951,7 +1947,7 @@ function initChat() {
             },
             {
                 match: ['contato','falar','ajuda','suporte','problema'],
-                reply: 'Precisa de ajuda? Use este chat ou WhatsApp: (11) 94983-0454. Atendimento seg-sex, 08h-23h.'
+                reply: 'Precisa de ajuda? Use este chat 24 horas ou WhatsApp: (11) 94983-0454. Chat sempre disponível!'
             },
             
             // Pagamento e cupons
@@ -2066,7 +2062,13 @@ function initChat() {
                 matchedReply = `❌ Não temos essa resposta no chat.\n\nChame no WhatsApp para saber melhor:\n\n📱 (11) 94983-0454\n\n🔗 [Clique aqui para abrir o WhatsApp](${whatsLink})`;
             }
         }
-        addMessage(matchedReply, 'support');
+        
+        // Mostrar indicador de "digitando..." e simular digitação com atraso de 4 segundos
+        showTypingIndicator();
+        setTimeout(() => {
+            hideTypingIndicator();
+            addMessage(matchedReply, 'support');
+        }, 4000);
     }
     
     // Event listeners
@@ -2098,6 +2100,41 @@ function initChat() {
             }
         }
     }, 60000);
+}
+
+// Mostrar indicador de "digitando..."
+function showTypingIndicator() {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
+    // Remover indicador anterior se existir
+    const existingTyping = document.getElementById('typingIndicator');
+    if (existingTyping) {
+        existingTyping.remove();
+    }
+    
+    const typingDiv = document.createElement('div');
+    typingDiv.id = 'typingIndicator';
+    typingDiv.className = 'flex items-center space-x-2 p-3 bg-gray-100 rounded-lg mb-2';
+    typingDiv.innerHTML = `
+        <div class="flex space-x-1">
+            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+        </div>
+        <span class="text-sm text-gray-500">Digitando...</span>
+    `;
+    
+    chatMessages.appendChild(typingDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Esconder indicador de "digitando..."
+function hideTypingIndicator() {
+    const typingIndicator = document.getElementById('typingIndicator');
+    if (typingIndicator) {
+        typingIndicator.remove();
+    }
 }
 
 // Adicionar mensagem ao chat
