@@ -1025,14 +1025,14 @@ let appliedCoupon = null;
 let appliedScheduleCoupon = null;
 let originalPrice = 0;
 const products = {
-    'passe-booyah': { name: 'Passe Booyah', price: 'R$ 11,00', description: 'Assinatura mensal com acesso completo' },
+    'passe-booyah': { name: 'Passe de Elite', price: 'R$ 11,00', description: 'Passe de Elite para desbloqueio de recompensas, trajes e itens no jogo' },
     'aim-training': { name: 'XTreino - Aim Training', price: 'R$ 49,90', description: 'Sessão de 2 horas de treinamento' },
     'estrategia': { name: 'XTreino - Estratégia', price: 'R$ 79,90', description: 'Sessão de 3 horas de treinamento' },
     'mentalidade': { name: 'XTreino - Mentalidade', price: 'R$ 39,90', description: 'Sessão de 1.5 horas de treinamento' },
-    'camisa': { name: 'Camisa Oficial', price: 'R$ 89,90', description: 'Produto físico - Camisa premium' },
-    'planilhas': { name: 'Planilhas de Análise', price: 'R$ 19,90', description: 'Download digital imediato' },
-    'imagens': { name: 'Imagens Aéreas', price: 'R$ 2,00', description: 'Download digital imediato' },
-    'sensibilidades': { name: 'Sensibilidades', price: 'R$ 8,00', description: 'Download digital imediato' },
+    'camisa': { name: 'Camisa Oficial Org Freitas', price: 'R$ 89,90', description: 'Camisa de manga curta com design exclusivo da Org Freitas' },
+    'planilhas': { name: 'Planilha de Análise de Times', price: 'R$ 19,90', description: 'Planilha para Coach e Analista com análise detalhada de jogadores' },
+    'imagens': { name: 'Imagens Aéreas', price: 'R$ 2,00', description: 'Mapas do Free Fire com visão aérea para estudo de calls e estratégias' },
+    'sensibilidades': { name: 'Sensibilidade no Free Fire', price: 'R$ 8,00', description: 'Passo a passo para configurar sensibilidade Android, PC e iOS' },
     // Eventos e Reservas (cupom ADMFALL = 5% off)
     'evt-xtreino-gratuito': { name: 'XTreino Gratuito', price: 'R$ 0,00', description: 'Evento gratuito — horários 14h–23h' },
     'evt-modo-liga': { name: 'XTreino Modo Liga', price: 'R$ 3,00', description: 'Tabela + premiações, narração e transmissão — 14h–23h' },
@@ -1053,23 +1053,23 @@ function showProductModal(productId){
     document.body.classList.add('modal-open');
     const detailsMap = {
         'sensibilidades': {
-            desc: '⚠ Apenas R$8,00! ⚠\nPrecisão, estabilidade e controle máximo.\nInclui: Sensibilidade otimizada (PC/Android/iOS), Pack de Otimização, Configuração Completa, Aprimoramento de Mira e Reação.',
+            desc: '💚 SENSIBILIDADE NO FREE FIRE\n\n📱 ITEM: Sensibilidade ANDROID | PC | IOS\n\n📋 SOBRE O PRODUTO:\nPasso a passo de como configurar e ajustar a sensibilidade no Free Fire e no próprio dispositivo.\n\n✅ BENEFÍCIOS OFERECIDOS:\n• Precisão\n• Estabilidade\n• Cursor secreto\n\n🔧 DETALHES:\nAtualizações que se adaptam a cada temporada e vídeo explicativo de como usar.',
             options: null
         },
         'imagens': {
-            desc: 'Mapas: Bermuda, Purgatório, Kalahari, Nova Terra, Alpine. Cada link: ~20 imagens com principais calls. Valores: 1 mapa R$2 | 2 por R$4 | 3 por R$5 | 5 por R$7.',
+            desc: '💚 IMAGENS AÉREAS\n\n🗺️ ITEM: Mapas do Free Fire com visão aérea\n\n📋 SOBRE O PRODUTO:\nImagens aéreas dos seguintes Mapas: Bermuda | Purgatório | Kalahari | Nova Terra | Alpine. Obtenha a visão aérea dos mais diversos locais do jogo em seus respectivos Mapas.\n\n✅ BENEFÍCIOS OFERECIDOS:\n• Visão privilegiada para estudo de calls\n• Formação de rush\n• Marcação e rotação\n• Conhecimento do local\n• Montagem de estratégias\n\n🔧 DETALHES:\nOferecemos até 5 Mapas para estudos, cada um com no mínimo 20 imagens aéreas.',
             options: ['Bermuda','Purgatório','Kalahari','Nova Terra','Alpine']
         },
         'planilhas': {
-            desc: 'Para coachs e analistas: análises (kills, dano, tempo), gráficos, ajuste total e vídeo explicativo.',
+            desc: '💚 PLANILHA DE ANÁLISE DE TIMES PARA COACH E ANALISTA\n\n📊 ITEM: Planilha para Coach e Analista\n\n📋 SOBRE O PRODUTO:\nPlanilha desenvolvida para estudo e aprimoramento de Times, com detalhes de cada player em suas respectivas partidas, bem como os mapas e Eventos jogados diariamente.\n\n✅ BENEFÍCIOS OFERECIDOS:\n• Cálculo de cada partida de até 8 integrantes\n• Pontuação total, abates, taxa de abates\n• Tempo de sobrevivência, média de sobrevivência\n• Assistências, danos e quedas jogadas no dia\n\n🔧 DETALHES:\nObserve o desempenho de até 4 titulares e + 4 reservas em cada partida. Destaque de top 3 e gráficos.',
             options: null
         },
         'passe-booyah': {
-            desc: 'R$11,00 • 100% confiável, entrega rápida, não pedimos senha/email (apenas ID).',
+            desc: '💚 PASSE DE ELITE NO FREE FIRE\n\n🎮 ITEM: Passe de Elite\n\n📋 SOBRE O PRODUTO:\nPasse de Elite para desbloqueio de recompensas, trajes e itens no jogo.\n\n✅ BENEFÍCIOS OFERECIDOS:\n• Esteja à frente obtendo o Passe de Elite atual\n• Compra rápida e segura através do ID do player\n\n🔧 DETALHES:\nItem no seu correio em até 24h, oferecemos suporte.',
             options: null
         },
         'camisa': {
-            desc: 'Camisa oficial • tecido leve e estampa premium. Frente/Costas disponíveis nos links da página.',
+            desc: '💚 CAMISA OFICIAL ORG FREITAS\n\n👕 ITEM: Camisa Oficial Freitas\n\n📋 SOBRE O PRODUTO:\nCamisa de manga curta para homens e mulheres que veste super bem no corpo, com qualidade e conforto. A Camisa traz o Design exclusivo da Org Freitas, bem como sua logo.\n\n✅ BENEFÍCIOS OFERECIDOS:\n• Adicionamos o seu nome na Camisa\n• Tecido leve que proporciona sensação de frescor\n• Bom caimento e secagem rápida\n\n🔧 DETALHES:\nEntrega para todo Brasil. Temos todos os tamanhos.',
             options: ['P','M','G','GG']
         }
     };
@@ -2436,11 +2436,11 @@ const scheduleConfig = {
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00, payWithToken: true },
     // Produtos da loja virtual
-    'sensibilidades': { label: 'Sensis Freitas – PC / Android / iOS', price: 8.00, isProduct: true },
-    'imagens': { label: 'Imagens Aéreas', price: 2.00, isProduct: true },
-    'planilhas': { label: 'Planilhas de Análises', price: 19.90, isProduct: true },
-    'passe-booyah': { label: 'Passe Booyah', price: 11.00, isProduct: true },
-    'camisa': { label: 'Camisa Oficial', price: 89.90, isProduct: true }
+    'sensibilidades': { label: 'Sensibilidade no Free Fire – PC / Android / iOS', price: 8.00, isProduct: true },
+    'imagens': { label: 'Imagens Aéreas dos Mapas', price: 2.00, isProduct: true },
+    'planilhas': { label: 'Planilha de Análise de Times', price: 19.90, isProduct: true },
+    'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
+    'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
 };
 
 // Função para adicionar opções específicas de cada produto

@@ -3033,49 +3033,63 @@ async function createDefaultProducts() {
     const { setDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     
     const defaultProducts = {
+        'sensibilidades': {
+            id: 'sensibilidades',
+            name: 'Sensibilidade no Free Fire',
+            description: 'Passo a passo de como configurar e ajustar a sensibilidade no Free Fire e no próprio dispositivo',
+            category: 'digital',
+            price: 8.00,
+            type: 'download',
+            downloadType: 'file',
+            platforms: ['Android', 'PC', 'iOS'],
+            active: true,
+            createdAt: new Date()
+        },
         'imagens': {
             id: 'imagens',
             name: 'Imagens Aéreas',
-            description: 'Pacote de imagens aéreas dos mapas do Free Fire',
+            description: 'Mapas do Free Fire com visão aérea para estudo de calls, formação de rush, marcação e rotação',
             category: 'digital',
             price: 2.00,
             type: 'download',
             downloadType: 'maps',
-            maps: ['Bermuda', 'Purgatório', 'Kalahari', 'Alpina', 'Bermuda Remastered'],
+            maps: ['Bermuda', 'Purgatório', 'Kalahari', 'Nova Terra', 'Alpine'],
             baseUrl: 'https://freitasteste.netlify.app/downloads/',
             active: true,
             createdAt: new Date()
         },
         'planilhas': {
             id: 'planilhas',
-            name: 'Planilhas de Análises',
-            description: 'Planilhas com análises detalhadas de jogos e estratégias',
+            name: 'Planilha de Análise de Times',
+            description: 'Planilha desenvolvida para estudo e aprimoramento de Times, com detalhes de cada player em suas respectivas partidas',
             category: 'digital',
-            price: 5.00,
+            price: 19.90,
             type: 'download',
             downloadType: 'file',
-            downloadUrl: 'https://drive.google.com/drive/folders/1ABC123',
+            features: ['Análise de até 8 integrantes', 'Pontuação total e abates', 'Tempo de sobrevivência', 'Gráficos e top 3'],
             active: true,
             createdAt: new Date()
         },
         'camisa': {
             id: 'camisa',
-            name: 'Camisa X-Treino Freitas',
-            description: 'Camisa oficial da X-Treino Freitas',
+            name: 'Camisa Oficial Org Freitas',
+            description: 'Camisa de manga curta com design exclusivo da Org Freitas, tecido leve e personalização com nome',
             category: 'physical',
-            price: 25.00,
+            price: 89.90,
             type: 'delivery',
             sizes: ['P', 'M', 'G', 'GG'],
+            features: ['Tecido leve', 'Bom caimento', 'Secagem rápida', 'Personalização com nome'],
             active: true,
             createdAt: new Date()
         },
         'passe-booyah': {
             id: 'passe-booyah',
-            name: 'Passe Booyah',
-            description: 'Passe Booyah do Free Fire',
+            name: 'Passe de Elite',
+            description: 'Passe de Elite para desbloqueio de recompensas, trajes e itens no jogo',
             category: 'digital',
-            price: 15.00,
+            price: 11.00,
             type: 'gift',
+            features: ['Entrega em até 24h', 'Suporte completo', 'Compra segura via ID'],
             active: true,
             createdAt: new Date()
         }
