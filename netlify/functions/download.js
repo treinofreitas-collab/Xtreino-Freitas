@@ -92,7 +92,7 @@ exports.handler = async (event) => {
         const maps = productOptions.maps || ['Bermuda'];
         links = maps.map(map => ({ name: `Imagens Aéreas - ${map}`, url: `${siteBase}/${mapToFilename(map)}` }));
       } else if ((productId || '').toString().includes('planilha') || productId === 'planilhas') {
-        const file = 'CONTROLE DE LINES PARA COACH E ANALISTA .xlsx';
+        const file = 'assets/downloads/CONTROLE DE LINES PARA COACH E ANALISTA .xlsx';
         links = [{ name: 'Planilhas de Análise', url: `${siteBase}/${encodeURIComponent(file)}` }];
       } else {
         return { statusCode: 404, headers, body: 'Digital delivery not found' };

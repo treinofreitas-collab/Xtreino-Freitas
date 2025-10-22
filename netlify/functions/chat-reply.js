@@ -30,7 +30,7 @@ exports.handler = async (event) => {
       'Responda de forma direta e educada, em português do Brasil.',
       'Informações úteis:',
       '- Horários: Segunda a Sexta, 08h às 23h.',
-      '- Produtos: XTreinos/Camps, Tokens, Sensibilidades, Imagens Aéreas, Planilhas, Passe Booyah.',
+      '- Produtos: Treinos/Camps, Tokens, Sensibilidades, Imagens Aéreas, Planilhas, Passe Booyah.',
       '- Pagamento: principal via Mercado Pago.',
       '- Tokens: 1 token = R$ 1,00 (usados para vagas em eventos).',
       '- Links de WhatsApp de salas não devem ser enviados por aqui; instruir o usuário a ver em Minha Conta > Meus Pedidos quando a compra for confirmada.',

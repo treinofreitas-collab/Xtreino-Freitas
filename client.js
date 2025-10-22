@@ -626,7 +626,7 @@ async function loadWhatsAppLinks(orders) {
 function displayAllOrdersPaginated() {
     const container = document.getElementById('allOrders');
     
-    // Filter only events (XTreinos, Camps, Semanal, Modo Liga) -
+    // Filter only events (Treinos, Camps, Semanal, Modo Liga) -
     // incluir xtreino-tokens (consumo via tokens) e excluir compras de tokens
     const eventsOnly = allOrdersData.filter(order => {
         const title = (order.title || '').toLowerCase();

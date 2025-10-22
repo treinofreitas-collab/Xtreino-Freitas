@@ -91,20 +91,20 @@ async function generateDownloadLinks(productId, productOptions = {}) {
             const platformFiles = {
                 'pc': {
                     name: 'Sensibilidade PC',
-                    url: `${siteBase}/sensibilidade-pc.zip`,
+                    url: `${siteBase}/assets/downloads/sensibilidade-pc.zip`,
                     description: 'Arquivo de configuração para PC (Windows)',
                     platform: 'pc'
                 },
                 'android': {
                     name: `Sensibilidade Android - ${brand.charAt(0).toUpperCase() + brand.slice(1)}`,
-                    url: `${siteBase}/sensibilidade-android-${brand}.zip`,
+                    url: `${siteBase}/assets/downloads/sensibilidade-android-${brand}.zip`,
                     description: `Arquivo de configuração para Android (${brand.charAt(0).toUpperCase() + brand.slice(1)})`,
                     platform: 'android',
                     brand: brand
                 },
                 'ios': {
                     name: 'Sensibilidade iOS',
-                    url: `${siteBase}/sensibilidade-ios.zip`,
+                    url: `${siteBase}/assets/downloads/sensibilidade-ios.zip`,
                     description: 'Arquivo de configuração para iOS (iPhone/iPad)',
                     platform: 'ios'
                 }
@@ -114,7 +114,7 @@ async function generateDownloadLinks(productId, productOptions = {}) {
                 platformFiles[platform] || platformFiles['pc'],
                 {
                     name: 'Guia de Instalação',
-                    url: `${siteBase}/guia-sensibilidade.pdf`,
+                    url: `${siteBase}/assets/downloads/guia-sensibilidade.pdf`,
                     description: 'Instruções passo a passo'
                 }
             ];
@@ -139,7 +139,7 @@ async function generateDownloadLinks(productId, productOptions = {}) {
             
         case 'planilhas':
             {
-                const file = 'CONTROLE DE LINES PARA COACH E ANALISTA .xlsx';
+                const file = 'assets/downloads/CONTROLE DE LINES PARA COACH E ANALISTA .xlsx';
                 const enc = encodeURIComponent(file);
                 return [
                     {
