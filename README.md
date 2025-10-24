@@ -59,7 +59,7 @@ Site oficial do XTreino Freitas, plataforma de treinamentos e produtos para Free
 ### Digitais
 - **Sensibilidades**: R$ 8,00 (PC/Android/iOS)
 - **Imagens Aéreas**: R$ 2,00 por mapa
-- **Planilhas de Análise**: R$ 19,90
+- **Planilhas de Análise**: R$ 19,00
 - **Passe Booyah**: R$ 11,00
 
 ### Físicos
