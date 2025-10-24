@@ -248,6 +248,9 @@ async function checkAdminAccess() {
     // Verificar role no Firestore primeiro
     try {
         const uid = user.uid;
+        console.log('🔍 UID do usuário:', uid);
+        console.log('🔍 Firebase DB disponível:', !!window.firebaseDb);
+        
         const { doc, getDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const snap = await getDoc(doc(collection(window.firebaseDb,'users'), uid));
         if (snap.exists()) {
@@ -260,10 +263,20 @@ async function checkAdminAccess() {
             const designVariations = ['design', 'designer', 'desgin', 'desgine'];
             const socioVariations = ['socio', 'sócio'];
             
-            if (designVariations.includes(role) || socioVariations.includes(role)) {
+            console.log('🔍 Verificando cargo:', role);
+            console.log('🔍 É design?', designVariations.includes(role));
+            console.log('🔍 É socio?', socioVariations.includes(role));
+            
+            // Verificação adicional para socio com diferentes variações
+            const isSocio = role === 'socio' || role === 'sócio' || role.includes('socio') || role.includes('sócio');
+            console.log('🔍 É socio (verificação adicional)?', isSocio);
+            
+            if (designVariations.includes(role) || socioVariations.includes(role) || isSocio) {
                 console.log('✅ Acesso liberado para Design/Sócio (cargo:', role, ')');
                 return true;
             }
+            
+            console.log('❌ Cargo não autorizado:', role, '- Variações de design:', designVariations, '- Variações de socio:', socioVariations);
             
             // Para outros cargos, verificar email na whitelist
             if (['admin', 'ceo', 'gerente', 'vendedor'].includes(role)) {
@@ -281,6 +294,7 @@ async function checkAdminAccess() {
         console.error('❌ Erro ao verificar acesso admin:', error);
     }
     
+    console.log('❌ Retornando false - nenhuma condição de acesso foi atendida');
     return false;
 }
 
@@ -457,11 +471,10 @@ window.AssocConfig = {
     },
     // Regras de valor dos tokens (BRL -> tipo de vaga)
     tokenPricingBRL: [
-        { amount: 1.00, benefit: '1 vaga treino normal', key: 'treino' },
-        { amount: 3.00, benefit: '1 vaga modo liga', key: 'modoLiga' },
-        { amount: 3.50, benefit: '1 vaga semanal', key: 'semanal' },
-        { amount: 7.00, benefit: '1 vaga final semanal', key: 'finalSemanal' },
-        { amount: 5.00, benefit: '1 vaga camp de fases', key: 'campFases' }
+        { amount: 1.00, benefit: '1 vaga XTreino Freitas', key: 'xtreino-tokens' },
+        { amount: 3.00, benefit: '1 vaga XTreino Modo Liga', key: 'modo-liga' },
+        { amount: 3.50, benefit: '1 vaga Semanal Freitas', key: 'semanal-freitas' },
+        { amount: 5.00, benefit: '1 vaga Campeonato Freitas', key: 'camp-freitas' }
     ]
 };
 
@@ -1034,10 +1047,10 @@ const products = {
     'imagens': { name: 'Imagens Aéreas', price: 'R$ 2,00', description: 'Mapas do Free Fire com visão aérea para estudo de calls e estratégias' },
     'sensibilidades': { name: 'Sensibilidade no Free Fire', price: 'R$ 8,00', description: 'Passo a passo para configurar sensibilidade Android, PC e iOS' },
     // Eventos e Reservas (cupom ADMFALL = 5% off)
-    'evt-xtreino-gratuito': { name: 'XTreino Gratuito', price: 'R$ 0,00', description: 'Evento gratuito — horários 14h–23h' },
-    'evt-modo-liga': { name: 'XTreino Modo Liga', price: 'R$ 3,00', description: 'Tabela + premiações, narração e transmissão — 14h–23h' },
-    'evt-camp-freitas': { name: 'Camp Freitas', price: 'R$ 5,00', description: 'Inscrição — premiação total R$ 2000,00 + troféu' },
-    'evt-semanal-freitas': { name: 'Semanal Freitas', price: 'R$ 3,50', description: '2 quedas, premiação R$ 65,00, fases 19h–22h' }
+    'evt-xtreino-tokens': { name: 'XTreino Freitas', price: 'R$ 1,00', description: '1 token — 10 horários diários (14h-23h) — Misto | Squad | 2 quedas' },
+    'evt-modo-liga': { name: 'XTreino Modo Liga', price: 'R$ 3,00', description: '4 horários (14h, 15h, 17h, 18h) — 15 slots — Transmissão ao vivo' },
+    'evt-camp-freitas': { name: 'Campeonato Freitas Season⁴', price: 'R$ 5,00', description: '4 horários (20h-23h) — Premiação R$ 2.000,00 + Troféu + MVP' },
+    'evt-semanal-freitas': { name: 'Semanal Freitas', price: 'R$ 3,50', description: '3 fases (20h, 21h, 22h) — Premiação R$ 65,00 — Termina no mesmo dia' }
 };
 
 function openPurchaseModal(productId) {
@@ -1867,7 +1880,7 @@ function initChat() {
             // Valores e preços (prioridade alta)
             {
                 match: ['valor','valores','preço','preços','quanto','custa','custo','precificar','orçamento','tabela','tabela de preços','preço dos','valor dos','quanto custa','quanto é','quanto sai','quanto fica','preço do','valor do','custo do','preço da','valor da','custo da','preço das','valor das','custo das','preço dos','valor dos','custo dos'],
-                reply: '💰 **VALORES DOS PRODUTOS:**\n\n📱 **Sensibilidade no Free Fire:** R$ 8,00\n🗺️ **Imagens Aéreas:** A partir de R$ 2,00\n📊 **Planilha de Análise:** R$ 19,90\n🎮 **Passe de Elite:** R$ 11,00\n👕 **Camisa Oficial:** R$ 89,90\n\n🎯 **EVENTOS:**\n• XTreino Gratuito: R$ 0,00\n• XTreino Modo Liga: R$ 3,00\n• Camp Freitas: R$ 5,00\n• Semanal Freitas: R$ 3,50\n• XTreino Tokens: R$ 1,00 (por token)\n\n💡 Precisa de mais detalhes sobre algum produto específico?'
+                reply: '💰 **VALORES DOS PRODUTOS:**\n\n📱 **Sensibilidade no Free Fire:** R$ 8,00\n🗺️ **Imagens Aéreas:** A partir de R$ 2,00\n📊 **Planilha de Análise:** R$ 19,90\n🎮 **Passe de Elite:** R$ 11,00\n👕 **Camisa Oficial:** R$ 89,90\n\n🎯 **EVENTOS:**\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 5,00 - 20h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\n💡 Precisa de mais detalhes sobre algum evento específico?'
             },
             
             // Horários e funcionamento (prioridade alta)
@@ -1917,19 +1930,23 @@ function initChat() {
             // Eventos e treinos
             {
                 match: ['evento','eventos','treino','treinos','xtreino'],
-                reply: 'Eventos: XTreino Gratuito (R$ 0,00), Modo Liga (R$ 3,00), Camp Freitas (R$ 5,00), Semanal Freitas (R$ 3,50). Veja na seção Eventos!'
+                reply: '🎯 **EVENTOS DISPONÍVEIS:**\n\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 5,00 - 20h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\nVeja na seção Eventos para mais detalhes!'
             },
             {
                 match: ['modo liga','liga','competitivo'],
-                reply: 'Modo Liga: R$ 3,00. Tabela + premiações, narração e transmissão. Horário: 14h-23h.'
+                reply: '🏆 **XTREINO MODO LIGA:**\n\n💰 **Valor:** R$ 3,00\n⏰ **Horários:** 14h, 15h, 17h, 18h\n🎮 **Modalidade:** Misto | Squad | 2 quedas | 15 slots\n🏅 **Premiação:** Vaga em campeonato pro top¹ da tabela\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Transmissão modo liga ao vivo, montagem de cronograma, 15 slots e Troféu.'
             },
             {
                 match: ['camp freitas','camp','campeonato'],
-                reply: 'Camp Freitas: R$ 5,00. Inscrição com premiação total R$ 2.000,00 + troféu.'
+                reply: '🏆 **CAMPEONATO FREITAS SEASON⁴:**\n\n💰 **Valor:** R$ 5,00\n⏰ **Horários:** 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas nas fases | 5 quedas nas Semifinais | 8 quedas na final\n🏅 **Premiação:** R$ 2.000,00 + Troféu + MVP\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Narrador e comentarista. Transmissão Ao vivo modo liga com logo na mochila e gelo a partir das semifinais + Sorteio de uma camisa Oficial da Org para os Patrocinadores.'
             },
             {
                 match: ['semanal','semanal freitas'],
-                reply: 'Semanal Freitas: R$ 3,50. 2 quedas, premiação R$ 65,00. Fases: 19h-22h.'
+                reply: '🏆 **SEMANAL FREITAS:**\n\n💰 **Valor:** R$ 3,50\n⏰ **Horários:** 1ª Fase às 20h e 21h | Final às 22h\n🎁 **Bônus:** Vaga direto na Final por apenas R$ 7,00\n🎮 **Modalidade:** Misto | Squad | 2 quedas\n🏅 **Premiação:** R$ 65,00\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Termina no mesmo dia + premiação em dinheiro pro top¹.'
+            },
+            {
+                match: ['xtreino freitas','xtreino','token','tokens','treino normal'],
+                reply: '🎯 **XTREINO FREITAS:**\n\n💰 **Valor:** R$ 1,00 (1 token)\n⏰ **Horários:** 14h, 15h, 16h, 17h, 18h, 19h, 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas\n🏅 **Premiação:** Vaga em Campeonato pro top¹ da tabela\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Sobre o Evento:** Xtreino que visa o treinamento e aperfeiçoamento de Equipes amadoras e profissionais, onde Coach pode telar seu Time para avaliá-los. Oferecemos Tabela de pontuação, Banner de top³, Transmissão ao Vivo, Verificados, Ranking de melhor equipe com Troféu e mais...\n\n🎯 **Diferencial:** 10 horários diários, montagem de cronograma e Troféu.'
             },
             
             // Conta e pedidos
@@ -2053,7 +2070,7 @@ function initChat() {
             } else if (textLower.includes('mapa') || textLower.includes('call') || textLower.includes('bermuda') || textLower.includes('purgatorio') || textLower.includes('kalahari') || textLower.includes('alpine') || textLower.includes('nova terra')) {
                 matchedReply = 'Imagens Aéreas: R$ 2,00 por mapa. Escolha: Bermuda, Purgatório, Kalahari, Nova Terra, Alpine. Baixe em Minha Conta > Meus Produtos.';
             } else if (textLower.includes('evento') || textLower.includes('treino') || textLower.includes('xtreino') || textLower.includes('liga') || textLower.includes('camp') || textLower.includes('semanal')) {
-                matchedReply = 'Eventos: XTreino Gratuito (R$ 0,00), Modo Liga (R$ 3,00), Camp Freitas (R$ 5,00), Semanal Freitas (R$ 3,50). Veja na seção Eventos!';
+                matchedReply = '🎯 **EVENTOS DISPONÍVEIS:**\n\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 5,00 - 20h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\nVeja na seção Eventos para mais detalhes!';
             } else if (textLower.includes('conta') || textLower.includes('login') || textLower.includes('cadastro') || textLower.includes('registro')) {
                 matchedReply = 'Acesse Minha Conta no menu. Faça login ou cadastre-se. Lá você vê pedidos, tokens, downloads e mais!';
             } else if (textLower.includes('download') || textLower.includes('baixar') || textLower.includes('produto')) {
@@ -3932,6 +3949,62 @@ async function useTokensForEvent(eventType){
     }
 }
 
+// Função para obter link do WhatsApp dinamicamente
+async function getWhatsAppLink(eventType, schedule = null) {
+  try {
+    const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    
+    const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
+    
+    // Primeiro, tentar encontrar link específico para o horário
+    if (schedule) {
+      const specificQuery = query(
+        whatsappLinksRef,
+        where('eventType', '==', eventType),
+        where('schedule', '==', schedule),
+        where('status', '==', 'active')
+      );
+      const specificSnapshot = await getDocs(specificQuery);
+      
+      if (!specificSnapshot.empty) {
+        return specificSnapshot.docs[0].data().link;
+      }
+    }
+    
+    // Se não encontrou específico, buscar link geral para o evento
+    const generalQuery = query(
+      whatsappLinksRef,
+      where('eventType', '==', eventType),
+      where('schedule', '==', null),
+      where('status', '==', 'active')
+    );
+    const generalSnapshot = await getDocs(generalQuery);
+    
+    if (!generalSnapshot.empty) {
+      return generalSnapshot.docs[0].data().link;
+    }
+    
+    // Fallback para links padrão se não encontrar no Firestore
+    const defaultLinks = {
+      'xtreino-tokens': 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS',
+      'xtreino-gratuito': 'https://chat.whatsapp.com/SEU_GRUPO_GRATUITO',
+      'modo-liga': 'https://chat.whatsapp.com/SEU_GRUPO_MODO_LIGA',
+      'camp-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_CAMP_FREITAS',
+      'semanal-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
+      'treino': 'https://chat.whatsapp.com/SEU_GRUPO_TREINO'
+    };
+    
+    return defaultLinks[eventType] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+    
+  } catch (error) {
+    console.error('❌ Erro ao obter link do WhatsApp:', error);
+    return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+  }
+}
+
+// Expor função globalmente
+window.getWhatsAppLink = getWhatsAppLink;
+
 // Função para criar agendamento quando usar tokens
 async function createTokenSchedule(eventType, cost) {
     try {
@@ -3950,15 +4023,8 @@ async function createTokenSchedule(eventType, cost) {
             'xtreino-tokens': 'XTreino Tokens'
         };
         
-        // Link do grupo do WhatsApp baseado no tipo de evento
-        const whatsappLinks = {
-            'treino': 'https://chat.whatsapp.com/SEU_GRUPO_TREINO',
-            'modoLiga': 'https://chat.whatsapp.com/SEU_GRUPO_MODO_LIGA',
-            'semanal': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
-            'finalSemanal': 'https://chat.whatsapp.com/SEU_GRUPO_FINAL_SEMANAL',
-            'campFases': 'https://chat.whatsapp.com/SEU_GRUPO_CAMP_FASES',
-            'xtreino-tokens': 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS'
-        };
+        // Obter link do WhatsApp dinamicamente do Firestore
+        const whatsappLink = await getWhatsAppLink(eventType, schedule);
         
         const scheduleData = {
             teamName: team,
@@ -3974,7 +4040,7 @@ async function createTokenSchedule(eventType, cost) {
             tokensUsed: cost, // Campo para histórico
             eventName: eventNames[eventType],
             title: eventNames[eventType], // Campo para compatibilidade
-            whatsappLink: whatsappLinks[eventType] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO',
+            whatsappLink: whatsappLink,
             userId: window.firebaseAuth.currentUser?.uid,
             uid: window.firebaseAuth.currentUser?.uid,
             createdAt: new Date(),

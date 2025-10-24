@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - X-TREINO FREITAS</title>
-    <link rel="icon" type="image/png" href="Logo - Xtreino Freitas.png">
+    <link rel="icon" type="image/png" href="assets/images/Logo - Xtreino Freitas.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="admin-styles.css">
 </head>
 <body class="bg-white text-black">
     <header class="w-full border-b border-gray-200 bg-white sticky top-0 z-40">
@@ -670,6 +671,56 @@
                 </div>
             </div>
 
+            <!-- Gerenciamento de Links WhatsApp -->
+            <div id="sectionWhatsAppLinks" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm flex items-center">
+                        <span class="mr-2">📱</span>
+                        Links do WhatsApp
+                    </h3>
+                    <button onclick="openWhatsAppLinksModal()" class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+                        <i class="fas fa-plus mr-1"></i>
+                        Novo Link
+                    </button>
+                </div>
+                
+                <!-- Filtro -->
+                <div class="mb-4 flex gap-2">
+                    <select id="whatsappEventFilter" class="px-3 py-1 border border-gray-300 rounded text-xs">
+                        <option value="">Todos os Eventos</option>
+                        <option value="xtreino-tokens">XTreino Freitas</option>
+                        <option value="modo-liga">XTreino Modo Liga</option>
+                        <option value="camp-freitas">Campeonato Freitas</option>
+                        <option value="semanal-freitas">Semanal Freitas</option>
+                    </select>
+                    <select id="whatsappStatusFilter" class="px-3 py-1 border border-gray-300 rounded text-xs">
+                        <option value="">Todos os Status</option>
+                        <option value="active">Ativo</option>
+                        <option value="inactive">Inativo</option>
+                    </select>
+                    <input type="text" id="whatsappSearchFilter" placeholder="Buscar..." class="px-3 py-1 border border-gray-300 rounded text-xs flex-1">
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-200">
+                                <th class="text-left py-2 px-3">Evento</th>
+                                <th class="text-left py-2 px-3">Horário</th>
+                                <th class="text-left py-2 px-3">Link</th>
+                                <th class="text-left py-2 px-3">Status</th>
+                                <th class="text-left py-2 px-3">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="whatsappLinksTableBody">
+                            <tr>
+                                <td colspan="5" class="text-center text-gray-500 py-4">Carregando links...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- Controle de Horários -->
             <div id="sectionSchedules" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
                 <div class="flex flex-wrap gap-3 items-end mb-4">
@@ -924,6 +975,71 @@
                 <button onclick="saveProducts()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                     <i class="fas fa-save mr-2"></i>Salvar Produtos
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Gerenciar Links do WhatsApp -->
+    <div id="modalWhatsAppLinks" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold flex items-center">
+                    <span class="mr-2">📱</span>
+                    Gerenciar Links do WhatsApp
+                </h2>
+                <button onclick="closeWhatsAppLinksModal()" class="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+            </div>
+
+            <!-- Formulário para adicionar/editar link -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 class="font-semibold mb-4" id="whatsappLinkFormTitle">Adicionar Novo Link</h3>
+                <form id="whatsappLinkForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Tipo de Evento</label>
+                        <select id="whatsappEventType" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                            <option value="">Selecione o evento</option>
+                            <option value="xtreino-tokens">XTreino Tokens</option>
+                            <option value="xtreino-gratuito">XTreino Gratuito</option>
+                            <option value="modo-liga">Modo Liga</option>
+                            <option value="camp-freitas">Camp Freitas</option>
+                            <option value="semanal-freitas">Semanal Freitas</option>
+                            <option value="treino">Treino Normal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Horário (opcional)</label>
+                        <input id="whatsappSchedule" type="text" placeholder="Ex: 19h, 20h, 21h" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        <small class="text-gray-500">Deixe vazio para aplicar a todos os horários do evento</small>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Link do WhatsApp</label>
+                        <input id="whatsappLink" type="url" required placeholder="https://chat.whatsapp.com/..." class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Status</label>
+                        <select id="whatsappStatus" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                            <option value="active">Ativo</option>
+                            <option value="inactive">Inativo</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Descrição (opcional)</label>
+                        <input id="whatsappDescription" type="text" placeholder="Descrição do link" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                    </div>
+                </form>
+                <div class="flex justify-end gap-3 mt-4">
+                    <button onclick="clearWhatsAppLinkForm()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Limpar
+                    </button>
+                    <button onclick="saveWhatsAppLink()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                        <i class="fas fa-save mr-2"></i>Salvar Link
+                    </button>
+                </div>
+            </div>
+
+            <!-- Lista de links existentes -->
+            <div class="space-y-4" id="whatsappLinksList">
+                <div class="text-center text-gray-500 py-4">Carregando links...</div>
             </div>
         </div>
     </div>

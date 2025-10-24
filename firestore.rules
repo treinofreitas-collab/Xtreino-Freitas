@@ -14,29 +14,29 @@ service cloud.firestore {
     function isGerente() {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['gerente','Gerente','GERENTE','admin','Admin','ADMIN','Ceo','CEO','ceo'];
     }
-    
+
     function isAuthorizedAdmin() {
-      return isSignedIn() && 
+      return isSignedIn() &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN','Ceo','CEO','ceo'] &&
-        request.auth.token.email in ['cleitondouglass@gmail.com','cleitondouglass123@hotmail.com','gilmariofreitas378@gmail.com','gilmariofreitas387@gmail.com'];
+        request.auth.token.email in ['cleitondouglass@gmail.com','cleitondouglass123@hotmail.com','gilmariofreitas378@gmail.com','gilmariofreitas387@gmail.com','flavetyr@gmail.com'];
     }
-    
+
     function isAuthorizedAdminOrDesign() {
       return isSignedIn() && (
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN','Ceo','CEO','ceo'] &&
-         request.auth.token.email in ['cleitondouglass@gmail.com','cleitondouglass123@hotmail.com','gilmariofreitas378@gmail.com','gilmariofreitas387@gmail.com']) ||
+         request.auth.token.email in ['cleitondouglass@gmail.com','cleitondouglass123@hotmail.com','gilmariofreitas378@gmail.com','gilmariofreitas387@gmail.com','flavetyr@gmail.com']) ||
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['design','Design','DESIGN','Designer','DESIGNER','designer','Desgin','DESGIN','desgin']
       );
     }
-    
+
     function isDesign() {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['design','Design','DESIGN','Designer','DESIGNER','designer','Desgin','DESGIN','desgin'];
     }
-    
+
     function isSocio() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['socio','Socio','SOCIO','sócio','Sócio','SÓCIO'];
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['socio','Socio','SOCIO','sócio','Sócio','SÓCIO','ceo','CEO','Ceo'];
     }
-    
+
     function canReadAll() {
       return isAdmin() || isGerente() || isVendedor() || isDesign() || isSocio();
     }
@@ -116,7 +116,7 @@ service cloud.firestore {
     // product_reviews: leitura pública; escrita para usuários logados
     match /product_reviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn() && 
+      allow create: if isSignedIn() &&
         resource.data.productId is string &&
         resource.data.customerEmail == request.auth.token.email &&
         resource.data.rating >= 1 && resource.data.rating <= 5 &&
@@ -173,6 +173,12 @@ service cloud.firestore {
     match /couponUsage/{usageId} {
       allow read: if isAdmin() || isGerente() || isSocio();
       allow create: if isSignedIn();
+    }
+
+    // whatsapp_links: leitura para usuários logados; escrita para admins, design e sócios
+    match /whatsapp_links/{linkId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAuthorizedAdminOrDesign() || isSocio() || isAdmin() || isGerente();
     }
   }
 }

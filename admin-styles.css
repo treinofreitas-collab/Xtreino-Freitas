@@ -1,0 +1,418 @@
+/* CSS específico para o painel administrativo */
+
+/* Resetar regras problemáticas do styles.css para o admin */
+#dashboard {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+}
+
+#dashboard .container {
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+}
+
+/* Espaçamento ultra compacto entre seções */
+#dashboard section,
+#dashboard > div {
+    margin-bottom: 0.5rem !important;
+    padding: 0.25rem 0 !important;
+}
+
+/* KPIs com espaçamento ultra compacto */
+#sectionKPIs {
+    margin-bottom: 0.5rem !important;
+    gap: 0.5rem !important;
+}
+
+#sectionKPIs > div {
+    padding: 0.5rem !important;
+    margin-bottom: 0 !important;
+}
+
+/* Filtros com espaçamento ultra compacto */
+#sectionFilters {
+    margin-bottom: 0.5rem !important;
+    padding: 0.5rem !important;
+}
+
+/* Gráficos com espaçamento ultra compacto */
+#sectionCharts {
+    margin-bottom: 0.5rem !important;
+    gap: 0.5rem !important;
+}
+
+#sectionCharts > div {
+    padding: 0.5rem !important;
+    margin-bottom: 0 !important;
+}
+
+/* Seções de dados com espaçamento ultra compacto */
+#sectionUsers,
+#sectionTokenStats,
+#sectionUsersManagement,
+#sectionTokens,
+#sectionCoupons,
+#sectionCouponUsage,
+#sectionPasseBooyah,
+#sectionProducts,
+#sectionSchedules,
+#sectionHighlights,
+#sectionNews,
+#sectionAdminHistory,
+#sectionWhatsAppLinks {
+    margin-bottom: 0.5rem !important;
+    padding: 0.5rem !important;
+}
+
+/* Tabelas com espaçamento ultra compacto */
+#dashboard table {
+    margin-bottom: 0.25rem !important;
+}
+
+#dashboard .table-container {
+    margin-bottom: 0.5rem !important;
+}
+
+/* Cards com espaçamento ultra compacto */
+#dashboard .bg-white {
+    margin-bottom: 0.25rem !important;
+    padding: 0.5rem !important;
+}
+
+/* Botões com espaçamento ultra compacto */
+#dashboard button {
+    margin-bottom: 0.125rem !important;
+    padding: 0.25rem 0.5rem !important;
+}
+
+/* Inputs com espaçamento ultra compacto */
+#dashboard input,
+#dashboard textarea,
+#dashboard select {
+    margin-bottom: 0.25rem !important;
+    padding: 0.25rem !important;
+}
+
+/* Grid com espaçamento ultra compacto */
+#dashboard .grid {
+    gap: 0.5rem !important;
+}
+
+/* Flex com espaçamento ultra compacto */
+#dashboard .flex {
+    gap: 0.25rem !important;
+}
+
+/* Espaçamento ultra compacto entre elementos de lista */
+#dashboard ul,
+#dashboard ol {
+    margin-bottom: 0.25rem !important;
+}
+
+#dashboard li {
+    margin-bottom: 0.125rem !important;
+}
+
+/* Parágrafos com espaçamento ultra compacto */
+#dashboard p {
+    margin-bottom: 0.25rem !important;
+}
+
+/* Títulos com espaçamento ultra compacto */
+#dashboard h1,
+#dashboard h2,
+#dashboard h3,
+#dashboard h4,
+#dashboard h5,
+#dashboard h6 {
+    margin-bottom: 0.25rem !important;
+}
+
+/* Header com espaçamento ultra compacto */
+header {
+    padding: 0.25rem 0 !important;
+    margin-bottom: 0 !important;
+}
+
+/* Main com espaçamento ultra compacto */
+main {
+    padding: 0.5rem 0 !important;
+}
+
+/* Espaçamentos ultra compactos adicionais */
+#dashboard .space-y-4 > * + * {
+    margin-top: 0.25rem !important;
+}
+
+#dashboard .space-y-6 > * + * {
+    margin-top: 0.5rem !important;
+}
+
+#dashboard .space-y-8 > * + * {
+    margin-top: 0.75rem !important;
+}
+
+#dashboard .mb-4 {
+    margin-bottom: 0.25rem !important;
+}
+
+#dashboard .mb-6 {
+    margin-bottom: 0.5rem !important;
+}
+
+#dashboard .mb-8 {
+    margin-bottom: 0.75rem !important;
+}
+
+#dashboard .p-4 {
+    padding: 0.5rem !important;
+}
+
+#dashboard .p-6 {
+    padding: 0.75rem !important;
+}
+
+#dashboard .p-8 {
+    padding: 1rem !important;
+}
+
+/* Reduzir altura dos elementos */
+#dashboard .h-12 {
+    height: 2rem !important;
+}
+
+#dashboard .h-16 {
+    height: 2.5rem !important;
+}
+
+#dashboard .h-20 {
+    height: 3rem !important;
+}
+
+/* Reduzir tamanho da fonte para economizar espaço */
+#dashboard .text-sm {
+    font-size: 0.75rem !important;
+}
+
+#dashboard .text-base {
+    font-size: 0.875rem !important;
+}
+
+#dashboard .text-lg {
+    font-size: 1rem !important;
+}
+
+#dashboard .text-xl {
+    font-size: 1.125rem !important;
+}
+
+/* Corrigir problemas específicos do desktop */
+@media (min-width: 1024px) {
+    #dashboard {
+        padding-top: 0.75rem !important;
+        padding-bottom: 0.75rem !important;
+    }
+    
+    #dashboard .container {
+        max-width: 1400px !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    
+    /* Seções com espaçamento ultra compacto no desktop */
+    #dashboard section,
+    #dashboard > div {
+        margin-bottom: 0.75rem !important;
+        padding: 0.5rem 0 !important;
+    }
+    
+    /* KPIs ultra compactos no desktop */
+    #sectionKPIs {
+        margin-bottom: 0.75rem !important;
+        gap: 0.75rem !important;
+    }
+    
+    #sectionKPIs > div {
+        padding: 0.75rem !important;
+    }
+    
+    /* Filtros ultra compactos no desktop */
+    #sectionFilters {
+        margin-bottom: 0.75rem !important;
+        padding: 0.75rem !important;
+    }
+    
+    /* Gráficos ultra compactos no desktop */
+    #sectionCharts {
+        margin-bottom: 0.75rem !important;
+        gap: 0.75rem !important;
+    }
+    
+    #sectionCharts > div {
+        padding: 0.75rem !important;
+    }
+    
+    /* Seções de dados ultra compactas no desktop */
+    #sectionUsers,
+    #sectionTokenStats,
+    #sectionUsersManagement,
+    #sectionTokens,
+    #sectionCoupons,
+    #sectionCouponUsage,
+    #sectionPasseBooyah,
+    #sectionProducts,
+    #sectionSchedules,
+    #sectionHighlights,
+    #sectionNews,
+    #sectionAdminHistory,
+    #sectionWhatsAppLinks {
+        margin-bottom: 0.75rem !important;
+        padding: 0.75rem !important;
+    }
+    
+    /* Cards ultra compactos no desktop */
+    #dashboard .bg-white {
+        margin-bottom: 0.5rem !important;
+        padding: 0.75rem !important;
+    }
+    
+    /* Grid ultra compacto no desktop */
+    #dashboard .grid {
+        gap: 0.75rem !important;
+    }
+    
+    /* Flex ultra compacto no desktop */
+    #dashboard .flex {
+        gap: 0.5rem !important;
+    }
+}
+
+/* Corrigir problemas específicos de telas muito grandes */
+@media (min-width: 1440px) {
+    #dashboard .container {
+        max-width: 1600px !important;
+        padding-left: 1.5rem !important;
+        padding-right: 1.5rem !important;
+    }
+    
+    /* Seções com espaçamento ultra compacto */
+    #dashboard section,
+    #dashboard > div {
+        margin-bottom: 1rem !important;
+        padding: 0.75rem 0 !important;
+    }
+    
+    /* KPIs com espaçamento ultra compacto */
+    #sectionKPIs {
+        margin-bottom: 1rem !important;
+        gap: 1rem !important;
+    }
+    
+    #sectionKPIs > div {
+        padding: 1rem !important;
+    }
+    
+    /* Filtros com espaçamento ultra compacto */
+    #sectionFilters {
+        margin-bottom: 1rem !important;
+        padding: 1rem !important;
+    }
+    
+    /* Gráficos com espaçamento ultra compacto */
+    #sectionCharts {
+        margin-bottom: 1rem !important;
+        gap: 1rem !important;
+    }
+    
+    #sectionCharts > div {
+        padding: 1rem !important;
+    }
+    
+    /* Seções de dados com espaçamento ultra compacto */
+    #sectionUsers,
+    #sectionTokenStats,
+    #sectionUsersManagement,
+    #sectionTokens,
+    #sectionCoupons,
+    #sectionCouponUsage,
+    #sectionPasseBooyah,
+    #sectionProducts,
+    #sectionSchedules,
+    #sectionHighlights,
+    #sectionNews,
+    #sectionAdminHistory,
+    #sectionWhatsAppLinks {
+        margin-bottom: 1rem !important;
+        padding: 1rem !important;
+    }
+    
+    /* Cards com espaçamento ultra compacto */
+    #dashboard .bg-white {
+        margin-bottom: 0.75rem !important;
+        padding: 1rem !important;
+    }
+    
+    /* Grid com espaçamento ultra compacto */
+    #dashboard .grid {
+        gap: 1rem !important;
+    }
+    
+    /* Flex com espaçamento ultra compacto */
+    #dashboard .flex {
+        gap: 0.75rem !important;
+    }
+}
+
+/* Manter responsividade ultra compacta no mobile */
+@media (max-width: 768px) {
+    #dashboard {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+    
+    #dashboard .container {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+    
+    #dashboard section,
+    #dashboard > div {
+        margin-bottom: 0.75rem !important;
+        padding: 0.5rem 0 !important;
+    }
+    
+    #sectionKPIs,
+    #sectionFilters,
+    #sectionCharts,
+    #sectionUsers,
+    #sectionTokenStats,
+    #sectionUsersManagement,
+    #sectionTokens,
+    #sectionCoupons,
+    #sectionCouponUsage,
+    #sectionPasseBooyah,
+    #sectionProducts,
+    #sectionSchedules,
+    #sectionHighlights,
+    #sectionNews,
+    #sectionAdminHistory,
+    #sectionWhatsAppLinks {
+        margin-bottom: 0.75rem !important;
+        padding: 0.5rem !important;
+    }
+    
+    #dashboard .bg-white {
+        margin-bottom: 0.25rem !important;
+        padding: 0.5rem !important;
+    }
+    
+    #dashboard .grid {
+        gap: 0.5rem !important;
+    }
+    
+    #dashboard .flex {
+        gap: 0.25rem !important;
+    }
+}

@@ -8,7 +8,19 @@
 
   // Wait firebase
   const waitReady = () => new Promise(res => {
-    const tick = () => window.firebaseReady ? res() : setTimeout(tick, 50);
+    const tick = () => {
+      if (window.firebaseReady && window.firebaseDb && window.firebaseAuth) {
+        console.log('✅ Firebase completamente inicializado');
+        res();
+      } else {
+        console.log('⏳ Aguardando inicialização do Firebase...', {
+          firebaseReady: window.firebaseReady,
+          firebaseDb: !!window.firebaseDb,
+          firebaseAuth: !!window.firebaseAuth
+        });
+        setTimeout(tick, 100);
+      }
+    };
     tick();
   });
   await waitReady();
@@ -39,31 +51,70 @@
     if (!user || !user.email) return false;
     
     console.log('🔍 Verificando autorização para:', user.email);
+    console.log('🔍 Firebase Auth disponível:', !!window.firebaseAuth);
+    console.log('🔍 Firebase DB disponível:', !!window.firebaseDb);
     
-    // Check email whitelist
-    if (!ADMIN_EMAILS.includes(user.email.toLowerCase())) {
-      console.warn('❌ Email não autorizado:', user.email);
-      console.log('📋 Emails autorizados:', ADMIN_EMAILS);
-      return false;
+    // Para socio, permitir qualquer email
+    if (user.email.toLowerCase().includes('cleitondouglass') || user.email.toLowerCase().includes('gilmario')) {
+      console.log('✅ Email autorizado (socio/admin):', user.email);
+    } else {
+      console.log('⚠️ Email não está na lista, mas continuando para verificar cargo...');
     }
-    
-    console.log('✅ Email autorizado:', user.email);
 
     // Check user role in Firestore
     try {
+      console.log('🔍 Tentando acessar documento do usuário:', user.uid);
       const userDoc = await getDoc(doc(window.firebaseDb, 'users', user.uid));
       if (!userDoc.exists()) {
         console.log('❌ Documento de usuário não encontrado no Firestore');
+        console.log('🔧 Criando documento do usuário automaticamente...');
+        
+        // Criar documento do usuário automaticamente
+        const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const userData = {
+          email: user.email,
+          displayName: user.displayName || user.email.split('@')[0],
+          role: 'socio', // Definir como socio por padrão
+          createdAt: new Date(),
+          lastLogin: Date.now()
+        };
+        
+        await setDoc(doc(window.firebaseDb, 'users', user.uid), userData);
+        console.log('✅ Documento do usuário criado com sucesso!');
+        
+        // Agora tentar novamente
+        const newUserDoc = await getDoc(doc(window.firebaseDb, 'users', user.uid));
+        if (!newUserDoc.exists()) {
+          console.log('❌ Erro ao criar documento do usuário');
+          return false;
+        }
+        
+        const newUserData = newUserDoc.data();
+        const role = (newUserData.role || '').toLowerCase();
+        console.log('🎭 Cargo definido:', role);
+        
+        if (role === 'socio' || role === 'sócio' || role === 'ceo') {
+          console.log('✅ Acesso liberado para Socio (documento criado)');
+          return true;
+        }
+        
         return false;
       }
       
       const userData = userDoc.data();
       const role = (userData.role || '').toLowerCase();
       
-      console.log('🎭 Cargo encontrado:', role);
+      console.log('🎭 Cargo encontrado:', userData.role, '-> normalizado:', role);
+      console.log('📊 Dados completos do usuário:', userData);
       
-      const isAuthorized = ['admin', 'gerente', 'vendedor', 'design', 'designer', 'desgin', 'socio', 'sócio'].includes(role);
-      console.log('🔐 Autorizado:', isAuthorized);
+      // Para socio, permitir acesso total
+      if (role === 'socio' || role === 'sócio' || role === 'ceo') {
+        console.log('✅ Acesso liberado para Socio');
+        return true;
+      }
+      
+      const isAuthorized = ['admin', 'gerente', 'vendedor', 'design', 'designer', 'desgin'].includes(role);
+      console.log('🔐 Autorizado para outros cargos:', isAuthorized);
       
       return isAuthorized;
     } catch (error) {
@@ -154,34 +205,66 @@
     if (sectionNews) sectionNews.style.display = 'none';
     if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
     
-    // Design: Can only edit highlights and news
+    // Design: Apenas destaques e notícias
     if (role === 'design' || role === 'desgin' || role === 'designer') {
       // Mostrar apenas Notícias e Destaques
       if (sectionHighlights) sectionHighlights.style.display = 'block';
       if (sectionNews) sectionNews.style.display = 'block';
+      
+      // Ocultar todas as outras seções
+      if (sectionKPIs) sectionKPIs.style.display = 'none';
+      if (sectionFilters) sectionFilters.style.display = 'none';
+      if (sectionCharts) sectionCharts.style.display = 'none';
+      if (sectionUsers) sectionUsers.style.display = 'none';
+      if (sectionTokenStats) sectionTokenStats.style.display = 'none';
+      if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
+      if (sectionTokens) sectionTokens.style.display = 'none';
+      if (sectionCoupons) sectionCoupons.style.display = 'none';
+      if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
+      if (sectionProducts) sectionProducts.style.display = 'none';
+      if (sectionSchedules) sectionSchedules.style.display = 'none';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
     }
-    // Sócio: Can see everything but cannot edit (read-only)
-    else if (role === 'socio' || role === 'sócio') {
-      // Mostrar todas as seções, mas desabilitar edições (lógica de desabilitação não está aqui)
-      // Apenas garantir que estejam visíveis
+    // Sócio: Limited access - only basic sections
+    else if (role === 'socio' || role === 'sócio' || role === 'ceo') {
+      // Mostrar apenas seções básicas para sócio
       if (sectionKPIs) sectionKPIs.style.display = 'block';
       if (sectionFilters) sectionFilters.style.display = 'block';
       if (sectionCharts) sectionCharts.style.display = 'block';
       if (sectionUsers) sectionUsers.style.display = 'block';
       if (sectionTokenStats) sectionTokenStats.style.display = 'block';
-      if (sectionUsersManagement) sectionUsersManagement.style.display = 'block';
-      if (sectionTokens) sectionTokens.style.display = 'block';
-      if (sectionCoupons) sectionCoupons.style.display = 'block';
       if (sectionCouponUsage) sectionCouponUsage.style.display = 'block';
-      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'block';
-      if (sectionProducts) sectionProducts.style.display = 'block';
-      if (sectionSchedules) sectionSchedules.style.display = 'block';
-      if (sectionHighlights) sectionHighlights.style.display = 'block';
-      if (sectionNews) sectionNews.style.display = 'block';
-      if (sectionAdminHistory) sectionAdminHistory.style.display = 'block';
+      
+      if (sectionPasseBooyah) {
+        sectionPasseBooyah.style.display = 'block';
+        console.log('✅ Passe Booyah section displayed for Socio');
+      } else {
+        console.log('❌ sectionPasseBooyah not found');
+      }
+      
+      if (sectionSchedules) {
+        sectionSchedules.style.display = 'block';
+        console.log('✅ Schedules section displayed for Socio');
+      } else {
+        console.log('❌ sectionSchedules not found');
+      }
+      
+      // Ocultar seções administrativas
+      if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
+      if (sectionTokens) sectionTokens.style.display = 'none';
+      if (sectionCoupons) sectionCoupons.style.display = 'none';
+      if (sectionProducts) sectionProducts.style.display = 'none';
+      if (sectionHighlights) sectionHighlights.style.display = 'none';
+      if (sectionNews) sectionNews.style.display = 'none';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
+      
+      console.log('✅ Socio permissions applied - limited access');
+    } else {
+      console.log('❌ Role does not match socio. Role:', role);
     }
-    // Admin: Can see and edit everything
-    else if (role === 'admin') {
+    // CEO: Can see and edit everything
+    if (role === 'ceo') {
       // Mostrar todas as seções
       if (sectionKPIs) sectionKPIs.style.display = 'block';
       if (sectionFilters) sectionFilters.style.display = 'block';
@@ -199,6 +282,152 @@
       if (sectionNews) sectionNews.style.display = 'block';
       if (sectionAdminHistory) sectionAdminHistory.style.display = 'block';
     }
+    // Admin: Can see and edit everything
+    if (role === 'admin') {
+      // Mostrar todas as seções
+      if (sectionKPIs) sectionKPIs.style.display = 'block';
+      if (sectionFilters) sectionFilters.style.display = 'block';
+      if (sectionCharts) sectionCharts.style.display = 'block';
+      if (sectionUsers) sectionUsers.style.display = 'block';
+      if (sectionTokenStats) sectionTokenStats.style.display = 'block';
+      if (sectionUsersManagement) sectionUsersManagement.style.display = 'block';
+      if (sectionTokens) sectionTokens.style.display = 'block';
+      if (sectionCoupons) sectionCoupons.style.display = 'block';
+      if (sectionCouponUsage) sectionCouponUsage.style.display = 'block';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'block';
+      if (sectionProducts) sectionProducts.style.display = 'block';
+      if (sectionSchedules) sectionSchedules.style.display = 'block';
+      if (sectionHighlights) sectionHighlights.style.display = 'block';
+      if (sectionNews) sectionNews.style.display = 'block';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'block';
+    }
+    // Gerente: Acesso a vendas gerais do mês
+    else if (role === 'gerente') {
+      // Mostrar seções de vendas e relatórios gerais
+      if (sectionKPIs) sectionKPIs.style.display = 'block';
+      if (sectionFilters) sectionFilters.style.display = 'block';
+      if (sectionCharts) sectionCharts.style.display = 'block';
+      if (sectionTokenStats) sectionTokenStats.style.display = 'block';
+      if (sectionUsers) sectionUsers.style.display = 'block';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'block';
+      
+      // Ocultar seções administrativas específicas
+      if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
+      if (sectionTokens) sectionTokens.style.display = 'none';
+      if (sectionCoupons) sectionCoupons.style.display = 'none';
+      if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
+      if (sectionProducts) sectionProducts.style.display = 'none';
+      if (sectionSchedules) sectionSchedules.style.display = 'none';
+      if (sectionHighlights) sectionHighlights.style.display = 'none';
+      if (sectionNews) sectionNews.style.display = 'none';
+    }
+    // Vendedor: Vendas recentes, cupons, vendas para aprovação, controle de passe e gerenciamento de tokens
+    else if (role === 'vendedor') {
+      // Mostrar seções específicas para vendedor
+      if (sectionKPIs) sectionKPIs.style.display = 'block';
+      if (sectionCharts) sectionCharts.style.display = 'block';
+      if (sectionTokenStats) sectionTokenStats.style.display = 'block';
+      if (sectionTokens) sectionTokens.style.display = 'block';
+      if (sectionCoupons) sectionCoupons.style.display = 'block';
+      if (sectionCouponUsage) sectionCouponUsage.style.display = 'block';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'block';
+      if (sectionUsers) sectionUsers.style.display = 'block';
+      
+      // Ocultar seções administrativas
+      if (sectionFilters) sectionFilters.style.display = 'none';
+      if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
+      if (sectionProducts) sectionProducts.style.display = 'none';
+      if (sectionSchedules) sectionSchedules.style.display = 'none';
+      if (sectionHighlights) sectionHighlights.style.display = 'none';
+      if (sectionNews) sectionNews.style.display = 'none';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
+    }
+    
+  }
+
+  // Control edit permissions based on role
+  function controlEditPermissions(userRole) {
+    const role = (userRole || '').toLowerCase();
+    
+    // Get all input elements, buttons, and editable elements
+    const inputs = document.querySelectorAll('input, textarea, select');
+    const buttons = document.querySelectorAll('button');
+    const editButtons = document.querySelectorAll('.edit-btn, .save-btn, .delete-btn, .add-btn, [class*="btn"]');
+    const editableElements = document.querySelectorAll('[contenteditable="true"]');
+    
+    // Combine all editable elements
+    const allEditableElements = [...inputs, ...buttons, ...editButtons, ...editableElements];
+    
+    
+    // Design: Can only edit highlights and news sections
+    if (role === 'design' || role === 'desgin' || role === 'designer') {
+      
+      allEditableElements.forEach((element, index) => {
+        // Check if element is in highlights or news sections
+        const isInHighlights = element.closest('#sectionHighlights');
+        const isInNews = element.closest('#sectionNews');
+        
+        if (isInHighlights || isInNews) {
+          // Enable editing for highlights and news
+          element.disabled = false;
+          element.readOnly = false;
+          element.style.pointerEvents = 'auto';
+          element.style.opacity = '1';
+        } else {
+          // Disable editing for all other sections
+          element.disabled = true;
+          element.readOnly = true;
+          element.style.pointerEvents = 'none';
+          element.style.opacity = '0.5';
+        }
+      });
+      
+    }
+    // Socio: Read-only access (can see but not edit)
+    else if (role === 'socio' || role === 'sócio' || role === 'ceo') {
+      
+      allEditableElements.forEach(element => {
+        element.disabled = true;
+        element.readOnly = true;
+        element.style.pointerEvents = 'none';
+        element.style.opacity = '0.5';
+      });
+      
+    }
+    // CEO, Admin, Gerente: Full edit access
+    else if (role === 'ceo' || role === 'admin' || role === 'gerente') {
+      
+      allEditableElements.forEach(element => {
+        element.disabled = false;
+        element.readOnly = false;
+        element.style.pointerEvents = 'auto';
+        element.style.opacity = '1';
+      });
+      
+    }
+    // Vendedor: Limited edit access
+    else if (role === 'vendedor') {
+      
+      allEditableElements.forEach(element => {
+        // Vendedor can edit in specific sections: tokens, coupons, passe, users
+        const isInAllowedSection = element.closest('#sectionTokens, #sectionCoupons, #sectionCouponUsage, #sectionPasseBooyah, #sectionUsers, #sectionKPIs, #sectionCharts');
+        
+        if (isInAllowedSection) {
+          element.disabled = false;
+          element.readOnly = false;
+          element.style.pointerEvents = 'auto';
+          element.style.opacity = '1';
+        } else {
+          element.disabled = true;
+          element.readOnly = true;
+          element.style.pointerEvents = 'none';
+          element.style.opacity = '0.5';
+        }
+      });
+      
+    }
+    
   }
 
   // Security: Show login error
@@ -214,8 +443,34 @@
     const role = (authRole||'').toLowerCase();
     roleBadge.textContent = `Permissão: ${authRole||'desconhecida'}`;
     
-    // Apply role-based section visibility
-    controlSectionVisibility(role);
+    // Apply role-based section visibility and edit permissions with a delay to ensure DOM is ready
+    // REMOVIDO: controlSectionVisibility agora é chamada após carregamento de dados no onAuthStateChanged
+    
+    // Apply edit permissions with a longer delay to ensure all elements are loaded
+    setTimeout(() => {
+      controlEditPermissions(role);
+      
+      // Verificação adicional para vendedor - garantir que elementos estejam habilitados
+      if (role === 'vendedor') {
+        const allowedSections = ['sectionTokens', 'sectionCoupons', 'sectionCouponUsage', 'sectionPasseBooyah', 'sectionUsers', 'sectionKPIs', 'sectionCharts'];
+        
+        allowedSections.forEach(sectionId => {
+          const section = document.getElementById(sectionId);
+          if (section) {
+            const elements = section.querySelectorAll('input, textarea, select, button, [contenteditable="true"]');
+            elements.forEach(element => {
+              // Só habilitar se não estiver em uma operação temporária
+              if (!element.hasAttribute('data-temp-disabled')) {
+                element.disabled = false;
+                element.readOnly = false;
+                element.style.pointerEvents = 'auto';
+                element.style.opacity = '1';
+              }
+            });
+          }
+        });
+      }
+    }, 500);
     
     // Controle de visão
     const kpiCards = document.querySelectorAll('#kpiToday, #kpiMonth, #kpiReceivable');
@@ -224,8 +479,8 @@
     const topProductsCard = document.getElementById('topProductsChart')?.closest('.bg-white');
     
     if (role === 'vendedor'){
-      // Vendedor: vê pedidos recentes e chat (futuro). Esconde KPIs e gestão de produtos.
-      kpiCards.forEach(e => e && (e.closest('.bg-white').classList.add('hidden')));
+      // Vendedor: vê pedidos recentes e KPIs (visibilidade controlada por controlSectionVisibility)
+      // Removido: ocultação de KPIs - agora controlado por controlSectionVisibility
       if (productsCard) productsCard.classList.add('hidden');
       if (salesChartCard) salesChartCard.classList.add('hidden');
       if (topProductsCard) topProductsCard.classList.add('hidden');
@@ -240,7 +495,7 @@
       if (productsCard) productsCard.classList.add('hidden');
       if (salesChartCard) salesChartCard.classList.add('hidden');
       if (topProductsCard) topProductsCard.classList.add('hidden');
-    } else if (role === 'socio'){
+    } else if (role === 'socio' || role === 'ceo'){
       // Sócio: vê tudo (read-only)
       // Nenhuma ocultação de elementos
     }
@@ -269,9 +524,17 @@
     if (!tbody) return;
 
     try {
+      // Verificar se Firebase está inicializado
+      if (!window.firebaseDb) {
+        console.error('❌ Firebase não inicializado - carregarUsuarios');
+        return;
+      }
+      
+      console.log('🔍 Tentando carregar usuários...');
       // Buscar usuários no Firestore
       const usersRef = collection(window.firebaseDb, 'users');
       const snapshot = await getDocs(usersRef);
+      console.log('✅ Usuários carregados com sucesso:', snapshot.size);
       
       // Armazenar todos os dados
       usuariosData = [];
@@ -386,6 +649,7 @@
     // Desabilitar select durante a operação
     select.disabled = true;
     select.style.opacity = '0.6';
+    select.setAttribute('data-temp-disabled', 'true');
     
     try {
       // Atualizar no Firestore
@@ -405,12 +669,19 @@
       // Reabilitar select
       select.disabled = false;
       select.style.opacity = '1';
+      select.removeAttribute('data-temp-disabled');
     }
   }
 
   // Função para carregar dados de tokens
   async function carregarDadosTokens() {
     try {
+      // Verificar se Firebase está inicializado
+      if (!window.firebaseDb) {
+        console.error('❌ Firebase não inicializado - carregarDadosTokens');
+        return;
+      }
+      
       // console.log('🔍 Carregando dados de tokens...');
       // Buscar pedidos de tokens
       const ordersRef = collection(window.firebaseDb, 'orders');
@@ -502,6 +773,12 @@
   // Função para carregar dados de uso de tokens
   async function carregarDadosUsoTokens() {
     try {
+      // Verificar se Firebase está inicializado
+      if (!window.firebaseDb) {
+        console.error('❌ Firebase não inicializado - carregarDadosUsoTokens');
+        return;
+      }
+      
       // Buscar registros de uso de tokens
       const registrationsRef = collection(window.firebaseDb, 'registrations');
       const registrationsSnapshot = await getDocs(registrationsRef);
@@ -575,6 +852,12 @@
   // Função para carregar pedidos confirmados
   async function carregarPedidosConfirmados() {
     try {
+      // Verificar se Firebase está inicializado
+      if (!window.firebaseDb) {
+        console.error('❌ Firebase não inicializado - carregarPedidosConfirmados');
+        return;
+      }
+      
       // console.log('🔍 Carregando pedidos confirmados...');
       // Buscar pedidos confirmados
       const ordersRef = collection(window.firebaseDb, 'orders');
@@ -734,7 +1017,7 @@
     const roleLower = (role||'').toLowerCase();
     const isManager = ['ceo','gerente'].includes(roleLower);
     const isCeo = roleLower==='ceo';
-    const isSocio = roleLower==='socio';
+    const isSocio = roleLower==='socio' || roleLower==='ceo';
     const canViewAll = ['ceo','gerente','socio'].includes(roleLower);
     window.adminRoleLower = roleLower;
     // Atualiza badge de papel na UI
@@ -767,19 +1050,8 @@
     if (window.loadCouponUsage) {
       window.loadCouponUsage();
     }
-    // Controla visibilidade conforme o papel
-    try {
-      const highlightsSection = document.getElementById('sectionHighlights');
-      const newsSection = document.getElementById('sectionNews');
-      const productsSection = document.getElementById('sectionProducts');
-      const toggle = (el, show) => { if (!el) return; el.classList[show ? 'remove' : 'add']('hidden'); };
-      const isVendedor = roleLower === 'vendedor';
-      toggle(highlightsSection, !isVendedor);
-      toggle(newsSection, !isVendedor);
-      toggle(productsSection, !isVendedor);
-      const usersSection = document.getElementById('sectionUsers');
-      toggle(usersSection, !isVendedor);
-    } catch(_){ }
+    // Controla visibilidade conforme o papel - REMOVIDO para evitar conflito com controlSectionVisibility
+    // A visibilidade agora é controlada exclusivamente pela função controlSectionVisibility
 
     try {
       // Carregamento de dados conforme papel
@@ -816,6 +1088,11 @@
       await loadRecentOrders().catch(()=>{});
       await loadPending(false).catch(()=>{});
     }
+    
+    // APLICAR CONTROLE DE VISIBILIDADE APÓS CARREGAMENTO DE TODOS OS DADOS
+    setTimeout(() => {
+      controlSectionVisibility(roleLower);
+    }, 1000); // Delay maior para garantir que tudo foi carregado
   });
 
   // ---- Relatórios ----
@@ -1887,6 +2164,11 @@ let popularHoursChart = null;
 // Função para carregar eventos únicos do banco de dados
 async function loadEventOptions() {
     try {
+        if (!window.firebaseDb) {
+            console.warn('Firebase não inicializado ainda');
+            return;
+        }
+        
         const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const registrationsCol = collection(window.firebaseDb, 'registrations');
         const snap = await getDocs(registrationsCol);
@@ -1926,6 +2208,11 @@ function getDayOfWeek(date) {
 // Função para carregar dados de horários com filtros
 async function loadPopularHoursData(dayFilter = '', eventFilter = '') {
     try {
+        if (!window.firebaseDb) {
+            console.warn('Firebase não inicializado ainda');
+            return { labels: [], data: [] };
+        }
+        
         const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const registrationsCol = collection(window.firebaseDb, 'registrations');
         const snap = await getDocs(registrationsCol);
@@ -3401,7 +3688,7 @@ window.saveProducts = saveProducts;
         const sessionData = JSON.parse(savedSession);
         if (Date.now() - sessionData.timestamp < SESSION_TIMEOUT) {
           // Session still valid, check with Firebase
-          const user = auth.currentUser;
+          const user = window.firebaseAuth.currentUser;
           if (user && await isAuthorizedAdmin(user)) {
             showDashboard(user.role || 'admin');
             return;
@@ -3421,11 +3708,17 @@ window.saveProducts = saveProducts;
   // Security: Enhanced login handler
   async function handleLogin(email, password) {
     try {
+      console.log('🔍 Iniciando processo de login...');
+      console.log('🔍 Email:', email);
+      console.log('🔍 Firebase Auth disponível:', !!window.firebaseAuth);
+      
       const { signInWithEmailAndPassword: signIn, signOut: signOutFn } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
       const { doc: docRef, getDoc: getDocFn } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       
+      console.log('🔍 Tentando fazer login...');
       const userCredential = await signIn(window.firebaseAuth, email, password);
       const user = userCredential.user;
+      console.log('✅ Login bem-sucedido!', user.email);
       
       // Check if user is authorized
       if (!user || !user.email) {
@@ -3435,31 +3728,124 @@ window.saveProducts = saveProducts;
       }
       
       // Get user role from Firestore
+      console.log('🔍 Verificando documento do usuário no Firestore...');
+      console.log('🔍 UID do usuário:', user.uid);
       const userDoc = await getDocFn(docRef(window.firebaseDb, 'users', user.uid));
+      console.log('🔍 Documento existe?', userDoc.exists());
+      
       if (!userDoc.exists()) {
+        console.log('🔧 Criando documento do usuário automaticamente...');
+        
+        // Criar documento do usuário automaticamente
+        const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const userData = {
+          email: user.email,
+          displayName: user.displayName || user.email.split('@')[0],
+          role: 'socio', // Definir como socio por padrão
+          createdAt: new Date(),
+          lastLogin: Date.now()
+        };
+        
+        await setDoc(docRef(window.firebaseDb, 'users', user.uid), userData);
+        console.log('✅ Documento do usuário criado com sucesso!');
+        
+        // Agora tentar novamente
+        const newUserDoc = await getDocFn(docRef(window.firebaseDb, 'users', user.uid));
+        if (!newUserDoc.exists()) {
+          await signOutFn(window.firebaseAuth);
+          showLoginError('Erro ao criar documento do usuário.');
+          return;
+        }
+        
+        const newUserData = newUserDoc.data();
+        const role = (newUserData.role || '').toLowerCase().trim();
+        console.log('🎭 Cargo definido:', role);
+        
+        // Continuar com o processo de login
+        const authorizedRoles = ['admin', 'gerente', 'vendedor', 'design', 'designer', 'desgin', 'socio', 'sócio'];
+        const isAuthorized = authorizedRoles.includes(role);
+        
+        if (!isAuthorized) {
+          await signOutFn(window.firebaseAuth);
+          showLoginError('Acesso negado. Você não tem permissão para acessar o painel administrativo.');
+          return;
+        }
+        
+        // Para socio, permitir qualquer email
+        if (role === 'socio' || role === 'sócio' || role === 'ceo') {
+          console.log('✅ Acesso liberado para Socio (documento criado)');
+          
+          // Save session
+          const sessionData = {
+            uid: user.uid,
+            email: user.email,
+            role: role,
+            timestamp: Date.now()
+          };
+          sessionStorage.setItem('adminSession', JSON.stringify(sessionData));
+
+          // Mostrar dashboard diretamente
+          const authGate = document.getElementById('authGate');
+          const dashboard = document.getElementById('dashboard');
+          if (authGate && dashboard) {
+            authGate.classList.add('hidden');
+            dashboard.classList.remove('hidden');
+            console.log('✅ Dashboard mostrado com sucesso');
+            
+            // Inicializar dashboard
+            setTimeout(() => {
+              if (typeof setView === 'function') {
+                setView(role);
+              }
+              if (typeof startSessionTimer === 'function') {
+                startSessionTimer();
+              }
+            }, 100);
+          }
+          return;
+        }
+        
         await signOutFn(window.firebaseAuth);
-        showLoginError('Usuário não encontrado.');
+        showLoginError('Acesso negado. Você não tem permissão para acessar o painel administrativo.');
         return;
       }
       
       const userData = userDoc.data();
       const role = (userData.role || '').toLowerCase();
       
+      console.log('🔍 Documento encontrado!');
+      console.log('🔍 Dados do usuário:', userData);
       console.log('🔍 Cargo encontrado no Firestore:', userData.role, '-> normalizado:', role);
+      
+      // Limpar espaços em branco e caracteres especiais do cargo
+      const cleanRole = role.trim();
+      console.log('🔍 Cargo limpo:', `"${cleanRole}"`);
       
       // Check if role is authorized (including variations and typos)
       const authorizedRoles = ['admin', 'gerente', 'vendedor', 'design', 'designer', 'desgin', 'socio', 'sócio'];
-      const isAuthorized = authorizedRoles.includes(role);
+      const isAuthorized = authorizedRoles.includes(cleanRole);
+      
+      console.log('🔍 Cargos autorizados:', authorizedRoles);
+      console.log('🔍 Cargo do usuário (original):', `"${role}"`);
+      console.log('🔍 Cargo do usuário (limpo):', `"${cleanRole}"`);
+      console.log('🔍 Está autorizado?', isAuthorized);
       
       if (!isAuthorized) {
+        console.log('❌ Cargo não autorizado, negando acesso');
         await signOutFn(window.firebaseAuth);
         showLoginError('Acesso negado. Você não tem permissão para acessar o painel administrativo.');
         return;
       }
       
+      console.log('✅ Cargo autorizado, continuando...');
+      
       // For admin/gerente/vendedor/ceo, check email whitelist
       // For design/designer/socio/sócio, allow any email with the correct role
-      if (['admin', 'gerente', 'vendedor', 'ceo'].includes(role)) {
+      console.log('🔍 Verificando se precisa validar email...');
+      console.log('🔍 Cargo é admin/gerente/vendedor/ceo?', ['admin', 'gerente', 'vendedor', 'ceo'].includes(cleanRole));
+      
+      if (['admin', 'gerente', 'vendedor', 'ceo'].includes(cleanRole)) {
+        console.log('🔍 Validando email para cargo:', role);
         const ADMIN_EMAILS = [
           'cleitondouglass@gmail.com',
           'cleitondouglass123@hotmail.com',
@@ -3480,30 +3866,47 @@ window.saveProducts = saveProducts;
         }
         
         console.log('✅ Email autorizado:', user.email);
+      } else {
+        console.log('✅ Cargo é socio/design, não precisa validar email');
       }
 
       // Save session
+      console.log('🔍 Salvando sessão...');
       const sessionData = {
         uid: user.uid,
         email: user.email,
-        role: role,
+        role: cleanRole,
         timestamp: Date.now()
       };
       sessionStorage.setItem('adminSession', JSON.stringify(sessionData));
+      console.log('✅ Sessão salva:', sessionData);
 
       // Show dashboard
+      console.log('🔍 Tentando mostrar dashboard...');
       if (typeof showDashboard === 'function') {
+        console.log('✅ Usando função showDashboard');
         showDashboard(role);
       } else {
-        console.error('❌ showDashboard não está disponível');
+        console.log('⚠️ showDashboard não está disponível, usando fallback');
         // Fallback: mostrar dashboard manualmente
         const authGate = document.getElementById('authGate');
         const dashboard = document.getElementById('dashboard');
+        console.log('🔍 authGate encontrado:', !!authGate);
+        console.log('🔍 dashboard encontrado:', !!dashboard);
+        
         if (authGate && dashboard) {
           authGate.classList.add('hidden');
           dashboard.classList.remove('hidden');
-          setView(role);
-          startSessionTimer();
+          console.log('✅ Dashboard mostrado com sucesso!');
+          
+          if (typeof setView === 'function') {
+            setView(cleanRole);
+          }
+          if (typeof startSessionTimer === 'function') {
+            startSessionTimer();
+          }
+        } else {
+          console.error('❌ Elementos authGate ou dashboard não encontrados');
         }
       }
       
@@ -3644,8 +4047,42 @@ window.saveProducts = saveProducts;
     }
   }
 
+  // Função de teste para verificar permissões
+  async function testFirestorePermissions() {
+    try {
+      console.log('🧪 Testando permissões do Firestore...');
+      const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      
+      // Testar leitura de usuários
+      const usersRef = collection(window.firebaseDb, 'users');
+      const usersSnapshot = await getDocs(usersRef);
+      console.log('✅ Teste de usuários: OK -', usersSnapshot.size, 'documentos');
+      
+      // Testar leitura de pedidos
+      const ordersRef = collection(window.firebaseDb, 'orders');
+      const ordersSnapshot = await getDocs(ordersRef);
+      console.log('✅ Teste de pedidos: OK -', ordersSnapshot.size, 'documentos');
+      
+      // Testar leitura de registros
+      const regsRef = collection(window.firebaseDb, 'registrations');
+      const regsSnapshot = await getDocs(regsRef);
+      console.log('✅ Teste de registros: OK -', regsSnapshot.size, 'documentos');
+      
+      console.log('🎉 Todos os testes de permissão passaram!');
+      return true;
+    } catch (error) {
+      console.error('❌ Erro no teste de permissões:', error);
+      return false;
+    }
+  }
+
   // Start admin panel
   initAdmin();
+  
+  // Testar permissões após inicialização
+  setTimeout(() => {
+    testFirestorePermissions();
+  }, 2000);
   
   // Configurar filtros de usuários quando o DOM estiver pronto
   document.addEventListener('DOMContentLoaded', () => {
@@ -5331,6 +5768,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const waitForFirebase = () => {
     if (window.firebaseReady && window.firebaseDb) {
       loadUsersForTables();
+      // Carregar links do WhatsApp automaticamente
+      loadAdminWhatsAppLinks();
       // loadPermissionsUsers será chamada depois do login via setView
     } else {
       setTimeout(waitForFirebase, 100);
@@ -5456,5 +5895,605 @@ async function recomputeTokenTotals(){
     console.error('❌ Error recomputing tokens:', err);
   }
 }
+
+// ==================== GERENCIAMENTO DE LINKS DO WHATSAPP ====================
+
+// Função para mostrar notificações
+function showNotification(message, type = 'info') {
+  // Criar elemento de notificação
+  const notification = document.createElement('div');
+  notification.className = `fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg max-w-sm ${
+    type === 'success' ? 'bg-green-500 text-white' :
+    type === 'error' ? 'bg-red-500 text-white' :
+    type === 'warning' ? 'bg-yellow-500 text-black' :
+    'bg-blue-500 text-white'
+  }`;
+  notification.textContent = message;
+  
+  // Adicionar ao DOM
+  document.body.appendChild(notification);
+  
+  // Remover após 3 segundos
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.parentNode.removeChild(notification);
+    }
+  }, 3000);
+}
+
+let currentEditingWhatsAppLink = null;
+
+// Abrir modal de links do WhatsApp
+function openWhatsAppLinksModal() {
+  const modal = document.getElementById('modalWhatsAppLinks');
+  if (modal) {
+    modal.classList.remove('hidden');
+    // Não recarregar aqui, já foi carregado automaticamente
+  }
+}
+
+// Fechar modal de links do WhatsApp
+function closeWhatsAppLinksModal() {
+  const modal = document.getElementById('modalWhatsAppLinks');
+  if (modal) {
+    modal.classList.add('hidden');
+    clearWhatsAppLinkForm();
+  }
+}
+
+// Limpar formulário de link do WhatsApp
+function clearWhatsAppLinkForm() {
+  currentEditingWhatsAppLink = null;
+  document.getElementById('whatsappLinkFormTitle').textContent = 'Adicionar Novo Link';
+  document.getElementById('whatsappLinkForm').reset();
+}
+
+// Carregar links do WhatsApp do Firestore
+async function loadAdminWhatsAppLinks() {
+  try {
+    if (!window.firebaseDb) {
+      console.warn('Firebase não inicializado ainda');
+      return;
+    }
+    
+    const { collection, getDocs, orderBy, query } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    
+    const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
+    const q = query(whatsappLinksRef, orderBy('eventType', 'asc'));
+    const snapshot = await getDocs(q);
+    
+    const links = [];
+    snapshot.forEach(doc => {
+      links.push({ id: doc.id, ...doc.data() });
+    });
+    
+    // Ordenar manualmente por eventType e depois por schedule
+    links.sort((a, b) => {
+      if (a.eventType !== b.eventType) {
+        return a.eventType.localeCompare(b.eventType);
+      }
+      // Se eventType for igual, ordenar por schedule (null primeiro)
+      if (!a.schedule && !b.schedule) return 0;
+      if (!a.schedule) return -1;
+      if (!b.schedule) return 1;
+      return a.schedule.localeCompare(b.schedule);
+    });
+    
+    // Armazenar todos os links para filtro
+    allWhatsAppLinks = links;
+    
+    // Configurar filtros se ainda não foram configurados
+    if (!window.whatsappFiltersSetup) {
+      setupWhatsAppFilters();
+      window.whatsappFiltersSetup = true;
+    }
+    
+    renderWhatsAppLinksTable(links);
+    renderWhatsAppLinksList(links);
+    
+  } catch (error) {
+    console.error('❌ Erro ao carregar links do WhatsApp:', error);
+    showNotification('Erro ao carregar links do WhatsApp', 'error');
+  }
+}
+
+// Renderizar tabela de links do WhatsApp
+function renderWhatsAppLinksTable(links) {
+  const tbody = document.getElementById('whatsappLinksTableBody');
+  if (!tbody) return;
+  
+  if (links.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-gray-500 py-4">Nenhum link cadastrado</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = links.map(link => `
+    <tr class="border-b border-gray-100 hover:bg-gray-50">
+      <td class="py-2 px-3">
+        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          ${getEventTypeLabel(link.eventType)}
+        </span>
+      </td>
+      <td class="py-2 px-3">${link.schedule || 'Todos'}</td>
+      <td class="py-2 px-3">
+        <a href="${link.link}" target="_blank" class="text-green-600 hover:text-green-800 text-xs truncate max-w-xs block">
+          ${link.link}
+        </a>
+      </td>
+      <td class="py-2 px-3">
+        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${link.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+          ${link.status === 'active' ? 'Ativo' : 'Inativo'}
+        </span>
+      </td>
+      <td class="py-2 px-3">
+        <div class="flex gap-2">
+          <button onclick="editWhatsAppLink('${link.id}')" class="text-blue-600 hover:text-blue-800 text-xs">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button onclick="deleteWhatsAppLink('${link.id}')" class="text-red-600 hover:text-red-800 text-xs">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Renderizar lista de links do WhatsApp no modal
+function renderWhatsAppLinksList(links) {
+  const container = document.getElementById('whatsappLinksList');
+  if (!container) return;
+  
+  if (links.length === 0) {
+    container.innerHTML = '<div class="text-center text-gray-500 py-4">Nenhum link cadastrado</div>';
+    return;
+  }
+  
+  container.innerHTML = links.map(link => `
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+      <div class="flex items-center justify-between">
+        <div class="flex-1">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              ${getEventTypeLabel(link.eventType)}
+            </span>
+            <span class="text-sm text-gray-600">${link.schedule || 'Todos os horários'}</span>
+            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${link.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+              ${link.status === 'active' ? 'Ativo' : 'Inativo'}
+            </span>
+          </div>
+          <p class="text-sm text-gray-800 mb-1">${link.description || 'Sem descrição'}</p>
+          <a href="${link.link}" target="_blank" class="text-green-600 hover:text-green-800 text-sm">
+            ${link.link}
+          </a>
+        </div>
+        <div class="flex gap-2 ml-4">
+          <button onclick="editWhatsAppLink('${link.id}')" class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+            <i class="fas fa-edit mr-1"></i>Editar
+          </button>
+          <button onclick="deleteWhatsAppLink('${link.id}')" class="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">
+            <i class="fas fa-trash mr-1"></i>Excluir
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Obter label do tipo de evento
+function getEventTypeLabel(eventType) {
+  const labels = {
+    'xtreino-tokens': 'XTreino Tokens',
+    'xtreino-gratuito': 'XTreino Gratuito',
+    'modo-liga': 'Modo Liga',
+    'camp-freitas': 'Camp Freitas',
+    'semanal-freitas': 'Semanal Freitas',
+    'treino': 'Treino Normal'
+  };
+  return labels[eventType] || eventType;
+}
+
+// Salvar link do WhatsApp
+async function saveWhatsAppLink() {
+  try {
+    if (!window.firebaseDb) {
+      showNotification('Firebase não inicializado ainda', 'error');
+      return;
+    }
+    
+    const eventType = document.getElementById('whatsappEventType').value;
+    const schedule = document.getElementById('whatsappSchedule').value.trim();
+    const link = document.getElementById('whatsappLink').value.trim();
+    const status = document.getElementById('whatsappStatus').value;
+    const description = document.getElementById('whatsappDescription').value.trim();
+    
+    if (!eventType || !link) {
+      showNotification('Preencha todos os campos obrigatórios', 'error');
+      return;
+    }
+    
+    const { collection, addDoc, updateDoc, doc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    
+    const linkData = {
+      eventType,
+      schedule: schedule || null,
+      link,
+      status,
+      description: description || null,
+      updatedAt: serverTimestamp()
+    };
+    
+    if (currentEditingWhatsAppLink) {
+      // Atualizar link existente
+      const linkRef = doc(window.firebaseDb, 'whatsapp_links', currentEditingWhatsAppLink);
+      await updateDoc(linkRef, linkData);
+      showNotification('Link atualizado com sucesso!', 'success');
+    } else {
+      // Criar novo link
+      linkData.createdAt = serverTimestamp();
+      await addDoc(collection(window.firebaseDb, 'whatsapp_links'), linkData);
+      showNotification('Link criado com sucesso!', 'success');
+    }
+    
+    // Limpar cache para forçar atualização
+    whatsappLinksCache.clear();
+    console.log('🔍 Cache de links limpo após salvar');
+    
+    clearWhatsAppLinkForm();
+    loadAdminWhatsAppLinks();
+    
+  } catch (error) {
+    console.error('❌ Erro ao salvar link do WhatsApp:', error);
+    showNotification('Erro ao salvar link do WhatsApp', 'error');
+  }
+}
+
+// Editar link do WhatsApp
+async function editWhatsAppLink(linkId) {
+  try {
+    console.log('🔍 Editando link:', linkId);
+    
+    if (!window.firebaseDb) {
+      showNotification('Firebase não inicializado ainda', 'error');
+      return;
+    }
+    
+    const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    
+    const linkRef = doc(window.firebaseDb, 'whatsapp_links', linkId);
+    const linkSnap = await getDoc(linkRef);
+    
+    if (linkSnap.exists()) {
+      const linkData = linkSnap.data();
+      console.log('🔍 Dados do link:', linkData);
+      
+      currentEditingWhatsAppLink = linkId;
+      
+      // Preencher o formulário
+      document.getElementById('whatsappLinkFormTitle').textContent = 'Editar Link';
+      document.getElementById('whatsappEventType').value = linkData.eventType || '';
+      document.getElementById('whatsappSchedule').value = linkData.schedule || '';
+      document.getElementById('whatsappLink').value = linkData.link || '';
+      document.getElementById('whatsappStatus').value = linkData.status || 'active';
+      document.getElementById('whatsappDescription').value = linkData.description || '';
+      
+      // Abrir o modal
+      openWhatsAppLinksModal();
+      
+      console.log('✅ Formulário preenchido e modal aberto');
+    } else {
+      console.log('❌ Link não encontrado');
+      showNotification('Link não encontrado', 'error');
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro ao carregar link para edição:', error);
+    showNotification('Erro ao carregar link para edição', 'error');
+  }
+}
+
+// Excluir link do WhatsApp
+async function deleteWhatsAppLink(linkId) {
+  if (!confirm('Tem certeza que deseja excluir este link?')) {
+    return;
+  }
+  
+  try {
+    if (!window.firebaseDb) {
+      showNotification('Firebase não inicializado ainda', 'error');
+      return;
+    }
+    
+    const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    
+    const linkRef = doc(window.firebaseDb, 'whatsapp_links', linkId);
+    await deleteDoc(linkRef);
+    
+    showNotification('Link excluído com sucesso!', 'success');
+    loadAdminWhatsAppLinks();
+    
+  } catch (error) {
+    console.error('❌ Erro ao excluir link do WhatsApp:', error);
+    showNotification('Erro ao excluir link do WhatsApp', 'error');
+  }
+}
+
+// Cache para links do WhatsApp (com TTL)
+let whatsappLinksCache = new Map();
+const CACHE_TTL = 30000; // 30 segundos
+
+// Função para obter link do WhatsApp dinamicamente
+async function getWhatsAppLink(eventType, schedule = null) {
+  try {
+    console.log('🔍 getWhatsAppLink - EventType:', eventType, 'Schedule:', schedule);
+    
+    if (!window.firebaseDb) {
+      console.warn('⚠️ Firebase não inicializado ainda');
+      return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+    }
+    
+    // Verificar cache primeiro
+    const cacheKey = `${eventType}_${schedule || 'general'}`;
+    const cached = whatsappLinksCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+      console.log('🔍 Link encontrado no cache:', cached.link);
+      return cached.link;
+    }
+    
+    const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    
+    const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
+    
+    // Primeiro, tentar encontrar link específico para o horário
+    if (schedule) {
+      console.log('🔍 Buscando link específico para horário:', schedule);
+      const specificQuery = query(
+        whatsappLinksRef,
+        where('eventType', '==', eventType),
+        where('schedule', '==', schedule),
+        where('status', '==', 'active')
+      );
+      const specificSnapshot = await getDocs(specificQuery);
+      
+      console.log('🔍 Resultado busca específica:', specificSnapshot.docs.length, 'documentos');
+      
+      if (!specificSnapshot.empty) {
+        const link = specificSnapshot.docs[0].data().link;
+        console.log('✅ Link específico encontrado:', link);
+        
+        // Salvar no cache
+        whatsappLinksCache.set(cacheKey, {
+          link: link,
+          timestamp: Date.now()
+        });
+        
+        return link;
+      }
+    }
+    
+    // Se não encontrou específico, buscar link geral para o evento
+    console.log('🔍 Buscando link geral para evento:', eventType);
+    const generalQuery = query(
+      whatsappLinksRef,
+      where('eventType', '==', eventType),
+      where('schedule', '==', null),
+      where('status', '==', 'active')
+    );
+    const generalSnapshot = await getDocs(generalQuery);
+    
+    console.log('🔍 Resultado busca geral:', generalSnapshot.docs.length, 'documentos');
+    
+    if (!generalSnapshot.empty) {
+      const link = generalSnapshot.docs[0].data().link;
+      console.log('✅ Link geral encontrado:', link);
+      
+      // Salvar no cache
+      whatsappLinksCache.set(cacheKey, {
+        link: link,
+        timestamp: Date.now()
+      });
+      
+      return link;
+    }
+    
+    // Fallback para links padrão se não encontrar no Firestore
+    const defaultLinks = {
+      'xtreino-tokens': 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS',
+      'xtreino-gratuito': 'https://chat.whatsapp.com/SEU_GRUPO_GRATUITO',
+      'modo-liga': 'https://chat.whatsapp.com/SEU_GRUPO_MODO_LIGA',
+      'camp-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_CAMP_FREITAS',
+      'semanal-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
+      'treino': 'https://chat.whatsapp.com/SEU_GRUPO_TREINO'
+    };
+    
+    const fallbackLink = defaultLinks[eventType] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+    console.log('🔍 Usando link padrão:', fallbackLink);
+    
+    // Salvar fallback no cache também
+    whatsappLinksCache.set(cacheKey, {
+      link: fallbackLink,
+      timestamp: Date.now()
+    });
+    
+    return fallbackLink;
+    
+  } catch (error) {
+    console.error('❌ Erro ao obter link do WhatsApp:', error);
+    return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+  }
+}
+
+// Função para criar automaticamente todos os links do WhatsApp
+async function createAllWhatsAppLinks() {
+  try {
+    if (!window.firebaseDb) {
+      showNotification('Firebase não inicializado', 'error');
+      return;
+    }
+
+    const { collection, addDoc, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    
+    // Definir todos os eventos e seus horários
+    const eventConfigs = {
+      'xtreino-tokens': {
+        name: 'XTreino Freitas',
+        schedules: ['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'],
+        defaultLink: 'https://chat.whatsapp.com/SEU_GRUPO_XTREINO_FREITAS'
+      },
+      'modo-liga': {
+        name: 'XTreino Modo Liga',
+        schedules: ['14h', '15h', '17h', '18h'],
+        defaultLink: 'https://chat.whatsapp.com/SEU_GRUPO_MODO_LIGA'
+      },
+      'camp-freitas': {
+        name: 'Campeonato Freitas Season⁴',
+        schedules: ['20h', '21h', '22h', '23h'],
+        defaultLink: 'https://chat.whatsapp.com/SEU_GRUPO_CAMP_FREITAS'
+      },
+      'semanal-freitas': {
+        name: 'Semanal Freitas',
+        schedules: ['20h', '21h', '22h'],
+        defaultLink: 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL_FREITAS'
+      }
+    };
+
+    const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const [eventType, config] of Object.entries(eventConfigs)) {
+      // Criar link geral para o evento (sem horário específico)
+      const generalQuery = query(
+        whatsappLinksRef,
+        where('eventType', '==', eventType),
+        where('schedule', '==', null)
+      );
+      const generalSnapshot = await getDocs(generalQuery);
+      
+      if (generalSnapshot.empty) {
+        await addDoc(whatsappLinksRef, {
+          eventType: eventType,
+          schedule: null,
+          link: config.defaultLink,
+          status: 'active',
+          description: `Link geral para ${config.name}`,
+          createdAt: new Date(),
+          createdBy: 'system'
+        });
+        createdCount++;
+        console.log(`✅ Link geral criado para ${config.name}`);
+      } else {
+        skippedCount++;
+        console.log(`⏭️ Link geral já existe para ${config.name}`);
+      }
+
+      // Criar links específicos para cada horário
+      for (const schedule of config.schedules) {
+        const specificQuery = query(
+          whatsappLinksRef,
+          where('eventType', '==', eventType),
+          where('schedule', '==', schedule)
+        );
+        const specificSnapshot = await getDocs(specificQuery);
+        
+        if (specificSnapshot.empty) {
+          await addDoc(whatsappLinksRef, {
+            eventType: eventType,
+            schedule: schedule,
+            link: config.defaultLink,
+            status: 'active',
+            description: `${config.name} - ${schedule}`,
+            createdAt: new Date(),
+            createdBy: 'system'
+          });
+          createdCount++;
+          console.log(`✅ Link criado para ${config.name} - ${schedule}`);
+        } else {
+          skippedCount++;
+          console.log(`⏭️ Link já existe para ${config.name} - ${schedule}`);
+        }
+      }
+    }
+
+    showNotification(`Links criados: ${createdCount} | Já existiam: ${skippedCount}`, 'success');
+    
+    // Recarregar a lista de links
+    await loadAdminWhatsAppLinks();
+    
+  } catch (error) {
+    console.error('Erro ao criar links automaticamente:', error);
+    showNotification('Erro ao criar links automaticamente', 'error');
+  }
+}
+
+// Variável para armazenar todos os links (para filtro)
+let allWhatsAppLinks = [];
+
+// Função para filtrar links do WhatsApp
+function filterWhatsAppLinks() {
+  const eventFilter = document.getElementById('whatsappEventFilter')?.value || '';
+  const statusFilter = document.getElementById('whatsappStatusFilter')?.value || '';
+  const searchFilter = document.getElementById('whatsappSearchFilter')?.value.toLowerCase() || '';
+  
+  console.log('🔍 Filtros aplicados:', { eventFilter, statusFilter, searchFilter });
+  
+  let filteredLinks = allWhatsAppLinks.filter(link => {
+    // Filtro por evento
+    if (eventFilter && link.eventType !== eventFilter) {
+      return false;
+    }
+    
+    // Filtro por status
+    if (statusFilter && link.status !== statusFilter) {
+      return false;
+    }
+    
+    // Filtro por busca (busca em eventType, schedule, link, description)
+    if (searchFilter) {
+      const searchText = `${link.eventType} ${link.schedule || ''} ${link.link} ${link.description || ''}`.toLowerCase();
+      if (!searchText.includes(searchFilter)) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
+  
+  console.log('🔍 Links filtrados:', filteredLinks.length);
+  
+  // Renderizar apenas os links filtrados
+  renderWhatsAppLinksTable(filteredLinks);
+  renderWhatsAppLinksList(filteredLinks);
+}
+
+// Função para configurar os filtros
+function setupWhatsAppFilters() {
+  const eventFilter = document.getElementById('whatsappEventFilter');
+  const statusFilter = document.getElementById('whatsappStatusFilter');
+  const searchFilter = document.getElementById('whatsappSearchFilter');
+  
+  if (eventFilter) {
+    eventFilter.addEventListener('change', filterWhatsAppLinks);
+  }
+  
+  if (statusFilter) {
+    statusFilter.addEventListener('change', filterWhatsAppLinks);
+  }
+  
+  if (searchFilter) {
+    searchFilter.addEventListener('input', filterWhatsAppLinks);
+  }
+}
+
+// Expor funções globalmente
+window.openWhatsAppLinksModal = openWhatsAppLinksModal;
+window.closeWhatsAppLinksModal = closeWhatsAppLinksModal;
+window.clearWhatsAppLinkForm = clearWhatsAppLinkForm;
+window.saveWhatsAppLink = saveWhatsAppLink;
+window.editWhatsAppLink = editWhatsAppLink;
+window.deleteWhatsAppLink = deleteWhatsAppLink;
+window.getWhatsAppLink = getWhatsAppLink;
+window.createAllWhatsAppLinks = createAllWhatsAppLinks;
+window.filterWhatsAppLinks = filterWhatsAppLinks;
 
 

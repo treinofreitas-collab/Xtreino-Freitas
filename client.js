@@ -328,7 +328,10 @@ let allOrdersData = [];
 // Load all orders with pagination
 async function loadOrders() {
     try {
+        console.log('🔍 Carregando pedidos...');
         const ordersData = await fetchUserDocs('orders', 200, true);
+        console.log('🔍 Orders raw data:', ordersData);
+        
         const mappedOrders = ordersData.map(d => ({
             id: d.id,
             date: d.data.createdAt?.toDate?.() || new Date(),
@@ -339,11 +342,15 @@ async function loadOrders() {
             schedule: d.data.schedule || d.data.hour || d.data.time || '',
             eventType: d.data.eventType || '',
             paidWithTokens: d.data.paidWithTokens || false,
-            tokensUsed: d.data.tokensUsed || 0
+            tokensUsed: d.data.tokensUsed || 0,
+            whatsappLink: d.data.whatsappLink || null
         }));
+        console.log('🔍 Mapped orders:', mappedOrders);
 
         // incluir eventos pagos com tokens das registrations
         const regsData = await fetchUserDocs('registrations', 200, true);
+        console.log('🔍 Registrations raw data:', regsData);
+        
         const mappedRegs = regsData
           .filter(d => d.data.paidWithTokens === true)
           .map(d => ({
@@ -356,14 +363,17 @@ async function loadOrders() {
             schedule: d.data.schedule || d.data.hour || d.data.time || '',
             eventType: d.data.eventType || '',
             paidWithTokens: true,
-            tokensUsed: d.data.tokensUsed || d.data.tokenCost || 1
+            tokensUsed: d.data.tokensUsed || d.data.tokenCost || 1,
+            whatsappLink: d.data.whatsappLink || null
           }));
+        console.log('🔍 Mapped registrations:', mappedRegs);
 
         allOrdersData = [...mappedOrders, ...mappedRegs]
           .sort((a,b)=> (b.date?.getTime?.()||0) - (a.date?.getTime?.()||0));
+        
+        console.log('🔍 All orders data final:', allOrdersData);
 
-        displayAllOrdersPaginated();
-        await loadWhatsAppLinks(allOrdersData);
+        await displayAllOrdersPaginated();
     } catch (error) {
         console.error('Error loading orders:', error);
         document.getElementById('allOrders').innerHTML = '<p class="text-gray-500 text-center">Erro ao carregar pedidos</p>';
@@ -417,25 +427,81 @@ async function loadProducts() {
 // Função para converter data e horário do evento em DateTime
 function getEventDateTime(dateStr, scheduleStr) {
     try {
-        // Formato da data: YYYY-MM-DD
-        // Formato do schedule: "Segunda - 19h" ou "19h"
-        const date = new Date(dateStr + 'T00:00:00');
+        console.log('🔍 getEventDateTime - dateStr:', dateStr, 'scheduleStr:', scheduleStr);
+        console.log('🔍 Tipo de dateStr:', typeof dateStr);
+        
+        // Verificar se dateStr é válido
+        if (!dateStr || dateStr === 'undefined' || dateStr === 'null') {
+            console.log('❌ dateStr inválido:', dateStr);
+            return new Date(NaN);
+        }
+        
+        // Se dateStr já é um objeto Date, usar ele
+        let date;
+        if (dateStr instanceof Date) {
+            date = new Date(dateStr);
+            console.log('🔍 dateStr é Date, criando nova Date');
+        } else if (typeof dateStr === 'string') {
+            console.log('🔍 dateStr é string, processando...');
+            // Tentar diferentes formatos de data
+            if (dateStr.includes('/')) {
+                // Formato DD/MM/YYYY
+                console.log('🔍 Formato DD/MM/YYYY detectado');
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    date = new Date(parts[2], parts[1] - 1, parts[0]);
+                    console.log('🔍 Data criada a partir de partes:', parts);
+                } else {
+                    date = new Date(dateStr);
+                }
+            } else if (dateStr.includes('-')) {
+                // Formato YYYY-MM-DD
+                console.log('🔍 Formato YYYY-MM-DD detectado');
+                date = new Date(dateStr + 'T00:00:00');
+                console.log('🔍 Data criada com T00:00:00');
+            } else {
+                console.log('🔍 Formato não reconhecido, usando new Date()');
+                date = new Date(dateStr);
+            }
+        } else {
+            console.log('🔍 Tipo não reconhecido, usando new Date()');
+            date = new Date(dateStr);
+        }
+        
+        console.log('🔍 Data base criada:', date);
+        console.log('🔍 Data base é válida?', !isNaN(date.getTime()));
+        
+        // Verificar se a data é válida
+        if (isNaN(date.getTime())) {
+            console.log('❌ Data inválida após parsing');
+            return new Date(NaN);
+        }
         
         // Extrair o horário do schedule
         let timeStr = scheduleStr;
-        if (scheduleStr.includes(' - ')) {
+        if (scheduleStr && scheduleStr.includes(' - ')) {
             timeStr = scheduleStr.split(' - ')[1]; // Pega a parte após " - "
         }
+        console.log('🔍 Time string extraída:', timeStr);
         
         // Converter horário (ex: "19h" -> 19)
         const hour = parseInt(timeStr.replace('h', ''));
+        console.log('🔍 Hora convertida:', hour);
+        
+        // Verificar se a hora é válida
+        if (isNaN(hour) || hour < 0 || hour > 23) {
+            console.log('❌ Hora inválida:', hour);
+            return new Date(NaN);
+        }
         
         // Definir a data e hora do evento
         date.setHours(hour, 0, 0, 0);
+        console.log('🔍 Data/hora final:', date);
+        console.log('🔍 Data/hora final é válida?', !isNaN(date.getTime()));
         
         return date;
     } catch (error) {
-        console.error('Erro ao converter data/hora do evento:', error);
+        console.error('❌ Erro ao converter data/hora do evento:', error);
         return new Date(NaN); // inválido para não liberar link indevidamente
     }
 }
@@ -475,156 +541,13 @@ function formatShortDatePtBr(dateStr){
     }catch(_){ return dateStr||''; }
 }
 
-// Carrega links do WhatsApp para pedidos confirmados
-async function loadWhatsAppLinks(orders) {
-    const whatsappContainer = document.getElementById('whatsappLinks');
-    const whatsappList = document.getElementById('whatsappList');
-    if (!whatsappContainer || !whatsappList) return;
-
-    const confirmedOrders = orders.filter(order => {
-        // Verificar se o pedido está confirmado
-        if (!(order.status === 'paid' || order.status === 'confirmed') || !(order.eventType || order.title)) {
-            return false;
-        }
-        
-        // Excluir produtos da loja virtual (só mostrar eventos)
-        const title = (order.title || '').toLowerCase();
-        const item = (order.item || '').toLowerCase();
-        const eventType = (order.eventType || '').toLowerCase();
-        
-        // Excluir produtos da loja virtual
-        if (title.includes('planilhas') || 
-            title.includes('sensibilidades') || 
-            title.includes('imagens aéreas') || 
-            title.includes('camisa') ||
-            // compras de tokens (mas manter eventos xtreino-tokens)
-            (title.includes('token') && eventType !== 'xtreino-tokens') ||
-            item.includes('planilhas') || 
-            item.includes('sensibilidades') || 
-            item.includes('imagens aéreas') || 
-            item.includes('camisa') ||
-            (item.includes('token') && eventType !== 'xtreino-tokens')) {
-                return false;
-        }
-        
-        // Não filtrar por janela aqui; mostramos todos e controlamos a disponibilidade do botão
-        return true;
-        
-        return true;
-    });
-
-    if (confirmedOrders.length === 0) {
-        whatsappContainer.classList.add('hidden');
-        return;
-    }
-
-    whatsappContainer.classList.remove('hidden');
-    
-    // Mapeamento de eventos para links do WhatsApp (você pode personalizar)
-    const whatsappLinks = {
-        'camp-freitas': 'https://chat.whatsapp.com/SEU_LINK_CAMP_FREITAS',
-        'xtreino-gratuito': 'https://chat.whatsapp.com/SEU_LINK_XTREINO_GRATUITO',
-        'modo-liga': 'https://chat.whatsapp.com/SEU_LINK_MODO_LIGA',
-        'treino': 'https://chat.whatsapp.com/SEU_GRUPO_TREINO',
-        'modoLiga': 'https://chat.whatsapp.com/SEU_GRUPO_MODO_LIGA',
-        'semanal': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
-        'finalSemanal': 'https://chat.whatsapp.com/SEU_GRUPO_FINAL_SEMANAL',
-        'campFases': 'https://chat.whatsapp.com/SEU_GRUPO_CAMP_FASES',
-        'xtreino-tokens': 'https://chat.whatsapp.com/SEU_GRUPO_ASSOCIADO'
-    };
-
-    // Paginate WhatsApp links (show only 5 per page)
-    const whatsappPerPage = 5;
-    const whatsappTotalPages = Math.ceil(confirmedOrders.length / whatsappPerPage);
-    const whatsappStartIndex = (currentWhatsAppPage - 1) * whatsappPerPage;
-    const whatsappEndIndex = whatsappStartIndex + whatsappPerPage;
-    const currentWhatsappOrders = confirmedOrders.slice(whatsappStartIndex, whatsappEndIndex);
-
-    whatsappList.innerHTML = currentWhatsappOrders.map(order => {
-        const eventType = order.eventType || '';
-        const rawTitle = order.title || '';
-        const rawDate = order.date || null;
-        const rawSchedule = order.schedule || '';
-        
-        // Usar o link salvo no pedido ou determinar baseado no tipo de evento
-        let whatsappLink = order.whatsappLink || whatsappLinks[eventType] || whatsappLinks['modo-liga'];
-        
-        // Se não encontrar por eventType, tenta por título
-        if (!order.whatsappLink && !whatsappLinks[eventType]) {
-            if (title.toLowerCase().includes('camp')) {
-                whatsappLink = whatsappLinks['camp-freitas'];
-            } else if (title.toLowerCase().includes('gratuito')) {
-                whatsappLink = whatsappLinks['xtreino-gratuito'];
-            } else if (title.toLowerCase().includes('treino')) {
-                whatsappLink = whatsappLinks['treino'];
-            } else if (title.toLowerCase().includes('modo liga')) {
-                whatsappLink = whatsappLinks['modoLiga'];
-            } else if (title.toLowerCase().includes('semanal')) {
-                whatsappLink = whatsappLinks['semanal'];
-            }
-        }
-        
-        // Calcular janela de disponibilidade do link (entre horário e +30min)
-        let showWhatsAppButton = true;
-        
-        if ((rawSchedule && rawDate) || (order.eventDate && (order.schedule || order.hour))) {
-            const dateStr = rawDate || order.eventDate;
-            const scheduleStr = rawSchedule || order.schedule || order.hour || '';
-            const startDt = getEventDateTime(dateStr, scheduleStr);
-            if (!isNaN(startDt.getTime())){
-                const endDt = new Date(startDt.getTime() + (30 * 60 * 1000));
-                const now = new Date();
-                // Disponível SOMENTE entre o horário e +30min
-                showWhatsAppButton = now >= startDt && now <= endDt;
-            } else {
-                showWhatsAppButton = false;
-            }
-        } else {
-            showWhatsAppButton = false;
-        }
-
-        return `
-            <div class="border border-gray-200 rounded-lg p-4 mb-4">
-                <div class="flex justify-between items-center">
-                    <div>
-                        <h4 class="font-medium text-gray-900">${formatTitleWithSchedule(rawTitle, (order.eventDate||rawDate), (order.schedule||order.hour||rawSchedule))}</h4>
-                    </div>
-                    ${showWhatsAppButton ? `
-                    <a href="${whatsappLink}" target="_blank" 
-                       class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
-                        </svg>
-                        <span>Entrar no Grupo</span>
-                    </a>
-                    ` : `
-                        <div class="bg-gray-300 text-gray-600 px-4 py-2 rounded-lg flex items-center space-x-2">
-                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                            </svg>
-                            <span>Link Expirado</span>
-                        </div>
-                    `}
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    // Add pagination for WhatsApp links if needed
-    if (whatsappTotalPages > 1) {
-        const whatsappPaginationHTML = generateWhatsAppPaginationHTML(currentWhatsAppPage, whatsappTotalPages);
-        whatsappList.innerHTML += whatsappPaginationHTML;
-    }
-    
-    // Atualizar automaticamente a cada minuto para verificar expiração
-    setTimeout(() => {
-        loadWhatsAppLinks(allOrdersData);
-    }, 60000); // 60 segundos
-}
 
 // Display all orders with pagination (filtered for events only)
-function displayAllOrdersPaginated() {
+async function displayAllOrdersPaginated() {
     const container = document.getElementById('allOrders');
+    
+    console.log('🔍 Total de pedidos carregados:', allOrdersData.length);
+    console.log('🔍 Todos os pedidos:', allOrdersData);
     
     // Filter only events (Treinos, Camps, Semanal, Modo Liga) -
     // incluir xtreino-tokens (consumo via tokens) e excluir compras de tokens
@@ -633,14 +556,23 @@ function displayAllOrdersPaginated() {
         const item = (order.item || '').toLowerCase();
         const eventType = (order.eventType || '').toLowerCase();
         
+        console.log('🔍 Analisando pedido:', {
+            title,
+            item,
+            eventType,
+            status: order.status,
+            whatsappLink: order.whatsappLink
+        });
+        
         // Excluir compras de tokens (orders com descrição/item contendo token)
         // mas manter registros de consumo (eventType === 'xtreino-tokens')
         if ((title.includes('token') || item.includes('token')) && eventType !== 'xtreino-tokens') {
+            console.log('❌ Pedido excluído - compra de token');
             return false;
         }
         
         // Incluir somente eventos + xtreino-tokens
-        return eventType === 'xtreino-tokens' ||
+        const isEvent = eventType === 'xtreino-tokens' ||
                title.includes('xtreino') || 
                title.includes('camp') || 
                title.includes('semanal') || 
@@ -649,7 +581,13 @@ function displayAllOrdersPaginated() {
                item.includes('camp') || 
                item.includes('semanal') || 
                item.includes('modo liga');
+        
+        console.log(isEvent ? '✅ Pedido incluído - é evento' : '❌ Pedido excluído - não é evento');
+        return isEvent;
     });
+    
+    console.log('🔍 Pedidos de eventos filtrados:', eventsOnly.length);
+    console.log('🔍 Eventos encontrados:', eventsOnly);
     
     if (eventsOnly.length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-center">Nenhum evento encontrado</p>';
@@ -662,30 +600,34 @@ function displayAllOrdersPaginated() {
     const endIndex = startIndex + ordersPerPage;
     const currentOrders = eventsOnly.slice(startIndex, endIndex);
 
-    // Generate orders HTML
-    const ordersHTML = currentOrders.map(order => `
-        <div class="bg-gray-50 rounded-lg p-4 mb-4">
-            <div class="flex items-center justify-between mb-2">
-                <h4 class="font-medium text-gray-900">${formatTitleWithSchedule((order.title||'Reserva'), (order.eventDate||''), (order.schedule||''))}</h4>
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status, order)}">
-                    ${getStatusText(order.status, order)}
-                </span>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                <div>
-                    <span class="font-medium">Data:</span> ${order.eventDate ? `${formatShortDatePtBr(order.eventDate)} ${parseSchedule(order.schedule).hour? 'às '+parseSchedule(order.schedule).hour : ''}` : formatDate(order.date)}
+    // Generate orders HTML with WhatsApp buttons
+    const ordersHTML = await Promise.all(currentOrders.map(async order => {
+        const whatsappButton = await getOrderActionButton(order);
+        return `
+            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="font-medium text-gray-900">${formatTitleWithSchedule((order.title||'Reserva'), (order.eventDate||''), (order.schedule||''))}</h4>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status, order)}">
+                        ${getStatusText(order.status, order)}
+                    </span>
                 </div>
-                <div>
-                    <span class="font-medium">${order.paidWithTokens ? 'Consumo:' : 'Valor:'}</span> ${order.paidWithTokens ? `-${order.tokensUsed||1} token${(order.tokensUsed||1)>1?'s':''}` : `R$ ${Number(order.price||0).toFixed(2)}`}
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                    <div>
+                        <span class="font-medium">Data:</span> ${order.eventDate ? `${formatShortDatePtBr(order.eventDate)} ${parseSchedule(order.schedule).hour? 'às '+parseSchedule(order.schedule).hour : ''}` : formatDate(order.date)}
+                    </div>
+                    <div>
+                        <span class="font-medium">${order.paidWithTokens ? 'Consumo:' : 'Valor:'}</span> ${order.paidWithTokens ? `-${order.tokensUsed||1} token${(order.tokensUsed||1)>1?'s':''}` : `R$ ${Number(order.price||0).toFixed(2)}`}
+                    </div>
                 </div>
+                ${whatsappButton}
             </div>
-        </div>
-    `).join('');
+        `;
+    }));
 
     // Generate pagination HTML
     const paginationHTML = generatePaginationHTML(currentPage, totalPages);
 
-    container.innerHTML = ordersHTML + paginationHTML;
+    container.innerHTML = ordersHTML.join('') + paginationHTML;
 }
 
 // Generate pagination HTML
@@ -867,23 +809,275 @@ function generateWhatsAppPaginationHTML(currentPage, totalPages) {
 }
 
 
+// Função para obter link do WhatsApp dinamicamente
+async function getWhatsAppLinkForOrder(order) {
+    try {
+        console.log('🔍 getWhatsAppLinkForOrder - Order:', order);
+        console.log('🔍 EventType:', order.eventType);
+        console.log('🔍 Schedule:', order.schedule);
+        
+        // Se o pedido já tem um link salvo, usar ele
+        if (order.whatsappLink) {
+            console.log('✅ Usando link salvo no pedido:', order.whatsappLink);
+            return order.whatsappLink;
+        }
+        
+        // Buscar no Firestore (links do admin)
+        if (window.getWhatsAppLink) {
+            console.log('🔍 Buscando link no admin...');
+            try {
+                const adminLink = await window.getWhatsAppLink(order.eventType, order.schedule);
+                console.log('🔍 Link encontrado no admin:', adminLink);
+                
+                if (adminLink && adminLink !== 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO' && adminLink !== 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS') {
+                    console.log('✅ Usando link do admin:', adminLink);
+                    return adminLink;
+                }
+            } catch (error) {
+                console.error('❌ Erro ao buscar link no admin:', error);
+            }
+        } else {
+            console.warn('⚠️ Função getWhatsAppLink não disponível');
+        }
+        
+        // Tentar buscar diretamente no Firestore se a função não estiver disponível
+        try {
+            console.log('🔍 Tentando buscar diretamente no Firestore...');
+            const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            
+            if (window.firebaseDb) {
+                const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
+                
+                // Buscar link específico para o horário
+                if (order.schedule) {
+                    const specificQuery = query(
+                        whatsappLinksRef,
+                        where('eventType', '==', order.eventType),
+                        where('schedule', '==', order.schedule),
+                        where('status', '==', 'active')
+                    );
+                    const specificSnapshot = await getDocs(specificQuery);
+                    
+                    if (!specificSnapshot.empty) {
+                        const link = specificSnapshot.docs[0].data().link;
+                        console.log('✅ Link específico encontrado diretamente:', link);
+                        return link;
+                    }
+                }
+                
+                // Buscar link geral para o evento
+                const generalQuery = query(
+                    whatsappLinksRef,
+                    where('eventType', '==', order.eventType),
+                    where('schedule', '==', null),
+                    where('status', '==', 'active')
+                );
+                const generalSnapshot = await getDocs(generalQuery);
+                
+                if (!generalSnapshot.empty) {
+                    const link = generalSnapshot.docs[0].data().link;
+                    console.log('✅ Link geral encontrado diretamente:', link);
+                    return link;
+                }
+            }
+        } catch (error) {
+            console.error('❌ Erro ao buscar diretamente no Firestore:', error);
+        }
+        
+        // Fallback para links padrão baseados nos novos eventos
+        const defaultLinks = {
+            'camp-freitas': 'https://chat.whatsapp.com/SEU_LINK_CAMP_FREITAS',
+            'xtreino-gratuito': 'https://chat.whatsapp.com/SEU_LINK_XTREINO_GRATUITO',
+            'modo-liga': 'https://chat.whatsapp.com/SEU_LINK_MODO_LIGA',
+            'treino': 'https://chat.whatsapp.com/SEU_GRUPO_TREINO',
+            'modoLiga': 'https://chat.whatsapp.com/SEU_GRUPO_MODO_LIGA',
+            'semanal': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
+            'semanal-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
+            'finalSemanal': 'https://chat.whatsapp.com/SEU_GRUPO_FINAL_SEMANAL',
+            'campFases': 'https://chat.whatsapp.com/SEU_GRUPO_CAMP_FASES',
+            'xtreino-tokens': 'https://chat.whatsapp.com/SEU_GRUPO_ASSOCIADO'
+        };
+        
+        const fallbackLink = defaultLinks[order.eventType] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+        console.log('🔍 Usando link padrão:', fallbackLink);
+        return fallbackLink;
+    } catch (error) {
+        console.error('❌ Erro ao obter link do WhatsApp:', error);
+        return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+    }
+}
+
 // Get appropriate action button for order (events only)
-function getOrderActionButton(order) {
-    // Default WhatsApp link for events
-    if (order.whatsappLink) {
-        return `
-                <div class="mt-3">
-                    <a href="${order.whatsappLink}" target="_blank" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200">
-                        <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
-                        </svg>
-                        Entrar no Grupo
-                    </a>
-                </div>
-        `;
+async function getOrderActionButton(order) {
+    console.log('🔍 getOrderActionButton - Order:', order);
+    
+    // Verificar se é um evento (não produto da loja)
+    const title = (order.title || '').toLowerCase();
+    const item = (order.item || '').toLowerCase();
+    const eventType = (order.eventType || '').toLowerCase();
+    
+    console.log('🔍 Title:', title, 'Item:', item, 'EventType:', eventType);
+    
+    // Excluir produtos da loja virtual
+    if (title.includes('planilhas') || 
+        title.includes('sensibilidades') || 
+        title.includes('imagens aéreas') || 
+        title.includes('camisa') ||
+        (title.includes('token') && eventType !== 'xtreino-tokens') ||
+        item.includes('planilhas') || 
+        item.includes('sensibilidades') || 
+        item.includes('imagens aéreas') || 
+        item.includes('camisa') ||
+        (item.includes('token') && eventType !== 'xtreino-tokens')) {
+        console.log('❌ Produto da loja excluído');
+        return '';
     }
     
-    return '';
+    // Verificar se o pedido está confirmado
+    if (!(order.status === 'paid' || order.status === 'confirmed')) {
+        console.log('❌ Pedido não confirmado, status:', order.status);
+        return '';
+    }
+    
+    console.log('✅ Pedido válido, obtendo link do WhatsApp...');
+    
+    // Obter link do WhatsApp dinamicamente
+    const whatsappLink = await getWhatsAppLinkForOrder(order);
+    console.log('🔍 Link obtido:', whatsappLink);
+    
+    // Calcular janela de disponibilidade (1 hora antes até 1 hora depois)
+    let isAvailable = false;
+    let buttonText = 'Entrar no Grupo';
+    let buttonClass = 'text-green-700 bg-green-100 hover:bg-green-200';
+    let linkDisplay = whatsappLink;
+    
+    if ((order.schedule && order.date) || (order.eventDate && (order.schedule || order.hour))) {
+        const dateStr = order.date || order.eventDate;
+        const scheduleStr = order.schedule || order.hour || '';
+        console.log('🔍 Data do evento:', dateStr, 'Horário:', scheduleStr);
+        console.log('🔍 Order completo:', order);
+        
+        // Se dateStr é um objeto Date, converter para string no formato correto
+        let actualDateStr = dateStr;
+        if (dateStr instanceof Date) {
+            // Se temos eventDate, verificar se é uma data válida e recente
+            if (order.eventDate) {
+                const eventDateObj = new Date(order.eventDate);
+                const now = new Date();
+                const daysDiff = (now - eventDateObj) / (1000 * 60 * 60 * 24);
+                
+                console.log('🔍 eventDate:', order.eventDate);
+                console.log('🔍 Diferença em dias:', daysDiff);
+                
+                // Se eventDate é muito antigo (mais de 30 dias), usar a data de criação
+                if (daysDiff > 30) {
+                    actualDateStr = dateStr.toISOString().split('T')[0];
+                    console.log('🔍 eventDate muito antigo, usando data de criação:', actualDateStr);
+                } else {
+                    actualDateStr = order.eventDate;
+                    console.log('🔍 Usando eventDate válido:', actualDateStr);
+                }
+            } else {
+                // Converter Date para string YYYY-MM-DD
+                actualDateStr = dateStr.toISOString().split('T')[0];
+                console.log('🔍 Convertendo Date para string:', actualDateStr);
+            }
+        } else if (typeof dateStr === 'string') {
+            // Se é string, verificar se é a data correta
+            console.log('🔍 dateStr é string:', dateStr);
+            
+            // Se temos eventDate, verificar se é válido
+            if (order.eventDate) {
+                const eventDateObj = new Date(order.eventDate);
+                const now = new Date();
+                const daysDiff = (now - eventDateObj) / (1000 * 60 * 60 * 24);
+                
+                console.log('🔍 eventDate string:', order.eventDate);
+                console.log('🔍 Diferença em dias:', daysDiff);
+                
+                // Se eventDate é muito antigo, usar dateStr
+                if (daysDiff > 30) {
+                    actualDateStr = dateStr;
+                    console.log('🔍 eventDate muito antigo, usando dateStr:', actualDateStr);
+                } else {
+                    actualDateStr = order.eventDate;
+                    console.log('🔍 Usando eventDate válido:', actualDateStr);
+                }
+            }
+        }
+        
+        console.log('🔍 Data final a ser usada:', actualDateStr);
+        
+        const startDt = getEventDateTime(actualDateStr, scheduleStr);
+        console.log('🔍 Data/hora calculada:', startDt);
+        
+        if (!isNaN(startDt.getTime())) {
+            const now = new Date();
+            const oneHourBefore = new Date(startDt.getTime() - (60 * 60 * 1000)); // 1 hora antes
+            const oneHourAfter = new Date(startDt.getTime() + (60 * 60 * 1000)); // 1 hora depois
+            
+            console.log('🔍 Agora:', now);
+            console.log('🔍 1h antes:', oneHourBefore);
+            console.log('🔍 1h depois:', oneHourAfter);
+            console.log('🔍 Evento em:', startDt);
+            
+            // Calcular diferenças em minutos para debug
+            const minutesUntilStart = Math.ceil((startDt.getTime() - now.getTime()) / (1000 * 60));
+            const minutesAfterStart = Math.ceil((now.getTime() - startDt.getTime()) / (1000 * 60));
+            
+            console.log('🔍 Minutos até o evento:', minutesUntilStart);
+            console.log('🔍 Minutos após o evento:', minutesAfterStart);
+            
+            if (now >= oneHourBefore && now <= oneHourAfter) {
+                isAvailable = true;
+                console.log('✅ Link disponível - dentro da janela');
+            } else if (now < oneHourBefore) {
+                // Ainda não está disponível
+                const timeUntilAvailable = Math.ceil((oneHourBefore.getTime() - now.getTime()) / (1000 * 60));
+                buttonText = `Disponível em ${timeUntilAvailable}min`;
+                buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
+                isAvailable = false;
+                console.log('⏰ Link não disponível ainda:', buttonText);
+            } else {
+                // Já expirou - evento passou
+                buttonText = 'Link Expirado';
+                buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
+                isAvailable = false;
+                console.log('❌ Link expirado - evento passou');
+                console.log('🔍 Motivo: agora > 1h depois do evento');
+            }
+        } else {
+            console.log('❌ Data/hora inválida');
+        }
+    } else {
+        console.log('❌ Dados de data/hora insuficientes');
+    }
+    
+    return `
+        <div class="mt-3 space-y-2">
+            <!-- Link do WhatsApp visível -->
+            <div class="text-xs text-gray-600">
+                <strong>Link:</strong> <span class="font-mono text-xs break-all">${linkDisplay}</span>
+            </div>
+            
+            <!-- Botão de ação -->
+            ${isAvailable ? `
+                <a href="${whatsappLink}" target="_blank" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md ${buttonClass}">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
+                    </svg>
+                    ${buttonText}
+                </a>
+            ` : `
+                <span class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md ${buttonClass}">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
+                    </svg>
+                    ${buttonText}
+                </span>
+            `}
+        </div>
+    `;
 }
 
 // Get appropriate action button for product
@@ -1342,16 +1536,6 @@ async function loadTokenUsageHistory() {
                                     ${getStatusText(status, { eventType: 'xtreino-tokens' })}
                                 </span>
                             </div>
-                            ${whatsappLink ? `
-                                <div class="mt-2">
-                                    <a href="${whatsappLink}" target="_blank" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-full hover:bg-green-700 transition-colors">
-                                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.16 12.04 20.16C10.56 20.16 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 15 3.8 13.47 3.8 11.91C3.8 7.37 7.5 3.67 12.05 3.67M8.53 7.33C8.37 7.33 8.1 7.39 7.87 7.64C7.64 7.89 7 8.5 7 9.71C7 10.93 7.89 12.1 8 12.27C8.14 12.44 9.76 14.94 12.25 16C12.84 16.27 13.3 16.42 13.66 16.53C14.25 16.72 14.79 16.69 15.22 16.63C15.7 16.56 16.68 16.03 16.89 15.45C17.1 14.87 17.1 14.38 17 14.2C16.91 14 16.47 13.85 15.65 13.25C14.83 12.65 14.5 12.38 14.26 12.14C14.03 11.9 13.9 11.8 13.68 11.56C13.45 11.31 13.52 11.16 13.6 11.04C13.68 10.92 13.78 10.76 13.87 10.62C13.97 10.5 14.02 10.4 14.12 10.24C14.22 10.08 14.17 9.94 14.1 9.82C14.03 9.7 13.18 7.91 12.83 7.23C12.5 6.58 12.15 6.67 11.89 6.66C11.64 6.65 11.36 6.65 11.08 6.65C10.8 6.65 10.34 6.54 9.95 6.89C9.56 7.24 8.76 7.95 8.76 9.65C8.76 11.35 10.1 12.93 10.27 13.14C10.44 13.35 12.73 15.76 16.08 17.14C16.8 17.44 17.35 17.65 17.73 17.73C18.11 17.81 18.46 17.77 18.75 17.7C19.08 17.62 19.7 17.36 19.93 17.08C20.16 16.8 20.27 16.56 20.35 16.45C20.43 16.34 20.5 16.2 20.4 16.04C20.3 15.88 20.2 15.8 20.05 15.65C19.9 15.5 19.72 15.35 19.54 15.2C19.36 15.05 19.2 14.95 19 14.75C18.8 14.55 18.85 14.4 18.9 14.3C18.95 14.2 19 14.05 18.95 13.9C18.9 13.75 18.4 12.3 17.4 10.95C16.25 9.4 14.9 8.88 14.7 8.8C14.5 8.72 14.3 8.68 14.1 8.68C13.9 8.68 13.6 8.73 13.35 8.78C13.1 8.83 12.85 8.8 12.65 8.65C12.45 8.5 11.85 7.95 11.1 7.3C10.6 6.9 10.2 6.7 9.85 6.95C9.5 7.2 8.7 7.33 8.53 7.33Z"/>
-                                        </svg>
-                                        Entrar no Grupo
-                                    </a>
-                                </div>
-                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -1643,9 +1827,9 @@ window.purchaseTokens = async function(quantity) {
 }
 
 // Funções de paginação expostas globalmente
-window.changePage = function(page) {
+window.changePage = async function(page) {
     currentPage = page;
-    displayAllOrdersPaginated();
+    await displayAllOrdersPaginated();
 };
 
 window.changeProductsPage = function(page) {
