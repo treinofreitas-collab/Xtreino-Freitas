@@ -484,8 +484,13 @@ function getEventDateTime(dateStr, scheduleStr) {
         }
         console.log('🔍 Time string extraída:', timeStr);
         
-        // Converter horário (ex: "19h" -> 19)
-        const hour = parseInt(timeStr.replace('h', ''));
+        // Normalizar e converter horário (aceita 19, 19h, 19:00, "Terça-feira - 19h")
+        const normalizeHour = (s)=>{
+            if (!s) return NaN;
+            const m = String(s).toLowerCase().match(/(\d{1,2})/);
+            return m ? parseInt(m[1],10) : NaN;
+        };
+        const hour = normalizeHour(timeStr);
         console.log('🔍 Hora convertida:', hour);
         
         // Verificar se a hora é válida
@@ -884,26 +889,13 @@ async function getWhatsAppLinkForOrder(order) {
             console.error('❌ Erro ao buscar diretamente no Firestore:', error);
         }
         
-        // Fallback para links padrão baseados nos novos eventos
-        const defaultLinks = {
-            'camp-freitas': 'https://chat.whatsapp.com/SEU_LINK_CAMP_FREITAS',
-            'xtreino-gratuito': 'https://chat.whatsapp.com/SEU_LINK_XTREINO_GRATUITO',
-            'modo-liga': 'https://chat.whatsapp.com/SEU_LINK_MODO_LIGA',
-            'treino': 'https://chat.whatsapp.com/SEU_GRUPO_TREINO',
-            'modoLiga': 'https://chat.whatsapp.com/SEU_GRUPO_MODO_LIGA',
-            'semanal': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
-            'semanal-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
-            'finalSemanal': 'https://chat.whatsapp.com/SEU_GRUPO_FINAL_SEMANAL',
-            'campFases': 'https://chat.whatsapp.com/SEU_GRUPO_CAMP_FASES',
-            'xtreino-tokens': 'https://chat.whatsapp.com/SEU_GRUPO_ASSOCIADO'
-        };
-        
-        const fallbackLink = defaultLinks[order.eventType] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+        // Fallback desativado: se não houver link válido, retornar vazio
+        const fallbackLink = '';
         console.log('🔍 Usando link padrão:', fallbackLink);
         return fallbackLink;
     } catch (error) {
         console.error('❌ Erro ao obter link do WhatsApp:', error);
-        return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+        return '';
     }
 }
 

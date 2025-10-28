@@ -46,6 +46,9 @@
                     <div>
                         <label class="block text-sm font-medium mb-2">Senha</label>
                         <input id="adminPassword" type="password" required class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none" placeholder="••••••••">
+                        <div class="mt-2 text-right">
+                            <button id="btnForgotPassword" type="button" class="text-sm text-blue-600 hover:text-blue-800">Esqueceu a senha?</button>
+                        </div>
                     </div>
                     <div class="flex items-center">
                         <input id="rememberMe" type="checkbox" class="mr-2">
@@ -56,6 +59,7 @@
                     </button>
                 </form>
                 <div id="loginError" class="hidden mt-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg text-sm"></div>
+                <div id="loginInfo" class="hidden mt-4 p-3 bg-green-100 border border-green-300 text-green-700 rounded-lg text-sm"></div>
                 <div class="mt-6 text-center">
                     <p class="text-xs text-gray-500">
                         <i class="fas fa-shield-alt mr-1"></i>

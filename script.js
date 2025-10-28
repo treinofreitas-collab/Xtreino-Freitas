@@ -1100,9 +1100,9 @@ function showProductModal(productId){
         'passe-booyah': 'assets/images/products/PASSE ORG FREITAS FEED.png',
         'camisa': 'assets/images/products/DIVULGAÇÃO MANTO FREITAS.jpg',
         // imagens dos eventos (JPGs no projeto)
-        'evt-xtreino-gratuito': 'assets/images/events/XTREINO FREITAS GRATUITO E ASSOCIADO.jpg',
-        'evt-modo-liga': 'assets/images/events/XTREINO FREITAS MODO LIGA.jpg',
-        'evt-camp-freitas': 'assets/images/events/CAMP FREITAS.jpg',
+        'evt-xtreino-gratuito': 'assets/images/events/XTREINO TOKENS.jpeg',
+        'evt-modo-liga': 'assets/images/events/Modo Liga.jpeg',
+        'evt-camp-freitas': 'assets/images/events/CAMP.jpeg',
         'evt-semanal-freitas': 'assets/images/events/SEMANAL FREITAS.jpg'
     };
     const imgEl = document.getElementById('purchaseImage');
@@ -3955,13 +3955,28 @@ async function getWhatsAppLink(eventType, schedule = null) {
     const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     
     const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
+    // Normalizar parâmetros
+    const normalizeType = (t)=> String(t||'').toLowerCase().trim()
+      .replace(/\s+/g,'-')
+      .replace('xtreino-tokens','xtreino-tokens')
+      .replace('xtreino-gratuito','xtreino-gratuito')
+      .replace('modo-liga','modo-liga')
+      .replace('camp','camp-freitas');
+    const normalizeHour = (h)=> {
+      if (!h) return null;
+      const s = String(h).toLowerCase().trim();
+      const m = s.match(/(\d{1,2})/);
+      return m ? `${parseInt(m[1],10)}h` : s;
+    };
+    const type = normalizeType(eventType);
+    const hour = normalizeHour(schedule);
     
     // Primeiro, tentar encontrar link específico para o horário
-    if (schedule) {
+    if (hour) {
       const specificQuery = query(
         whatsappLinksRef,
-        where('eventType', '==', eventType),
-        where('schedule', '==', schedule),
+        where('eventType', '==', type),
+        where('schedule', '==', hour),
         where('status', '==', 'active')
       );
       const specificSnapshot = await getDocs(specificQuery);
@@ -3974,7 +3989,7 @@ async function getWhatsAppLink(eventType, schedule = null) {
     // Se não encontrou específico, buscar link geral para o evento
     const generalQuery = query(
       whatsappLinksRef,
-      where('eventType', '==', eventType),
+      where('eventType', '==', type),
       where('schedule', '==', null),
       where('status', '==', 'active')
     );
@@ -3983,22 +3998,33 @@ async function getWhatsAppLink(eventType, schedule = null) {
     if (!generalSnapshot.empty) {
       return generalSnapshot.docs[0].data().link;
     }
+    // Alguns cadastros podem usar string vazia em vez de null para "sem horário"
+    const generalEmptyQuery = query(
+      whatsappLinksRef,
+      where('eventType', '==', type),
+      where('schedule', '==', ''),
+      where('status', '==', 'active')
+    );
+    const generalEmptySnapshot = await getDocs(generalEmptyQuery);
+    if (!generalEmptySnapshot.empty) {
+      return generalEmptySnapshot.docs[0].data().link;
+    }
     
     // Fallback para links padrão se não encontrar no Firestore
     const defaultLinks = {
-      'xtreino-tokens': 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS',
-      'xtreino-gratuito': 'https://chat.whatsapp.com/SEU_GRUPO_GRATUITO',
-      'modo-liga': 'https://chat.whatsapp.com/SEU_GRUPO_MODO_LIGA',
-      'camp-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_CAMP_FREITAS',
-      'semanal-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
-      'treino': 'https://chat.whatsapp.com/SEU_GRUPO_TREINO'
+      'xtreino-tokens': '',
+      'xtreino-gratuito': '',
+      'modo-liga': '',
+      'camp-freitas': '',
+      'semanal-freitas': '',
+      'treino': ''
     };
     
-    return defaultLinks[eventType] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+    return defaultLinks[type] || '';
     
   } catch (error) {
     console.error('❌ Erro ao obter link do WhatsApp:', error);
-    return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+    return '';
   }
 }
 
@@ -4012,7 +4038,15 @@ async function createTokenSchedule(eventType, cost) {
         const email = document.getElementById('schedEmail')?.value?.trim() || window.firebaseAuth.currentUser?.email;
         const phone = document.getElementById('schedPhone')?.value?.trim() || '';
         const date = document.getElementById('schedDate')?.value || new Date().toISOString().split('T')[0];
-        const schedule = document.getElementById('schedSelectedTime')?.value || '19h';
+        // Pegar horário selecionado sem defaultar para 19h
+        const rawSchedule = document.getElementById('schedSelectedTime')?.value || document.querySelector('#schedTimes .selected')?.textContent || '';
+        const normalizeHour = (h)=>{
+            if (!h) return null;
+            const s = String(h).toLowerCase().trim();
+            const m = s.match(/(\d{1,2})/);
+            return m ? `${parseInt(m[1],10)}h` : s;
+        };
+        const schedule = normalizeHour(rawSchedule);
         
         const eventNames = {
             'treino': 'Treino Normal',
@@ -4032,7 +4066,7 @@ async function createTokenSchedule(eventType, cost) {
             email: email, // Campo duplicado para compatibilidade
             phone: phone,
             date: date,
-            schedule: schedule,
+            schedule: schedule || null,
             eventType: eventType,
             status: 'confirmed',
             paidWithTokens: true,

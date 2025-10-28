@@ -25,7 +25,7 @@
   });
   await waitReady();
 
-  const { onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
+  const { onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
   const { collection, getDocs, doc, updateDoc, query, where, orderBy, getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
 
   // Security: Admin email whitelist (configure these)
@@ -45,6 +45,7 @@
   const dashboard = document.getElementById('dashboard');
   const roleBadge = document.getElementById('roleBadge');
   const loginError = document.getElementById('loginError');
+  const loginInfo = document.getElementById('loginInfo');
 
   // Security: Check if user is authorized admin
   async function isAuthorizedAdmin(user) {
@@ -437,6 +438,36 @@
     setTimeout(() => {
       loginError.classList.add('hidden');
     }, 5000);
+  }
+
+  function showLoginInfo(message) {
+    if (!loginInfo) return;
+    loginInfo.textContent = message;
+    loginInfo.classList.remove('hidden');
+    setTimeout(() => {
+      loginInfo.classList.add('hidden');
+    }, 7000);
+  }
+
+  // Forgot password handler
+  const forgotBtn = document.getElementById('btnForgotPassword');
+  if (forgotBtn) {
+    forgotBtn.addEventListener('click', async () => {
+      try {
+        const emailInput = document.getElementById('adminEmail');
+        const email = (emailInput?.value || '').trim();
+        if (!email) {
+          showLoginError('Informe seu email para redefinir a senha.');
+          return;
+        }
+        await sendPasswordResetEmail(window.firebaseAuth, email);
+        showLoginInfo('Enviamos um email com o link para redefinir sua senha.');
+      } catch (err) {
+        console.error('Erro ao enviar reset de senha:', err);
+        const msg = (err && err.code) ? String(err.code) : 'Falha ao enviar email de redefinição.';
+        showLoginError(msg.replace('auth/', '').replaceAll('-', ' '));
+      }
+    });
   }
 
   function setView(authRole){
