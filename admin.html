@@ -582,6 +582,31 @@
                         <span id="couponUsageCount">0 usos</span>
                     </div>
                 </div>
+
+                <!-- Filtros de Uso de Cupons -->
+                <div class="flex flex-wrap items-end gap-3 mb-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Período</label>
+                        <select id="couponUsagePeriod" class="border rounded px-2 py-1 text-xs">
+                            <option value="1d">Último 1 dia</option>
+                            <option value="7d" selected>Últimos 7 dias</option>
+                            <option value="15d">Últimos 15 dias</option>
+                            <option value="30d">Últimos 30 dias</option>
+                            <option value="all">Todos</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Tipo</label>
+                        <select id="couponUsageContext" class="border rounded px-2 py-1 text-xs">
+                            <option value="all" selected>Eventos e Produtos</option>
+                            <option value="events">Somente Eventos</option>
+                            <option value="store">Somente Produtos</option>
+                        </select>
+                    </div>
+                    <div class="ml-auto">
+                        <button id="couponUsageApply" class="px-3 py-2 bg-black text-white rounded text-xs">Aplicar</button>
+                    </div>
+                </div>
                 
                 <div class="overflow-x-auto -mx-4 px-4">
                     <table class="w-full text-xs min-w-[600px]">

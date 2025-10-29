@@ -5187,6 +5187,8 @@ function filterTokensUsers() {
 // Variáveis globais para cupons
 let couponsData = [];
 let couponUsageData = [];
+let filteredCouponUsageData = [];
+let couponUsageFilters = { period: '7d', context: 'all' };
 
 // Carregar cupons
 async function loadCoupons() {
@@ -5307,7 +5309,8 @@ async function loadCouponUsage() {
         });
         
         console.log(`✅ ${couponUsageData.length} usos de cupons carregados`);
-        renderCouponUsageTable();
+        // Inicializa filtros padrão e aplica
+        applyCouponUsageFilters();
     } catch (error) {
         console.error('❌ Erro ao carregar histórico de cupons:', error);
         const tbody = document.getElementById('couponUsageTableBody');
@@ -5328,7 +5331,9 @@ function renderCouponUsageTable() {
     
     if (!tbody) return;
     
-    if (couponUsageData.length === 0) {
+    const data = Array.isArray(filteredCouponUsageData) && filteredCouponUsageData.length ? filteredCouponUsageData : couponUsageData;
+    
+    if (data.length === 0) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="6" class="py-6 text-center text-gray-500">Nenhum uso de cupom encontrado</td>
@@ -5338,9 +5343,9 @@ function renderCouponUsageTable() {
         return;
     }
     
-    if (countElement) countElement.textContent = `${couponUsageData.length} usos`;
+    if (countElement) countElement.textContent = `${data.length} usos`;
     
-    tbody.innerHTML = couponUsageData.map(usage => {
+    tbody.innerHTML = data.map(usage => {
         // Usar os campos que realmente existem no banco
         const orderValue = usage.orderValue || 0;
         const discountAmount = usage.discountAmount || 0;
@@ -5363,6 +5368,40 @@ function renderCouponUsageTable() {
             </tr>
         `;
     }).join('');
+}
+
+// Aplicar filtros de período e contexto ao histórico de cupons
+function applyCouponUsageFilters() {
+    try {
+        const now = new Date();
+        let fromDate = null;
+        switch (couponUsageFilters.period) {
+            case '1d': fromDate = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000); break;
+            case '7d': fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
+            case '15d': fromDate = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000); break;
+            case '30d': fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); break;
+            case 'all': default: fromDate = null; break;
+        }
+        
+        filteredCouponUsageData = couponUsageData.filter(u => {
+            // Filtro por período
+            const usedAt = u.usedAt instanceof Date ? u.usedAt : new Date(u.usedAt);
+            const inPeriod = fromDate ? usedAt >= fromDate && usedAt <= now : true;
+            
+            // Filtro por contexto (events, store ou ambos)
+            const ctx = (u.context || '').toLowerCase();
+            const inContext = couponUsageFilters.context === 'all' ? true : ctx === couponUsageFilters.context;
+            
+            return inPeriod && inContext;
+        });
+        
+        renderCouponUsageTable();
+    } catch (e) {
+        console.error('Erro ao aplicar filtros de cupons:', e);
+        // fallback
+        filteredCouponUsageData = couponUsageData.slice();
+        renderCouponUsageTable();
+    }
 }
 
 // Abrir modal de criação de cupom
@@ -5812,6 +5851,20 @@ document.addEventListener('DOMContentLoaded', function() {
   const createCouponForm = document.getElementById('createCouponForm');
   if (createCouponForm) {
     createCouponForm.addEventListener('submit', createCoupon);
+  }
+  
+  // Listeners de filtros do uso de cupons
+  const couponUsagePeriod = document.getElementById('couponUsagePeriod');
+  const couponUsageContext = document.getElementById('couponUsageContext');
+  const couponUsageApply = document.getElementById('couponUsageApply');
+  if (couponUsagePeriod) {
+    couponUsagePeriod.addEventListener('change', (e)=>{ couponUsageFilters.period = e.target.value; });
+  }
+  if (couponUsageContext) {
+    couponUsageContext.addEventListener('change', (e)=>{ couponUsageFilters.context = e.target.value; });
+  }
+  if (couponUsageApply) {
+    couponUsageApply.addEventListener('click', ()=> applyCouponUsageFilters());
   }
 });
 
