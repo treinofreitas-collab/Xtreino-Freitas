@@ -2760,6 +2760,23 @@ function openScheduleModal(eventType){
     modal.dataset.eventType = eventType;
     document.getElementById('schedPrice').textContent = cfg.price.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
     document.getElementById('schedEventType').textContent = cfg.label;
+
+    // Mostrar/ocultar seção de cupom conforme tipo de pagamento
+    (function(){
+        const couponSection = document.getElementById('scheduleCouponSection');
+        if (couponSection){
+            // Esconde cupom quando pagamento é via tokens
+            couponSection.style.display = cfg.payWithToken ? 'none' : 'block';
+        }
+        if (cfg.payWithToken){
+            // Garante que nenhum cupom de agendamento fique aplicado
+            try { window.appliedScheduleCoupon = null; } catch(_) {}
+            const msg = document.getElementById('schedCouponMessage');
+            if (msg){ msg.classList.add('hidden'); msg.textContent = ''; }
+            const input = document.getElementById('schedCouponCodeInput');
+            if (input){ input.value = ''; }
+        }
+    })();
     
     // Initialize with one team
     addTeam();
@@ -3503,12 +3520,8 @@ async function submitSchedule(e){
         return;
     }
     
-    // Se for evento que usa tokens, usar tokens diretamente
-    if (cfg.payWithToken) {
-        await useTokensForEvent(eventType);
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-        return;
-    }
+    // Para eventos que usam tokens, seguimos o fluxo normal de criação de reservas
+    // e o débito proporcional (times × horários × preço) é aplicado mais abaixo
     
     // Lógica para eventos (agendamento múltiplo)
     const date = document.getElementById('schedDate').value;
