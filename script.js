@@ -3642,11 +3642,86 @@ async function submitSchedule(e){
         console.error('Erro ao criar reservas:', error);
     }
     if (cfg && cfg.payWithToken){
-        // Debita tokens totais e confirma
+        // Validar saldo de tokens antes de confirmar
         const totalCost = teams.length * selectedTimes.length * cfg.price;
+        
+        // Verificar se tem tokens suficientes
+        const profile = window.currentUserProfile || {};
+        if (!profile || profile.tokens === undefined || profile.tokens === null || Number(profile.tokens) < Number(totalCost)) {
+            alert(`Saldo insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+            // Remover reservas criadas se não tiver saldo
+            if (regIds.length > 0 && window.firebaseDb) {
+                try {
+                    const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                    for (let regId of regIds) {
+                        await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                    }
+                } catch (delError) {
+                    console.error('Erro ao remover reservas:', delError);
+                }
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+        
+        if (!canSpendTokens(totalCost)) {
+            alert(`Saldo insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+            // Remover reservas criadas se não tiver saldo
+            if (regIds.length > 0 && window.firebaseDb) {
+                try {
+                    const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                    for (let regId of regIds) {
+                        await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                    }
+                } catch (delError) {
+                    console.error('Erro ao remover reservas:', delError);
+                }
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+        
+        // Debita tokens totais
         spendTokens(totalCost);
+        
+        // Atualizar todas as reservas para 'confirmed' e adicionar campos de pagamento com tokens
+        if (regIds.length > 0 && window.firebaseDb && window.firebaseReady) {
+            try {
+                const { doc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                
+                for (let regId of regIds) {
+                    await updateDoc(doc(collection(window.firebaseDb, 'registrations'), regId), {
+                        status: 'confirmed',
+                        paidWithTokens: true,
+                        tokenCost: cfg.price,
+                        tokensUsed: cfg.price,
+                        confirmedAt: new Date(),
+                        updatedAt: new Date()
+                    });
+                }
+                
+                console.log(`✅ ${regIds.length} reservas confirmadas e atualizadas com pagamento via tokens`);
+            } catch (updateError) {
+                console.error('Erro ao atualizar reservas:', updateError);
+                alert('Reservas criadas mas houve erro ao confirmar. Contate o suporte.');
+            }
+        }
+        
         closeScheduleModal();
         alert(`${regIds.length} reservas confirmadas com uso de tokens!`);
+        
+        // Forçar atualização da área do cliente se estiver na página do cliente
+        try {
+            if (window.location.pathname.includes('client.html') || window.location.pathname.includes('client')) {
+                if (typeof loadRecentOrders === 'function') {
+                    loadRecentOrders().catch(() => {});
+                }
+                if (typeof loadOrders === 'function') {
+                    loadOrders().catch(() => {});
+                }
+            }
+        } catch(_) {}
+        
         if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
         return;
     }
