@@ -4223,7 +4223,31 @@ async function createTokenSchedule(eventType, cost) {
         });
         console.log('✅ Token schedule created with ID:', regDocRef.id);
         
-        // 2. Não criar pedido em 'orders' quando for pago com tokens
+        // 2. Criar registro leve em 'orders' para aparecer no "Meus Pedidos"
+        try {
+            await addDoc(collection(window.firebaseDb, 'orders'), {
+                userId: window.firebaseAuth.currentUser?.uid,
+                uid: window.firebaseAuth.currentUser?.uid,
+                customer: email,
+                buyerEmail: email,
+                title: scheduleData.title,
+                item: scheduleData.title,
+                eventType: eventType, // 'xtreino-tokens'
+                schedule: hour || null,
+                date: date,
+                amount: 0,
+                total: 0,
+                currency: 'BRL',
+                status: 'approved',
+                paidWithTokens: true,
+                tokensUsed: cost,
+                whatsappLink: whatsappLink,
+                createdAt: serverTimestamp(),
+                timestamp: Date.now()
+            });
+        } catch(orderErr) {
+            console.warn('⚠️ Falha ao criar ordem leve para tokens (seguindo com registrations):', orderErr);
+        }
         // Apenas salvar o registration acima e atualizar UI/local
         
         // Fechar modal
