@@ -4167,7 +4167,16 @@ async function createTokenSchedule(eventType, cost) {
             const m = s.match(/(\d{1,2})/);
             return m ? `${parseInt(m[1],10)}h` : s;
         };
-        const schedule = normalizeHour(rawSchedule);
+        const hour = normalizeHour(rawSchedule);
+        // Montar "Dia - 14h" para compatibilidade com o controle de vagas
+        const weekday = (()=>{
+            try{
+                const d = new Date(`${date}T00:00:00`);
+                const wd = d.toLocaleDateString('pt-BR',{ weekday:'long' });
+                return wd.charAt(0).toUpperCase() + wd.slice(1);
+            }catch(_){ return ''; }
+        })();
+        const schedule = weekday && hour ? `${weekday} - ${hour}` : (hour || null);
         
         const eventNames = {
             'treino': 'Treino Normal',
