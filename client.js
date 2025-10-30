@@ -52,6 +52,7 @@ if (auth && auth.setPersistence) {
 // Global variables
 let currentUser = null;
 let userProfile = null;
+let appliedTokenCoupon = null;
 
 // Initialize client area
 document.addEventListener('DOMContentLoaded', async function() {
@@ -1720,11 +1721,69 @@ function getStatusText(status, orderData = null) {
 window.openTokensPurchaseModal = function() {
     const modal = document.getElementById('tokensPurchaseModal');
     if (modal) modal.classList.remove('hidden');
+    // reset resumo
+    const summary = document.getElementById('tokensPurchaseSummary');
+    if (summary) summary.classList.add('hidden');
+    appliedTokenCoupon = null;
+    const msg = document.getElementById('tokensCouponMsg'); if (msg){ msg.textContent = ''; msg.className = 'text-xs mt-1 text-gray-500'; }
 }
 
 window.closeTokensPurchaseModal = function() {
     const modal = document.getElementById('tokensPurchaseModal');
     if (modal) modal.classList.add('hidden');
+}
+
+// Aplicar cupom na compra de tokens
+window.applyTokenCoupon = async function(){
+  try{
+    const codeEl = document.getElementById('tokensCouponCode');
+    const msgEl = document.getElementById('tokensCouponMsg');
+    const code = (codeEl?.value || '').trim().toUpperCase();
+    if (!code){ if(msgEl){ msgEl.textContent='Digite um código de cupom'; msgEl.className='text-xs mt-1 text-red-600'; } return; }
+    const { collection, getDocs, query, where, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const couponsRef = collection(window.firebaseDb, 'coupons');
+    const q = query(couponsRef, where('code','==', code), limit(1));
+    const snap = await getDocs(q);
+    if (snap.empty){ if(msgEl){ msgEl.textContent='Cupom não encontrado'; msgEl.className='text-xs mt-1 text-red-600'; } return; }
+    const data = { id: snap.docs[0].id, ...snap.docs[0].data() };
+    // validações
+    if (!data.isActive){ msgEl.textContent='Cupom inativo'; msgEl.className='text-xs mt-1 text-red-600'; return; }
+    if (data.expirationDate){ const exp = data.expirationDate.toDate ? data.expirationDate.toDate() : new Date(data.expirationDate); if (exp < new Date()){ msgEl.textContent='Cupom expirado'; msgEl.className='text-xs mt-1 text-red-600'; return; } }
+    const usage = (data.usageType||'both').toLowerCase();
+    if (!(usage==='both' || usage==='tokens' || usage==='store')){ /* allow by default */ }
+    // salvar
+    appliedTokenCoupon = {
+      id: data.id,
+      code: data.code,
+      discountType: data.discountType,
+      discountValue: Number(data.discountValue||0)
+    };
+    if (msgEl){ msgEl.textContent = `Cupom aplicado: ${data.code}`; msgEl.className='text-xs mt-1 text-green-600'; }
+    // mostrar resumo com valores
+    updateTokensPurchaseSummary();
+  }catch(e){
+    const msgEl = document.getElementById('tokensCouponMsg');
+    if (msgEl){ msgEl.textContent='Erro ao aplicar cupom'; msgEl.className='text-xs mt-1 text-red-600'; }
+  }
+}
+
+function updateTokensPurchaseSummary(quantity){
+  // quantidade usada na UI é definida quando o usuário clica nos botões; como não temos o estado aqui,
+  // apenas mostramos resumo vazio; o valor final será recalculado no momento da compra.
+  const subtotalEl = document.getElementById('tokensSubtotal');
+  const discountRow = document.getElementById('tokensDiscountRow');
+  const discountEl = document.getElementById('tokensDiscount');
+  const totalEl = document.getElementById('tokensTotal');
+  const summary = document.getElementById('tokensPurchaseSummary');
+  if (!summary) return;
+  const base = typeof quantity === 'number' && quantity>0 ? quantity : 0;
+  const discount = appliedTokenCoupon ? (appliedTokenCoupon.discountType==='percentage' ? base*(appliedTokenCoupon.discountValue/100) : appliedTokenCoupon.discountValue) : 0;
+  const total = Math.max(0, base - discount);
+  if (subtotalEl) subtotalEl.textContent = base.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  if (discountRow) discountRow.style.display = appliedTokenCoupon ? '' : 'none';
+  if (discountEl) discountEl.textContent = `- ${discount.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`;
+  if (totalEl) totalEl.textContent = total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  summary.classList.remove('hidden');
 }
 
 window.purchaseTokens = async function(quantity) {
@@ -1739,7 +1798,15 @@ window.purchaseTokens = async function(quantity) {
             }
         }
         
-        const price = quantity; // R$ 1,00 por token
+        // preço base R$1 por token, aplicar cupom se houver
+        const basePrice = quantity;
+        let price = basePrice;
+        if (appliedTokenCoupon) {
+            const discount = appliedTokenCoupon.discountType === 'percentage'
+              ? basePrice * (appliedTokenCoupon.discountValue / 100)
+              : appliedTokenCoupon.discountValue;
+            price = Math.max(0, basePrice - discount);
+        }
         
         // Criar preferência no Mercado Pago
         const response = await fetch('/.netlify/functions/create-preference', {
@@ -1750,7 +1817,14 @@ window.purchaseTokens = async function(quantity) {
                 unit_price: price,
                 currency_id: 'BRL',
                 quantity: 1,
-                back_url: window.location.origin + window.location.pathname
+                back_url: window.location.origin + window.location.pathname,
+                coupon_info: appliedTokenCoupon ? {
+                    id: appliedTokenCoupon.id,
+                    code: appliedTokenCoupon.code,
+                    discountType: appliedTokenCoupon.discountType,
+                    discountValue: appliedTokenCoupon.discountValue,
+                    context: 'tokens'
+                } : undefined
             })
         });
         
