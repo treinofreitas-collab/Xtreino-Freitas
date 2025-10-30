@@ -11,12 +11,13 @@ exports.handler = async (event, context) => {
     }
 
     if (event.httpMethod === 'GET') {
+        const base = process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br';
         return {
             statusCode: 200,
             headers,
             body: JSON.stringify({
                 message: 'Para configurar o webhook, use POST',
-                instructions: 'Execute: curl -X POST https://freitasteste.netlify.app/.netlify/functions/setup-webhook'
+                instructions: `Execute: curl -X POST ${base}/.netlify/functions/setup-webhook`
             })
         };
     }
@@ -35,8 +36,9 @@ exports.handler = async (event, context) => {
             };
         }
 
-        // URL do webhook (substitua pelo seu domínio)
-        const webhookUrl = process.env.WEBHOOK_URL || 'https://seu-site.netlify.app/.netlify/functions/payment-notification';
+        // URL do webhook (env ou domínio do site)
+        const base = process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br';
+        const webhookUrl = process.env.WEBHOOK_URL || `${base}/.netlify/functions/payment-notification`;
         
         // Configurar webhook via API
         const webhookPayload = {

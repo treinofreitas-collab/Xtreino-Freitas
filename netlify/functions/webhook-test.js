@@ -43,8 +43,8 @@ exports.handler = async (event) => {
                 method: event.httpMethod,
                 timestamp: new Date().toISOString(),
                 instructions: {
-                    webhookUrl: 'https://freitasteste.netlify.app/.netlify/functions/payment-notification',
-                    testUrl: 'https://freitasteste.netlify.app/.netlify/functions/webhook-test'
+                    webhookUrl: `${process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br'}/.netlify/functions/payment-notification`,
+                    testUrl: `${process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br'}/.netlify/functions/webhook-test`
                 }
             })
         };

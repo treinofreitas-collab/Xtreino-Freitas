@@ -44,7 +44,7 @@ async function generateDownloadLinks(productId, productOptions = {}) {
                         }];
                     } else if (product.downloadType === 'maps') {
                         const maps = productOptions.maps || product.maps || [];
-                        const siteBase = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://freitasteste.netlify.app';
+                        const siteBase = process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br';
                         const mapToFilename = (m) => {
                             const slug = (m || '').toString().toLowerCase().replace(/\s+/g,'-');
                             if (slug.includes('bermuda')) return 'assets/downloads/BERMUDA.zip';
@@ -81,7 +81,7 @@ async function generateDownloadLinks(productId, productOptions = {}) {
     }
     
     // Fallback para comportamento padrão
-    const siteBase = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://freitasteste.netlify.app';
+    const siteBase = process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br';
     
     switch (productId) {
         case 'sensibilidades':

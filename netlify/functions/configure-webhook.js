@@ -10,7 +10,8 @@ exports.handler = async (event, context) => {
         return { statusCode: 200, headers, body: '' };
     }
 
-    const webhookUrl = 'https://freitasteste.netlify.app/.netlify/functions/payment-notification';
+    const base = process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br';
+    const webhookUrl = `${base}/.netlify/functions/payment-notification`;
     
     return {
         statusCode: 200,
@@ -34,7 +35,7 @@ exports.handler = async (event, context) => {
             },
             test: {
                 message: 'Para testar se está funcionando:',
-                testUrl: 'https://freitasteste.netlify.app/.netlify/functions/payment-notification',
+                testUrl: `${base}/.netlify/functions/payment-notification`,
                 note: 'Faça um pagamento de teste e verifique os logs'
             }
         })

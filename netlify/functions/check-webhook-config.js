@@ -23,7 +23,8 @@ exports.handler = async (event, context) => {
         }
 
         // URL do webhook
-        const webhookUrl = `${process.env.URL || 'https://freitasteste.netlify.app'}/.netlify/functions/payment-notification`;
+        const base = process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br';
+        const webhookUrl = `${base}/.netlify/functions/payment-notification`;
         
         return {
             statusCode: 200,
