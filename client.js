@@ -1289,8 +1289,7 @@ async function fetchUserDocs(colName, max = 50, sortDesc = false){
     
     const colRef = collection(db, colName);
     
-    // Para coleção 'orders', usar campos customer e buyerEmail
-    // Para coleção 'registrations', usar campos contact e teamName
+    // Campos de busca por coleção
     let candidates;
     if (colName === 'orders') {
         candidates = [
@@ -1302,12 +1301,11 @@ async function fetchUserDocs(colName, max = 50, sortDesc = false){
     } else if (colName === 'registrations') {
         candidates = [
             where('contact','==', currentUser.email),
-          where('email','==', currentUser.email),
+            where('email','==', currentUser.email),
             where('userId','==', currentUser.uid),
             where('uid','==', currentUser.uid)
         ];
     } else {
-        // Para outras coleções, usar campos originais
         candidates = [
             where('userId','==', currentUser.uid),
             where('uid','==', currentUser.uid),
@@ -1316,24 +1314,21 @@ async function fetchUserDocs(colName, max = 50, sortDesc = false){
     }
     
     console.log(`🔍 Searching in collection '${colName}' with email: ${currentUser.email}, uid: ${currentUser.uid}`);
-    const results = [];
+    const resultMap = new Map();
     for (const cond of candidates){
         try{
-            const base = sortDesc ? query(colRef, cond) : query(colRef, cond);
-            const snap = await getDocs(base);
-            console.log(`🔍 Query result for ${colName}:`, snap.size, 'documents');
+            const qy = query(colRef, cond);
+            const snap = await getDocs(qy);
+            console.log(`🔍 Query result for ${colName} (${String(cond?.fieldPath||'')}):`, snap.size, 'documents');
             snap.forEach(d => {
                 const data = d.data();
-                console.log(`🔍 Found document:`, { id: d.id, customer: data.customer, buyerEmail: data.buyerEmail, userId: data.userId, uid: data.uid });
-                results.push({ id: d.id, data });
+                resultMap.set(d.id, { id: d.id, data });
             });
-            if (results.length > 0) break; // got something
         }catch(e){
             console.log(`🔍 Query error for ${colName}:`, e);
-            // ignore permission errors, try next field
         }
     }
-    // limit and sort by createdAt if requested
+    const results = Array.from(resultMap.values());
     const limited = results
         .sort((a,b)=>{
             const at = a.data.createdAt?.toMillis?.() || 0;
