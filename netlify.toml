@@ -4,6 +4,10 @@
 
 [build.environment]
   NODE_VERSION = "18"
+  # Domínio canônico do site
+  SITE_URL = "https://orgfreitas.com.br"
+  MP_BACK_BASE_URL = "https://orgfreitas.com.br"
+  WEBHOOK_URL = "https://orgfreitas.com.br/.netlify/functions/payment-notification"
 
 # Configurações para as funções
 [functions]
@@ -12,3 +16,21 @@
 # Plugin para instalar dependências das funções
 [[plugins]]
   package = "@netlify/plugin-functions-install-core"
+
+# Segurança e HTTPS
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "SAMEORIGIN"
+    Content-Security-Policy = "upgrade-insecure-requests"
+
+# Redirecionar www para domínio canônico
+[[redirects]]
+  from = "/*"
+  to = "https://orgfreitas.com.br/:splat"
+  status = 301
+  force = true
+  conditions = { Host = ["www.orgfreitas.com.br"] }
