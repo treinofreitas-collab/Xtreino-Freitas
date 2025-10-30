@@ -53,6 +53,7 @@ if (auth && auth.setPersistence) {
 let currentUser = null;
 let userProfile = null;
 let appliedTokenCoupon = null;
+let selectedTokensQty = 0;
 
 // Initialize client area
 document.addEventListener('DOMContentLoaded', async function() {
@@ -1726,6 +1727,9 @@ window.openTokensPurchaseModal = function() {
     if (summary) summary.classList.add('hidden');
     appliedTokenCoupon = null;
     const msg = document.getElementById('tokensCouponMsg'); if (msg){ msg.textContent = ''; msg.className = 'text-xs mt-1 text-gray-500'; }
+  selectedTokensQty = 0;
+  const buyBtn = document.getElementById('tokensBuyBtn');
+  if (buyBtn){ buyBtn.disabled = true; buyBtn.textContent = 'Selecionar quantidade'; }
 }
 
 window.closeTokensPurchaseModal = function() {
@@ -1776,7 +1780,7 @@ function updateTokensPurchaseSummary(quantity){
   const totalEl = document.getElementById('tokensTotal');
   const summary = document.getElementById('tokensPurchaseSummary');
   if (!summary) return;
-  const base = typeof quantity === 'number' && quantity>0 ? quantity : 0;
+  const base = typeof quantity === 'number' && quantity>0 ? quantity : selectedTokensQty || 0;
   const discount = appliedTokenCoupon ? (appliedTokenCoupon.discountType==='percentage' ? base*(appliedTokenCoupon.discountValue/100) : appliedTokenCoupon.discountValue) : 0;
   const total = Math.max(0, base - discount);
   if (subtotalEl) subtotalEl.textContent = base.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -1784,6 +1788,18 @@ function updateTokensPurchaseSummary(quantity){
   if (discountEl) discountEl.textContent = `- ${discount.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`;
   if (totalEl) totalEl.textContent = total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   summary.classList.remove('hidden');
+  const buyBtn = document.getElementById('tokensBuyBtn');
+  if (buyBtn){
+    const totalFmt = total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    buyBtn.disabled = base <= 0;
+    buyBtn.textContent = base > 0 ? `Comprar ${base} token${base>1?'s':''} por ${totalFmt}` : 'Selecionar quantidade';
+  }
+}
+
+// Selecionar quantidade antes de comprar
+window.setSelectedTokensQty = function(qty){
+  selectedTokensQty = qty;
+  updateTokensPurchaseSummary(qty);
 }
 
 window.purchaseTokens = async function(quantity) {
@@ -1799,7 +1815,8 @@ window.purchaseTokens = async function(quantity) {
         }
         
         // preço base R$1 por token, aplicar cupom se houver
-        const basePrice = quantity;
+        const basePrice = quantity || selectedTokensQty || 0;
+        if (!basePrice){ alert('Selecione a quantidade de tokens'); return; }
         let price = basePrice;
         if (appliedTokenCoupon) {
             const discount = appliedTokenCoupon.discountType === 'percentage'
@@ -1813,7 +1830,7 @@ window.purchaseTokens = async function(quantity) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                title: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
+                title: `${basePrice} Token${basePrice > 1 ? 's' : ''} XTreino`,
                 unit_price: price,
                 currency_id: 'BRL',
                 quantity: 1,
@@ -1884,7 +1901,7 @@ window.purchaseTokens = async function(quantity) {
             
             // Salvar info da compra para processar após pagamento
             sessionStorage.setItem('tokenPurchase', JSON.stringify({
-                quantity,
+                quantity: basePrice,
                 price,
                 external_reference: data.external_reference
             }));
