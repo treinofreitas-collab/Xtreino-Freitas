@@ -1081,6 +1081,10 @@
     if (window.loadCouponUsage) {
       window.loadCouponUsage();
     }
+  // Carregar pedidos de camisa (envios)
+  if (window.loadShirtOrders) {
+    window.loadShirtOrders();
+  }
     // Controla visibilidade conforme o papel - REMOVIDO para evitar conflito com controlSectionVisibility
     // A visibilidade agora é controlada exclusivamente pela função controlSectionVisibility
 
@@ -5826,6 +5830,55 @@ window.filterAdminHistory = filterAdminHistory;
 // Expor funções de cupons globalmente
 window.loadCoupons = loadCoupons;
 window.loadCouponUsage = loadCouponUsage;
+// Listar pedidos de camisa e marcar envio
+async function loadShirtOrders(){
+  try{
+    const body = document.getElementById('shirtOrdersBody');
+    if (!body) return;
+    const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const snap = await getDocs(collection(window.firebaseDb,'orders'));
+    const rows = [];
+    snap.forEach(d=>{
+      const data = d.data();
+      const t = String(data.title||data.item||'').toLowerCase();
+      if (t.includes('camisa')){
+        const shipping = data.shipping || {};
+        const status = data.shippingStatus || (data.shirtShipped?'shipped':'pending') || 'pending';
+        const addr = shipping.address ? `${shipping.address}, ${shipping.number||''} - ${shipping.district||''} - ${shipping.city||''}/${shipping.state||''}` : '';
+        rows.push(`
+          <tr class="border-b border-gray-100">
+            <td class="py-2 px-2">${data.customer||data.buyerEmail||data.email||''}</td>
+            <td class="py-2 px-2">${data.title||''}</td>
+            <td class="py-2 px-2">${addr || '<span class=\'text-gray-400\'>Sem dados</span>'}</td>
+            <td class="py-2 px-2">${status==='shipped' ? '<span class="text-green-600">Enviado</span>' : '<span class="text-yellow-600">Aguardando</span>'}</td>
+            <td class="py-2 px-2">
+              ${status==='shipped' ? '' : `<button class="px-2 py-1 bg-green-600 text-white rounded" onclick="markShirtAsShipped('${d.id}')">Marcar enviado</button>`}
+            </td>
+          </tr>
+        `);
+      }
+    });
+    body.innerHTML = rows.length? rows.join('') : '<tr><td colspan="5" class="py-6 text-center text-gray-500">Nenhum pedido de camisa encontrado</td></tr>';
+  }catch(e){
+    const body = document.getElementById('shirtOrdersBody');
+    if (body) body.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-red-500">Erro ao carregar</td></tr>';
+  }
+}
+
+async function markShirtAsShipped(orderId){
+  try{
+    const { doc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    await updateDoc(doc(collection(window.firebaseDb,'orders'), orderId),{
+      shippingStatus: 'shipped',
+      shippedAt: new Date()
+    });
+    await loadShirtOrders();
+  }catch(e){
+    alert('Erro ao marcar enviado');
+  }
+}
+window.markShirtAsShipped = markShirtAsShipped;
+window.loadShirtOrders = loadShirtOrders;
 window.openCreateCouponModal = openCreateCouponModal;
 window.closeCreateCouponModal = closeCreateCouponModal;
 window.createCoupon = createCoupon;

@@ -1153,6 +1153,34 @@ function getProductActionButton(product) {
         `;
     }
     
+    // Camisa física - solicitar dados de entrega e exibir status
+    if (title.includes('camisa') || item.includes('camisa')) {
+        const shipped = product.shippingStatus === 'shipped' || product.shirtShipped === true;
+        const shippedAt = product.shippedAt || product.shirtShippedAt;
+        const shipping = product.shipping || {};
+        if (shipped) {
+            return `
+                <div class="mt-3">
+                    <div class="flex items-center justify-between">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-green-700 bg-green-100">
+                            Enviado
+                        </span>
+                        <span class="text-xs text-gray-500">${shippedAt ? new Date(shippedAt).toLocaleDateString('pt-BR') : ''}</span>
+                    </div>
+                    ${shipping?.address ? `<p class="text-xs text-gray-500 mt-1">Para: ${shipping.name || ''} - ${shipping.address || ''}, ${shipping.number || ''} - ${shipping.district || ''} - ${shipping.city || ''}/${shipping.state || ''}</p>` : ''}
+                </div>
+            `;
+        }
+        return `
+            <div class="mt-3">
+                <button onclick="openShippingModal('${product.id}')" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200">
+                    Enviar dados de entrega
+                </button>
+                ${shipping?.address ? `<p class="text-xs text-gray-500 mt-1">Aguardando envio • ${shipping.name || ''}, ${shipping.address || ''}</p>` : `<p class="text-xs text-gray-500 mt-1">Aguardando dados de entrega</p>`}
+            </div>
+        `;
+    }
+
     return '';
 }
 
@@ -1218,6 +1246,50 @@ try {
     window.downloadSensibilidades = downloadSensibilidades;
     window.downloadImagensAereas = downloadImagensAereas;
     window.downloadPlanilhas = downloadPlanilhas;
+    window.openShippingModal = function(orderId){
+        const modal = document.getElementById('shippingModal');
+        if (!modal) return;
+        document.getElementById('shippingOrderId').value = orderId || '';
+        // limpar mensagens
+        const msg = document.getElementById('shippingMsg'); if (msg) { msg.textContent=''; msg.className='text-sm'; }
+        // limpar campos
+        ['shipName','shipCpf','shipCep','shipAddress','shipNumber','shipComplement','shipDistrict','shipCity','shipState'].forEach(id=>{
+            const el = document.getElementById(id); if (el) el.value = '';
+        });
+        modal.classList.remove('hidden'); modal.classList.add('flex');
+    };
+    window.closeShippingModal = function(){
+        const modal = document.getElementById('shippingModal');
+        if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    };
+    window.saveShippingDetails = async function(){
+        try{
+            const orderId = document.getElementById('shippingOrderId').value;
+            const shipping = {
+                name: document.getElementById('shipName').value.trim(),
+                cpf: document.getElementById('shipCpf').value.trim(),
+                cep: document.getElementById('shipCep').value.trim(),
+                address: document.getElementById('shipAddress').value.trim(),
+                number: document.getElementById('shipNumber').value.trim(),
+                complement: document.getElementById('shipComplement').value.trim(),
+                district: document.getElementById('shipDistrict').value.trim(),
+                city: document.getElementById('shipCity').value.trim(),
+                state: document.getElementById('shipState').value.trim(),
+            };
+            const { doc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            await updateDoc(doc(collection(window.firebaseDb,'orders'), orderId), {
+                shipping,
+                shippingStatus: 'pending',
+                shippingUpdatedAt: new Date()
+            });
+            const msg = document.getElementById('shippingMsg'); if (msg){ msg.textContent='Dados salvos!'; msg.className='text-sm text-green-600'; }
+            setTimeout(()=>{ closeShippingModal(); }, 900);
+            // recarregar produtos na aba
+            loadProducts();
+        }catch(e){
+            const msg = document.getElementById('shippingMsg'); if (msg){ msg.textContent='Erro ao salvar.'; msg.className='text-sm text-red-600'; }
+        }
+    };
 } catch (_) {}
 
 // Function to get product information from Firestore

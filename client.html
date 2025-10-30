@@ -346,4 +346,59 @@
     <script type="module" src="firebase.js"></script>
     <script type="module" src="client.js"></script>
 </body>
+
+<!-- Modal Dados de Entrega (Camisa) -->
+<div id="shippingModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-bold text-lg">Dados de Entrega</h3>
+      <button onclick="closeShippingModal()" class="text-gray-500 hover:text-gray-700">✕</button>
+    </div>
+    <form id="shippingForm" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <input type="hidden" id="shippingOrderId" />
+      <div class="md:col-span-2">
+        <label class="block text-sm mb-1">Nome Completo</label>
+        <input id="shipName" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">CPF</label>
+        <input id="shipCpf" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">CEP</label>
+        <input id="shipCep" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div class="md:col-span-2">
+        <label class="block text-sm mb-1">Endereço</label>
+        <input id="shipAddress" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Número</label>
+        <input id="shipNumber" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Complemento</label>
+        <input id="shipComplement" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Bairro</label>
+        <input id="shipDistrict" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div>
+        <label class="block text-sm mb-1">Cidade</label>
+        <input id="shipCity" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div class="md:col-span-2">
+        <label class="block text-sm mb-1">Estado</label>
+        <input id="shipState" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div class="md:col-span-2" id="shippingMsg" class="text-sm"></div>
+      <div class="md:col-span-2 flex justify-end gap-2 mt-2">
+        <button type="button" onclick="closeShippingModal()" class="px-4 py-2 border rounded">Cancelar</button>
+        <button type="button" onclick="saveShippingDetails()" class="px-4 py-2 bg-blue-600 text-white rounded">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+</body>
 </html>

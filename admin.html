@@ -700,6 +700,30 @@
                 </div>
             </div>
 
+            <!-- Seção: Camisas - Envios -->
+            <div id="sectionShirtOrders" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-bold text-sm">Camisas - Envios</h3>
+                    <button onclick="loadShirtOrders()" class="text-xs px-3 py-1 border rounded">Atualizar</button>
+                </div>
+                <div class="overflow-x-auto text-xs">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-left text-gray-600 bg-gray-50">
+                                <th class="py-2 px-2">Cliente</th>
+                                <th class="py-2 px-2">Pedido</th>
+                                <th class="py-2 px-2">Endereço</th>
+                                <th class="py-2 px-2">Status</th>
+                                <th class="py-2 px-2">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shirtOrdersBody">
+                            <tr><td colspan="5" class="py-6 text-center text-gray-500">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- Gerenciamento de Links WhatsApp -->
             <div id="sectionWhatsAppLinks" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
                 <div class="flex items-center justify-between mb-4">
