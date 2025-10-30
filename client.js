@@ -1302,6 +1302,7 @@ async function fetchUserDocs(colName, max = 50, sortDesc = false){
     } else if (colName === 'registrations') {
         candidates = [
             where('contact','==', currentUser.email),
+          where('email','==', currentUser.email),
             where('userId','==', currentUser.uid),
             where('uid','==', currentUser.uid)
         ];
