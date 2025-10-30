@@ -129,11 +129,23 @@ async function sendPasswordReset(){
     try{
         if (!window.firebaseReady){ throw new Error('Firebase não inicializado'); }
         const email = document.getElementById('resetEmail').value.trim();
+        const btn = document.getElementById('resetBtn');
+        if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){
+            document.getElementById('authMsg').textContent = 'Digite um email válido.';
+            return;
+        }
+        if (btn){ btn.disabled = true; btn.textContent = 'Enviando...'; }
         const { sendPasswordResetEmail } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
         await sendPasswordResetEmail(window.firebaseAuth, email);
-        document.getElementById('authMsg').textContent = 'Email de recuperação enviado.';
+        document.getElementById('authMsg').textContent = 'Enviamos um link de recuperação para seu email. Confira também a caixa de spam.';
         showAuthTab('login');
-    }catch(e){ document.getElementById('authMsg').textContent = 'Erro ao enviar recuperação.'; }
+    }catch(e){
+        const msg = (e && e.code) ? String(e.code).replace('auth/','').replaceAll('-',' ') : 'Erro ao enviar recuperação.';
+        document.getElementById('authMsg').textContent = msg;
+    } finally {
+        const btn = document.getElementById('resetBtn');
+        if (btn){ btn.disabled = false; btn.textContent = 'Enviar link de recuperação'; }
+    }
 }
 
 function onAuthLogged(user){

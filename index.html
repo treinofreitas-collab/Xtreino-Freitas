@@ -1269,8 +1269,15 @@
                 <button onclick="registerWithEmailPassword()" class="w-full bg-blue-matte hover:bg-blue-600 text-white py-3 rounded-lg font-semibold transition-colors">Criar conta</button>
             </div>
             <div id="authReset" class="space-y-3 hidden">
-                <input id="resetEmail" type="email" placeholder="Seu email" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
-                <button onclick="sendPasswordReset()" class="w-full bg-blue-matte hover:bg-blue-600 text-white py-3 rounded-lg font-semibold transition-colors">Enviar link de recuperação</button>
+                <div class="text-center space-y-2">
+                    <div class="mx-auto w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-blue-matte" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12A4 4 0 118 12a4 4 0 018 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14v7m-3-3h6"/></svg>
+                    </div>
+                    <p class="text-sm text-gray-600">Informe o email da sua conta e enviaremos um link para redefinir a senha.</p>
+                </div>
+                <input id="resetEmail" type="email" placeholder="seu@email.com" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <button id="resetBtn" onclick="sendPasswordReset()" class="w-full bg-blue-matte hover:bg-blue-600 text-white py-3 rounded-lg font-semibold transition-colors">Enviar link de recuperação</button>
+                <p id="resetHelp" class="text-xs text-gray-500 text-center">Não encontrou o email? Verifique a caixa de spam ou promoções.</p>
             </div>
             <p id="authMsg" class="text-sm text-center mt-3 text-gray-600"></p>
         </div>
