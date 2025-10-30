@@ -1276,7 +1276,8 @@
                     <p class="text-sm text-gray-600">Informe o email da sua conta e enviaremos um link para redefinir a senha.</p>
                 </div>
                 <input id="resetEmail" type="email" placeholder="seu@email.com" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
-                <button id="resetBtn" onclick="sendPasswordReset()" class="w-full bg-blue-matte hover:bg-blue-600 text-white py-3 rounded-lg font-semibold transition-colors">Enviar link de recuperação</button>
+                <div id="resetAlert" class="hidden text-sm px-3 py-2 rounded-md"></div>
+                <button id="resetBtn" onclick="sendPasswordReset()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">Enviar link de recuperação</button>
                 <p id="resetHelp" class="text-xs text-gray-500 text-center">Não encontrou o email? Verifique a caixa de spam ou promoções.</p>
             </div>
             <p id="authMsg" class="text-sm text-center mt-3 text-gray-600"></p>

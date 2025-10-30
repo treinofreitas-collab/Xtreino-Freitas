@@ -131,20 +131,41 @@ async function sendPasswordReset(){
         const email = document.getElementById('resetEmail').value.trim();
         const btn = document.getElementById('resetBtn');
         if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){
-            document.getElementById('authMsg').textContent = 'Digite um email válido.';
+            const alertEl = document.getElementById('resetAlert');
+            if (alertEl){
+                alertEl.className = 'text-sm px-3 py-2 rounded-md bg-red-50 text-red-700 border border-red-200';
+                alertEl.textContent = 'Digite um email válido.';
+                alertEl.classList.remove('hidden');
+            } else {
+                document.getElementById('authMsg').textContent = 'Digite um email válido.';
+            }
             return;
         }
         if (btn){ btn.disabled = true; btn.textContent = 'Enviando...'; }
         const { sendPasswordResetEmail } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
         await sendPasswordResetEmail(window.firebaseAuth, email);
-        document.getElementById('authMsg').textContent = 'Enviamos um link de recuperação para seu email. Confira também a caixa de spam.';
-        showAuthTab('login');
+        const alertEl = document.getElementById('resetAlert');
+        if (alertEl){
+            alertEl.className = 'text-sm px-3 py-2 rounded-md bg-green-50 text-green-700 border border-green-200';
+            alertEl.textContent = 'Pronto! Enviamos um link de recuperação para seu email.';
+            alertEl.classList.remove('hidden');
+        } else {
+            document.getElementById('authMsg').textContent = 'Enviamos um link de recuperação para seu email. Confira também a caixa de spam.';
+        }
+        if (btn){ btn.textContent = 'Email enviado'; }
     }catch(e){
         const msg = (e && e.code) ? String(e.code).replace('auth/','').replaceAll('-',' ') : 'Erro ao enviar recuperação.';
-        document.getElementById('authMsg').textContent = msg;
+        const alertEl = document.getElementById('resetAlert');
+        if (alertEl){
+            alertEl.className = 'text-sm px-3 py-2 rounded-md bg-red-50 text-red-700 border border-red-200';
+            alertEl.textContent = msg;
+            alertEl.classList.remove('hidden');
+        } else {
+            document.getElementById('authMsg').textContent = msg;
+        }
     } finally {
         const btn = document.getElementById('resetBtn');
-        if (btn){ btn.disabled = false; btn.textContent = 'Enviar link de recuperação'; }
+        if (btn){ btn.disabled = false; }
     }
 }
 
