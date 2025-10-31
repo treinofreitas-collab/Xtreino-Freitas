@@ -599,7 +599,8 @@ body {
     height: 100%;
 }
 .product-media {
-    height: 180px;
+    width: 100%;
+    aspect-ratio: 16 / 9; /* suporta imagens 1920x1080 */
     border-radius: 12px;
     overflow: hidden;
     display: flex;
