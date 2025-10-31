@@ -5845,11 +5845,12 @@ async function loadShirtOrders(){
         const shipping = data.shipping || {};
         const status = data.shippingStatus || (data.shirtShipped?'shipped':'pending') || 'pending';
         const addr = shipping.address ? `${shipping.address}, ${shipping.number||''} - ${shipping.district||''} - ${shipping.city||''}/${shipping.state||''}` : '';
+        const extra = shipping.shirtName ? ` • Nome na camisa: ${shipping.shirtName}` : '';
         rows.push(`
           <tr class="border-b border-gray-100">
             <td class="py-2 px-2">${data.customer||data.buyerEmail||data.email||''}</td>
             <td class="py-2 px-2">${data.title||''}</td>
-            <td class="py-2 px-2">${addr || '<span class=\'text-gray-400\'>Sem dados</span>'}</td>
+            <td class="py-2 px-2">${addr ? addr + extra : '<span class=\'text-gray-400\'>Sem dados</span>'}</td>
             <td class="py-2 px-2">${status==='shipped' ? '<span class="text-green-600">Enviado</span>' : '<span class="text-yellow-600">Aguardando</span>'}</td>
             <td class="py-2 px-2">
               ${status==='shipped' ? '' : `<button class="px-2 py-1 bg-green-600 text-white rounded" onclick="markShirtAsShipped('${d.id}')">Marcar enviado</button>`}

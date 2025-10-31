@@ -1176,7 +1176,7 @@ function getProductActionButton(product) {
                 <button onclick="openShippingModal('${product.id}')" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200">
                     Enviar dados de entrega
                 </button>
-                ${shipping?.address ? `<p class="text-xs text-gray-500 mt-1">Aguardando envio • ${shipping.name || ''}, ${shipping.address || ''}</p>` : `<p class="text-xs text-gray-500 mt-1">Aguardando dados de entrega</p>`}
+                ${shipping?.address ? `<p class=\"text-xs text-gray-500 mt-1\">Aguardando envio • ${shipping.name || ''}, ${shipping.address || ''}${shipping.shirtName ? ' • Nome na camisa: ' + shipping.shirtName : ''}</p>` : `<p class=\"text-xs text-gray-500 mt-1\">Aguardando dados de entrega</p>`}
             </div>
         `;
     }
@@ -1299,6 +1299,7 @@ try {
             const orderId = document.getElementById('shippingOrderId').value;
             const shipping = {
                 name: document.getElementById('shipName').value.trim(),
+                shirtName: document.getElementById('shipShirtName')?.value?.trim() || '',
                 cpf: cpfRaw,
                 cep: cepRaw,
                 address: address,

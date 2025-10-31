@@ -1798,7 +1798,7 @@ function initCarousel() {
     }
     
     function startAutoAdvance() {
-        autoAdvanceInterval = setInterval(nextSlide, 10000); // 10 segundos
+        autoAdvanceInterval = setInterval(nextSlide, 11500); // +1.5s -> 11.5 segundos
     }
     
     function stopAutoAdvance() {
