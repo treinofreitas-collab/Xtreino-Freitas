@@ -1127,11 +1127,11 @@ function showProductModal(productId){
 
     // imagem do produto
     const imgMap = {
-        'sensibilidades': 'SENSIBILIDADE ORG FREITAS FORMATO YOUTUBE.png',
-        'imagens': 'IMAGENS AÉREAS ORG FREITAS FORMATO YOUTUBE.png',
-        'planilhas': 'PLANILHAS ORG FREITAS FORMATO YOUTUBE.png',
+        'sensibilidades': 'assets/images/products/SENSIBILIDADE ORG FREITAS FORMATO YOUTUBE.png',
+        'imagens': 'assets/images/products/IMAGENS AÉREAS ORG FREITAS FORMATO YOUTUBE.png',
+        'planilhas': 'assets/images/products/PLANILHAS ORG FREITAS FORMATO YOUTUBE.png',
         'passe-booyah': 'assets/images/products/PASSE ORG FREITAS FEED.png',
-        'camisa': 'MANTO ORG FREITAS FORMATO YOUTUBE.png',
+        'camisa': 'assets/images/products/MANTO ORG FREITAS FORMATO YOUTUBE.png',
         // imagens dos eventos (JPGs no projeto)
         'evt-xtreino-gratuito': 'assets/images/events/XTREINO TOKENS.jpeg',
         'evt-modo-liga': 'assets/images/events/Modo Liga.jpeg',
