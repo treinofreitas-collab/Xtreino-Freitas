@@ -1741,7 +1741,9 @@ async function loadHighlightsFromFirestore() {
                 
                 // Criar botão com ou sem link personalizado
                 let buttonHtml = '';
-                if (highlight.action === 'custom_link' && highlight.customLinkUrl) {
+                if (highlight.action === 'buy_tokens') {
+                    buttonHtml = `<button onclick="openHeroTokensModal()" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold">Comprar Tokens</button>`;
+                } else if (highlight.action === 'custom_link' && highlight.customLinkUrl) {
                     buttonHtml = `<a href="${highlight.customLinkUrl}" target="_blank" rel="noopener noreferrer" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold inline-block">Ver Mais</a>`;
                 } else {
                     buttonHtml = `<button onclick="${highlight.action}" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold">Ver Mais</button>`;
@@ -1845,6 +1847,69 @@ if (window.firebaseReady) {
     });
 }
 
+// ===== Modal Comprar Tokens (Home/Destaques) =====
+let heroAppliedCoupon = null;
+let heroSelectedQty = 0;
+function openHeroTokensModal(){
+    const modal = document.getElementById('heroTokensModal');
+    if (!modal) return;
+    const msg = document.getElementById('heroTokensCouponMsg'); if (msg){ msg.textContent=''; msg.className='text-xs text-gray-500'; }
+    const input = document.getElementById('heroTokensCoupon'); if (input) input.value = '';
+    heroAppliedCoupon = null; heroSelectedQty = 0; updateHeroTokensSummary();
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+function closeHeroTokensModal(){ const m = document.getElementById('heroTokensModal'); if (m){ m.classList.add('hidden'); m.classList.remove('flex'); } }
+function heroSetTokensQty(qty){ heroSelectedQty = qty; updateHeroTokensSummary(); }
+async function heroApplyTokenCoupon(){
+    try{
+        const code = (document.getElementById('heroTokensCoupon')?.value || '').trim().toUpperCase();
+        const msg = document.getElementById('heroTokensCouponMsg');
+        if (!code){ msg.textContent='Digite um código de cupom'; msg.className='text-xs text-red-600'; return; }
+        const { collection, getDocs, query, where, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const q = query(collection(window.firebaseDb,'coupons'), where('code','==', code), limit(1));
+        const snap = await getDocs(q);
+        if (snap.empty){ msg.textContent='Cupom não encontrado'; msg.className='text-xs text-red-600'; return; }
+        const data = { id: snap.docs[0].id, ...snap.docs[0].data() };
+        if (!data.isActive){ msg.textContent='Cupom inativo'; msg.className='text-xs text-red-600'; return; }
+        if (data.expirationDate){ const exp = data.expirationDate.toDate ? data.expirationDate.toDate() : new Date(data.expirationDate); if (exp < new Date()){ msg.textContent='Cupom expirado'; msg.className='text-xs text-red-600'; return; } }
+        heroAppliedCoupon = { id: data.id, code: data.code, discountType: data.discountType, discountValue: Number(data.discountValue||0) };
+        msg.textContent = `Cupom aplicado: ${data.code}`; msg.className='text-xs text-green-600'; updateHeroTokensSummary();
+    }catch(_){ const msg = document.getElementById('heroTokensCouponMsg'); if (msg){ msg.textContent='Erro ao aplicar cupom'; msg.className='text-xs text-red-600'; } }
+}
+function updateHeroTokensSummary(){
+    const subtotalEl = document.getElementById('heroTokensSubtotal');
+    const discountRow = document.getElementById('heroTokensDiscountRow');
+    const discountEl = document.getElementById('heroTokensDiscount');
+    const totalEl = document.getElementById('heroTokensTotal');
+    const summary = document.getElementById('heroTokensSummary');
+    const btn = document.getElementById('heroTokensBuyBtn');
+    const base = heroSelectedQty || 0;
+    const discount = heroAppliedCoupon ? (heroAppliedCoupon.discountType==='percentage' ? base*(heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue) : 0;
+    const total = Math.max(0, base - discount);
+    if (subtotalEl) subtotalEl.textContent = base.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    if (discountRow) discountRow.style.display = heroAppliedCoupon ? '' : 'none';
+    if (discountEl) discountEl.textContent = `- ${discount.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`;
+    if (totalEl) totalEl.textContent = total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    if (summary) summary.classList.remove('hidden');
+    if (btn){ btn.disabled = base<=0; btn.textContent = base>0 ? `Comprar ${base} token${base>1?'s':''} por ${total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}` : 'Selecionar quantidade'; }
+}
+async function heroPurchaseTokens(){
+    try{
+        if (!window.firebaseAuth?.currentUser){ openLoginModal(); return; }
+        const qty = heroSelectedQty || 0; if (!qty){ alert('Selecione a quantidade'); return; }
+        const basePrice = qty; let price = basePrice;
+        if (heroAppliedCoupon){ const d = heroAppliedCoupon.discountType==='percentage' ? basePrice*(heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue; price = Math.max(0, basePrice - d); }
+        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin + window.location.pathname, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined }) });
+        if (!response.ok) throw new Error('Erro');
+        const data = await response.json();
+        if (data.init_point){ closeHeroTokensModal(); window.location.href = data.init_point; } else { alert('Erro ao iniciar pagamento'); }
+    }catch(_){ alert('Erro ao comprar tokens'); }
+}
+window.openHeroTokensModal = openHeroTokensModal;
+window.closeHeroTokensModal = closeHeroTokensModal;
+window.heroSetTokensQty = heroSetTokensQty;
+window.heroApplyTokenCoupon = heroApplyTokenCoupon;
+window.heroPurchaseTokens = heroPurchaseTokens;
 // ==================== CHAT INTERNO ====================
 
 // Chat sempre disponível 24 horas

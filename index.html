@@ -1239,6 +1239,62 @@
         </div>
     </div>
 
+    <!-- Comprar Tokens (Home/Destaques) -->
+    <div id="heroTokensModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h3 class="font-bold text-xl text-gray-900">💎 Comprar Tokens</h3>
+                    <p class="text-sm text-gray-600 mt-1">Adicione tokens à sua conta</p>
+                </div>
+                <button onclick="closeHeroTokensModal()" class="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+            </div>
+
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="heroSetTokensQty(1)" class="p-4 border-2 border-green-200 rounded-xl hover:border-green-400 hover:bg-green-50 transition-all duration-200 hover:scale-105">
+                        <div class="text-2xl font-bold text-green-700">1</div>
+                        <div class="text-sm text-green-600 font-medium">Token</div>
+                        <div class="text-lg font-bold text-green-800 mt-1">R$ 1,00</div>
+                    </button>
+                    <button onclick="heroSetTokensQty(5)" class="p-4 border-2 border-blue-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 hover:scale-105">
+                        <div class="text-2xl font-bold text-blue-700">5</div>
+                        <div class="text-sm text-blue-600 font-medium">Tokens</div>
+                        <div class="text-lg font-bold text-blue-800 mt-1">R$ 5,00</div>
+                    </button>
+                    <button onclick="heroSetTokensQty(25)" class="p-4 border-2 border-purple-200 rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-all duration-200 hover:scale-105">
+                        <div class="text-2xl font-bold text-purple-700">25</div>
+                        <div class="text-sm text-purple-600 font-medium">Tokens</div>
+                        <div class="text-lg font-bold text-purple-800 mt-1">R$ 25,00</div>
+                    </button>
+                    <button onclick="heroSetTokensQty(50)" class="p-4 border-2 border-orange-200 rounded-xl hover:border-orange-400 hover:bg-orange-50 transition-all duration-200 hover:scale-105">
+                        <div class="text-2xl font-bold text-orange-700">50</div>
+                        <div class="text-sm text-orange-600 font-medium">Tokens</div>
+                        <div class="text-lg font-bold text-orange-800 mt-1">R$ 50,00</div>
+                    </button>
+                </div>
+                <div class="mt-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cupom de desconto</label>
+                    <div class="flex gap-2">
+                        <input id="heroTokensCoupon" type="text" placeholder="EX: ORG10" class="flex-1 border border-gray-300 rounded-lg px-3 py-2" />
+                        <button onclick="heroApplyTokenCoupon()" class="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Aplicar</button>
+                    </div>
+                    <p id="heroTokensCouponMsg" class="text-xs mt-1 text-gray-500"></p>
+                </div>
+                <div id="heroTokensSummary" class="text-sm text-gray-700 hidden">
+                    <div class="flex justify-between"><span>Subtotal</span><span id="heroTokensSubtotal">R$ 0,00</span></div>
+                    <div class="flex justify-between" id="heroTokensDiscountRow" style="display:none"><span class="text-green-700">Desconto</span><span id="heroTokensDiscount" class="text-green-700">- R$ 0,00</span></div>
+                    <div class="flex justify-between font-semibold"><span>Total</span><span id="heroTokensTotal">R$ 0,00</span></div>
+                </div>
+                <div class="pt-2">
+                    <button id="heroTokensBuyBtn" onclick="heroPurchaseTokens()" class="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Selecionar quantidade
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Auth Modal (Login/Cadastro/Recuperação) -->
     <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-6 max-w-md w-full border border-gray-200 shadow-xl relative">
