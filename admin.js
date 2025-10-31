@@ -2907,6 +2907,7 @@ function createHighlightForm(key, highlight, index) {
                 <label class="block text-sm font-medium mb-2">Ação do Botão</label>
                 <select id="${key}Action" class="w-full border border-gray-300 rounded-lg px-3 py-2" onchange="toggleCustomLinkField('${key}')">
                     <option value="openPurchaseModal('estrategia')" ${highlight.action === "openPurchaseModal('estrategia')" ? 'selected' : ''}>Abrir Modal de Compra</option>
+                    <option value="buy_tokens" ${highlight.action === 'buy_tokens' ? 'selected' : ''}>Abrir Modal de Tokens</option>
                     <option value="scrollToSection('xtreinos')" ${highlight.action === "scrollToSection('xtreinos')" ? 'selected' : ''}>Ir para XTreinos</option>
                     <option value="scrollToSection('loja')" ${highlight.action === "scrollToSection('loja')" ? 'selected' : ''}>Ir para Loja</option>
                     <option value="openScheduleModal('modo-liga')" ${highlight.action === "openScheduleModal('modo-liga')" ? 'selected' : ''}>Abrir Agendamento</option>
@@ -6364,77 +6365,102 @@ const CACHE_TTL = 30000; // 30 segundos
 async function getWhatsAppLink(eventType, schedule = null) {
   try {
     console.log('🔍 getWhatsAppLink - EventType:', eventType, 'Schedule:', schedule);
-    
+
     if (!window.firebaseDb) {
       console.warn('⚠️ Firebase não inicializado ainda');
       return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
     }
-    
-    // Verificar cache primeiro
-    const cacheKey = `${eventType}_${schedule || 'general'}`;
+
+    // Normalizações para evitar desencontro de formatos
+    const normalizeType = (t) => String(t || '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace('xtreino-gratuito', 'xtreino-gratuito')
+      .replace('xtreino-tokens', 'xtreino-tokens')
+      .replace('modo liga', 'modo-liga')
+      .replace('camp', 'camp-freitas');
+
+    const normalizeHour = (h) => {
+      if (!h) return null;
+      const s = String(h).toLowerCase().trim();
+      // extrai apenas a hora (aceita "Sexta - 18h", "18", "18h", "18:00")
+      const m = s.match(/(\d{1,2})/);
+      return m ? `${parseInt(m[1], 10)}h` : null;
+    };
+
+    const type = normalizeType(eventType);
+    const hour = normalizeHour(schedule);
+
+    // Verificar cache primeiro (com chaves normalizadas)
+    const cacheKey = `${type}_${hour || 'general'}`;
     const cached = whatsappLinksCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
       console.log('🔍 Link encontrado no cache:', cached.link);
       return cached.link;
     }
-    
+
     const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-    
+
     const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
-    
-    // Primeiro, tentar encontrar link específico para o horário
-    if (schedule) {
-      console.log('🔍 Buscando link específico para horário:', schedule);
+
+    // 1) Tenta link específico para o horário (schedule = '18h')
+    if (hour) {
+      console.log('🔍 Buscando link específico para horário normalizado:', hour);
       const specificQuery = query(
         whatsappLinksRef,
-        where('eventType', '==', eventType),
-        where('schedule', '==', schedule),
+        where('eventType', '==', type),
+        where('schedule', '==', hour),
         where('status', '==', 'active')
       );
       const specificSnapshot = await getDocs(specificQuery);
-      
+
       console.log('🔍 Resultado busca específica:', specificSnapshot.docs.length, 'documentos');
-      
+
       if (!specificSnapshot.empty) {
         const link = specificSnapshot.docs[0].data().link;
         console.log('✅ Link específico encontrado:', link);
-        
-        // Salvar no cache
-        whatsappLinksCache.set(cacheKey, {
-          link: link,
-          timestamp: Date.now()
-        });
-        
+
+        whatsappLinksCache.set(cacheKey, { link, timestamp: Date.now() });
         return link;
       }
     }
-    
-    // Se não encontrou específico, buscar link geral para o evento
-    console.log('🔍 Buscando link geral para evento:', eventType);
+
+    // 2) Tenta link geral eventType + schedule = null
+    console.log('🔍 Buscando link geral (schedule null) para evento:', type);
     const generalQuery = query(
       whatsappLinksRef,
-      where('eventType', '==', eventType),
+      where('eventType', '==', type),
       where('schedule', '==', null),
       where('status', '==', 'active')
     );
     const generalSnapshot = await getDocs(generalQuery);
-    
-    console.log('🔍 Resultado busca geral:', generalSnapshot.docs.length, 'documentos');
-    
+
     if (!generalSnapshot.empty) {
       const link = generalSnapshot.docs[0].data().link;
-      console.log('✅ Link geral encontrado:', link);
-      
-      // Salvar no cache
-      whatsappLinksCache.set(cacheKey, {
-        link: link,
-        timestamp: Date.now()
-      });
-      
+      console.log('✅ Link geral (null) encontrado:', link);
+      whatsappLinksCache.set(cacheKey, { link, timestamp: Date.now() });
       return link;
     }
-    
-    // Fallback para links padrão se não encontrar no Firestore
+
+    // 3) Alguns cadastros podem usar string vazia em vez de null para "sem horário"
+    console.log('🔍 Buscando link geral (schedule vazio) para evento:', type);
+    const generalEmptyQuery = query(
+      whatsappLinksRef,
+      where('eventType', '==', type),
+      where('schedule', '==', ''),
+      where('status', '==', 'active')
+    );
+    const generalEmptySnapshot = await getDocs(generalEmptyQuery);
+
+    if (!generalEmptySnapshot.empty) {
+      const link = generalEmptySnapshot.docs[0].data().link;
+      console.log('✅ Link geral (vazio) encontrado:', link);
+      whatsappLinksCache.set(cacheKey, { link, timestamp: Date.now() });
+      return link;
+    }
+
+    // 4) Fallback para links padrão se não encontrar no Firestore
     const defaultLinks = {
       'xtreino-tokens': 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS',
       'xtreino-gratuito': 'https://chat.whatsapp.com/SEU_GRUPO_GRATUITO',
@@ -6443,18 +6469,13 @@ async function getWhatsAppLink(eventType, schedule = null) {
       'semanal-freitas': 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL',
       'treino': 'https://chat.whatsapp.com/SEU_GRUPO_TREINO'
     };
-    
-    const fallbackLink = defaultLinks[eventType] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+
+    const fallbackLink = defaultLinks[type] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
     console.log('🔍 Usando link padrão:', fallbackLink);
-    
-    // Salvar fallback no cache também
-    whatsappLinksCache.set(cacheKey, {
-      link: fallbackLink,
-      timestamp: Date.now()
-    });
-    
+
+    whatsappLinksCache.set(cacheKey, { link: fallbackLink, timestamp: Date.now() });
     return fallbackLink;
-    
+
   } catch (error) {
     console.error('❌ Erro ao obter link do WhatsApp:', error);
     return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';

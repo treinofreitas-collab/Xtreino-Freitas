@@ -438,11 +438,12 @@ function getEventDateTime(dateStr, scheduleStr) {
             return new Date(NaN);
         }
         
-        // Se dateStr já é um objeto Date, usar ele
+        // Se dateStr já é um objeto Date, usar ele (mas criar novo para evitar mutação)
         let date;
         if (dateStr instanceof Date) {
-            date = new Date(dateStr);
-            console.log('🔍 dateStr é Date, criando nova Date');
+            // Criar nova data usando o timezone local para evitar problemas
+            date = new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate());
+            console.log('🔍 dateStr é Date, criando nova Date local:', date);
         } else if (typeof dateStr === 'string') {
             console.log('🔍 dateStr é string, processando...');
             // Tentar diferentes formatos de data
@@ -451,23 +452,37 @@ function getEventDateTime(dateStr, scheduleStr) {
                 console.log('🔍 Formato DD/MM/YYYY detectado');
                 const parts = dateStr.split('/');
                 if (parts.length === 3) {
-                    date = new Date(parts[2], parts[1] - 1, parts[0]);
-                    console.log('🔍 Data criada a partir de partes:', parts);
+                    // Criar data no timezone local
+                    date = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                    console.log('🔍 Data criada a partir de partes:', parts, '->', date);
                 } else {
-                    date = new Date(dateStr);
+                    // Tentar parsing direto mas criar no timezone local depois
+                    const tempDate = new Date(dateStr);
+                    date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
                 }
             } else if (dateStr.includes('-')) {
                 // Formato YYYY-MM-DD
                 console.log('🔍 Formato YYYY-MM-DD detectado');
-                date = new Date(dateStr + 'T00:00:00');
-                console.log('🔍 Data criada com T00:00:00');
+                // IMPORTANTE: usar timezone local, não UTC
+                // Parse da data sem T para evitar problemas de timezone
+                const parts = dateStr.split('-');
+                if (parts.length === 3) {
+                    date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                    console.log('🔍 Data criada no timezone local a partir de partes:', parts, '->', date);
+                } else {
+                    // Fallback: criar Date e depois ajustar para local
+                    const tempDate = new Date(dateStr + 'T12:00:00');
+                    date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
+                }
             } else {
                 console.log('🔍 Formato não reconhecido, usando new Date()');
-                date = new Date(dateStr);
+                const tempDate = new Date(dateStr);
+                date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
             }
         } else {
-            console.log('🔍 Tipo não reconhecido, usando new Date()');
-            date = new Date(dateStr);
+            console.log('🔍 Tipo não reconhecido, tentando converter...');
+            const tempDate = new Date(dateStr);
+            date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
         }
         
         console.log('🔍 Data base criada:', date);
@@ -501,10 +516,12 @@ function getEventDateTime(dateStr, scheduleStr) {
             return new Date(NaN);
         }
         
-        // Definir a data e hora do evento
+        // Definir a data e hora do evento no timezone local
         date.setHours(hour, 0, 0, 0);
         console.log('🔍 Data/hora final:', date);
         console.log('🔍 Data/hora final é válida?', !isNaN(date.getTime()));
+        console.log('🔍 Data/hora final (ISO):', date.toISOString());
+        console.log('🔍 Data/hora final (local):', date.toLocaleString('pt-BR'));
         
         return date;
     } catch (error) {
@@ -854,13 +871,24 @@ async function getWhatsAppLinkForOrder(order) {
             
             if (window.firebaseDb) {
                 const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
+                // Normalizar parâmetros como no admin/script
+                const normalizeType = (t)=> String(t||'').toLowerCase().trim().replace(/\s+/g,'-')
+                    .replace('modo liga','modo-liga').replace('camp','camp-freitas');
+                const normalizeHour = (h)=>{
+                    if (!h) return null;
+                    const s = String(h).toLowerCase().trim();
+                    const m = s.match(/(\d{1,2})/);
+                    return m ? `${parseInt(m[1],10)}h` : null;
+                };
+                const type = normalizeType(order.eventType);
+                const hour = normalizeHour(order.schedule);
                 
                 // Buscar link específico para o horário
-                if (order.schedule) {
+                if (hour) {
                     const specificQuery = query(
                         whatsappLinksRef,
-                        where('eventType', '==', order.eventType),
-                        where('schedule', '==', order.schedule),
+                        where('eventType', '==', type),
+                        where('schedule', '==', hour),
                         where('status', '==', 'active')
                     );
                     const specificSnapshot = await getDocs(specificQuery);
@@ -875,7 +903,7 @@ async function getWhatsAppLinkForOrder(order) {
                 // Buscar link geral para o evento
                 const generalQuery = query(
                     whatsappLinksRef,
-                    where('eventType', '==', order.eventType),
+                    where('eventType', '==', type),
                     where('schedule', '==', null),
                     where('status', '==', 'active')
                 );
@@ -884,6 +912,20 @@ async function getWhatsAppLinkForOrder(order) {
                 if (!generalSnapshot.empty) {
                     const link = generalSnapshot.docs[0].data().link;
                     console.log('✅ Link geral encontrado diretamente:', link);
+                    return link;
+                }
+
+                // Alguns cadastros podem usar string vazia em vez de null
+                const generalEmptyQuery = query(
+                    whatsappLinksRef,
+                    where('eventType', '==', type),
+                    where('schedule', '==', ''),
+                    where('status', '==', 'active')
+                );
+                const generalEmptySnapshot = await getDocs(generalEmptyQuery);
+                if (!generalEmptySnapshot.empty) {
+                    const link = generalEmptySnapshot.docs[0].data().link;
+                    console.log('✅ Link geral (vazio) encontrado diretamente:', link);
                     return link;
                 }
             }
@@ -947,59 +989,58 @@ async function getOrderActionButton(order) {
     const hasLink = typeof whatsappLink === 'string' && whatsappLink.startsWith('http');
     let linkDisplay = whatsappLink;
     
-    if ((order.schedule && order.date) || (order.eventDate && (order.schedule || order.hour))) {
-        const dateStr = order.date || order.eventDate;
-        const scheduleStr = order.schedule || order.hour || '';
-        console.log('🔍 Data do evento:', dateStr, 'Horário:', scheduleStr);
-        console.log('🔍 Order completo:', order);
+    // Priorizar eventDate (data do evento) sobre date (data de criação do pedido)
+    const scheduleStr = order.schedule || order.hour || '';
+    const hasSchedule = !!scheduleStr;
+    
+    // Verificar se temos dados suficientes para calcular disponibilidade
+    if (hasSchedule && (order.eventDate || order.date)) {
+        // SEMPRE priorizar eventDate se disponível, pois é a data do evento
+        let actualDateStr = order.eventDate || order.date;
+        console.log('🔍 Dados do evento - eventDate:', order.eventDate, 'date:', order.date);
+        console.log('🔍 Horário:', scheduleStr);
+        console.log('🔍 Order completo:', JSON.stringify(order, null, 2));
         
-        // Se dateStr é um objeto Date, converter para string no formato correto
-        let actualDateStr = dateStr;
-        if (dateStr instanceof Date) {
-            // Se temos eventDate, verificar se é uma data válida e recente
-            if (order.eventDate) {
-                const eventDateObj = new Date(order.eventDate);
-                const now = new Date();
-                const daysDiff = (now - eventDateObj) / (1000 * 60 * 60 * 24);
-                
-                console.log('🔍 eventDate:', order.eventDate);
-                console.log('🔍 Diferença em dias:', daysDiff);
-                
-                // Se eventDate é muito antigo (mais de 30 dias), usar a data de criação
-                if (daysDiff > 30) {
-                    actualDateStr = dateStr.toISOString().split('T')[0];
-                    console.log('🔍 eventDate muito antigo, usando data de criação:', actualDateStr);
-                } else {
-                    actualDateStr = order.eventDate;
-                    console.log('🔍 Usando eventDate válido:', actualDateStr);
-                }
-            } else {
-                // Converter Date para string YYYY-MM-DD
-                actualDateStr = dateStr.toISOString().split('T')[0];
-                console.log('🔍 Convertendo Date para string:', actualDateStr);
-            }
-        } else if (typeof dateStr === 'string') {
-            // Se é string, verificar se é a data correta
-            console.log('🔍 dateStr é string:', dateStr);
+        // Converter para string no formato YYYY-MM-DD se necessário
+        if (actualDateStr instanceof Date) {
+            // Converter Date para string YYYY-MM-DD no timezone local
+            const year = actualDateStr.getFullYear();
+            const month = String(actualDateStr.getMonth() + 1).padStart(2, '0');
+            const day = String(actualDateStr.getDate()).padStart(2, '0');
+            actualDateStr = `${year}-${month}-${day}`;
+            console.log('🔍 Convertendo Date para string YYYY-MM-DD:', actualDateStr);
+        } else if (typeof actualDateStr === 'string') {
+            // Se já é string, garantir formato correto
+            console.log('🔍 dateStr já é string:', actualDateStr);
             
-            // Se temos eventDate, verificar se é válido
-            if (order.eventDate) {
-                const eventDateObj = new Date(order.eventDate);
-                const now = new Date();
-                const daysDiff = (now - eventDateObj) / (1000 * 60 * 60 * 24);
-                
-                console.log('🔍 eventDate string:', order.eventDate);
-                console.log('🔍 Diferença em dias:', daysDiff);
-                
-                // Se eventDate é muito antigo, usar dateStr
-                if (daysDiff > 30) {
-                    actualDateStr = dateStr;
-                    console.log('🔍 eventDate muito antigo, usando dateStr:', actualDateStr);
-                } else {
-                    actualDateStr = order.eventDate;
-                    console.log('🔍 Usando eventDate válido:', actualDateStr);
+            // Se está em formato DD/MM/YYYY, converter para YYYY-MM-DD
+            if (actualDateStr.includes('/')) {
+                const parts = actualDateStr.split('/');
+                if (parts.length === 3) {
+                    actualDateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    console.log('🔍 Convertido de DD/MM/YYYY para YYYY-MM-DD:', actualDateStr);
                 }
             }
+            
+            // Se não está no formato esperado, tentar criar uma Date e reconverter
+            if (!actualDateStr.includes('-') && !actualDateStr.includes('/')) {
+                const tempDate = new Date(actualDateStr);
+                if (!isNaN(tempDate.getTime())) {
+                    const year = tempDate.getFullYear();
+                    const month = String(tempDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(tempDate.getDate()).padStart(2, '0');
+                    actualDateStr = `${year}-${month}-${day}`;
+                    console.log('🔍 Convertido para YYYY-MM-DD via parsing:', actualDateStr);
+                }
+            }
+        } else if (actualDateStr && typeof actualDateStr === 'object' && actualDateStr.seconds) {
+            // Pode ser um Timestamp do Firestore
+            const tempDate = new Date(actualDateStr.seconds * 1000);
+            const year = tempDate.getFullYear();
+            const month = String(tempDate.getMonth() + 1).padStart(2, '0');
+            const day = String(tempDate.getDate()).padStart(2, '0');
+            actualDateStr = `${year}-${month}-${day}`;
+            console.log('🔍 Convertido de Timestamp Firestore para YYYY-MM-DD:', actualDateStr);
         }
         
         console.log('🔍 Data final a ser usada:', actualDateStr);
@@ -1008,48 +1049,84 @@ async function getOrderActionButton(order) {
         console.log('🔍 Data/hora calculada:', startDt);
         
         if (!isNaN(startDt.getTime())) {
+            // Garantir que estamos usando o horário local atual
             const now = new Date();
             const oneHourBefore = new Date(startDt.getTime() - (60 * 60 * 1000)); // 1 hora antes
             const oneHourAfter = new Date(startDt.getTime() + (60 * 60 * 1000)); // 1 hora depois
             
-            console.log('🔍 Agora:', now);
-            console.log('🔍 1h antes:', oneHourBefore);
-            console.log('🔍 1h depois:', oneHourAfter);
-            console.log('🔍 Evento em:', startDt);
+            console.log('🔍 Agora:', now.toISOString(), '(', now.toLocaleString('pt-BR'), ')');
+            console.log('🔍 1h antes:', oneHourBefore.toISOString(), '(', oneHourBefore.toLocaleString('pt-BR'), ')');
+            console.log('🔍 1h depois:', oneHourAfter.toISOString(), '(', oneHourAfter.toLocaleString('pt-BR'), ')');
+            console.log('🔍 Evento em:', startDt.toISOString(), '(', startDt.toLocaleString('pt-BR'), ')');
             
-            // Calcular diferenças em minutos para debug
-            const minutesUntilStart = Math.ceil((startDt.getTime() - now.getTime()) / (1000 * 60));
-            const minutesAfterStart = Math.ceil((now.getTime() - startDt.getTime()) / (1000 * 60));
+            // Calcular diferenças em minutos para debug (usando timestamps)
+            const nowTime = now.getTime();
+            const startTime = startDt.getTime();
+            const beforeTime = oneHourBefore.getTime();
+            const afterTime = oneHourAfter.getTime();
             
+            const minutesUntilStart = Math.floor((startTime - nowTime) / (1000 * 60));
+            const minutesAfterStart = Math.floor((nowTime - startTime) / (1000 * 60));
+            const minutesUntilAvailable = Math.floor((beforeTime - nowTime) / (1000 * 60));
+            
+            console.log('🔍 Timestamps - Agora:', nowTime, 'Evento:', startTime);
             console.log('🔍 Minutos até o evento:', minutesUntilStart);
             console.log('🔍 Minutos após o evento:', minutesAfterStart);
+            console.log('🔍 Minutos até disponível:', minutesUntilAvailable);
             
-            if (now >= oneHourBefore && now <= oneHourAfter) {
+            // Verificar se estamos dentro da janela de disponibilidade
+            // Comparação usando getTime() para garantir precisão
+            if (nowTime >= beforeTime && nowTime <= afterTime) {
                 isAvailable = true;
                 buttonText = 'Entrar no Grupo';
                 buttonClass = 'text-green-700 bg-green-100 hover:bg-green-200';
                 console.log('✅ Link disponível - dentro da janela');
-            } else if (now < oneHourBefore) {
+                console.log('✅ Comparação: ', nowTime, '>=', beforeTime, '&&', nowTime, '<=', afterTime);
+            } else if (nowTime < beforeTime) {
                 // Ainda não está disponível
-                const timeUntilAvailable = Math.ceil((oneHourBefore.getTime() - now.getTime()) / (1000 * 60));
-                buttonText = `Disponível em ${timeUntilAvailable}min`;
+                if (minutesUntilAvailable > 0 && minutesUntilAvailable <= 1440) {
+                    // Mostrar minutos restantes se for menos de 24h
+                    buttonText = `Disponível em ${minutesUntilAvailable}min`;
+                } else {
+                    buttonText = 'Aguardando liberação';
+                }
                 buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
                 isAvailable = false;
                 console.log('⏰ Link não disponível ainda:', buttonText);
+                console.log('⏰ Comparação: ', nowTime, '<', beforeTime);
             } else {
                 // Já expirou - evento passou
                 buttonText = 'Link Expirado';
                 buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
                 isAvailable = false;
                 console.log('❌ Link expirado - evento passou');
-                console.log('🔍 Motivo: agora > 1h depois do evento');
+                console.log('❌ Comparação: ', nowTime, '>', afterTime);
             }
         } else {
-            console.log('❌ Data/hora inválida');
+            console.log('❌ Data/hora inválida - não foi possível calcular o horário do evento');
+            // Mesmo com data inválida, se tiver link, mostrar como indisponível
+            buttonText = 'Link indisponível';
+            buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
+            isAvailable = false;
         }
     } else {
         console.log('❌ Dados de data/hora insuficientes');
+        // Garantir que o botão seja cinza quando não há dados suficientes
+        buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
+        buttonText = 'Link indisponível';
+        isAvailable = false;
     }
+    
+    // Garantir que se não há link, o botão seja sempre cinza e não disponível
+    if (!hasLink) {
+        buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
+        buttonText = 'Link indisponível';
+        isAvailable = false;
+        console.log('⚠️ Sem link do WhatsApp - marcando como indisponível');
+    }
+    
+    // Debug final
+    console.log('🔍 Estado final - isAvailable:', isAvailable, 'hasLink:', hasLink, 'buttonText:', buttonText, 'buttonClass:', buttonClass);
     
     return `
         <div class="mt-3 space-y-2">
@@ -1073,7 +1150,7 @@ async function getOrderActionButton(order) {
                     <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
                     </svg>
-                    ${hasLink ? buttonText : 'Link indisponível'}
+                    ${buttonText}
                 </span>
             `}
         </div>
