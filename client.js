@@ -1250,6 +1250,17 @@ try {
         const modal = document.getElementById('shippingModal');
         if (!modal) return;
         document.getElementById('shippingOrderId').value = orderId || '';
+        // Máscaras nos campos
+        const cpfEl = document.getElementById('shipCpf');
+        const cepEl = document.getElementById('shipCep');
+        if (cpfEl) {
+            cpfEl.removeEventListener('input', maskCPFHandler);
+            cpfEl.addEventListener('input', maskCPFHandler);
+        }
+        if (cepEl) {
+            cepEl.removeEventListener('input', maskCEPHandler);
+            cepEl.addEventListener('input', maskCEPHandler);
+        }
         // limpar mensagens
         const msg = document.getElementById('shippingMsg'); if (msg) { msg.textContent=''; msg.className='text-sm'; }
         // limpar campos
@@ -1264,17 +1275,38 @@ try {
     };
     window.saveShippingDetails = async function(){
         try{
+            // Validações
+            const cpfRaw = document.getElementById('shipCpf').value.replace(/\D/g,'');
+            if (cpfRaw.length !== 11 || !isValidCPF(cpfRaw)){
+                const msg = document.getElementById('shippingMsg');
+                if (msg){ msg.textContent='CPF inválido'; msg.className='text-sm text-red-600'; }
+                return;
+            }
+            const cepRaw = document.getElementById('shipCep').value.replace(/\D/g,'');
+            if (cepRaw.length !== 8){
+                const msg = document.getElementById('shippingMsg');
+                if (msg){ msg.textContent='CEP inválido (deve ter 8 dígitos)'; msg.className='text-sm text-red-600'; }
+                return;
+            }
+            const address = document.getElementById('shipAddress').value.trim();
+            const city = document.getElementById('shipCity').value.trim();
+            const state = document.getElementById('shipState').value.trim();
+            if (!address || !city || !state){
+                const msg = document.getElementById('shippingMsg');
+                if (msg){ msg.textContent='Preencha todos os campos obrigatórios (Endereço, Cidade, Estado)'; msg.className='text-sm text-red-600'; }
+                return;
+            }
             const orderId = document.getElementById('shippingOrderId').value;
             const shipping = {
                 name: document.getElementById('shipName').value.trim(),
-                cpf: document.getElementById('shipCpf').value.trim(),
-                cep: document.getElementById('shipCep').value.trim(),
-                address: document.getElementById('shipAddress').value.trim(),
+                cpf: cpfRaw,
+                cep: cepRaw,
+                address: address,
                 number: document.getElementById('shipNumber').value.trim(),
                 complement: document.getElementById('shipComplement').value.trim(),
                 district: document.getElementById('shipDistrict').value.trim(),
-                city: document.getElementById('shipCity').value.trim(),
-                state: document.getElementById('shipState').value.trim(),
+                city: city,
+                state: state,
             };
             const { doc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             await updateDoc(doc(collection(window.firebaseDb,'orders'), orderId), {
@@ -1291,6 +1323,52 @@ try {
         }
     };
 } catch (_) {}
+
+// Funções de máscara e validação para envio de camisa
+function maskCPF(v){
+    v = v.replace(/\D/g,'');
+    if (v.length <= 3) return v;
+    if (v.length <= 6) return v.replace(/(\d{3})(\d)/,'$1.$2');
+    if (v.length <= 9) return v.replace(/(\d{3})(\d{3})(\d)/,'$1.$2.$3');
+    return v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/,'$1.$2.$3-$4');
+}
+function maskCEP(v){
+    v = v.replace(/\D/g,'');
+    if (v.length > 5) v = v.replace(/(\d{5})(\d)/,'$1-$2');
+    return v;
+}
+function isValidCPF(cpf){
+    cpf = String(cpf).replace(/\D/g,'');
+    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += parseInt(cpf.charAt(i)) * (10 - i);
+    let digit = 11 - (sum % 11);
+    if (digit >= 10) digit = 0;
+    if (parseInt(cpf.charAt(9)) !== digit) return false;
+    sum = 0;
+    for (let i = 0; i < 10; i++) sum += parseInt(cpf.charAt(i)) * (11 - i);
+    digit = 11 - (sum % 11);
+    if (digit >= 10) digit = 0;
+    return parseInt(cpf.charAt(10)) === digit;
+}
+async function fetchAddressFromCEP(cep){
+    try{
+        const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const data = await res.json();
+        if (data.erro) return;
+        const addr = document.getElementById('shipAddress'); if (addr) addr.value = data.logradouro || '';
+        const dist = document.getElementById('shipDistrict'); if (dist) dist.value = data.bairro || '';
+        const city = document.getElementById('shipCity'); if (city) city.value = data.localidade || '';
+        const state = document.getElementById('shipState'); if (state) state.value = data.uf || '';
+    }catch(_){}
+}
+// Handlers para os eventos de máscara
+const maskCPFHandler = (e) => { e.target.value = maskCPF(e.target.value); };
+const maskCEPHandler = async (e) => {
+    e.target.value = maskCEP(e.target.value);
+    const cep = e.target.value.replace(/\D/g,'');
+    if (cep.length === 8) await fetchAddressFromCEP(cep);
+};
 
 // Function to get product information from Firestore
 async function getProductInfo(productId) {
