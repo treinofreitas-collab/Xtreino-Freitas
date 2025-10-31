@@ -2711,9 +2711,44 @@ function addProductOptions(productId) {
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Endereço de Entrega</label>
-                            <textarea id="deliveryAddress" placeholder="Rua, número, bairro, cidade, CEP" 
-                                      class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" rows="3"></textarea>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Nome na Camisa</label>
+                            <input id="shirtName" type="text" placeholder="Ex.: FREITAS" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Nome Completo</label>
+                            <input id="addrNome" type="text" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">CPF</label>
+                            <input id="customerCPF" type="text" placeholder="000.000.000-00" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">CEP</label>
+                            <input id="addrCEP" type="text" placeholder="00000-000" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Endereço</label>
+                            <input id="addrRua" type="text" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Número</label>
+                            <input id="addrNumero" type="text" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Complemento</label>
+                            <input id="addrComplemento" type="text" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Bairro</label>
+                            <input id="addrBairro" type="text" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Cidade</label>
+                            <input id="addrCidade" type="text" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Estado</label>
+                            <input id="addrEstado" type="text" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 focus:outline-none transition-colors" />
                         </div>
                     </div>
                     
@@ -3458,16 +3493,19 @@ async function handleProductPurchase(productId, cfg) {
             productOptions.playerId = playerId;
         } else if (productId === 'camisa') {
             const shirtSize = document.getElementById('shirtSize')?.value || 'M';
+            const nameOnShirt = document.getElementById('shirtName')?.value || '';
+            const nome = document.getElementById('addrNome')?.value || '';
+            const cpf = document.getElementById('customerCPF')?.value || '';
+            const cep = document.getElementById('addrCEP')?.value || '';
             const rua = document.getElementById('addrRua')?.value || '';
             const numero = document.getElementById('addrNumero')?.value || '';
-            const referencia = document.getElementById('addrReferencia')?.value || '';
-            const cpf = document.getElementById('customerCPF')?.value || '';
-            const qty = Number(document.getElementById('shirtQty')?.value || 1);
-            const nameOnShirt = document.getElementById('shirtName')?.value || '';
+            const complemento = document.getElementById('addrComplemento')?.value || '';
+            const bairro = document.getElementById('addrBairro')?.value || '';
+            const cidade = document.getElementById('addrCidade')?.value || '';
+            const estado = document.getElementById('addrEstado')?.value || '';
             productOptions.size = shirtSize;
-            productOptions.quantity = qty;
             productOptions.name = nameOnShirt;
-            productOptions.delivery = { rua, numero, referencia, cpf };
+            productOptions.delivery = { nome, cpf, cep, rua, numero, complemento, bairro, cidade, estado };
         }
 
         // Salvar order no Firestore ANTES de redirecionar
