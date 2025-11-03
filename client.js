@@ -1401,19 +1401,24 @@ function openImagesSelect(orderId){
                     alert('Selecione pelo menos um mapa.');
                     return;
                 }
-                // Abrir todas as abas na mesma interação do usuário
-                selected.forEach(cb => {
-                    const idx = cb.getAttribute('data-index');
+                // Estratégia anti-bloqueio: abrir o primeiro link agora,
+                // e oferecer um botão "Abrir próximo" para os restantes
+                const indices = selected.map(cb => cb.getAttribute('data-index'));
+
+                const openViaAnchor = (idx) => {
                     const url = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(idx)}`;
                     const a = document.createElement('a');
-                    a.href = url;
-                    a.target = '_blank';
-                    a.rel = 'noopener noreferrer';
-                    a.style.display = 'none';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                });
+                    a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.style.display = 'none';
+                    document.body.appendChild(a); a.click(); a.remove();
+                };
+
+                // abrir o primeiro imediatamente
+                openViaAnchor(indices[0]);
+
+                // guardar fila para abrir manualmente (um clique por aba)
+                window.imagesOpenQueue = indices.slice(1);
+                ensureImagesQueueModal();
+                showImagesQueueModal(orderId);
                 close();
             };
         })
@@ -1422,12 +1427,62 @@ function openImagesSelect(orderId){
         });
 }
 
+// Modal "Abrir Próximo" (fila de mapas restantes)
+function ensureImagesQueueModal(){
+    let modal = document.getElementById('imagesQueueModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'imagesQueueModal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-semibold text-gray-900">Abrir mapas restantes</h3>
+                <button id="imagesQueueClose" class="text-gray-500 hover:text-black">✕</button>
+            </div>
+            <p id="imagesQueueInfo" class="text-sm text-gray-600 mb-4"></p>
+            <div class="flex items-center justify-end gap-2">
+                <button id="imagesQueueNext" class="px-3 py-2 rounded bg-blue-matte text-white text-sm">Abrir próximo</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function showImagesQueueModal(orderId){
+    const modal = ensureImagesQueueModal();
+    const info = modal.querySelector('#imagesQueueInfo');
+    const btnNext = modal.querySelector('#imagesQueueNext');
+    const btnClose = modal.querySelector('#imagesQueueClose');
+    const updateInfo = () => {
+        const remaining = Array.isArray(window.imagesOpenQueue) ? window.imagesOpenQueue.length : 0;
+        info.textContent = remaining > 0 ? `Restam ${remaining} mapa(s) para abrir.` : 'Todos os mapas foram abertos.';
+        btnNext.disabled = remaining === 0;
+        if (remaining === 0) btnNext.classList.add('opacity-50', 'cursor-not-allowed');
+    };
+    const openNext = () => {
+        if (!Array.isArray(window.imagesOpenQueue) || window.imagesOpenQueue.length === 0) return;
+        const idx = window.imagesOpenQueue.shift();
+        const a = document.createElement('a');
+        a.href = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(idx)}`;
+        a.target = '_blank'; a.rel = 'noopener noreferrer'; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); a.remove();
+        updateInfo();
+    };
+    btnNext.onclick = openNext;
+    btnClose.onclick = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
+    updateInfo();
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
 // Expor funções de download no escopo global (para onclick do HTML)
 try {
     window.downloadSensibilidades = downloadSensibilidades;
     window.downloadImagensAereas = downloadImagensAereas;
     window.downloadPlanilhas = downloadPlanilhas;
     window.openImagesSelect = openImagesSelect;
+    window.showImagesQueueModal = showImagesQueueModal;
     window.openShippingModal = function(orderId){
         const modal = document.getElementById('shippingModal');
         if (!modal) return;
