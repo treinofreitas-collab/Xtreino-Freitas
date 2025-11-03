@@ -108,10 +108,18 @@ exports.handler = async (event) => {
           const chosen = allowed.includes(b) ? b : 'samsung';
           return `${siteBase}/assets/downloads/sensibilidade-android-${chosen}.zip`;
         };
-        let url = `${siteBase}/assets/downloads/sensibilidade-pc.zip`;
-        if (platform === 'android') url = pickAndroid(brand);
-        else if (platform === 'ios') url = `${siteBase}/assets/downloads/sensibilidade-ios.zip`;
-        links = [{ name: 'Sensibilidade', url }];
+        if (platform === 'ios') {
+          // Três links do iOS (Drive)
+          links = [
+            { name: 'iOS • Vídeo: Ajustes na configuração do celular', url: 'https://drive.google.com/file/d/1J1mqs20SRfT6xm4spXliaozQ4EFDJNy0/view?usp=drivesdk' },
+            { name: 'iOS • Pasta: Regulagem da sensibilidade no jogo', url: 'https://drive.google.com/drive/folders/1mR6fOTsh9CCpOe0tfo-a3JfgEObDN-5m' },
+            { name: 'iOS • Vídeo: Saiba sobre o cursor secreto', url: 'https://drive.google.com/file/d/1WcoZ41kvmCUmhWrADK_5msh2pQodRP92/view?usp=drivesdk' }
+          ];
+        } else {
+          let url = `${siteBase}/assets/downloads/sensibilidade-pc.zip`;
+          if (platform === 'android') url = pickAndroid(brand);
+          links = [{ name: 'Sensibilidade', url }];
+        }
       } else {
         return { statusCode: 404, headers, body: 'Digital delivery not found' };
       }

@@ -102,22 +102,32 @@ async function generateDownloadLinks(productId, productOptions = {}) {
                     platform: 'android',
                     brand: brand
                 },
-                'ios': {
-                    name: 'Sensibilidade iOS',
-                    url: `${siteBase}/assets/downloads/sensibilidade-ios.zip`,
-                    description: 'Arquivo de configuração para iOS (iPhone/iPad)',
-                    platform: 'ios'
-                }
+                'ios': [
+                    {
+                        name: 'iOS • Vídeo: Ajustes na configuração do celular',
+                        url: 'https://drive.google.com/file/d/1J1mqs20SRfT6xm4spXliaozQ4EFDJNy0/view?usp=drivesdk',
+                        description: 'Passo a passo com os ajustes do sistema',
+                        platform: 'ios'
+                    },
+                    {
+                        name: 'iOS • Pasta: Regulagem da sensibilidade no jogo',
+                        url: 'https://drive.google.com/drive/folders/1mR6fOTsh9CCpOe0tfo-a3JfgEObDN-5m',
+                        description: 'Materiais de configuração dentro do jogo',
+                        platform: 'ios'
+                    },
+                    {
+                        name: 'iOS • Vídeo: Saiba sobre o cursor secreto',
+                        url: 'https://drive.google.com/file/d/1WcoZ41kvmCUmhWrADK_5msh2pQodRP92/view?usp=drivesdk',
+                        description: 'Explicação sobre o cursor secreto',
+                        platform: 'ios'
+                    }
+                ]
             };
             
-            return [
-                platformFiles[platform] || platformFiles['pc'],
-                {
-                    name: 'Guia de Instalação',
-                    url: `${siteBase}/assets/downloads/guia-sensibilidade.pdf`,
-                    description: 'Instruções passo a passo'
-                }
-            ];
+            if (platform === 'ios') {
+                return platformFiles['ios'];
+            }
+            return [ platformFiles[platform] || platformFiles['pc'] ];
             
         case 'imagens':
             {

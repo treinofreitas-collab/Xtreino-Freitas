@@ -1285,10 +1285,20 @@ function downloadSensibilidades(orderId) {
           window.location.href = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=0`;
           return;
         }
-        // Baixar arquivo baseado na plataforma selecionada
-        const platform = data.platform || 'pc'; // fallback para PC
-        const fileIndex = files.findIndex(f => f.platform === platform) || 0;
-        const url = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(fileIndex)}`;
+        // Se houver múltiplos arquivos (ex.: iOS), abrir todos
+        if (files.length > 1) {
+          files.forEach(f => {
+            const idx = typeof f.index === 'number' ? f.index : 0;
+            const url = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(idx)}`;
+            window.open(url, '_blank');
+          });
+          return;
+        }
+        // Caso contrário, baixar baseado na plataforma (ou primeiro)
+        const platform = data.platform || 'pc';
+        const fileIndex = files.findIndex(f => f.platform === platform);
+        const idx = fileIndex >= 0 ? fileIndex : 0;
+        const url = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(idx)}`;
         window.open(url, '_blank');
       })
       .catch(() => {
