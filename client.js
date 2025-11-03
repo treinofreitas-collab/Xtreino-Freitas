@@ -1401,13 +1401,18 @@ function openImagesSelect(orderId){
                     alert('Selecione pelo menos um mapa.');
                     return;
                 }
-                // Abrir com pequenos intervalos para evitar bloqueio de pop-up
-                selected.forEach((cb, i) => {
+                // Abrir todas as abas na mesma interação do usuário
+                selected.forEach(cb => {
                     const idx = cb.getAttribute('data-index');
                     const url = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(idx)}`;
-                    setTimeout(() => {
-                        try { window.open(url, '_blank', 'noopener'); } catch(_) {}
-                    }, i * 350);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    a.style.display = 'none';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
                 });
                 close();
             };
