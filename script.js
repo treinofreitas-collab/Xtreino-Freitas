@@ -2559,7 +2559,7 @@ const scheduleConfig = {
     // Produtos da loja virtual
     'sensibilidades': { label: 'Sensibilidade no Free Fire – PC / Android / iOS', price: 8.00, isProduct: true },
     'imagens': { label: 'Imagens Aéreas dos Mapas', price: 2.00, isProduct: true },
-    'planilhas': { label: 'Planilha de Análise de Times', price: 19.90, isProduct: true },
+    'planilhas': { label: 'Planilha de Análise de Times', price: 19.00, isProduct: true },
     'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
     'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
 };
