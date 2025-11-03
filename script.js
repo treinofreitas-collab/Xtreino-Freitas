@@ -3522,6 +3522,13 @@ async function handleProductPurchase(productId, cfg) {
         const team = teamElement ? teamElement.value.trim() : '';
         const email = emailElement ? emailElement.value.trim() : '';
         const phone = phoneElement ? phoneElement.value.trim() : '';
+
+        // Resolver dados a partir do perfil/autenticação quando os campos do formulário não existem
+        const authUser = window.firebaseAuth?.currentUser || {};
+        const profile = window.currentUserProfile || {};
+        const resolvedName = team || profile.name || authUser.displayName || '';
+        const resolvedEmail = email || authUser.email || profile.email || '';
+        const resolvedPhone = phone || profile.phone || '';
         
         // Email não é mais obrigatório
         
@@ -3586,12 +3593,12 @@ async function handleProductPurchase(productId, cfg) {
                 quantity: 1,
                 currency: 'BRL',
                 status: 'pending',
-                customer: email,
-                customerName: team,
-                buyerEmail: email,
+                customer: resolvedEmail,
+                customerName: resolvedName,
+                buyerEmail: resolvedEmail,
                 userId: window.firebaseAuth.currentUser?.uid,
                 uid: window.firebaseAuth.currentUser?.uid,
-                phone: phone,
+                phone: resolvedPhone,
                 productId: productId,
                 productOptions: productOptions,
                 createdAt: new Date(),
