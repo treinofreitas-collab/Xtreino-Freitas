@@ -31,6 +31,9 @@ exports.handler = async function(event) {
 
     // Usar back_url do cliente se fornecido, senão usar URLs padrão
     const baseUrl = back_url || process.env.MP_BACK_BASE_URL || process.env.SITE_URL || process.env.URL || (event && event.headers && event.headers.host ? (`https://${event.headers.host}`) : null);
+    // Garantir que o webhook aponte para a raiz do site (sem pathname)
+    let siteBase = baseUrl;
+    try { siteBase = new URL(baseUrl).origin; } catch(_) {}
     const successUrl = (back_url ? `${back_url}?mp_status=success` : process.env.MP_BACK_URL_SUCCESS || (baseUrl ? `${baseUrl}/?mp_status=success` : 'https://example.com/sucesso'));
     const failureUrl = (back_url ? `${back_url}?mp_status=failure` : process.env.MP_BACK_URL_FAILURE || (baseUrl ? `${baseUrl}/?mp_status=failure` : 'https://example.com/falha'));
     const pendingUrl = (back_url ? `${back_url}?mp_status=pending` : process.env.MP_BACK_URL_PENDING || (baseUrl ? `${baseUrl}/?mp_status=pending` : 'https://example.com/pendente'));
@@ -49,7 +52,7 @@ exports.handler = async function(event) {
       ],
       back_urls: { success: successUrl, failure: failureUrl, pending: pendingUrl },
       auto_return: 'approved',
-      notification_url: `${baseUrl}/.netlify/functions/payment-notification`,
+      notification_url: `${siteBase}/.netlify/functions/payment-notification`,
       external_reference: externalRef
     };
 

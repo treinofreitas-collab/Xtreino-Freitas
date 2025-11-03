@@ -1590,7 +1590,7 @@ async function handlePurchase(event) {
                 unit_price: totalNum,
                 currency_id: 'BRL',
                 quantity: 1,
-                back_url: window.location.origin + window.location.pathname,
+                back_url: window.location.origin,
                 coupon_info: couponInfo,
                 external_reference: externalRef
             })
@@ -1899,7 +1899,31 @@ async function heroPurchaseTokens(){
         const qty = heroSelectedQty || 0; if (!qty){ alert('Selecione a quantidade'); return; }
         const basePrice = qty; let price = basePrice;
         if (heroAppliedCoupon){ const d = heroAppliedCoupon.discountType==='percentage' ? basePrice*(heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue; price = Math.max(0, basePrice - d); }
-        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin + window.location.pathname, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined }) });
+        // Criar ordem no Firestore para associar external_reference e permitir confirmação automática
+        let externalRef;
+        try {
+            const { addDoc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const orderData = {
+                title: `${qty} Token${qty>1?'s':''} XTreino`,
+                amount: price,
+                quantity: qty,
+                currency: 'BRL',
+                customer: window.firebaseAuth.currentUser?.email || null,
+                customerName: window.firebaseAuth.currentUser?.displayName || null,
+                uid: window.firebaseAuth.currentUser?.uid || null,
+                type: 'tokens_purchase',
+                createdAt: new Date(),
+                timestamp: Date.now()
+            };
+            const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
+            externalRef = `tokens_${docRef.id}`;
+            await updateDoc(docRef, { external_reference: externalRef });
+            try { sessionStorage.setItem('lastExternalRef', externalRef); } catch(_) {}
+        } catch(e) {
+            console.warn('Não foi possível criar ordem local para tokens:', e);
+        }
+
+        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined, external_reference: externalRef }) });
         if (!response.ok) throw new Error('Erro');
         const data = await response.json();
         if (data.init_point){ closeHeroTokensModal(); window.location.href = data.init_point; } else { alert('Erro ao iniciar pagamento'); }
@@ -3625,7 +3649,7 @@ async function handleProductPurchase(productId, cfg) {
                 unit_price: finalPrice,
                 currency_id: 'BRL',
                 quantity: 1,
-                back_url: window.location.origin + window.location.pathname,
+                back_url: window.location.origin,
                 external_reference: externalRef || (`digital_${docRef?.id || Date.now()}`)
             })
         });
@@ -3911,7 +3935,7 @@ async function submitSchedule(e){
             unit_price: finalPrice, 
             currency_id:'BRL', 
             quantity: 1, // Mudamos para 1 pois já calculamos o preço total
-            back_url: window.location.origin + window.location.pathname,
+            back_url: window.location.origin,
             coupon_info: couponInfo,
             multiple_reservations: {
                 teams: teams.map(t => t.name),
