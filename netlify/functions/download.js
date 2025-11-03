@@ -50,6 +50,9 @@ exports.handler = async (event) => {
     const orderId = params.orderId || '';
     const indexStr = params.i;
     const listOnly = params.list === '1';
+    // Variáveis auxiliares para enriquecer resposta listOnly
+    let platformUsed = null;
+    let brandUsed = null;
 
     if (!orderId) {
       return { statusCode: 400, headers, body: 'Missing orderId' };
@@ -88,12 +91,27 @@ exports.handler = async (event) => {
         if (slug.includes('nova')) return 'assets/downloads/NOVATERRA.zip';
         return `imagens-${slug}.zip`;
       };
-      if ((productId || '').toString().includes('imagem') || productId === 'imagens') {
+      if ((productId || '').toString().toLowerCase().includes('imagem') || productId === 'imagens') {
         const maps = productOptions.maps || ['Bermuda'];
         links = maps.map(map => ({ name: `Imagens Aéreas - ${map}`, url: `${siteBase}/${mapToFilename(map)}` }));
-      } else if ((productId || '').toString().includes('planilha') || productId === 'planilhas') {
+      } else if ((productId || '').toString().toLowerCase().includes('planilha') || productId === 'planilhas') {
         const file = 'assets/downloads/CONTROLE DE LINES PARA COACH E ANALISTA .xlsx';
         links = [{ name: 'Planilhas de Análise', url: `${siteBase}/${encodeURIComponent(file)}` }];
+      } else if ((productId || '').toString().toLowerCase().includes('sensibil') || productId === 'sensibilidades') {
+        // Fallback para Sensibilidades baseado nas opções do pedido
+        const platform = (productOptions.platform || 'pc').toString().toLowerCase();
+        const brand = (productOptions.brand || '').toString().toLowerCase();
+        platformUsed = platform;
+        brandUsed = brand || null;
+        const pickAndroid = (b) => {
+          const allowed = ['samsung','motorola','lg','xiaomi'];
+          const chosen = allowed.includes(b) ? b : 'samsung';
+          return `${siteBase}/assets/downloads/sensibilidade-android-${chosen}.zip`;
+        };
+        let url = `${siteBase}/assets/downloads/sensibilidade-pc.zip`;
+        if (platform === 'android') url = pickAndroid(brand);
+        else if (platform === 'ios') url = `${siteBase}/assets/downloads/sensibilidade-ios.zip`;
+        links = [{ name: 'Sensibilidade', url }];
       } else {
         return { statusCode: 404, headers, body: 'Digital delivery not found' };
       }
@@ -149,7 +167,12 @@ exports.handler = async (event) => {
     if (listOnly) {
       // Retornar lista de arquivos disponíveis (sem expor URLs reais)
       const list = links.map((l, idx) => ({ index: idx, name: l.name || `file-${idx+1}` }));
-      return { statusCode: 200, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ files: list }) };
+      const body = { files: list };
+      if (platformUsed) {
+        body.platform = platformUsed;
+        if (brandUsed) body.brand = brandUsed;
+      }
+      return { statusCode: 200, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
     }
 
     const idx = indexStr ? parseInt(indexStr, 10) : 0;
