@@ -44,20 +44,20 @@ async function generateDownloadLinks(productId, productOptions = {}) {
                         }];
                     } else if (product.downloadType === 'maps') {
                         const maps = productOptions.maps || product.maps || [];
-                        const siteBase = process.env.SITE_URL || process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://orgfreitas.com.br';
-                        const mapToFilename = (m) => {
-                            const slug = (m || '').toString().toLowerCase().replace(/\s+/g,'-');
-                            if (slug.includes('bermuda')) return 'assets/downloads/BERMUDA.zip';
-                            if (slug.includes('kalahari')) return 'assets/downloads/KALAHARI.zip';
-                            if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'assets/downloads/ALPINE.zip';
-                            if (slug.includes('purg')) return 'assets/downloads/PURGATORIO.zip';
-                            return `imagens-${slug}.zip`;
+                        const mapToDriveLink = (m) => {
+                            const slug = (m || '').toString().toLowerCase();
+                            if (slug.includes('bermuda')) return 'https://drive.google.com/drive/folders/19N5hSofqFVCGDiHEU_wKmtVmHW1a1UfJ?usp=drive_link';
+                            if (slug.includes('kalahari')) return 'https://drive.google.com/drive/folders/16UUsxWUhWxmHfL-2X46wc4yfmo_A_f-u?usp=drive_link';
+                            if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'https://drive.google.com/drive/folders/15btlRqv-5LvdMHTyG6HQERbUdWRwWtOS?usp=drive_link';
+                            if (slug.includes('purg')) return 'https://drive.google.com/drive/folders/1yDGP-7iCCBa4S63mik-MFVOGOebCogdB?usp=drive_link';
+                            if (slug.includes('nova')) return 'https://drive.google.com/drive/folders/1sug4ryRTA5TpnKyS2hh8MgZqrNiOL1rE?usp=drive_link';
+                            return null;
                         };
                         return maps.map(map => ({
                             name: `${product.name} - ${map}`,
-                            url: `${siteBase}/${mapToFilename(map)}`,
-                            description: `~20 imagens com principais calls do mapa ${map}`
-                        }));
+                            url: mapToDriveLink(map),
+                            description: `Imagens do mapa ${map}`
+                        })).filter(it => !!it.url);
                     }
                     break;
                     
@@ -132,19 +132,20 @@ async function generateDownloadLinks(productId, productOptions = {}) {
         case 'imagens':
             {
                 const maps = productOptions.maps || [];
-                const mapToFilename = (m) => {
-                    const slug = (m || '').toString().toLowerCase().replace(/\s+/g,'-');
-                    if (slug.includes('bermuda')) return 'assets/downloads/BERMUDA.zip';
-                    if (slug.includes('kalahari')) return 'assets/downloads/KALAHARI.zip';
-                    if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'assets/downloads/ALPINE.zip';
-                    if (slug.includes('purg')) return 'assets/downloads/PURGATORIO.zip';
-                    return `imagens-${slug}.zip`;
+                const mapToDriveLink = (m) => {
+                    const slug = (m || '').toString().toLowerCase();
+                    if (slug.includes('bermuda')) return 'https://drive.google.com/drive/folders/19N5hSofqFVCGDiHEU_wKmtVmHW1a1UfJ?usp=drive_link';
+                    if (slug.includes('kalahari')) return 'https://drive.google.com/drive/folders/16UUsxWUhWxmHfL-2X46wc4yfmo_A_f-u?usp=drive_link';
+                    if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'https://drive.google.com/drive/folders/15btlRqv-5LvdMHTyG6HQERbUdWRwWtOS?usp=drive_link';
+                    if (slug.includes('purg')) return 'https://drive.google.com/drive/folders/1yDGP-7iCCBa4S63mik-MFVOGOebCogdB?usp=drive_link';
+                    if (slug.includes('nova')) return 'https://drive.google.com/drive/folders/1sug4ryRTA5TpnKyS2hh8MgZqrNiOL1rE?usp=drive_link';
+                    return null;
                 };
                 return maps.map(map => ({
                     name: `Imagens Aéreas - ${map}`,
-                    url: `${siteBase}/${mapToFilename(map)}`,
-                    description: `~20 imagens com principais calls do mapa ${map}`
-                }));
+                    url: mapToDriveLink(map),
+                    description: `Imagens do mapa ${map}`
+                })).filter(it => !!it.url);
             }
             
         case 'planilhas':

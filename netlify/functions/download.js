@@ -82,18 +82,18 @@ exports.handler = async (event) => {
       const productId = order.productId || order.item || order.title || '';
       const productOptions = order.productOptions || {};
       const siteBase = process.env.URL || process.env.DEPLOY_PRIME_URL || '';
-      const mapToFilename = (m) => {
-        const slug = (m || '').toString().toLowerCase().replace(/\s+/g,'-');
-        if (slug.includes('bermuda')) return 'assets/downloads/BERMUDA.zip';
-        if (slug.includes('kalahari')) return 'assets/downloads/KALAHARI.zip';
-        if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'assets/downloads/ALPINE.zip';
-        if (slug.includes('purg')) return 'assets/downloads/PURGATORIO.zip';
-        if (slug.includes('nova')) return 'assets/downloads/NOVATERRA.zip';
-        return `imagens-${slug}.zip`;
+      const mapToDriveLink = (m) => {
+        const slug = (m || '').toString().toLowerCase();
+        if (slug.includes('bermuda')) return 'https://drive.google.com/drive/folders/19N5hSofqFVCGDiHEU_wKmtVmHW1a1UfJ?usp=drive_link';
+        if (slug.includes('kalahari')) return 'https://drive.google.com/drive/folders/16UUsxWUhWxmHfL-2X46wc4yfmo_A_f-u?usp=drive_link';
+        if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'https://drive.google.com/drive/folders/15btlRqv-5LvdMHTyG6HQERbUdWRwWtOS?usp=drive_link';
+        if (slug.includes('purg')) return 'https://drive.google.com/drive/folders/1yDGP-7iCCBa4S63mik-MFVOGOebCogdB?usp=drive_link';
+        if (slug.includes('nova')) return 'https://drive.google.com/drive/folders/1sug4ryRTA5TpnKyS2hh8MgZqrNiOL1rE?usp=drive_link';
+        return null;
       };
       if ((productId || '').toString().toLowerCase().includes('imagem') || productId === 'imagens') {
         const maps = productOptions.maps || ['Bermuda'];
-        links = maps.map(map => ({ name: `Imagens Aéreas - ${map}`, url: `${siteBase}/${mapToFilename(map)}` }));
+        links = maps.map(map => ({ name: `Imagens Aéreas - ${map}`, url: mapToDriveLink(map) })).filter(l => !!l.url);
       } else if ((productId || '').toString().toLowerCase().includes('planilha') || productId === 'planilhas') {
         const file = 'assets/downloads/CONTROLE DE LINES PARA COACH E ANALISTA .xlsx';
         links = [{ name: 'Planilhas de Análise', url: `${siteBase}/${encodeURIComponent(file)}` }];
@@ -149,23 +149,23 @@ exports.handler = async (event) => {
         const orderDoc = await db.collection('orders').doc(orderId).get();
         const order = orderDoc.exists ? orderDoc.data() : {};
         const productId = order.productId || order.item || order.title || '';
-        if ((productId || '').toString().includes('imagem') || productId === 'imagens') {
+        if ((productId || '').toString().toLowerCase().includes('imagem') || productId === 'imagens') {
           const maps = (order.productOptions?.maps || []).map(m => (m||'').toString().toLowerCase());
           const have = new Set((links || []).map(l => (l.name||'').toString().toLowerCase()));
-          const siteBase = process.env.URL || process.env.DEPLOY_PRIME_URL || '';
-          const mapToFilename = (m) => {
-            const slug = (m || '').toString().toLowerCase().replace(/\s+/g,'-');
-            if (slug.includes('bermuda')) return 'assets/downloads/BERMUDA.zip';
-            if (slug.includes('kalahari')) return 'assets/downloads/KALAHARI.zip';
-            if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'assets/downloads/ALPINE.zip';
-            if (slug.includes('purg')) return 'assets/downloads/PURGATORIO.zip';
-            if (slug.includes('nova')) return 'assets/downloads/NOVATERRA.zip';
-            return `imagens-${slug}.zip`;
+          const mapToDriveLink = (m) => {
+            const slug = (m || '').toString().toLowerCase();
+            if (slug.includes('bermuda')) return 'https://drive.google.com/drive/folders/19N5hSofqFVCGDiHEU_wKmtVmHW1a1UfJ?usp=drive_link';
+            if (slug.includes('kalahari')) return 'https://drive.google.com/drive/folders/16UUsxWUhWxmHfL-2X46wc4yfmo_A_f-u?usp=drive_link';
+            if (slug.includes('alp') || slug.includes('alpina') || slug.includes('alpine')) return 'https://drive.google.com/drive/folders/15btlRqv-5LvdMHTyG6HQERbUdWRwWtOS?usp=drive_link';
+            if (slug.includes('purg')) return 'https://drive.google.com/drive/folders/1yDGP-7iCCBa4S63mik-MFVOGOebCogdB?usp=drive_link';
+            if (slug.includes('nova')) return 'https://drive.google.com/drive/folders/1sug4ryRTA5TpnKyS2hh8MgZqrNiOL1rE?usp=drive_link';
+            return null;
           };
           maps.forEach(m => {
             const display = `imagens aéreas - ${m}`.toLowerCase();
             if (!have.has(display)) {
-              links.push({ name: `Imagens Aéreas - ${m}`, url: `${siteBase}/${mapToFilename(m)}` });
+              const url = mapToDriveLink(m);
+              if (url) links.push({ name: `Imagens Aéreas - ${m}`, url });
             }
           });
         }
