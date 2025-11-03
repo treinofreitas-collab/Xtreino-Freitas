@@ -1130,12 +1130,16 @@ async function getOrderActionButton(order) {
     
     return `
         <div class="mt-3 space-y-2">
-            <!-- Link do WhatsApp visível -->
-            ${hasLink ? `
+            <!-- Link do WhatsApp: só clicável dentro da janela (-1h a +1h) -->
+            ${isAvailable && hasLink ? `
             <div class="text-xs text-gray-600">
                 <strong>Link:</strong> <a href="${whatsappLink}" target="_blank" rel="noopener" class="font-mono text-xs break-all text-blue-700 underline">${linkDisplay}</a>
             </div>
-            ` : ''}
+            ` : `
+            <div class="text-xs text-gray-400">
+                <strong>Link:</strong> ${buttonText}
+            </div>
+            `}
             
             <!-- Botão de ação -->
             ${isAvailable && hasLink ? `
