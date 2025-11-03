@@ -1184,11 +1184,11 @@ function getProductActionButton(product) {
     if (title.includes('imagens') || title.includes('aéreas') || item.includes('imagens') || item.includes('aéreas')) {
         return `
             <div class="mt-3">
-                <button onclick="downloadImagensAereas('${product.id}')" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200">
+                <button onclick="openImagesSelect('${product.id}')" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    Download
+                    Selecionar Mapas
                 </button>
         </div>
         `;
@@ -1332,11 +1332,94 @@ function downloadImagensAereas(orderId) {
       });
 }
 
+// Modal de seleção de mapas comprados
+function ensureImagesModal(){
+    let modal = document.getElementById('imagesSelectModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'imagesSelectModal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Selecionar Mapas</h3>
+                <button id="imagesSelectClose" class="text-gray-500 hover:text-black">✕</button>
+            </div>
+            <div id="imagesSelectBody" class="space-y-2 max-h-72 overflow-auto"></div>
+            <div class="mt-5 flex items-center justify-between">
+                <button id="imagesSelectAll" class="px-3 py-2 rounded bg-gray-100 text-gray-700 text-sm">Selecionar todos</button>
+                <div class="space-x-2">
+                    <button id="imagesSelectCancel" class="px-3 py-2 rounded border text-sm">Cancelar</button>
+                    <button id="imagesSelectConfirm" class="px-3 py-2 rounded bg-blue-matte text-white text-sm">Abrir selecionados</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function openImagesSelect(orderId){
+    const modal = ensureImagesModal();
+    const body = modal.querySelector('#imagesSelectBody');
+    body.innerHTML = '<p class="text-sm text-gray-500">Carregando mapas...</p>';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    const listUrl = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&list=1`;
+    fetch(listUrl)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(data => {
+            const files = Array.isArray(data?.files) ? data.files : [];
+            if (files.length === 0){
+                body.innerHTML = '<p class="text-sm text-red-600">Nenhum mapa disponível para este pedido.</p>';
+                return;
+            }
+            body.innerHTML = files.map(f => {
+                const name = (f.name || '').replace(/imagens\s+aéreas\s+-\s+/i, '').trim();
+                const id = `imgopt_${orderId}_${f.index}`;
+                return `
+                    <label for="${id}" class="flex items-center gap-3 p-2 border rounded">
+                        <input id="${id}" type="checkbox" data-index="${f.index}" class="w-4 h-4">
+                        <span class="text-sm text-gray-800">${name || (f.name || `Mapa ${f.index+1}`)}</span>
+                    </label>`;
+            }).join('');
+
+            const btnAll = modal.querySelector('#imagesSelectAll');
+            btnAll.onclick = () => {
+                body.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+            };
+
+            const btnCancel = modal.querySelector('#imagesSelectCancel');
+            const btnClose = modal.querySelector('#imagesSelectClose');
+            const close = ()=>{ modal.classList.add('hidden'); modal.classList.remove('flex'); };
+            btnCancel.onclick = close; btnClose.onclick = close;
+
+            const btnConfirm = modal.querySelector('#imagesSelectConfirm');
+            btnConfirm.onclick = () => {
+                const selected = Array.from(body.querySelectorAll('input[type="checkbox"]:checked'));
+                if (selected.length === 0){
+                    alert('Selecione pelo menos um mapa.');
+                    return;
+                }
+                selected.forEach(cb => {
+                    const idx = cb.getAttribute('data-index');
+                    const url = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(idx)}`;
+                    window.open(url, '_blank');
+                });
+                close();
+            };
+        })
+        .catch(() => {
+            body.innerHTML = '<p class="text-sm text-red-600">Falha ao carregar mapas.</p>';
+        });
+}
+
 // Expor funções de download no escopo global (para onclick do HTML)
 try {
     window.downloadSensibilidades = downloadSensibilidades;
     window.downloadImagensAereas = downloadImagensAereas;
     window.downloadPlanilhas = downloadPlanilhas;
+    window.openImagesSelect = openImagesSelect;
     window.openShippingModal = function(orderId){
         const modal = document.getElementById('shippingModal');
         if (!modal) return;
