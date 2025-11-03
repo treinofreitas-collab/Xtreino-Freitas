@@ -1133,6 +1133,19 @@
   // ---- Relatórios ----
   let charts = {};
   let period = { from: null, to: null };
+  // Bind filtros de período
+  try {
+    const btn = document.getElementById('btnApplyFilter');
+    if (btn) btn.addEventListener('click', applyFilter);
+    const sel = document.getElementById('reportPeriod');
+    const fromEl = document.getElementById('dateFrom');
+    const toEl = document.getElementById('dateTo');
+    if (sel) sel.addEventListener('change', ()=>{
+      const isCustom = sel.value === 'custom';
+      if (fromEl) { fromEl.disabled = !isCustom; if (!isCustom) fromEl.value = ''; }
+      if (toEl) { toEl.disabled = !isCustom; if (!isCustom) toEl.value = ''; }
+    });
+  } catch(_){}
 
   // Unifica pedidos: orders + registrations
   async function fetchUnifiedOrders() {
@@ -1412,8 +1425,14 @@
     const canvas = document.getElementById('salesChart');
     if (!canvas) return;
     const all = await fetchUnifiedOrders();
-    // agrega últimos 30 dias
-    const days = [...Array(30)].map((_,i)=>{ const d = new Date(); d.setDate(d.getDate()-(29-i)); return d;});
+    // Intervalo dinâmico com base no filtro
+    const today = new Date(); today.setHours(0,0,0,0);
+    const start = period.from ? new Date(period.from) : new Date(today.getTime() - 29*24*60*60*1000);
+    const end = period.to ? new Date(period.to) : today;
+    const days = [];
+    const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    while (cur <= endDay){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1); }
     const labels = days.map(d=>d.toLocaleDateString('pt-BR'));
     const dataMap = Object.fromEntries(labels.map(l=>[l,0]));
     all.forEach(o => {
@@ -1428,6 +1447,11 @@
     charts.sales = new Chart(canvas.getContext('2d'), {
       type: 'line', data: { labels, datasets: [{label:'Vendas', data, borderColor:'#2563eb', tension:.3}]}, options:{plugins:{legend:{display:false}}}
     });
+    // Atualiza título com o intervalo
+    try {
+      const title = document.getElementById('salesChartTitle');
+      if (title){ const fmt = d => d.toLocaleDateString('pt-BR'); title.textContent = `Vendas — ${fmt(start)} a ${fmt(end)}`; }
+    } catch(_){ }
   }
 
   async function renderTopProducts(){
