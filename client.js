@@ -1074,32 +1074,20 @@ async function getOrderActionButton(order) {
             console.log('🔍 Minutos após o evento:', minutesAfterStart);
             console.log('🔍 Minutos até disponível:', minutesUntilAvailable);
             
-            // Verificar se estamos dentro da janela de disponibilidade
-            // Comparação usando getTime() para garantir precisão
-            if (nowTime >= beforeTime && nowTime <= afterTime) {
+            // Regra solicitada: disponível imediatamente após a compra e expira 1h após o horário
+            // Portanto: disponível enquanto "agora" for menor ou igual a (início + 1h)
+            if (nowTime <= afterTime) {
                 isAvailable = true;
                 buttonText = 'Entrar no Grupo';
                 buttonClass = 'text-green-700 bg-green-100 hover:bg-green-200';
-                console.log('✅ Link disponível - dentro da janela');
-                console.log('✅ Comparação: ', nowTime, '>=', beforeTime, '&&', nowTime, '<=', afterTime);
-            } else if (nowTime < beforeTime) {
-                // Ainda não está disponível
-                if (minutesUntilAvailable > 0 && minutesUntilAvailable <= 1440) {
-                    // Mostrar minutos restantes se for menos de 24h
-                    buttonText = `Disponível em ${minutesUntilAvailable}min`;
-                } else {
-                    buttonText = 'Aguardando liberação';
-                }
-                buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
-                isAvailable = false;
-                console.log('⏰ Link não disponível ainda:', buttonText);
-                console.log('⏰ Comparação: ', nowTime, '<', beforeTime);
+                console.log('✅ Link disponível até 1h após o horário');
+                console.log('✅ Comparação: ', nowTime, '<=', afterTime);
             } else {
                 // Já expirou - evento passou
                 buttonText = 'Link Expirado';
                 buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
                 isAvailable = false;
-                console.log('❌ Link expirado - evento passou');
+                console.log('❌ Link expirado - evento passou 1h do horário');
                 console.log('❌ Comparação: ', nowTime, '>', afterTime);
             }
         } else {
@@ -1130,7 +1118,7 @@ async function getOrderActionButton(order) {
     
     return `
         <div class="mt-3 space-y-2">
-            <!-- Link do WhatsApp: só clicável dentro da janela (-1h a +1h) -->
+            <!-- Link do WhatsApp: clicável imediatamente após compra até 1h após o horário -->
             ${isAvailable && hasLink ? `
             <div class="text-xs text-gray-600">
                 <strong>Link:</strong> <a href="${whatsappLink}" target="_blank" rel="noopener" class="font-mono text-xs break-all text-blue-700 underline">${linkDisplay}</a>
