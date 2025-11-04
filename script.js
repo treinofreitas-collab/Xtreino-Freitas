@@ -4254,7 +4254,9 @@ function openPaymentConfirmModal(title, msg, groupLink){
     if (acctBtn){
         if (isProcessing){ acctBtn.classList.add('hidden'); } else { acctBtn.classList.remove('hidden'); }
     }
+    // Garantir centralização: container precisa estar em display:flex
     m.classList.remove('hidden');
+    m.classList.add('flex');
     console.log('Payment confirmation modal opened successfully');
 }
 function closePaymentConfirmModal(){
