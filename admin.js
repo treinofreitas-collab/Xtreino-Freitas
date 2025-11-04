@@ -5867,10 +5867,11 @@ async function loadShirtOrders(){
       const data = d.data();
       const t = String(data.title||data.item||'').toLowerCase();
       if (t.includes('camisa')){
-        const shipping = data.shipping || {};
+        const shipping = data.shipping || (data.productOptions && data.productOptions.delivery) || {};
         const status = data.shippingStatus || (data.shirtShipped?'shipped':'pending') || 'pending';
         const addr = shipping.address ? `${shipping.address}, ${shipping.number||''} - ${shipping.district||''} - ${shipping.city||''}/${shipping.state||''}` : '';
-        const extra = shipping.shirtName ? ` • Nome na camisa: ${shipping.shirtName}` : '';
+        const nameOnShirt = (shipping.shirtName) || (data.productOptions && data.productOptions.name) || '';
+        const extra = nameOnShirt ? ` • Nome na camisa: ${nameOnShirt}` : '';
         rows.push(`
           <tr class="border-b border-gray-100">
             <td class="py-2 px-2">${data.customer||data.buyerEmail||data.email||''}</td>
@@ -5918,13 +5919,9 @@ async function openShirtOrder(orderId){
     const o = snap.data();
     const m = document.getElementById('shirtOrderModal');
     if (!m) return;
-    const shipping = o.shipping || {};
-    const addrParts = [shipping.address, shipping.number, shipping.district].filter(Boolean).join(', ');
+    const po = o.productOptions || {};
+    const shipping = o.shipping || po.delivery || {};
     const cityUf = [shipping.city, shipping.state].filter(Boolean).join('/');
-    const extra = shipping.shirtName ? ` • Nome na camisa: ${shipping.shirtName}` : '';
-    const addressHtml = shipping.address
-      ? `${shipping.name || ''}${shipping.name? ' • ': ''}${addrParts}${cityUf? ' - ' + cityUf : ''}${extra}`
-      : '<span class="text-gray-500">Sem dados de entrega</span>';
     const status = o.shippingStatus === 'shipped' || o.shirtShipped ? 'Enviado' : 'Aguardando';
     // preencher campos
     const set = (id, html) => { const el = m.querySelector('#'+id); if (el) el.innerHTML = html || ''; };
@@ -5932,7 +5929,19 @@ async function openShirtOrder(orderId){
     set('shirtOrderCustomer', o.customerName || o.customer || o.buyerEmail || '-');
     set('shirtOrderEmail', o.buyerEmail || o.customer || '-');
     set('shirtOrderStatus', status);
-    set('shirtOrderAddress', addressHtml);
+    set('shirtOrderId', orderId);
+    set('shirtOrderAmount', (o.amount!=null? Number(o.amount) : 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}));
+    set('shirtOrderSize', po.size || '-');
+    set('shirtOrderNameOnShirt', (shipping.shirtName || po.name || '-') );
+    set('shipNameVal', shipping.name || '');
+    set('shipCpfVal', shipping.cpf || '');
+    set('shipCepVal', shipping.cep || '');
+    set('shipAddressVal', shipping.address || '');
+    set('shipNumberVal', shipping.number || '');
+    set('shipComplementVal', shipping.complement || '');
+    set('shipDistrictVal', shipping.district || '');
+    set('shipCityVal', shipping.city || '');
+    set('shipStateVal', shipping.state || '');
     // abrir
     m.classList.remove('hidden'); m.classList.add('flex');
   }catch(_){ }

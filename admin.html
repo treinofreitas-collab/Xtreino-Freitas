@@ -731,14 +731,35 @@
                   <h3 class="font-bold text-lg">Detalhes do Pedido (Camisa)</h3>
                   <button onclick="closeShirtOrderModal()" class="text-gray-500 hover:text-black">✕</button>
                 </div>
-                <div class="space-y-2 text-sm">
-                  <div><span class="text-gray-500">Pedido:</span> <span id="shirtOrderTitle" class="font-medium"></span></div>
-                  <div><span class="text-gray-500">Cliente:</span> <span id="shirtOrderCustomer" class="font-medium"></span></div>
-                  <div><span class="text-gray-500">Email:</span> <span id="shirtOrderEmail" class="font-medium"></span></div>
-                  <div><span class="text-gray-500">Status:</span> <span id="shirtOrderStatus" class="font-medium"></span></div>
+                <div class="space-y-3 text-sm">
+                  <div class="grid grid-cols-2 gap-3">
+                    <div><span class="text-gray-500">Pedido:</span> <span id="shirtOrderTitle" class="font-medium"></span></div>
+                    <div><span class="text-gray-500">Status:</span> <span id="shirtOrderStatus" class="font-medium"></span></div>
+                    <div><span class="text-gray-500">Cliente:</span> <span id="shirtOrderCustomer" class="font-medium"></span></div>
+                    <div><span class="text-gray-500">Email:</span> <span id="shirtOrderEmail" class="font-medium"></span></div>
+                    <div><span class="text-gray-500">Order ID:</span> <span id="shirtOrderId" class="font-mono text-xs"></span></div>
+                    <div><span class="text-gray-500">Valor:</span> <span id="shirtOrderAmount" class="font-medium"></span></div>
+                  </div>
                   <div class="pt-2 border-t">
-                    <div class="font-semibold mb-1">Endereço de Entrega</div>
-                    <div id="shirtOrderAddress" class="text-gray-700"></div>
+                    <div class="font-semibold mb-2">Produto</div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div><span class="text-gray-500">Tamanho:</span> <span id="shirtOrderSize" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Nome na camisa:</span> <span id="shirtOrderNameOnShirt" class="font-medium"></span></div>
+                    </div>
+                  </div>
+                  <div class="pt-2 border-t">
+                    <div class="font-semibold mb-2">Endereço de Entrega</div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div><span class="text-gray-500">Nome:</span> <span id="shipNameVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">CPF:</span> <span id="shipCpfVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">CEP:</span> <span id="shipCepVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Rua:</span> <span id="shipAddressVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Número:</span> <span id="shipNumberVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Compl.:</span> <span id="shipComplementVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Bairro:</span> <span id="shipDistrictVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Cidade:</span> <span id="shipCityVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Estado:</span> <span id="shipStateVal" class="font-medium"></span></div>
+                    </div>
                   </div>
                 </div>
                 <div class="mt-4 flex justify-end gap-2">
