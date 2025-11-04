@@ -2065,13 +2065,17 @@
         const r = d.data();
         // filtro por tipo (aceita contains, case-insensitive)
         if (eventType && r.eventType && !String(r.eventType).toLowerCase().includes(String(eventType).toLowerCase())) return;
-        const key = r.schedule || r.hour || '—';
+        // Normalizar horário capturando apenas a hora e padronizando para HH:00
+        const raw = String(r.schedule || r.hour || '').toLowerCase();
+        const m = raw.match(/(\d{1,2})/);
+        if (!m) return; // sem hora identificável, ignora
+        const hh = String(parseInt(m[1],10)).padStart(2,'0');
+        const key = `${hh}:00`;
         map[key] = (map[key]||0) + 1;
       });
       
-      // Criar entradas para todos os horários padrão, mesmo os vazios
-      const allHours = new Set([...defaultHours, ...Object.keys(map)]);
-      const entries = Array.from(allHours).sort((a,b)=>{
+      // Entradas restritas SOMENTE aos horários permitidos para o evento
+      const entries = defaultHours.slice().sort((a,b)=>{
         const na = parseInt(String(a).replace(/\D/g,''))||0;
         const nb = parseInt(String(b).replace(/\D/g,''))||0;
         return na-nb;
