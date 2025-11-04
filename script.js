@@ -3770,6 +3770,111 @@ async function handleProductPurchase(productId, cfg) {
     }
 }
 
+// Compra de produtos da loja usando Tokens (no modal de agendamento)
+async function handleProductPurchaseWithTokens(productId, cfg){
+    try{
+        // Resolver dados do perfil/usuário
+        const authUser = window.firebaseAuth?.currentUser || {};
+        const profile = window.currentUserProfile || {};
+        const resolvedEmail = authUser.email || profile.email || '';
+        const resolvedName = profile.name || authUser.displayName || '';
+
+        // Coletar opções e calcular preço final
+        let productOptions = {};
+        let finalPrice = cfg.price;
+        if (productId === 'sensibilidades'){
+            const platform = document.getElementById('platformSelect')?.value;
+            if (!platform){ alert('Selecione a plataforma.'); return; }
+            productOptions.platform = platform;
+            if (platform === 'android'){
+                const brand = document.getElementById('androidBrandSelect')?.value;
+                if (!brand){ alert('Selecione a marca do Android.'); return; }
+                productOptions.brand = brand;
+            }
+        } else if (productId === 'imagens'){
+            const selected = Array.from(document.querySelectorAll('input[name="mapOption"]:checked')).map(i=>i.value);
+            productOptions.maps = selected;
+            productOptions.quantity = selected.length || 1;
+            const prices = { 1: 2, 2: 4, 3: 5, 4: 6, 5: 7 };
+            finalPrice = prices[productOptions.quantity] || 2;
+        } else if (productId === 'passe-booyah'){
+            productOptions.playerId = document.getElementById('playerId')?.value || '';
+        } else if (productId === 'camisa'){
+            const shirtSize = document.getElementById('shirtSize')?.value || 'M';
+            const nameOnShirt = document.getElementById('shirtName')?.value || '';
+            const nome = document.getElementById('addrNome')?.value || '';
+            const cpf = document.getElementById('customerCPF')?.value || '';
+            const cep = document.getElementById('addrCEP')?.value || '';
+            const rua = document.getElementById('addrRua')?.value || '';
+            const numero = document.getElementById('addrNumero')?.value || '';
+            const complemento = document.getElementById('addrComplemento')?.value || '';
+            const bairro = document.getElementById('addrBairro')?.value || '';
+            const cidade = document.getElementById('addrCidade')?.value || '';
+            const estado = document.getElementById('addrEstado')?.value || '';
+            const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
+            if (!cpf || !cpfRegex.test(cpf)) { alert('CPF inválido. Use o formato 000.000.000-00.'); return; }
+            productOptions.size = shirtSize;
+            productOptions.name = nameOnShirt;
+            productOptions.delivery = { nome, cpf, cep, address:rua, number:numero, complement:complemento, district:bairro, city:cidade, state:estado };
+        }
+
+        // Aplicar cupom do schedule se houver
+        if (typeof appliedScheduleCoupon !== 'undefined' && appliedScheduleCoupon){
+            let discountAmount = 0;
+            if (appliedScheduleCoupon.discountType === 'percentage'){
+                discountAmount = finalPrice * (appliedScheduleCoupon.discountValue/100);
+            } else {
+                discountAmount = appliedScheduleCoupon.discountValue;
+            }
+            finalPrice = Math.max(0, finalPrice - discountAmount);
+        }
+
+        // Validar saldo
+        if (!canSpendTokens(finalPrice)){
+            alert(`Saldo insuficiente. Você precisa de ${finalPrice.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+            return;
+        }
+        const ok = await spendTokens(finalPrice);
+        if (!ok){ alert('Não foi possível debitar tokens.'); return; }
+
+        // Criar pedido pago
+        const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const orderData = {
+            title: cfg.label,
+            description: cfg.label,
+            item: cfg.label,
+            amount: finalPrice,
+            total: finalPrice,
+            quantity: 1,
+            currency: 'BRL',
+            status: 'paid',
+            paidWithTokens: true,
+            tokensUsed: finalPrice,
+            customer: resolvedEmail,
+            customerName: resolvedName,
+            buyerEmail: resolvedEmail,
+            userId: window.firebaseAuth?.currentUser?.uid,
+            uid: window.firebaseAuth?.currentUser?.uid,
+            productId: productId,
+            productOptions: productOptions,
+            shippingStatus: (productId === 'camisa') ? 'pending' : undefined,
+            createdAt: new Date(),
+            timestamp: Date.now(),
+            type: 'digital_product'
+        };
+        await addDoc(collection(window.firebaseDb,'orders'), orderData);
+        closeScheduleModal();
+        if (typeof openPaymentConfirmModal === 'function'){
+            openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento em tokens foi aprovado. Confira em Minha Conta.');
+        } else {
+            alert('Pagamento confirmado com tokens!');
+        }
+    }catch(e){
+        console.error('Erro ao comprar com tokens (produto loja):', e);
+        alert('Erro ao pagar com tokens.');
+    }
+}
+
 async function submitSchedule(e, useTokens=false){
     e.preventDefault();
     const submitBtn = document.getElementById('schedSubmit');
@@ -3781,7 +3886,11 @@ async function submitSchedule(e, useTokens=false){
     
     // Se for produto da loja, usar lógica de compra
     if (cfg.isProduct) {
-        await handleProductPurchase(eventType, cfg);
+        if (useTokens){
+            await handleProductPurchaseWithTokens(eventType, cfg);
+        } else {
+            await handleProductPurchase(eventType, cfg);
+        }
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
         return;
     }
