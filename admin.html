@@ -428,22 +428,8 @@
                             Gerenciamento de Tokens
                         </h3>
                         <div class="flex items-center gap-2">
-                            <div class="hidden sm:flex items-center gap-1 text-xs">
-                                <label for="tokensJumpSelect" class="text-gray-500">Ir para</label>
-                                <select id="tokensJumpSelect" class="border rounded px-2 py-1 text-xs">
-                                    <option value="">Selecionar…</option>
-                                    <option value="sectionCoupons">Cupons</option>
-                                    <option value="sectionCouponUsage">Uso de Cupons</option>
-                                    <option value="sectionPasseBooyah">Passe Booyah</option>
-                                    <option value="sectionHighlights">Destaques</option>
-                                    <option value="sectionNews">Notícias</option>
-                                    <option value="sectionProducts">Produtos</option>
-                                    <option value="sectionShirtOrders">Camisas</option>
-                                    <option value="sectionWhatsAppLinks">WhatsApp</option>
-                                    <option value="sectionSchedules">Horários</option>
-                                    <option value="sectionResetData">Reset de Dados</option>
-                                </select>
-                                <button onclick="jumpToSelectedSection('tokensJumpSelect')" class="px-2 py-1 border rounded text-xs">Ir</button>
+                            <div id="tokensJumpPagination" class="hidden sm:flex items-center gap-1 text-xs">
+                                <!-- Botões 1 2 3 4 › serão renderizados via JS -->
                             </div>
                             <div class="text-xs text-gray-500">
                                 <span id="tokensUsersCount">0 usuários</span>

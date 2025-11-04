@@ -1127,6 +1127,7 @@
     // APLICAR CONTROLE DE VISIBILIDADE APÓS CARREGAMENTO DE TODOS OS DADOS
     setTimeout(() => {
       controlSectionVisibility(roleLower);
+      try { renderTokensSectionPager(); } catch(_) {}
     }, 1000); // Delay maior para garantir que tudo foi carregado
   });
 
@@ -1183,6 +1184,58 @@
       await renderPopularHours().catch(()=>{});
       await renderActiveUsers().catch(()=>{});
     }catch(e){ console.error('Erro ao carregar relatórios', e); }
+  }
+
+  // ===== Paginação de salto entre seções (1 2 3 4 ›) no card de Tokens =====
+  const TOKENS_JUMP_SECTIONS = [
+    'sectionCoupons',
+    'sectionCouponUsage',
+    'sectionPasseBooyah',
+    'sectionHighlights',
+    'sectionNews',
+    'sectionProducts',
+    'sectionShirtOrders',
+    'sectionWhatsAppLinks',
+    'sectionSchedules',
+    'sectionResetData'
+  ];
+  let tokensJumpPage = 0; // índice de página do paginador de seções
+  const tokensJumpPerPage = 5;
+
+  function scrollToSectionId(id){
+    try{
+      const el = document.getElementById(id);
+      if (el){ el.scrollIntoView({ behavior:'smooth', block:'start' }); }
+    }catch(_){ }
+  }
+
+  function renderTokensSectionPager(pageIndex){
+    const container = document.getElementById('tokensJumpPagination');
+    if (!container) return;
+    if (typeof pageIndex === 'number') tokensJumpPage = pageIndex;
+    container.innerHTML = '';
+
+    const start = tokensJumpPage * tokensJumpPerPage;
+    const end = Math.min(start + tokensJumpPerPage, TOKENS_JUMP_SECTIONS.length);
+    const totalPages = Math.ceil(TOKENS_JUMP_SECTIONS.length / tokensJumpPerPage) || 1;
+
+    // Botões numéricos 1..N do grupo atual
+    for (let i = start; i < end; i++) {
+      const btn = document.createElement('button');
+      btn.textContent = String((i - start) + 1);
+      btn.className = `px-2 py-1 text-xs rounded ${i===start? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`;
+      btn.addEventListener('click', () => scrollToSectionId(TOKENS_JUMP_SECTIONS[i]));
+      container.appendChild(btn);
+    }
+
+    // Botão próximo ›
+    if (tokensJumpPage < totalPages - 1) {
+      const next = document.createElement('button');
+      next.textContent = '›';
+      next.className = 'px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300';
+      next.addEventListener('click', () => renderTokensSectionPager(tokensJumpPage + 1));
+      container.appendChild(next);
+    }
   }
 
   // Funções para gerenciar tokens
