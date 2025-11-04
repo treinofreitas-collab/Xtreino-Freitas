@@ -3857,11 +3857,14 @@ async function handleProductPurchaseWithTokens(productId, cfg){
             uid: window.firebaseAuth?.currentUser?.uid,
             productId: productId,
             productOptions: productOptions,
-            shippingStatus: (productId === 'camisa') ? 'pending' : undefined,
             createdAt: new Date(),
             timestamp: Date.now(),
             type: 'digital_product'
         };
+        // Firestore não aceita campos undefined. Adicionar shippingStatus apenas quando aplicável
+        if (productId === 'camisa') {
+            orderData.shippingStatus = 'pending';
+        }
         await addDoc(collection(window.firebaseDb,'orders'), orderData);
         closeScheduleModal();
         if (typeof openPaymentConfirmModal === 'function'){
