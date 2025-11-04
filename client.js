@@ -2277,6 +2277,7 @@ window.purchaseTokens = async function(quantity) {
                 price,
                 external_reference: data.external_reference
             }));
+            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
             window.location.href = data.init_point;
         } else {
             alert('Erro ao iniciar pagamento');
@@ -2396,6 +2397,7 @@ window.purchaseTokensQuick = async function(quantity) {
             }
             
             // Redirecionar para pagamento
+            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
             window.location.href = data.init_point;
         } else {
             alert('Erro ao iniciar pagamento');

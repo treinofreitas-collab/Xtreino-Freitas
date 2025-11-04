@@ -1616,6 +1616,7 @@ async function handlePurchase(event) {
         
         // Redireciona para o checkout do Mercado Pago
         if (data.init_point) {
+            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
             window.location.href = data.init_point;
         } else {
             alert('Não foi possível iniciar o checkout.');
@@ -1926,7 +1927,7 @@ async function heroPurchaseTokens(){
         const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined, external_reference: externalRef }) });
         if (!response.ok) throw new Error('Erro');
         const data = await response.json();
-        if (data.init_point){ closeHeroTokensModal(); window.location.href = data.init_point; } else { alert('Erro ao iniciar pagamento'); }
+        if (data.init_point){ try{ sessionStorage.setItem('lastCheckoutUrl', data.init_point); }catch(_){} closeHeroTokensModal(); window.location.href = data.init_point; } else { alert('Erro ao iniciar pagamento'); }
     }catch(_){ alert('Erro ao comprar tokens'); }
 }
 window.openHeroTokensModal = openHeroTokensModal;
@@ -3661,6 +3662,7 @@ async function handleProductPurchase(productId, cfg) {
         
         // Redireciona para o checkout do Mercado Pago
         if (data.init_point) {
+            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
             window.location.href = data.init_point;
         } else {
             alert('Não foi possível iniciar o checkout.');
@@ -3980,7 +3982,7 @@ async function submitSchedule(e){
         }
         
         const url = data.init_point || data.sandbox_init_point; // prioriza produção
-        if (url) window.location.href = url; else alert('Não foi possível iniciar o pagamento.');
+        if (url) { try{ sessionStorage.setItem('lastCheckoutUrl', url);}catch(_){} window.location.href = url; } else { alert('Não foi possível iniciar o pagamento.'); }
     }).catch((err)=> { alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : '')); })
     .finally(()=>{ if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }});
 }
@@ -4008,6 +4010,8 @@ function openPaymentConfirmModal(title, msg, groupLink){
     const t = document.getElementById('paymentConfirmTitle');
     const p = document.getElementById('paymentConfirmMsg');
     const g = document.getElementById('paymentGroupBtn');
+    const payBtn = document.getElementById('paymentPayNowBtn');
+    const acctBtn = document.getElementById('paymentGoAccountBtn');
     
     if (!m) {
         console.error('Payment confirmation modal not found');
@@ -4019,6 +4023,27 @@ function openPaymentConfirmModal(title, msg, groupLink){
     if (g){
         if (groupLink){ g.href = groupLink; g.classList.remove('hidden'); }
         else { g.classList.add('hidden'); }
+    }
+
+    // Lógica dos botões conforme o estado
+    const isProcessing = String(title || '').toLowerCase().includes('processamento') || String(title || '').toLowerCase().includes('pendente');
+    const lastUrl = (()=>{ try { return sessionStorage.getItem('lastCheckoutUrl') || ''; } catch(_) { return ''; } })();
+    
+    if (payBtn){
+        if (isProcessing && lastUrl){
+            payBtn.classList.remove('hidden');
+            payBtn.onclick = function(){
+                const u = (()=>{ try { return sessionStorage.getItem('lastCheckoutUrl'); } catch(_) { return null; } })();
+                if (u) { window.location.href = u; }
+                else { alert('Link de pagamento indisponível. Volte ao produto para gerar um novo.'); }
+            };
+        } else {
+            payBtn.classList.add('hidden');
+            payBtn.onclick = null;
+        }
+    }
+    if (acctBtn){
+        if (isProcessing){ acctBtn.classList.add('hidden'); } else { acctBtn.classList.remove('hidden'); }
     }
     m.classList.remove('hidden');
     console.log('Payment confirmation modal opened successfully');
@@ -4084,6 +4109,7 @@ function processSuccessfulPayment() {
     sessionStorage.removeItem('lastExternalRef');
     sessionStorage.removeItem('lastRegId');
     sessionStorage.removeItem('lastRegInfo');
+    try { sessionStorage.removeItem('lastCheckoutUrl'); } catch(_) {}
     
     if (regId) {
         // Atualizar status no Firestore

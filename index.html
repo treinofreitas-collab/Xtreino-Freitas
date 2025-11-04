@@ -722,7 +722,7 @@
                         </p>
                         <p class="text-gray-600">
                             <i class="fas fa-phone mr-2"></i>
-                            11 94983-0454
+                        +55 11 94983-0454
                         </p>
                     </div>
                 </div>
@@ -1403,7 +1403,8 @@
     <p id="paymentConfirmMsg" class="text-gray-600 mb-4"></p>
     <div class="flex justify-center gap-3">
       <a id="paymentGroupBtn" href="#" target="_blank" class="px-4 py-2 border rounded hidden">Entrar no grupo</a>
-      <button onclick="window.location.href='client.html'; closePaymentConfirmModal()" class="px-4 py-2 bg-blue-matte text-white rounded">Ir para Minha Conta</button>
+        <button id="paymentPayNowBtn" class="px-4 py-2 bg-green-600 text-white rounded hidden">Pagar agora</button>
+        <button id="paymentGoAccountBtn" onclick="window.location.href='client.html'; closePaymentConfirmModal()" class="px-4 py-2 bg-blue-matte text-white rounded">Ir para Minha Conta</button>
       <button onclick="closePaymentConfirmModal()" class="px-4 py-2 border rounded">Fechar</button>
     </div>
   </div>
