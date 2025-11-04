@@ -2037,8 +2037,23 @@
       tbody.innerHTML = '';
       if (!date) return;
       
-      // Definir horários padrão para mostrar mesmo quando não há registros
-      const defaultHours = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00'];
+      // Definir horários corretos por tipo de evento (baseado nas descrições do site)
+      const ev = String(eventType||'').toLowerCase();
+      let defaultHours;
+      if (ev.includes('modo liga')) {
+        defaultHours = ['14:00','15:00','17:00','18:00'];
+      } else if (ev.includes('camp')) {
+        defaultHours = ['20:00','21:00','22:00','23:00'];
+      } else if (ev.includes('semanal')) {
+        // 1ª fase 20h e 21h; final às 22h
+        defaultHours = ['20:00','21:00','22:00'];
+      } else if (ev.includes('xtreino') || ev.includes('tokens') || ev.includes('freitas')) {
+        // XTreino Freitas: 14h a 23h
+        defaultHours = ['14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'];
+      } else {
+        // Padrão geral: janela da operação do site
+        defaultHours = ['14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'];
+      }
       
       const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const regs = collection(window.firebaseDb,'registrations');
