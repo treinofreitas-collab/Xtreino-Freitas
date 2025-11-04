@@ -385,8 +385,8 @@
       });
       
     }
-    // Socio: Read-only access (can see but not edit)
-    else if (role === 'socio' || role === 'sócio' || role === 'ceo') {
+    // Sócio: acesso somente leitura (CEO NÃO entra aqui)
+    else if (role === 'socio' || role === 'sócio') {
       
       allEditableElements.forEach(element => {
         element.disabled = true;
@@ -396,7 +396,7 @@
       });
       
     }
-    // CEO, Admin, Gerente: Full edit access
+    // CEO, Admin, Gerente: acesso total de edição
     else if (role === 'ceo' || role === 'admin' || role === 'gerente') {
       
       allEditableElements.forEach(element => {
