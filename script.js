@@ -3253,6 +3253,11 @@ function updateSelectedDate() {
 }
 const scheduleCache = {};
 
+// Capacidade de vagas por tipo de evento
+function getEventCapacity(eventType){
+    return eventType === 'modo-liga' ? 15 : 12;
+}
+
 // Valida se a data é válida para agendamento (segunda a sexta, não passado)
 function isValidScheduleDate(dateStr){
     const date = new Date(dateStr + 'T00:00:00');
@@ -3329,7 +3334,7 @@ async function renderScheduleTimes(){
             btn.textContent = `${time} (Horário passou)`;
             btn.onclick = null;
         } else {
-            btn.textContent = `${time} (.. /12)`;
+            btn.textContent = `${time} (.. /${getEventCapacity(eventType)})`;
             btn.onclick = ()=>{ 
                 document.getElementById('schedSelectedTime').value = schedule; 
                 document.getElementById('schedSelectedTimeDisplay').textContent = time;
@@ -3374,7 +3379,7 @@ async function fetchOccupiedForDate(day, date, eventType){
     return map;
 }
 
-// Verifica disponibilidade (limite 12 por horário)
+// Verifica disponibilidade por horário (capacidade por tipo de evento)
 async function checkSlotAvailability(date, schedule, eventType){
     try{
         if (!window.firebaseReady) return true;
@@ -3384,7 +3389,7 @@ async function checkSlotAvailability(date, schedule, eventType){
         if (eventType) clauses.push(where('eventType','==', eventType));
         const q = query(regsRef, ...clauses);
         const snap = await getDocs(q);
-        return snap.size < 12;
+        return snap.size < getEventCapacity(eventType);
     }catch(_){ return true; }
 }
 
@@ -3411,7 +3416,8 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
             const q = query(regsRef, ...clauses);
             const snap = await getDocs(q);
             const occupiedSlots = snap.size;
-            const availableSlots = 12 - occupiedSlots;
+            const capacity = getEventCapacity(eventType);
+            const availableSlots = capacity - occupiedSlots;
             
             if (availableSlots === 0) {
                 unavailableSlots.push(schedule);
@@ -3428,7 +3434,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
         if (unavailableSlots.length > 0) {
             return {
                 available: false,
-                message: `❌ Horários sem vagas: ${unavailableSlots.join(', ')}\n\nLimite: 12 times por horário`
+                message: `❌ Horários sem vagas: ${unavailableSlots.join(', ')}\n\nLimite: ${getEventCapacity(eventType)} times por horário`
             };
         }
         
@@ -3439,7 +3445,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
             
             return {
                 available: false,
-                message: `⚠️ Vagas insuficientes:\n\n${details}\n\nLimite: 12 times por horário\n\nSugestão: Reduza o número de times ou escolha outros horários.`
+                message: `⚠️ Vagas insuficientes:\n\n${details}\n\nLimite: ${getEventCapacity(eventType)} times por horário\n\nSugestão: Reduza o número de times ou escolha outros horários.`
             };
         }
         
@@ -3466,7 +3472,8 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         const schedule = btn.dataset.schedule;
         const time = (schedule || '').split(' - ')[1] || '';
         const taken = occupied[schedule] || 0;
-        const available = Math.max(0, 12 - taken);
+        const capacity = getEventCapacity(eventType);
+        const available = Math.max(0, capacity - taken);
         
         // Verificar se o horário já passou (apenas para hoje)
         let isPastTime = false;
@@ -3489,7 +3496,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         } else {
             btn.className = 'slot-btn';
             btn.disabled = false;
-            btn.textContent = `${time} (${String(available).padStart(2,'0')}/12)`;
+            btn.textContent = `${time} (${String(available).padStart(2,'0')}/${capacity})`;
             btn.onclick = ()=>{ 
                 selectTime(schedule, btn);
             };
