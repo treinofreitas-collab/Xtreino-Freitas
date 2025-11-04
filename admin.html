@@ -724,6 +724,29 @@
                 </div>
             </div>
 
+            <!-- Modal Detalhes do Pedido de Camisa -->
+            <div id="shirtOrderModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+              <div class="bg-white rounded-xl max-w-lg w-full p-6">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="font-bold text-lg">Detalhes do Pedido (Camisa)</h3>
+                  <button onclick="closeShirtOrderModal()" class="text-gray-500 hover:text-black">✕</button>
+                </div>
+                <div class="space-y-2 text-sm">
+                  <div><span class="text-gray-500">Pedido:</span> <span id="shirtOrderTitle" class="font-medium"></span></div>
+                  <div><span class="text-gray-500">Cliente:</span> <span id="shirtOrderCustomer" class="font-medium"></span></div>
+                  <div><span class="text-gray-500">Email:</span> <span id="shirtOrderEmail" class="font-medium"></span></div>
+                  <div><span class="text-gray-500">Status:</span> <span id="shirtOrderStatus" class="font-medium"></span></div>
+                  <div class="pt-2 border-t">
+                    <div class="font-semibold mb-1">Endereço de Entrega</div>
+                    <div id="shirtOrderAddress" class="text-gray-700"></div>
+                  </div>
+                </div>
+                <div class="mt-4 flex justify-end gap-2">
+                  <button onclick="closeShirtOrderModal()" class="px-3 py-2 border rounded">Fechar</button>
+                </div>
+              </div>
+            </div>
+
             <!-- Gerenciamento de Links WhatsApp -->
             <div id="sectionWhatsAppLinks" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
                 <div class="flex items-center justify-between mb-4">

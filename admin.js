@@ -5878,7 +5878,8 @@ async function loadShirtOrders(){
             <td class="py-2 px-2">${addr ? addr + extra : '<span class=\'text-gray-400\'>Sem dados</span>'}</td>
             <td class="py-2 px-2">${status==='shipped' ? '<span class="text-green-600">Enviado</span>' : '<span class="text-yellow-600">Aguardando</span>'}</td>
             <td class="py-2 px-2">
-              ${status==='shipped' ? '' : `<button class="px-2 py-1 bg-green-600 text-white rounded" onclick="markShirtAsShipped('${d.id}')">Marcar enviado</button>`}
+              <button class="px-2 py-1 border rounded mr-2" onclick="openShirtOrder('${d.id}')">Abrir</button>
+              ${status==='shipped' ? '' : `<button class=\"px-2 py-1 bg-green-600 text-white rounded\" onclick=\"markShirtAsShipped('${d.id}')\">Marcar enviado</button>`}
             </td>
           </tr>
         `);
@@ -5905,6 +5906,39 @@ async function markShirtAsShipped(orderId){
 }
 window.markShirtAsShipped = markShirtAsShipped;
 window.loadShirtOrders = loadShirtOrders;
+function closeShirtOrderModal(){
+  const m = document.getElementById('shirtOrderModal');
+  if (m){ m.classList.add('hidden'); m.classList.remove('flex'); }
+}
+async function openShirtOrder(orderId){
+  try{
+    const { doc, getDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const snap = await getDoc(doc(collection(window.firebaseDb,'orders'), orderId));
+    if (!snap.exists()) return;
+    const o = snap.data();
+    const m = document.getElementById('shirtOrderModal');
+    if (!m) return;
+    const shipping = o.shipping || {};
+    const addrParts = [shipping.address, shipping.number, shipping.district].filter(Boolean).join(', ');
+    const cityUf = [shipping.city, shipping.state].filter(Boolean).join('/');
+    const extra = shipping.shirtName ? ` • Nome na camisa: ${shipping.shirtName}` : '';
+    const addressHtml = shipping.address
+      ? `${shipping.name || ''}${shipping.name? ' • ': ''}${addrParts}${cityUf? ' - ' + cityUf : ''}${extra}`
+      : '<span class="text-gray-500">Sem dados de entrega</span>';
+    const status = o.shippingStatus === 'shipped' || o.shirtShipped ? 'Enviado' : 'Aguardando';
+    // preencher campos
+    const set = (id, html) => { const el = m.querySelector('#'+id); if (el) el.innerHTML = html || ''; };
+    set('shirtOrderTitle', o.title || o.item || '-');
+    set('shirtOrderCustomer', o.customerName || o.customer || o.buyerEmail || '-');
+    set('shirtOrderEmail', o.buyerEmail || o.customer || '-');
+    set('shirtOrderStatus', status);
+    set('shirtOrderAddress', addressHtml);
+    // abrir
+    m.classList.remove('hidden'); m.classList.add('flex');
+  }catch(_){ }
+}
+window.openShirtOrder = openShirtOrder;
+window.closeShirtOrderModal = closeShirtOrderModal;
 window.openCreateCouponModal = openCreateCouponModal;
 window.closeCreateCouponModal = closeCreateCouponModal;
 window.createCoupon = createCoupon;

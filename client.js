@@ -1222,7 +1222,7 @@ function getProductActionButton(product) {
         `;
     }
     
-    // Camisa física - solicitar dados de entrega e exibir status
+    // Camisa física - exibir status de envio (dados já coletados na compra)
     if (title.includes('camisa') || item.includes('camisa')) {
         const shipped = product.shippingStatus === 'shipped' || product.shirtShipped === true;
         const shippedAt = product.shippedAt || product.shirtShippedAt;
@@ -1242,10 +1242,15 @@ function getProductActionButton(product) {
         }
         return `
             <div class="mt-3">
-                <button onclick="openShippingModal('${product.id}')" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200">
-                    Enviar dados de entrega
-                </button>
-                ${shipping?.address ? `<p class=\"text-xs text-gray-500 mt-1\">Aguardando envio • ${shipping.name || ''}, ${shipping.address || ''}${shipping.shirtName ? ' • Nome na camisa: ' + shipping.shirtName : ''}</p>` : `<p class=\"text-xs text-gray-500 mt-1\">Aguardando dados de entrega</p>`}
+                <div class="flex items-center justify-between">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-yellow-700 bg-yellow-100">
+                        Aguardando envio
+                    </span>
+                    <span class="text-xs text-gray-500">Admin confirmará o envio</span>
+                </div>
+                ${shipping?.address 
+                    ? `<p class=\"text-xs text-gray-500 mt-1\">Dados recebidos • ${shipping.name || ''} • ${shipping.address || ''}${shipping.shirtName ? ' • Nome na camisa: ' + shipping.shirtName : ''}</p>` 
+                    : `<p class=\"text-xs text-gray-500 mt-1\">Dados de entrega serão confirmados pelo admin</p>`}
             </div>
         `;
     }
