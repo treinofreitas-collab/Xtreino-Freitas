@@ -2040,8 +2040,11 @@
       // Definir horários corretos por tipo de evento (baseado nas descrições do site)
       const ev = String(eventType||'').toLowerCase();
       let defaultHours;
+      // Capacidade por evento
+      let capacity = 12; // padrão
       if (ev.includes('modo liga')) {
         defaultHours = ['14:00','15:00','17:00','18:00'];
+        capacity = 15; // Modo Liga: 15 vagas
       } else if (ev.includes('camp')) {
         defaultHours = ['20:00','21:00','22:00','23:00'];
       } else if (ev.includes('semanal')) {
@@ -2084,7 +2087,7 @@
       entries.forEach((hour)=>{
         const cnt = map[hour] || 0;
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/12</td><td class="py-2 space-x-2">
+        tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/${capacity}</td><td class="py-2 space-x-2">
           <button class="px-2 py-1 bg-blue-600 text-white rounded text-xs" data-add-hour="${hour}">Adicionar</button>
           <button class="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs" data-manage-hour="${hour}">Gerenciar</button>
         </td>`;
