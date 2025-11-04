@@ -2042,7 +2042,8 @@
       let defaultHours;
       // Capacidade por evento
       let capacity = 12; // padrão
-      if (ev.includes('modo liga')) {
+      // "XTREINO MODO LIGA" no select usa value "liga"; aceitar variações
+      if (ev === 'liga' || ev.includes('modo-liga') || ev.includes('modo liga')) {
         defaultHours = ['14:00','15:00','17:00','18:00'];
         capacity = 15; // Modo Liga: 15 vagas
       } else if (ev.includes('camp')) {
