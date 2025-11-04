@@ -1313,6 +1313,103 @@ function closePurchaseModal() {
     if (window.innerWidth <= 767) maybeClearMobileModalState();
 }
 
+// Pagar produto atual com Tokens
+async function payCurrentProductWithTokens(){
+    try{
+        if (!window.isLoggedIn){
+            closePurchaseModal();
+            if (typeof openLoginModal === 'function') openLoginModal();
+            alert('Faça login para pagar com tokens.');
+            return;
+        }
+        const productId = currentProduct;
+        const product = products[productId];
+        if (!product) { alert('Produto inválido'); return; }
+        // preço final exibido
+        const totalText = document.getElementById('purchasePrice')?.textContent || '0';
+        const total = Number(totalText.replace(/[^0-9,]/g,'').replace(',','.')) || 0;
+        // saldo suficiente?
+        if (!canSpendTokens(total)){
+            alert(`Saldo insuficiente. Você precisa de ${total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+            return;
+        }
+        // Coletar opções
+        let productOptions = {};
+        if (productId === 'imagens'){
+            const selected = Array.from(document.querySelectorAll('input[name="mapOption"]:checked')).map(i=>i.value);
+            const names = (document.getElementById('mapsNames')?.value || '')
+              .split(',').map(s=>s.trim()).filter(Boolean);
+            productOptions.maps = selected.length ? selected : names;
+            productOptions.quantity = productOptions.maps.length || 1;
+        }
+        if (productId === 'passe-booyah'){
+            productOptions.playerId = document.getElementById('playerId')?.value || '';
+        }
+        if (productId === 'camisa'){
+            const size = document.getElementById('shirtSize')?.value || 'M';
+            const nameOnShirt = document.getElementById('shirtName')?.value || '';
+            const nome = document.getElementById('addrNome')?.value || '';
+            const cpf = document.getElementById('customerCPF')?.value || '';
+            const cep = document.getElementById('addrCEP')?.value || '';
+            const rua = document.getElementById('addrRua')?.value || '';
+            const numero = document.getElementById('addrNumero')?.value || '';
+            const complemento = document.getElementById('addrComplemento')?.value || '';
+            const bairro = document.getElementById('addrBairro')?.value || '';
+            const cidade = document.getElementById('addrCidade')?.value || '';
+            const estado = document.getElementById('addrEstado')?.value || '';
+            // valida CPF básico (mesmo formato do checkout normal)
+            const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
+            if (!cpf || !cpfRegex.test(cpf)) { alert('CPF inválido. Use o formato 000.000.000-00.'); return; }
+            productOptions.size = size;
+            productOptions.name = nameOnShirt;
+            productOptions.delivery = { nome, cpf, cep, address:rua, number:numero, complement:complemento, district:bairro, city:cidade, state:estado };
+        }
+        // Debitar tokens
+        const ok = await spendTokens(total);
+        if (!ok){ alert('Não foi possível debitar os tokens.'); return; }
+        // Criar pedido pago
+        const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const orderData = {
+            title: product.name,
+            description: product.description,
+            item: product.name,
+            amount: total,
+            total: total,
+            quantity: 1,
+            currency: 'BRL',
+            status: 'paid',
+            paidWithTokens: true,
+            tokensUsed: total,
+            customer: window.firebaseAuth?.currentUser?.email || '',
+            customerName: window.currentUserProfile?.name || '',
+            buyerEmail: window.firebaseAuth?.currentUser?.email || '',
+            userId: window.firebaseAuth?.currentUser?.uid,
+            uid: window.firebaseAuth?.currentUser?.uid,
+            productId: productId,
+            productOptions: productOptions,
+            shippingStatus: (productId === 'camisa') ? 'pending' : undefined,
+            createdAt: new Date(),
+            timestamp: Date.now(),
+            type: 'digital_product'
+        };
+        const docRef = await addDoc(collection(window.firebaseDb,'orders'), orderData);
+        closePurchaseModal();
+        if (typeof openPaymentConfirmModal === 'function'){
+            openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento em tokens foi aprovado. Confira em Minha Conta.');
+        } else {
+            alert('Pagamento confirmado com tokens!');
+        }
+    }catch(e){
+        console.error('Erro ao pagar com tokens:', e);
+        alert('Erro ao pagar com tokens.');
+    }
+}
+
+// Ação do botão "Pagar com Tokens" do agendamento
+function payScheduleWithTokens(){
+    submitSchedule({ preventDefault:()=>{} }, true);
+}
+
 // Função para aplicar cupom
 async function applyCoupon() {
     const couponCode = document.getElementById('couponCodeInput')?.value?.trim().toUpperCase();
@@ -3673,7 +3770,7 @@ async function handleProductPurchase(productId, cfg) {
     }
 }
 
-async function submitSchedule(e){
+async function submitSchedule(e, useTokens=false){
     e.preventDefault();
     const submitBtn = document.getElementById('schedSubmit');
     const oldText = submitBtn ? submitBtn.textContent : '';
@@ -3746,7 +3843,7 @@ async function submitSchedule(e){
     }
 
     // Se pagar com token: validar saldo total
-    if (cfg && cfg.payWithToken){
+    if (useTokens || (cfg && cfg.payWithToken)){
         const totalCost = teams.length * selectedTimes.length * cfg.price;
         const profile = window.currentUserProfile || {};
         if (!profile || !profile.tokens || profile.tokens < totalCost){ 
@@ -3810,7 +3907,7 @@ async function submitSchedule(e){
     } catch(error) {
         console.error('Erro ao criar reservas:', error);
     }
-    if (cfg && cfg.payWithToken){
+    if (useTokens || (cfg && cfg.payWithToken)){
         // Validar saldo de tokens antes de confirmar
         const totalCost = teams.length * selectedTimes.length * cfg.price;
         

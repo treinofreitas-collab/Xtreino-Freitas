@@ -997,9 +997,14 @@
                                 </div>
                             </div>
                         </div>
-                        <button type="submit" class="w-full btn-primary py-3 rounded-lg font-semibold transition-colors">
-                            FINALIZAR COMPRA
-                        </button>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <button type="button" id="purchasePayTokensBtn" onclick="payCurrentProductWithTokens()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-lg font-semibold transition-colors">
+                                Pagar com Tokens
+                            </button>
+                            <button type="submit" class="w-full btn-primary py-3 rounded-lg font-semibold transition-colors">
+                                Finalizar (Mercado Pago)
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -1169,6 +1174,10 @@
                                         <button type="button" id="buyTokensBtn" onclick="goToTokensFromSchedule()" 
                                                 class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-xl font-semibold transition-colors hidden">
                                             💎 Comprar Tokens
+                                        </button>
+                                        <button type="button" id="schedPayTokens" onclick="payScheduleWithTokens()" 
+                                                class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-xl font-semibold transition-colors">
+                                            💎 Pagar com Tokens
                                         </button>
                                         <button type="submit" id="schedSubmit" 
                                                 class="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-3 px-4 rounded-xl font-semibold transition-all transform hover:scale-105">
