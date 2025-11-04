@@ -228,7 +228,7 @@
       if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
     }
     // Sócio: Limited access - only basic sections
-    else if (role === 'socio' || role === 'sócio' || role === 'ceo') {
+    else if (role === 'socio' || role === 'sócio') {
       // Mostrar apenas seções básicas para sócio
       if (sectionKPIs) sectionKPIs.style.display = 'block';
       if (sectionFilters) sectionFilters.style.display = 'block';
@@ -1051,6 +1051,17 @@
     const isSocio = roleLower==='socio' || roleLower==='ceo';
     const canViewAll = ['ceo','gerente','socio'].includes(roleLower);
     window.adminRoleLower = roleLower;
+    // Garantir que a sessão conheça o papel atual (corrige bloqueio de CEO)
+    try {
+      const sess = JSON.parse(sessionStorage.getItem('adminSession')||'{}');
+      sessionStorage.setItem('adminSession', JSON.stringify({
+        ...sess,
+        role: roleLower,
+        uid: sess.uid || user.uid,
+        email: sess.email || user.email,
+        timestamp: Date.now()
+      }));
+    } catch(_) {}
     // Atualiza badge de papel na UI
     try{
       const badge = document.getElementById('roleBadge');
@@ -1205,7 +1216,12 @@
   function scrollToSectionId(id){
     try{
       const el = document.getElementById(id);
-      if (el){ el.scrollIntoView({ behavior:'smooth', block:'start' }); }
+      if (!el) return;
+      // Se a seção estiver oculta por visibilidade, torná-la visível
+      if (el.style && el.style.display === 'none') {
+        el.style.display = 'block';
+      }
+      el.scrollIntoView({ behavior:'smooth', block:'start' });
     }catch(_){ }
   }
 
@@ -1223,7 +1239,7 @@
     for (let i = start; i < end; i++) {
       const btn = document.createElement('button');
       btn.textContent = String((i - start) + 1);
-      btn.className = `px-2 py-1 text-xs rounded ${i===start? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`;
+      btn.className = `px-2 py-1 text-xs rounded cursor-pointer ${i===start? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`;
       btn.addEventListener('click', () => scrollToSectionId(TOKENS_JUMP_SECTIONS[i]));
       container.appendChild(btn);
     }
@@ -4484,14 +4500,15 @@ setTimeout(() => {
 // ==================== RESTRIÇÕES DE PAPÉIS ====================
 
 function getCurrentAdminRole() {
+  // Usa o papel mais confiável disponível no momento
+  try {
+    const fromWindow = (window.adminRoleLower || '').toString();
+    if (fromWindow) return fromWindow;
+  } catch(_) {}
   try {
     const session = JSON.parse(sessionStorage.getItem('adminSession') || '{}');
-    if (session && session.role) {
-      return String(session.role);
-    }
-  } catch (e) {
-    // Erro ao ler sessão
-  }
+    if (session && session.role) return String(session.role);
+  } catch(_) {}
   return undefined;
 }
 
