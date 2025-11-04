@@ -3297,8 +3297,8 @@ async function renderScheduleTimes(){
         // XTreino Tokens: 14h às 23h
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'modo-liga') {
-        // XTreino Modo Liga: 14h às 23h
-        slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
+        // XTreino Modo Liga: apenas 14h, 15h, 17h, 18h
+        slots = ['14h','15h','17h','18h'];
     } else if (eventType === 'camp-freitas') {
         // Camp Freitas: 19h às 23h
         slots = ['19h','20h','21h','22h','23h'];
