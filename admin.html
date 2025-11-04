@@ -849,8 +849,45 @@
                     </table>
                 </div>
             </div>
+
+            <!-- Reset de Dados (Perigoso) -->
+            <div id="sectionResetData" class="bg-white border border-red-300 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-bold text-sm text-red-700">Reset de Dados (PERIGOSO)</h3>
+                    <button onclick="openResetDataModal()" class="text-xs px-3 py-1 bg-red-600 text-white rounded">Zerar / Limpar</button>
+                </div>
+                <p class="text-xs text-gray-600">Use somente antes de ir ao ar. Essa ação apaga coleções selecionadas e pode zerar tokens de usuários.</p>
+            </div>
         </section>
     </main>
+
+    <!-- Modal: Reset de Dados -->
+    <div id="resetDataModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-lg w-full p-6">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-lg text-red-700">Reset de Dados</h3>
+                <button onclick="closeResetDataModal()" class="text-gray-500 hover:text-black">✕</button>
+            </div>
+            <p class="text-sm text-gray-700 mb-3">Selecione o que deseja apagar/zerar. Esta ação não pode ser desfeita.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetOrders"> Apagar pedidos (orders)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetRegistrations"> Apagar inscrições (registrations)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetCouponUsage"> Apagar uso de cupons (couponUsage)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetWhatsLinks"> Apagar links de WhatsApp (whatsapp_links)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetNews"> Apagar notícias (news)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetUserTokens"> Zerar tokens dos usuários (users.tokens = 0)</label>
+            </div>
+            <div class="mt-4">
+                <label class="block text-xs text-gray-500 mb-1">Confirmação</label>
+                <input id="resetConfirm" type="text" placeholder="Digite ZERAR" class="w-full border rounded px-3 py-2 text-sm" />
+            </div>
+            <div class="mt-4 text-xs text-gray-600" id="resetDataLog"></div>
+            <div class="mt-4 flex justify-end gap-2">
+                <button onclick="closeResetDataModal()" class="px-3 py-2 border rounded">Cancelar</button>
+                <button onclick="performDataReset()" class="px-3 py-2 bg-red-600 text-white rounded">Apagar selecionados</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Modal de Criação de Cupom -->
     <div id="createCouponModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">

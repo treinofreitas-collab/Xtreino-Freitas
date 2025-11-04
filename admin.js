@@ -5990,6 +5990,71 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
+// ===== Reset de Dados (Perigoso) =====
+function openResetDataModal(){
+  const m = document.getElementById('resetDataModal');
+  if (m){ m.classList.remove('hidden'); m.classList.add('flex'); }
+}
+function closeResetDataModal(){
+  const m = document.getElementById('resetDataModal');
+  if (m){ m.classList.add('hidden'); m.classList.remove('flex'); }
+}
+async function deleteCollectionDocs(colName){
+  const log = (t)=>{ const el = document.getElementById('resetDataLog'); if (el) el.innerHTML += `<div>${t}</div>`; };
+  try{
+    const { collection, getDocs, deleteDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const snap = await getDocs(collection(window.firebaseDb, colName));
+    let count = 0;
+    for (const d of snap.docs){
+      try{ await deleteDoc(doc(window.firebaseDb, colName, d.id)); count++; }catch(e){ log(`Erro ao apagar ${colName}/${d.id}`); }
+    }
+    log(`✔ ${colName}: ${count} documentos apagados.`);
+  }catch(e){
+    log(`❌ Falha ao apagar coleção ${colName}`);
+  }
+}
+async function zeroUserTokens(){
+  const log = (t)=>{ const el = document.getElementById('resetDataLog'); if (el) el.innerHTML += `<div>${t}</div>`; };
+  try{
+    const { collection, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const users = await getDocs(collection(window.firebaseDb,'users'));
+    let count = 0;
+    for (const u of users.docs){
+      try{ await updateDoc(doc(window.firebaseDb,'users',u.id), { tokens: 0 }); count++; }catch(_){ }
+    }
+    log(`✔ users.tokens zerados (${count} usuários).`);
+  }catch(e){ log('❌ Falha ao zerar tokens'); }
+}
+async function performDataReset(){
+  const logEl = document.getElementById('resetDataLog'); if (logEl) logEl.innerHTML = '';
+  const confirmText = (document.getElementById('resetConfirm')?.value||'').trim().toUpperCase();
+  if (confirmText !== 'ZERAR'){ alert('Digite ZERAR para confirmar.'); return; }
+  const wants = {
+    orders: document.getElementById('resetOrders')?.checked,
+    regs: document.getElementById('resetRegistrations')?.checked,
+    couponUsage: document.getElementById('resetCouponUsage')?.checked,
+    whats: document.getElementById('resetWhatsLinks')?.checked,
+    news: document.getElementById('resetNews')?.checked,
+    userTokens: document.getElementById('resetUserTokens')?.checked,
+  };
+  if (!wants.orders && !wants.regs && !wants.couponUsage && !wants.whats && !wants.news && !wants.userTokens){
+    alert('Selecione pelo menos uma opção.'); return;
+  }
+  const tasks = [];
+  if (wants.orders) tasks.push(deleteCollectionDocs('orders'));
+  if (wants.regs) tasks.push(deleteCollectionDocs('registrations'));
+  if (wants.couponUsage) tasks.push(deleteCollectionDocs('couponUsage'));
+  if (wants.whats) tasks.push(deleteCollectionDocs('whatsapp_links'));
+  if (wants.news) tasks.push(deleteCollectionDocs('news'));
+  if (wants.userTokens) tasks.push(zeroUserTokens());
+  await Promise.allSettled(tasks);
+  const log = (t)=>{ const el = document.getElementById('resetDataLog'); if (el) el.innerHTML += `<div>${t}</div>`; };
+  log('<b>Concluído.</b> Atualize as seções para ver o efeito.');
+}
+window.openResetDataModal = openResetDataModal;
+window.closeResetDataModal = closeResetDataModal;
+window.performDataReset = performDataReset;
+
 // ==================== PASSE BOOYAH CONTROLS ====================
 async function loadPasseBooyahControls(){
   try{
