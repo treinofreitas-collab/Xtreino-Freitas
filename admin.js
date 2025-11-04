@@ -6051,6 +6051,16 @@ window.openResetDataModal = openResetDataModal;
 window.closeResetDataModal = closeResetDataModal;
 window.performDataReset = performDataReset;
 
+// Navegação rápida entre seções a partir do Gerenciamento de Tokens
+function jumpToSelectedSection(selectId){
+  try{
+    const sel = document.getElementById(selectId);
+    const target = sel && sel.value ? document.getElementById(sel.value) : null;
+    if (target){ target.scrollIntoView({ behavior:'smooth', block:'start' }); }
+  }catch(_){ }
+}
+window.jumpToSelectedSection = jumpToSelectedSection;
+
 // ==================== PASSE BOOYAH CONTROLS ====================
 async function loadPasseBooyahControls(){
   try{
