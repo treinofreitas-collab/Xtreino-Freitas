@@ -1853,7 +1853,7 @@ async function loadMyTokens() {
 // Função checkAndSyncTokens removida para evitar reset do saldo de tokens
 // Esta função estava causando o reset do saldo para o total de tokens comprados
 
-// Load token usage history
+// Load token usage history (eventos com tokens + compras na loja pagas com tokens)
 async function loadTokenUsageHistory() {
     try {
         // Verificar se o usuário está autenticado
@@ -1865,11 +1865,38 @@ async function loadTokenUsageHistory() {
         const container = document.getElementById('tokenUsageHistory');
         if (!container) return;
         
-        // Buscar registrations onde o usuário usou tokens
-        const registrations = await fetchUserDocs('registrations', 50, true);
-        const tokenUsage = registrations.filter(r => r.data.paidWithTokens === true);
-        
-        if (tokenUsage.length === 0) {
+        // Buscar registros de uso em eventos (registrations)
+        const registrations = await fetchUserDocs('registrations', 200, true);
+        const tokenRegs = registrations
+          .filter(r => r.data.paidWithTokens === true)
+          .map(r => ({
+            kind: 'evento',
+            title: r.data.title || r.data.eventType || 'Evento',
+            date: r.data.createdAt?.toDate?.() || new Date(),
+            eventDate: r.data.date || '',
+            schedule: r.data.schedule || r.data.hour || r.data.time || '',
+            tokensUsed: r.data.tokensUsed || r.data.tokenCost || 1,
+            status: r.data.status || 'confirmed'
+          }));
+
+        // Buscar compras na loja pagas com tokens (orders)
+        const orders = await fetchUserDocs('orders', 200, true);
+        const tokenOrders = orders
+          .filter(o => o.data.paidWithTokens === true)
+          .map(o => ({
+            kind: 'produto',
+            title: o.data.title || o.data.item || 'Produto',
+            date: o.data.createdAt?.toDate?.() || new Date(),
+            eventDate: '',
+            schedule: '',
+            tokensUsed: o.data.tokensUsed || 1,
+            status: o.data.status || 'paid'
+          }));
+
+        const all = [...tokenRegs, ...tokenOrders]
+          .sort((a,b)=> (b.date?.getTime?.()||0) - (a.date?.getTime?.()||0));
+
+        if (all.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-8 text-gray-500">
                     <svg class="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1881,16 +1908,12 @@ async function loadTokenUsageHistory() {
             `;
             return;
         }
-        
-        const historyHTML = tokenUsage.map(usage => {
-            const date = usage.data.createdAt?.toDate?.() || new Date();
-            const eventType = usage.data.eventType || 'Evento';
-            const tokensUsed = usage.data.tokensUsed || usage.data.tokenCost || 1;
-            const status = usage.data.status || 'confirmed'; // Default para confirmed em vez de unknown
-            const whatsappLink = usage.data.whatsappLink;
-            const schedule = usage.data.schedule || '';
-            const eventDate = usage.data.date || '';
-            
+
+        const historyHTML = all.map(usage => {
+            const when = usage.date || new Date();
+            const label = usage.kind === 'produto' ? 'Produto (loja)' : 'Evento';
+            const statusColor = getStatusColor(usage.status, usage.kind==='evento' ? { eventType: 'xtreino-tokens' } : null);
+            const statusText = getStatusText(usage.status, usage.kind==='evento' ? { eventType: 'xtreino-tokens' } : null);
             return `
                 <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between">
@@ -1901,17 +1924,15 @@ async function loadTokenUsageHistory() {
                                 </svg>
                             </div>
                             <div>
-                                <h6 class="font-medium text-gray-900">${eventType}</h6>
-                                <p class="text-sm text-gray-500">${formatDate(date)}</p>
-                                ${eventDate && schedule ? `<p class="text-xs text-gray-400">${eventDate} às ${schedule}</p>` : ''}
+                                <h6 class="font-medium text-gray-900">${usage.title} • ${label}</h6>
+                                <p class="text-sm text-gray-500">${formatDate(when)}</p>
+                                ${usage.eventDate && usage.schedule ? `<p class="text-xs text-gray-400">${usage.eventDate} às ${usage.schedule}</p>` : ''}
                             </div>
                         </div>
                         <div class="text-right">
                             <div class="flex items-center space-x-2">
-                                <span class="text-sm font-medium text-yellow-600">-${tokensUsed} token${tokensUsed > 1 ? 's' : ''}</span>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(status)}">
-                                    ${getStatusText(status, { eventType: 'xtreino-tokens' })}
-                                </span>
+                                <span class="text-sm font-medium text-yellow-600">-${usage.tokensUsed} token${usage.tokensUsed > 1 ? 's' : ''}</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}">${statusText}</span>
                             </div>
                         </div>
                     </div>
