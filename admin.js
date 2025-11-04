@@ -6033,20 +6033,16 @@ async function performDataReset(){
     orders: document.getElementById('resetOrders')?.checked,
     regs: document.getElementById('resetRegistrations')?.checked,
     couponUsage: document.getElementById('resetCouponUsage')?.checked,
-    whats: document.getElementById('resetWhatsLinks')?.checked,
     news: document.getElementById('resetNews')?.checked,
-    userTokens: document.getElementById('resetUserTokens')?.checked,
   };
-  if (!wants.orders && !wants.regs && !wants.couponUsage && !wants.whats && !wants.news && !wants.userTokens){
+  if (!wants.orders && !wants.regs && !wants.couponUsage && !wants.news){
     alert('Selecione pelo menos uma opção.'); return;
   }
   const tasks = [];
   if (wants.orders) tasks.push(deleteCollectionDocs('orders'));
   if (wants.regs) tasks.push(deleteCollectionDocs('registrations'));
   if (wants.couponUsage) tasks.push(deleteCollectionDocs('couponUsage'));
-  if (wants.whats) tasks.push(deleteCollectionDocs('whatsapp_links'));
   if (wants.news) tasks.push(deleteCollectionDocs('news'));
-  if (wants.userTokens) tasks.push(zeroUserTokens());
   await Promise.allSettled(tasks);
   const log = (t)=>{ const el = document.getElementById('resetDataLog'); if (el) el.innerHTML += `<div>${t}</div>`; };
   log('<b>Concluído.</b> Atualize as seções para ver o efeito.');
