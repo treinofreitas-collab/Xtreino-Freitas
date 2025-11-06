@@ -2133,16 +2133,15 @@
       list.innerHTML = '';
       let any = false;
       const evLower = String(eventType||'').toLowerCase();
-      const hourDigits = (String(hour).match(/\d+/g)||[]).join('');
+      const normalizeHour = (s)=>{ const m = String(s||'').match(/(\d{1,2})/); return m? String(parseInt(m[1],10)).padStart(2,'0') : null; };
+      const targetHH = normalizeHour(hour);
       snap.forEach(d=>{
         const r = d.data();
         if (evLower && r.eventType && !String(r.eventType).toLowerCase().includes(evLower)) return;
         const schedStr = String(r.schedule||'');
         const hourStr = String(r.hour||'');
-        const combined = `${schedStr} ${hourStr}`.toLowerCase();
-        const combinedDigits = (combined.match(/\d+/g)||[]).join('');
-        const matches = combined.includes(String(hour).toLowerCase()) || (!!hourDigits && combinedDigits.includes(hourDigits));
-        if (!matches) return;
+        const regHH = normalizeHour(schedStr) || normalizeHour(hourStr);
+        if (targetHH && regHH && targetHH !== regHH) return;
         any = true;
         const row = document.createElement('div');
         row.className = 'flex items-center justify-between border-b py-2';
