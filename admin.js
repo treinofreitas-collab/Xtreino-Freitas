@@ -6068,6 +6068,12 @@ document.addEventListener('DOMContentLoaded', function() {
     createCouponForm.addEventListener('submit', createCoupon);
   }
   
+  // Listener: adicionar time manualmente no quadro de horários
+  const addTeamForm = document.getElementById('formAddTeam');
+  if (addTeamForm) {
+    addTeamForm.addEventListener('submit', submitAddTeam);
+  }
+  
   // Listeners de filtros do uso de cupons
   const couponUsagePeriod = document.getElementById('couponUsagePeriod');
   const couponUsageContext = document.getElementById('couponUsageContext');
