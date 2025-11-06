@@ -449,17 +449,18 @@ exports.handler = async (event, context) => {
                         const registrationsSnapshot = await registrationsRef.where('external_reference', '==', externalRef).get();
                         
                         if (!registrationsSnapshot.empty) {
-                            const registrationDoc = registrationsSnapshot.docs[0];
-                            
-                            // Atualizar status para 'paid'
-                            await registrationDoc.ref.update({
-                                status: 'paid',
-                                paymentId: payment.id,
-                                paymentStatus: 'approved',
-                                paidAt: admin.firestore.FieldValue.serverTimestamp()
+                            // Atualizar TODOS os registros associados a este pagamento
+                            const batch = db.batch();
+                            registrationsSnapshot.forEach(doc => {
+                                batch.update(doc.ref, {
+                                    status: 'paid',
+                                    paymentId: payment.id,
+                                    paymentStatus: 'approved',
+                                    paidAt: admin.firestore.FieldValue.serverTimestamp()
+                                });
                             });
-                            
-                            console.log('Registration updated to paid:', registrationDoc.id);
+                            await batch.commit();
+                            console.log('Registrations updated to paid:', registrationsSnapshot.size);
                         } else {
                             console.log('❌ No order or registration found for external_reference:', externalRef);
                         }

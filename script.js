@@ -3996,6 +3996,8 @@ async function submitSchedule(e, useTokens=false){
 
     // Criar múltiplas reservas no Firestore
     let regIds = [];
+    // Gerar uma referência única para todas as reservas desta compra
+    const externalRef = `schedule_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
     try {
         const isLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
         
@@ -4016,7 +4018,8 @@ async function submitSchedule(e, useTokens=false){
                         title: `${cfg.label} - ${schedule} - ${date} - ${team.name}`,
                         price: Number(cfg.price || 0),
                         status:'pending',
-                        createdAt: serverTimestamp()
+                        createdAt: serverTimestamp(),
+                        external_reference: externalRef
                     });
                     regIds.push(docRef.id);
                 }
@@ -4172,7 +4175,8 @@ async function submitSchedule(e, useTokens=false){
                 schedules: selectedTimes,
                 date: date,
                 eventType: eventType
-            }
+            },
+            external_reference: externalRef
         })
     }).then(async res=>{ if(!res.ok){ const t = await res.text(); throw new Error(t || 'Erro na função de pagamento'); } return res.json(); })
     .then(async data=>{
@@ -4333,6 +4337,7 @@ async function checkPaymentStatus(preferenceId) {
 // Processar pagamento bem-sucedido
 function processSuccessfulPayment() {
     const regId = sessionStorage.getItem('lastRegId');
+    const extRef = sessionStorage.getItem('lastExternalRef');
     console.log('Processing successful payment, regId:', regId);
     
     // Limpar dados de pagamento após processar com sucesso
@@ -4341,8 +4346,29 @@ function processSuccessfulPayment() {
     sessionStorage.removeItem('lastRegInfo');
     try { sessionStorage.removeItem('lastCheckoutUrl'); } catch(_) {}
     
-    if (regId) {
-        // Atualizar status no Firestore
+    if (extRef) {
+        // Atualizar TODAS as reservas desta compra pela external_reference
+        import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js')
+            .then(({ collection, query, where, getDocs, doc, updateDoc }) => {
+                const regs = collection(window.firebaseDb,'registrations');
+                return getDocs(query(regs, where('external_reference','==', extRef))).then(async (snap)=>{
+                    let link = null;
+                    const updates = [];
+                    snap.forEach(d=>{
+                        updates.push(updateDoc(doc(collection(window.firebaseDb,'registrations'), d.id), { status:'paid', paidAt: Date.now() }));
+                        const data = d.data();
+                        if (!link && data && data.groupLink) link = data.groupLink;
+                    });
+                    return Promise.allSettled(updates).then(()=> link);
+                });
+            }).then((groupLink)=>{
+                openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.', groupLink);
+            }).catch((e)=>{
+                console.error('Error updating registrations by external_reference:', e);
+                openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
+            });
+    } else if (regId) {
+        // Fallback: atualizar apenas o primeiro registro conhecido
         import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js')
             .then(({ doc, setDoc, getDoc, collection }) => {
                 const ref = doc(collection(window.firebaseDb,'registrations'), regId);
