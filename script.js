@@ -3333,6 +3333,12 @@ async function renderScheduleTimes(){
             btn.disabled = true;
             btn.textContent = `${time} (Horário passou)`;
             btn.onclick = null;
+        } else if (eventType === 'semanal-freitas' && time === '19h') {
+            // Semanal Freitas: 19h sempre esgotado
+            btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
+            btn.disabled = true;
+            btn.textContent = `${time} (Lotado)`;
+            btn.onclick = null;
         } else {
             btn.textContent = `${time} (.. /${getEventCapacity(eventType)})`;
             btn.onclick = ()=>{ 
@@ -3487,6 +3493,12 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
             btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
             btn.disabled = true;
             btn.textContent = `${time} (Horário passou)`;
+            btn.onclick = null;
+        } else if (eventType === 'semanal-freitas' && time === '19h'){
+            // Semanal Freitas: 19h sempre esgotado
+            btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
+            btn.disabled = true;
+            btn.textContent = `${time} (Lotado)`;
             btn.onclick = null;
         } else if (available === 0){
             btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
