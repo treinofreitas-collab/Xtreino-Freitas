@@ -6747,7 +6747,7 @@ async function createAllWhatsAppLinks() {
       },
       'semanal-freitas': {
         name: 'Semanal Freitas',
-        schedules: ['20h', '21h', '22h'],
+        schedules: ['19h', '20h', '21h', '22h'],
         defaultLink: 'https://chat.whatsapp.com/SEU_GRUPO_SEMANAL_FREITAS'
       }
     };

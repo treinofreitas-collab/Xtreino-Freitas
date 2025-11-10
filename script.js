@@ -2158,7 +2158,7 @@ function initChat() {
             },
             {
                 match: ['camp freitas','camp','campeonato'],
-                reply: '🏆 **CAMPEONATO FREITAS SEASON⁴:**\n\n💰 **Valor:** R$ 5,00\n⏰ **Horários:** 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas nas fases | 5 quedas nas Semifinais | 8 quedas na final\n🏅 **Premiação:** R$ 2.000,00 + Troféu + MVP\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Narrador e comentarista. Transmissão Ao vivo modo liga com logo na mochila e gelo a partir das semifinais + Sorteio de uma camisa Oficial da Org para os Patrocinadores.'
+                reply: '🏆 **CAMPEONATO FREITAS SEASON⁴:**\n\n💰 **Valor:** R$ 9,00\n⏰ **Horários:** 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas nas fases | 5 quedas nas Semifinais | 8 quedas na final\n🏅 **Premiação:** R$ 2.000,00 + Troféu + MVP\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Narrador e comentarista. Transmissão Ao vivo modo liga com logo na mochila e gelo a partir das semifinais + Sorteio de uma camisa Oficial da Org para os Patrocinadores.'
             },
             {
                 match: ['semanal','semanal freitas'],
@@ -2675,7 +2675,7 @@ window.closeFAQModal = function() {
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 5.00 },
+    'camp-freitas': { label: 'Camp Freitas', price: 9.00 },
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00, payWithToken: true },
     // Produtos da loja virtual
@@ -3128,6 +3128,27 @@ function openScheduleModal(eventType){
     if (buyTokensBtn) buyTokensBtn.classList.add('hidden');
     
     initScheduleDate();
+    // Ajustar limites de data por tipo de evento
+    (function(){
+        const dateInput = document.getElementById('schedDate');
+        if (!dateInput) return;
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth()+1).padStart(2,'0');
+        const d = String(today.getDate()).padStart(2,'0');
+        const todayStr = `${y}-${m}-${d}`;
+        // Para camp-freitas, travar compra apenas para HOJE
+        if (eventType === 'camp-freitas') {
+            dateInput.min = todayStr;
+            dateInput.max = todayStr;
+            dateInput.value = todayStr;
+            updateSelectedDate();
+        } else {
+            // Para outros eventos, permitir de hoje em diante
+            dateInput.min = todayStr;
+            dateInput.removeAttribute('max');
+        }
+    })();
     // re-render quando a data mudar
     const dateInput = document.getElementById('schedDate');
     if (dateInput && !dateInput._schedBound){
@@ -3238,17 +3259,27 @@ function updateSelectedDate() {
     const dateInput = document.getElementById('schedDate');
     const selectedDateDisplay = document.getElementById('schedSelectedDate');
     if (dateInput && selectedDateDisplay) {
-        const date = new Date(dateInput.value);
-        if (!isNaN(date.getTime())) {
-            selectedDateDisplay.textContent = date.toLocaleDateString('pt-BR', {
+        const raw = dateInput.value;
+        let date = null;
+        if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+            // Criar Date no fuso local para evitar retroceder um dia (UTC)
+            const [y, m, d] = raw.split('-').map(n => parseInt(n, 10));
+            date = new Date(y, m - 1, d);
+        } else if (raw) {
+            // Fallback seguro: normalizar para meia-noite local
+            const tmp = new Date(raw);
+            if (!isNaN(tmp.getTime())) {
+                date = new Date(tmp.getFullYear(), tmp.getMonth(), tmp.getDate());
+            }
+        }
+        selectedDateDisplay.textContent = (date && !isNaN(date.getTime()))
+            ? date.toLocaleDateString('pt-BR', {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric'
-            });
-        } else {
-            selectedDateDisplay.textContent = '--';
-        }
+            })
+            : '--';
     }
 }
 const scheduleCache = {};
@@ -3259,12 +3290,18 @@ function getEventCapacity(eventType){
 }
 
 // Valida se a data é válida para agendamento (segunda a sexta, não passado)
-function isValidScheduleDate(dateStr){
+function isValidScheduleDate(dateStr, eventType){
     const date = new Date(dateStr + 'T00:00:00');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Não pode ser no passado
+    // Regras específicas por evento
+    if (eventType === 'camp-freitas') {
+        // Camp de Fases: somente no dia atual
+        return date.getTime() === today.getTime();
+    }
+    
+    // Não pode ser no passado (padrão)
     if (date < today) return false;
     
     // Só segunda a sexta (1-5)
@@ -3282,8 +3319,11 @@ async function renderScheduleTimes(){
     const eventType = modal?.dataset?.eventType || null;
     
     // Valida data antes de renderizar
-    if (!isValidScheduleDate(date)){
-        timesWrap.innerHTML = '<p class="text-red-500 text-center py-4">Agendamentos apenas de segunda a sexta-feira e não em datas passadas.</p>';
+    if (!isValidScheduleDate(date, eventType)){
+        const msg = (eventType === 'camp-freitas')
+            ? 'Para o Campeonato de Fases, as vagas só podem ser compradas para HOJE.'
+            : 'Agendamentos apenas de segunda a sexta-feira e não em datas passadas.';
+        timesWrap.innerHTML = `<p class="text-red-500 text-center py-4">${msg}</p>`;
         return;
     }
     
@@ -3303,8 +3343,8 @@ async function renderScheduleTimes(){
         // Camp Freitas: 19h às 23h
         slots = ['19h','20h','21h','22h','23h'];
     } else if (eventType === 'semanal-freitas') {
-        // Semanal Freitas: 19h, 20h, 21h (todo dia)
-        slots = ['19h','20h','21h'];
+        // Semanal Freitas: 19h, 20h, 21h, 22h
+        slots = ['19h','20h','21h','22h'];
     } else {
         // Fallback padrão
         slots = ['19h','20h','21h','22h','23h'];
@@ -4507,44 +4547,47 @@ async function getWhatsAppLink(eventType, schedule = null) {
     };
     const type = normalizeType(eventType);
     const hour = normalizeHour(schedule);
+    // Aliases para compatibilidade com cadastros antigos
+    const typeAliases = Array.from(new Set([
+      type,
+      type.replace('semanal-freitas', 'semanal'),
+      type.replace('semanal-freitas', 'semanal freitas'),
+      type.replace('camp-freitas', 'camp'),
+      type.replace('camp-freitas', 'camp freitas'),
+    ])).filter(Boolean);
+    const generalScheduleAliases = [null, '', 'geral', 'general', 'todos', 'all'];
     
-    // Primeiro, tentar encontrar link específico para o horário
+    // Primeiro, tentar encontrar link específico para o horário (testando aliases)
     if (hour) {
-      const specificQuery = query(
-        whatsappLinksRef,
-        where('eventType', '==', type),
-        where('schedule', '==', hour),
-        where('status', '==', 'active')
-      );
-      const specificSnapshot = await getDocs(specificQuery);
-      
-      if (!specificSnapshot.empty) {
-        return specificSnapshot.docs[0].data().link;
+      for (const t of typeAliases) {
+        const specificQuery = query(
+          whatsappLinksRef,
+          where('eventType', '==', t),
+          where('schedule', '==', hour),
+          where('status', '==', 'active')
+        );
+        const specificSnapshot = await getDocs(specificQuery);
+        if (!specificSnapshot.empty) {
+          return specificSnapshot.docs[0].data().link;
+        }
       }
     }
     
     // Se não encontrou específico, buscar link geral para o evento
-    const generalQuery = query(
-      whatsappLinksRef,
-      where('eventType', '==', type),
-      where('schedule', '==', null),
-      where('status', '==', 'active')
-    );
-    const generalSnapshot = await getDocs(generalQuery);
-    
-    if (!generalSnapshot.empty) {
-      return generalSnapshot.docs[0].data().link;
-    }
-    // Alguns cadastros podem usar string vazia em vez de null para "sem horário"
-    const generalEmptyQuery = query(
-      whatsappLinksRef,
-      where('eventType', '==', type),
-      where('schedule', '==', ''),
-      where('status', '==', 'active')
-    );
-    const generalEmptySnapshot = await getDocs(generalEmptyQuery);
-    if (!generalEmptySnapshot.empty) {
-      return generalEmptySnapshot.docs[0].data().link;
+    // Depois, tentar links gerais (sem horário), testando aliases e variações de schedule
+    for (const t of typeAliases) {
+      for (const sched of generalScheduleAliases) {
+        const generalQuery = query(
+          whatsappLinksRef,
+          where('eventType', '==', t),
+          where('schedule', '==', sched),
+          where('status', '==', 'active')
+        );
+        const generalSnapshot = await getDocs(generalQuery);
+        if (!generalSnapshot.empty) {
+          return generalSnapshot.docs[0].data().link;
+        }
+      }
     }
     
     // Fallback para links padrão se não encontrar no Firestore
