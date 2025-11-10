@@ -335,8 +335,9 @@ async function checkAdminAccess() {
 async function updateAdminLinkVisibility() {
     console.log('🔄 Atualizando visibilidade do link ADMIN...');
     const adminLink = document.getElementById('adminLink');
-    if (!adminLink) {
-        console.log('❌ Elemento adminLink não encontrado');
+    const adminLinkMobile = document.getElementById('adminLinkMobile');
+    if (!adminLink && !adminLinkMobile) {
+        console.log('❌ Elementos adminLink/adminLinkMobile não encontrados');
         return;
     }
     
@@ -346,13 +347,14 @@ async function updateAdminLinkVisibility() {
     const hasAccess = await checkAdminAccess();
     console.log('🔐 Has access:', hasAccess);
     
-    if (hasAccess) {
-        adminLink.classList.remove('hidden');
-        console.log('✅ Link ADMIN mostrado');
-    } else {
-        adminLink.classList.add('hidden');
-        console.log('❌ Link ADMIN escondido');
-    }
+    const toggle = (el, show) => {
+        if (!el) return;
+        if (show) el.classList.remove('hidden');
+        else el.classList.add('hidden');
+    };
+    toggle(adminLink, hasAccess);
+    toggle(adminLinkMobile, hasAccess);
+    console.log(hasAccess ? '✅ Link ADMIN mostrado' : '❌ Link ADMIN escondido');
 }
 
 function requestAdminAccess(){

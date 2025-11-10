@@ -259,26 +259,24 @@ async function loadRecentOrders() {
             tokensUsed: d.data.tokensUsed || 0
         }));
 
-        // Registrations pagas com tokens (e.g., XTreino Associado)
+        // Registrations de eventos: incluir tokens e pagamentos aprovados (paid/confirmed)
         const regsData = await fetchUserDocs('registrations', 10, true);
-        const tokenRegs = regsData
-          .filter(d => d.data.paidWithTokens === true)
+        const regEvents = regsData
+          .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed')
           .map(d => ({
             id: d.id,
             date: d.data.createdAt?.toDate?.() || new Date(),
             title: d.data.title || d.data.eventType || 'Reserva',
-            // marcar como pago para aparecer como concluído
             status: d.data.status || 'paid',
-            // preço 0 pois foi pago com tokens
-            price: 0,
+            price: d.data.paidWithTokens ? 0 : (d.data.price || 0),
             eventDate: d.data.date || null,
             schedule: d.data.schedule || d.data.hour || d.data.time || '',
             eventType: d.data.eventType || '',
-            paidWithTokens: true,
-            tokensUsed: d.data.tokensUsed || d.data.tokenCost || 1
+            paidWithTokens: d.data.paidWithTokens === true,
+            tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0
           }));
 
-        const merged = [...orders, ...tokenRegs]
+        const merged = [...orders, ...regEvents]
           .sort((a,b)=> (b.date?.getTime?.()||0) - (a.date?.getTime?.()||0))
           .slice(0, 5);
 
@@ -349,23 +347,23 @@ async function loadOrders() {
         }));
         console.log('🔍 Mapped orders:', mappedOrders);
 
-        // incluir eventos pagos com tokens das registrations
+        // Incluir eventos das registrations: tokens e pagamentos aprovados (paid/confirmed)
         const regsData = await fetchUserDocs('registrations', 200, true);
         console.log('🔍 Registrations raw data:', regsData);
         
         const mappedRegs = regsData
-          .filter(d => d.data.paidWithTokens === true)
+          .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed')
           .map(d => ({
             id: d.id,
             date: d.data.createdAt?.toDate?.() || new Date(),
             title: d.data.title || d.data.eventType || 'Reserva',
             status: d.data.status || 'paid',
-            price: 0,
+            price: d.data.paidWithTokens ? 0 : (d.data.price || 0),
             eventDate: d.data.date || null,
             schedule: d.data.schedule || d.data.hour || d.data.time || '',
             eventType: d.data.eventType || '',
-            paidWithTokens: true,
-            tokensUsed: d.data.tokensUsed || d.data.tokenCost || 1,
+            paidWithTokens: d.data.paidWithTokens === true,
+            tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0,
             whatsappLink: d.data.whatsappLink || null
           }));
         console.log('🔍 Mapped registrations:', mappedRegs);
