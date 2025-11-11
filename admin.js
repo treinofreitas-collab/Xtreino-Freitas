@@ -319,7 +319,8 @@
       if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
       if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
       if (sectionProducts) sectionProducts.style.display = 'none';
-      if (sectionSchedules) sectionSchedules.style.display = 'none';
+      // Gerente também pode ver e operar o controle de horários
+      if (sectionSchedules) sectionSchedules.style.display = 'block';
       if (sectionHighlights) sectionHighlights.style.display = 'none';
       if (sectionNews) sectionNews.style.display = 'none';
     }
