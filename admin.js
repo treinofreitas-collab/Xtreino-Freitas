@@ -2140,6 +2140,7 @@
         tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/${capacity}</td><td class="py-2 space-x-2">
           <button class="px-2 py-1 bg-blue-600 text-white rounded text-xs" data-add-hour="${hour}">Adicionar</button>
           <button class="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs" data-manage-hour="${hour}">Gerenciar</button>
+          <button class="px-2 py-1 bg-emerald-600 text-white rounded text-xs" data-export-hour="${hour}">Exportar</button>
           <button class="px-2 py-1 ${locked?'bg-red-600 text-white':'bg-yellow-400 text-black'} rounded text-xs" data-toggle-lock="${hour}">${locked?'Destravar':'Travar'}</button>
         </td>`;
         tbody.appendChild(tr);
@@ -2149,6 +2150,7 @@
         const btnAdd = e.target.closest('[data-add-hour]');
         const btnManage = e.target.closest('[data-manage-hour]');
         const btnToggle = e.target.closest('[data-toggle-lock]');
+        const btnExport = e.target.closest('[data-export-hour]');
         if (btnAdd){
           const h = btnAdd.getAttribute('data-add-hour');
           const modal = document.getElementById('modalAddTeam');
@@ -2158,6 +2160,16 @@
         } else if (btnManage){
           const h = btnManage.getAttribute('data-manage-hour');
           openManageHourModal(date, eventType, h);
+        } else if (btnExport){
+          const h = btnExport.getAttribute('data-export-hour');
+          try{
+            const text = await buildExportList(date, ovEventType, h);
+            await navigator.clipboard.writeText(text);
+            alert('Lista copiada para a área de transferência.');
+          }catch(err){
+            console.error('Falha ao exportar lista', err);
+            alert('Falha ao exportar lista.');
+          }
         } else if (btnToggle){
           const h = btnToggle.getAttribute('data-toggle-lock');
           try{
@@ -2244,6 +2256,66 @@
 
   // [removido duplicado]
 })();
+
+// ===== Exportação de lista por horário =====
+async function buildExportList(date, eventType, hour){
+  const hh = String(hour).match(/(\d{1,2})/)?.[1] || '';
+  const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+  const regs = collection(window.firebaseDb,'registrations');
+  const snap = await getDocs(query(regs, where('date','==', date)));
+  const evLower = String(eventType||'').toLowerCase();
+  const normalizeHour = (s)=>{ const m = String(s||'').match(/(\d{1,2})/); return m ? String(parseInt(m[1],10)).padStart(2,'0') : null; };
+  const teams = [];
+  snap.forEach(d=>{
+    const r = d.data();
+    if (evLower && r.eventType && !String(r.eventType).toLowerCase().includes(evLower)) return;
+    const regHH = normalizeHour(r.schedule) || normalizeHour(r.hour);
+    if (regHH !== hh) return;
+    const st = String(r.status||'').toLowerCase();
+    if (!['paid','confirmed'].includes(st)) return;
+    const name = r.teamName || r.name || r.email || 'Time';
+    teams.push({ name, createdAt: r.createdAt?.toDate?.() || new Date(0) });
+  });
+  teams.sort((a,b)=> (a.createdAt?.getTime?.()||0) - (b.createdAt?.getTime?.()||0));
+  const slots = [];
+  for (let i=1;i<=12;i++){
+    const t = teams[i-1]?.name || '';
+    slots.push({ idx: i, team: t });
+  }
+  const dd = date.split('-');
+  const dateBr = dd.length===3 ? `${dd[2]}/${dd[1]}` : date;
+  const H = hh;
+  const type = String(eventType||'').toLowerCase();
+  if (type.includes('semanal')){
+    const header = `░𝐒𝐄𝐌𝐀𝐍𝐀𝐋 𝐅𝐑𝐄𝐈𝐓𝐀𝐒//𝟏ª𝐅𝐀𝐒𝐄 ${H}𝐇░`;
+    const rules = `\n\n🆔 𝐄 𝐒𝐄𝐍𝐇𝐀 𝟏𝟎 𝐌𝐈𝐍𝐔𝐓𝐎𝐒 𝐀𝐍𝐓𝐄𝐒\n📋𝐑𝐄𝐆𝐑𝐀𝐒 𝐍𝐀 𝐃𝐄𝐒𝐂𝐑𝐈𝐂̧𝐀̃𝐎\n`;
+    const lines = slots.map((s,idx)=>{
+      const prefix = (idx%2===0) ? '╭⊱💚⊱╮' : '╰⊱💚⊱╯';
+      const num = String(s.idx).padStart(2,'0');
+      return `${prefix}𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
+    }).join('\n\n');
+    const footer = `\n\n|🛡️|𝐂𝐋𝐀𝐒𝐒𝐈𝐅𝐈𝐂𝐀𝐌 𝟒 𝐄𝐐𝐔𝐈𝐏𝐄𝐒 𝐃𝐈𝐑𝐄𝐓𝐎 𝐏𝐑𝐀 𝐅𝐈𝐍𝐀𝐋 𝐇𝐎𝐉𝐄!\n\n𝐁𝐎𝐀 𝐒𝐎𝐑𝐓𝐄 𝐀 𝐓𝐎𝐃𝐎𝐒!`;
+    return `${header}\n${rules}\n${lines}\n${footer}`;
+  } else if (type.includes('camp')){
+    const header = `𝐂𝐀𝐌𝐏𝐄𝐎𝐍𝐀𝐓𝐎 𝐅𝐑𝐄𝐈𝐓𝐀𝐒| 2ª𝐅𝐀𝐒𝐄 ${H}𝐇 \n\n🗓️ 𝐃𝐀𝐓𝐀 : ${dateBr}\n🆔 𝐄 𝐒𝐄𝐍𝐇𝐀 𝟏𝟎 𝐌𝐈𝐍𝐔𝐓𝐎𝐒 𝐀𝐍𝐓𝐄𝐒\n📋𝐑𝐄𝐆𝐑𝐀𝐒 𝐍𝐀 𝐃𝐄𝐒𝐂𝐑𝐈𝐂̧𝐀̃𝐎\n`;
+    const lines = slots.map((s,idx)=>{
+      const num = String(s.idx).padStart(2,'0');
+      if (idx===0) return `╔❤️╗𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
+      if (idx===slots.length-1) return `╚❤️╝𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
+      return `╟❤️╢𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
+    }).join('\n\n');
+    const footer = `\n\n🛡️•𝑪𝑳𝑨𝑺𝑺𝑰𝑭𝑰𝑪𝑨𝑴 𝟔 𝑬𝑸𝑼𝑰𝑷𝑬𝑺 𝑷𝑹𝑨 𝑷𝑹𝑶́𝑿𝑰𝑴𝑨 𝑭𝑨𝑺𝑬!\n\n𝐁𝐎𝐀 𝐒𝐎𝐑𝐓𝐄 𝐀 𝐓𝐎𝐃𝐎𝐒!`;
+    return `${header}\n${lines}\n${footer}`;
+  } else {
+    const header = `:::𝑳𝑰𝑺𝑻𝑨 𝑫𝑬 𝑺𝑳𝑶𝑻 ⋮ 𝑿𝑻 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 ${H}H:::\n\n➺🆔 𝑬  𝑺𝑬𝑵𝑯𝑨: 𝟏𝟎 𝑴𝑰𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺\n➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝑰𝑪̧𝑨̃𝑶\n`;
+    const lines = slots.map(s=>{
+      const num = String(s.idx).padStart(2,'0');
+      return `   ⃟🩵 𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
+    }).join('\n\n');
+    const footer = `\n\n「📽️」𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: `;
+    return `${header}\n${lines}\n${footer}`;
+  }
+}
 
 // Admin logic: Auth gate, roles, Firestore reads, Chart.js rendering
 
