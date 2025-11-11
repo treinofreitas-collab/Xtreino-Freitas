@@ -2044,7 +2044,8 @@
       let capacity = 12; // padrão
       // "XTREINO MODO LIGA" no select usa value "liga"; aceitar variações
       if (ev === 'liga' || ev.includes('modo-liga') || ev.includes('modo liga')) {
-        defaultHours = ['14:00','15:00','17:00','18:00'];
+        // Modo Liga: 14:00 às 23:00
+        defaultHours = ['14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'];
         capacity = 15; // Modo Liga: 15 vagas
       } else if (ev.includes('camp')) {
         defaultHours = ['20:00','21:00','22:00','23:00'];
@@ -2085,19 +2086,46 @@
         return na-nb;
       });
       
+      // Buscar overrides (travas e extra ocupadas) para refletir na UI
+      let overrides = {};
+      try{
+        const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const ovRef = c2(window.firebaseDb, 'schedule_overrides');
+        const ovSnap = await g2(q2(ovRef, w2('date','==', date), w2('eventType','==', eventType)));
+        ovSnap.forEach(d=>{
+          const ov = d.data();
+          const hh = String(ov.hour||ov.hh||'').padStart(2,'0').replace(/\D/g,'');
+          if (!hh) return;
+          overrides[`${hh}:00`] = ov;
+          // aplicar efeito da trava/ocupação extra no contador exibido
+          if (ov.extraOccupied) {
+            const k = `${hh}:00`;
+            map[k] = (map[k]||0) + Number(ov.extraOccupied||0);
+          }
+          if (ov.locked) {
+            const k = `${hh}:00`;
+            map[k] = capacity;
+          }
+        });
+      }catch(_){}
+      
       entries.forEach((hour)=>{
         const cnt = map[hour] || 0;
+        const ov = overrides[hour] || {};
+        const locked = !!ov.locked;
         const tr = document.createElement('tr');
         tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/${capacity}</td><td class="py-2 space-x-2">
           <button class="px-2 py-1 bg-blue-600 text-white rounded text-xs" data-add-hour="${hour}">Adicionar</button>
           <button class="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs" data-manage-hour="${hour}">Gerenciar</button>
+          <button class="px-2 py-1 ${locked?'bg-red-600 text-white':'bg-yellow-400 text-black'} rounded text-xs" data-toggle-lock="${hour}">${locked?'Destravar':'Travar'}</button>
         </td>`;
         tbody.appendChild(tr);
       });
       // Bind actions para adicionar/gerenciar
-      tbody.addEventListener('click', (e)=>{
+      tbody.addEventListener('click', async (e)=>{
         const btnAdd = e.target.closest('[data-add-hour]');
         const btnManage = e.target.closest('[data-manage-hour]');
+        const btnToggle = e.target.closest('[data-toggle-lock]');
         if (btnAdd){
           const h = btnAdd.getAttribute('data-add-hour');
           const modal = document.getElementById('modalAddTeam');
@@ -2107,6 +2135,21 @@
         } else if (btnManage){
           const h = btnManage.getAttribute('data-manage-hour');
           openManageHourModal(date, eventType, h);
+        } else if (btnToggle){
+          const h = btnToggle.getAttribute('data-toggle-lock');
+          try{
+            const hh = String(h).match(/(\d{1,2})/)?.[1];
+            const { collection: c3, query: q3, where: w3, getDocs: g3, addDoc, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const ovRef = c3(window.firebaseDb, 'schedule_overrides');
+            const snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', eventType), w3('hour','==', hh)));
+            if (!snap.empty){
+              const ref = doc(window.firebaseDb, 'schedule_overrides', snap.docs[0].id);
+              await updateDoc(ref, { locked: !(snap.docs[0].data().locked===true) });
+            } else {
+              await addDoc(ovRef, { date, eventType, hour: hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
+            }
+            await loadBoard();
+          }catch(err){ alert('Falha ao alternar trava.'); }
         }
       });
 

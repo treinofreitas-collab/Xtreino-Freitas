@@ -3339,8 +3339,8 @@ async function renderScheduleTimes(){
         // XTreino Tokens: 14h às 23h
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'modo-liga') {
-        // XTreino Modo Liga: apenas 14h, 15h, 17h, 18h
-        slots = ['14h','15h','17h','18h'];
+        // XTreino Modo Liga: 14h às 23h
+        slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'camp-freitas') {
         // Camp Freitas: 19h às 23h
         slots = ['19h','20h','21h','22h','23h'];
@@ -3419,10 +3419,58 @@ async function fetchOccupiedForDate(day, date, eventType){
         if (eventType) clauses.push(where('eventType','==', eventType));
         const q = query(regsRef, ...clauses);
         const snap = await getDocs(q);
+        const normalizeToScheduleKey = (r) => {
+            // Extrair hora de 'schedule' (ex.: 'Segunda - 19h') ou de 'hour'/'19:00'
+            const rawSchedule = String(r.schedule || '');
+            const rawHour = String(r.hour || '');
+            let hh = null;
+            // Tenta '19h'
+            const mH = rawSchedule.match(/(\d{1,2})\s*h/);
+            if (mH) hh = parseInt(mH[1], 10);
+            // Tenta '19:00'
+            if (hh == null) {
+                const m2 = (rawSchedule || rawHour).match(/(\d{1,2})\s*:/);
+                if (m2) hh = parseInt(m2[1], 10);
+            }
+            // Fallback: qualquer número na string
+            if (hh == null) {
+                const m3 = (rawSchedule || rawHour).match(/(\d{1,2})/);
+                if (m3) hh = parseInt(m3[1], 10);
+            }
+            if (hh == null || Number.isNaN(hh)) return null;
+            const hourStr = `${hh}h`;
+            return `${day} - ${hourStr}`;
+        };
         snap.forEach(doc=>{
             const r = doc.data();
-            map[r.schedule] = (map[r.schedule]||0)+1;
+            const key = normalizeToScheduleKey(r);
+            if (!key) return;
+            map[key] = (map[key]||0)+1;
         });
+        // Aplicar travas manuais (schedule_overrides): se locked, marcar como lotado; se extraOccupied, somar
+        try {
+            const { collection: col2, query: q2, where: w2, getDocs: get2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const overridesRef = col2(window.firebaseDb, 'schedule_overrides');
+            const ovSnap = await get2(q2(
+                overridesRef,
+                w2('date','==', date),
+                eventType ? w2('eventType','==', eventType) : w2('eventType','==', null)
+            ));
+            ovSnap.forEach(d=>{
+                const ov = d.data();
+                const hourNum = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+                if (Number.isNaN(hourNum)) return;
+                const key = `${day} - ${hourNum}h`;
+                if (ov.extraOccupied) {
+                    map[key] = (map[key]||0) + Number(ov.extraOccupied||0);
+                }
+                if (ov.locked) {
+                    // usar capacidade do tipo para forçar lotado
+                    const cap = getEventCapacity(eventType);
+                    map[key] = cap;
+                }
+            });
+        } catch(_){}
     } catch(_) {}
     return map;
 }
@@ -3433,11 +3481,38 @@ async function checkSlotAvailability(date, schedule, eventType){
         if (!window.firebaseReady) return true;
         const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const regsRef = collection(window.firebaseDb, 'registrations');
-        const clauses = [ where('date','==', date), where('schedule','==', schedule), where('status','in',['paid','confirmed']) ];
+        const clauses = [ where('date','==', date), where('status','in',['paid','confirmed']) ];
         if (eventType) clauses.push(where('eventType','==', eventType));
         const q = query(regsRef, ...clauses);
         const snap = await getDocs(q);
-        return snap.size < getEventCapacity(eventType);
+        // Normalizar para comparar por hora
+        const wantedHour = parseInt(String(schedule).match(/(\d{1,2})\s*h/)?.[1] || 'NaN', 10);
+        let occupied = 0;
+        snap.forEach(d=>{
+            const r = d.data();
+            const rawSchedule = String(r.schedule || '');
+            const rawHour = String(r.hour || '');
+            let hh = rawSchedule.match(/(\d{1,2})\s*h/)?.[1] 
+                || rawSchedule.match(/(\d{1,2})\s*:/)?.[1]
+                || rawHour.match(/(\d{1,2})/)?.[1];
+            hh = parseInt(hh||'NaN', 10);
+            if (!Number.isNaN(hh) && hh === wantedHour) occupied++;
+        });
+        // Considerar overrides
+        try{
+            const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const ovRef = c2(window.firebaseDb, 'schedule_overrides');
+            const ovSnap = await g2(q2(ovRef, w2('date','==', date), eventType ? w2('eventType','==', eventType) : w2('eventType','==', null)));
+            ovSnap.forEach(d=>{
+                const ov = d.data();
+                const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+                if (ovHour === wantedHour){
+                    if (ov.locked) occupied = getEventCapacity(eventType);
+                    if (ov.extraOccupied) occupied += Number(ov.extraOccupied||0);
+                }
+            });
+        }catch(_){}
+        return occupied < getEventCapacity(eventType);
     }catch(_){ return true; }
 }
 
@@ -3456,14 +3531,37 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
         for (let schedule of selectedTimes) {
             const clauses = [ 
                 where('date','==', date), 
-                where('schedule','==', schedule), 
                 where('status','in',['paid','confirmed']) 
             ];
             if (eventType) clauses.push(where('eventType','==', eventType));
-            
             const q = query(regsRef, ...clauses);
             const snap = await getDocs(q);
-            const occupiedSlots = snap.size;
+            const wantedHour = parseInt(String(schedule).match(/(\d{1,2})\s*h/)?.[1] || 'NaN', 10);
+            let occupiedSlots = 0;
+            snap.forEach(d=>{
+                const r = d.data();
+                const rawSchedule = String(r.schedule || '');
+                const rawHour = String(r.hour || '');
+                let hh = rawSchedule.match(/(\d{1,2})\s*h/)?.[1] 
+                    || rawSchedule.match(/(\d{1,2})\s*:/)?.[1]
+                    || rawHour.match(/(\d{1,2})/)?.[1];
+                hh = parseInt(hh||'NaN', 10);
+                if (!Number.isNaN(hh) && hh === wantedHour) occupiedSlots++;
+            });
+            // Overrides
+            try{
+                const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                const ovRef = c2(window.firebaseDb, 'schedule_overrides');
+                const ovSnap = await g2(q2(ovRef, w2('date','==', date), eventType ? w2('eventType','==', eventType) : w2('eventType','==', null)));
+                ovSnap.forEach(d=>{
+                    const ov = d.data();
+                    const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+                    if (ovHour === wantedHour){
+                        if (ov.locked) occupiedSlots = getEventCapacity(eventType);
+                        if (ov.extraOccupied) occupiedSlots += Number(ov.extraOccupied||0);
+                    }
+                });
+            }catch(_){}
             const capacity = getEventCapacity(eventType);
             const availableSlots = capacity - occupiedSlots;
             
