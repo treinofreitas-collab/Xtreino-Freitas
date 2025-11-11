@@ -1366,14 +1366,34 @@
       if (tbody) {
         tbody.innerHTML = '';
         
+        // Helper para nome amigável do evento
+        const getEventLabel = (et)=>{
+          const m = String(et||'').toLowerCase();
+          if (m.includes('xtreino')) return 'XTreino Tokens';
+          if (m.includes('modo-liga') || m.includes('liga')) return 'Modo Liga';
+          if (m.includes('camp')) return 'Camp Freitas';
+          if (m.includes('semanal')) return 'Semanal Freitas';
+          return et || 'Evento';
+        };
+        
         recentUsages.forEach(usage => {
           const date = usage.createdAt?.toDate ? usage.createdAt.toDate() : new Date(usage.timestamp || 0);
           const formattedDate = date.toLocaleDateString('pt-BR') + ' ' + date.toLocaleTimeString('pt-BR');
           
+          // Event label (prioriza título salvo)
+          const title = usage.title || usage.item || getEventLabel(usage.eventType) || '-';
+          // Extrair horário de schedule (ex.: "Segunda - 19h") ou de 'hour'
+          const schedStr = String(usage.schedule || usage.hour || '');
+          const hourMatch = schedStr.match(/(\d{1,2})\s*h/);
+          const hourOnly = hourMatch ? `${hourMatch[1]}h` : (schedStr || '-');
+          // Nome do time
+          const teamName = usage.teamName || usage.name || usage.team || '-';
+          const eventDisplay = `${title} • ${hourOnly} • ${teamName}`;
+          
           const row = document.createElement('tr');
           row.innerHTML = `
             <td class="px-4 py-2">${usage.email || '-'}</td>
-            <td class="px-4 py-2">${usage.eventType || '-'}</td>
+            <td class="px-4 py-2">${eventDisplay}</td>
             <td class="px-4 py-2">${getTokenCountForEvent(usage.eventType)}</td>
             <td class="px-4 py-2">${formattedDate}</td>
           `;
@@ -1388,6 +1408,7 @@
   async function updateTokenStats() {
     console.log('🔍 Updating token stats...');
     try {
+      const TOKENS_PER_USE = 5; // cada uso/slot equivale a 5 tokens
       // Calcular tokens comprados
       const ordersSnap = await getDocs(collection(window.firebaseDb, 'orders'));
       let totalTokensPurchased = 0;
@@ -1416,8 +1437,12 @@
       const purchasedEl = document.getElementById('totalTokensPurchased');
       const usedEl = document.getElementById('totalTokensUsed');
       
-      if (purchasedEl) purchasedEl.textContent = totalTokensPurchased;
-      if (usedEl) usedEl.textContent = totalTokensUsed;
+      // Exibir em "equivalente de usos" (tokens ÷ 5) com 1 casa decimal
+      const purchasedEq = (totalTokensPurchased / TOKENS_PER_USE);
+      const usedEq = (totalTokensUsed / TOKENS_PER_USE);
+      
+      if (purchasedEl) purchasedEl.textContent = Number.isFinite(purchasedEq) ? purchasedEq.toFixed(1) : '0.0';
+      if (usedEl) usedEl.textContent = Number.isFinite(usedEq) ? usedEq.toFixed(1) : '0.0';
     } catch (error) {
       console.error('❌ Error updating token stats:', error);
     }
