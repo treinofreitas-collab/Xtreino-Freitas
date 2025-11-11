@@ -2049,6 +2049,14 @@
       if (!dateEl || !typeEl || !tbody) return;
       const date = dateEl.value;
       const eventType = typeEl.value;
+      const canonicalType = (t)=>{
+        const s = String(t||'').toLowerCase();
+        if (s==='liga' || s.includes('modo liga')) return 'modo-liga';
+        if (s==='camp' || s.includes('camp freitas')) return 'camp-freitas';
+        if (s==='semanal' || s.includes('semanal freitas')) return 'semanal-freitas';
+        return t;
+      };
+      const ovEventType = canonicalType(eventType);
       tbody.innerHTML = '';
       if (!date) return;
       
@@ -2106,7 +2114,7 @@
       try{
         const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const ovRef = c2(window.firebaseDb, 'schedule_overrides');
-        const ovSnap = await g2(q2(ovRef, w2('date','==', date), w2('eventType','==', eventType)));
+        const ovSnap = await g2(q2(ovRef, w2('date','==', date), w2('eventType','==', ovEventType)));
         ovSnap.forEach(d=>{
           const ov = d.data();
           const hh = String(ov.hour||ov.hh||'').padStart(2,'0').replace(/\D/g,'');
@@ -2156,12 +2164,12 @@
             const hh = String(h).match(/(\d{1,2})/)?.[1];
             const { collection: c3, query: q3, where: w3, getDocs: g3, addDoc, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = c3(window.firebaseDb, 'schedule_overrides');
-            const snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', eventType), w3('hour','==', hh)));
+            const snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', ovEventType), w3('hour','==', hh)));
             if (!snap.empty){
               const ref = doc(window.firebaseDb, 'schedule_overrides', snap.docs[0].id);
               await updateDoc(ref, { locked: !(snap.docs[0].data().locked===true) });
             } else {
-              await addDoc(ovRef, { date, eventType, hour: hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
+              await addDoc(ovRef, { date, eventType: ovEventType, hour: hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
             }
             await loadBoard();
           }catch(err){ alert('Falha ao alternar trava.'); }

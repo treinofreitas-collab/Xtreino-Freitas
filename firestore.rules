@@ -180,5 +180,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update, delete: if isAuthorizedAdminOrDesign() || isSocio() || isAdmin() || isGerente();
     }
+
+    // schedule_overrides: leitura pública (cliente precisa ler para bloquear horários),
+    // escrita apenas para painel (admins/design/sócio/gerente)
+    match /schedule_overrides/{overrideId} {
+      allow read: if true;
+      allow create, update, delete: if isAuthorizedAdminOrDesign() || isSocio() || isAdmin() || isGerente();
+    }
   }
 }
