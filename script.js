@@ -2160,7 +2160,7 @@ function initChat() {
             },
             {
                 match: ['camp freitas','camp','campeonato'],
-                reply: '🏆 **CAMPEONATO FREITAS SEASON⁴:**\n\n💰 **Valor:** R$ 9,00\n⏰ **Horários:** 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas nas fases | 5 quedas nas Semifinais | 8 quedas na final\n🏅 **Premiação:** R$ 2.000,00 + Troféu + MVP\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Narrador e comentarista. Transmissão Ao vivo modo liga com logo na mochila e gelo a partir das semifinais + Sorteio de uma camisa Oficial da Org para os Patrocinadores.'
+                reply: '🏆 **CAMPEONATO FREITAS SEASON⁴:**\n\n💰 **Valor:** R$ 14,00\n⏰ **Horários:** 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas nas fases | 5 quedas nas Semifinais | 8 quedas na final\n🏅 **Premiação:** R$ 2.000,00 + Troféu + MVP\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Narrador e comentarista. Transmissão Ao vivo modo liga com logo na mochila e gelo a partir das semifinais + Sorteio de uma camisa Oficial da Org para os Patrocinadores.'
             },
             {
                 match: ['semanal','semanal freitas'],
@@ -2677,7 +2677,7 @@ window.closeFAQModal = function() {
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 9.00 },
+    'camp-freitas': { label: 'Camp Freitas', price: 14.00 },
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00, payWithToken: true },
     // Produtos da loja virtual
