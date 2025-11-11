@@ -1125,6 +1125,21 @@
     if (btnLoadBoard) btnLoadBoard.onclick = loadBoard;
     const formAddTeam = document.getElementById('formAddTeam');
     if (formAddTeam) formAddTeam.onsubmit = submitAddTeam;
+    // Bind filtros do histórico de cupons
+    try {
+      const periodSel = document.getElementById('couponUsagePeriod');
+      const ctxSel = document.getElementById('couponUsageContext');
+      const applyBtn = document.getElementById('couponUsageApply');
+      const applyFn = ()=>{
+        couponUsageFilters.period = (periodSel?.value || '7d');
+        couponUsageFilters.context = (ctxSel?.value || 'all');
+        applyCouponUsageFilters();
+      };
+      if (applyBtn) applyBtn.onclick = applyFn;
+      // também aplicar ao mudar selects
+      if (periodSel) periodSel.onchange = applyFn;
+      if (ctxSel) ctxSel.onchange = applyFn;
+    }catch(_){}
     // Carrega relatórios e pendências para todas as funções
     await loadReports().catch(()=>{});
     if (canViewAll){
@@ -5558,6 +5573,12 @@ function applyCouponUsageFilters() {
             
             return inPeriod && inContext;
         });
+        
+        // Atualizar contador visível
+        try {
+            const cnt = document.getElementById('couponUsageCount');
+            if (cnt) cnt.textContent = `${filteredCouponUsageData.length} usos`;
+        } catch(_){}
         
         renderCouponUsageTable();
     } catch (e) {

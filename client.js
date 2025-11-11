@@ -2257,9 +2257,10 @@ window.purchaseTokens = async function(quantity) {
                 
                 if (currentUser && db) {
                     const orderData = {
-                        title: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
-                        description: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
-                        item: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
+                        // Usar basePrice (garante valor correto mesmo quando quantity não é passado)
+                        title: `${basePrice} Token${basePrice > 1 ? 's' : ''} XTreino`,
+                        description: `${basePrice} Token${basePrice > 1 ? 's' : ''} XTreino`,
+                        item: `${basePrice} Token${basePrice > 1 ? 's' : ''} XTreino`,
                         amount: price,
                         total: price,
                         quantity: 1,
