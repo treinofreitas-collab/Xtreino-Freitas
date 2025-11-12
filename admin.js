@@ -2243,8 +2243,8 @@
       list.innerHTML = '<div class="text-sm text-gray-500">Carregando...</div>';
       const { collection, query, where, getDocs, doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const regs = collection(window.firebaseDb,'registrations');
-      // Busca todas as reservas do dia; filtra por eventType e hora com normaliza e7 e3o (schedule ou hour)
-      const snap = await getDocs(query(regs, where('date','==', date)));
+      // Busca reservas PAGAS/CONFIRMADAS do dia; filtra por eventType e hora com normalização (schedule ou hour)
+      const snap = await getDocs(query(regs, where('date','==', date), where('status','in',['paid','confirmed'])));
       list.innerHTML = '';
       let any = false;
       const evLower = String(eventType||'').toLowerCase();
