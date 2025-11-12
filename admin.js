@@ -2147,17 +2147,20 @@
         const ovRef = c2(window.firebaseDb, 'schedule_overrides');
         const ovSnap = await g2(q2(ovRef, w2('date','==', date), w2('eventType','==', ovEventType)));
         ovSnap.forEach(d=>{
-          const ov = d.data();
-          const hh = String(ov.hour||ov.hh||'').padStart(2,'0').replace(/\D/g,'');
+          const raw = d.data();
+          const hh = String(raw.hour||raw.hh||'').padStart(2,'0').replace(/\D/g,'');
           if (!hh) return;
-          overrides[`${hh}:00`] = ov;
-          // aplicar efeito da trava/ocupação extra no contador exibido
-          if (ov.extraOccupied) {
-            const k = `${hh}:00`;
-            map[k] = (map[k]||0) + Number(ov.extraOccupied||0);
+          const k = `${hh}:00`;
+          // Agregar por hora: lockedAny + soma de extraOccupied
+          const agg = overrides[k] || { lockedAny:false, extraOccupied:0 };
+          agg.lockedAny = agg.lockedAny || (raw.locked === true);
+          if (raw.extraOccupied) agg.extraOccupied += Number(raw.extraOccupied||0);
+          overrides[k] = agg;
+          // Aplicar efeitos no contador
+          if (raw.extraOccupied) {
+            map[k] = (map[k]||0) + Number(raw.extraOccupied||0);
           }
-          if (ov.locked) {
-            const k = `${hh}:00`;
+          if (raw.locked) {
             map[k] = capFor(k);
           }
         });
@@ -2166,7 +2169,7 @@
       entries.forEach((hour)=>{
         const cnt = map[hour] || 0;
         const ov = overrides[hour] || {};
-        const locked = !!ov.locked;
+        const locked = !!(ov.lockedAny === undefined ? ov.locked : ov.lockedAny);
         const tr = document.createElement('tr');
         const cap = capFor(hour);
         tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/${cap}</td><td class="py-2 space-x-2">
