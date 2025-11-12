@@ -321,8 +321,9 @@
       if (sectionProducts) sectionProducts.style.display = 'none';
       // Gerente também pode ver e operar o controle de horários
       if (sectionSchedules) sectionSchedules.style.display = 'block';
-      if (sectionHighlights) sectionHighlights.style.display = 'none';
-      if (sectionNews) sectionNews.style.display = 'none';
+      // Exibir Notícias e Destaques para leitura (edições já são limitadas por permissões)
+      if (sectionHighlights) sectionHighlights.style.display = 'block';
+      if (sectionNews) sectionNews.style.display = 'block';
     }
     // Vendedor: Vendas recentes, cupons, vendas para aprovação, controle de passe e gerenciamento de tokens
     else if (role === 'vendedor') {
@@ -347,7 +348,6 @@
     }
     
   }
-
   // Control edit permissions based on role
   function controlEditPermissions(userRole) {
     const role = (userRole || '').toLowerCase();
@@ -668,7 +668,6 @@
       container.appendChild(nextBtn);
     }
   }
-
   // Função para alterar role do usuário
   async function alterarRole(event) {
     if (!event.target.classList.contains('role-select')) return;
@@ -1020,7 +1019,6 @@
   	  }
     }catch(_){ }
   }
-
   onAuthStateChanged(window.firebaseAuth, async (user) => {
     if (!user){
       authGate.classList.remove('hidden');
@@ -1333,7 +1331,6 @@
       console.error('❌ Error loading token purchases:', error);
     }
   }
-
   async function loadTokenUsage() {
     console.log('🔍 Loading token usage...');
     try {
@@ -1672,7 +1669,6 @@
     
     if (count) count.textContent = `${recentItems.length} pedidos`;
   }
-
   // Nova função para carregar dados de tokens
   async function loadTokensData(){
     try {
@@ -2023,7 +2019,6 @@
     else if (v==='30d'){ const d=new Date(); d.setDate(d.getDate()-30); period.from = d; period.to = null; }
     else { period.from = fromEl?.value? new Date(fromEl.value) : null; period.to = toEl?.value? new Date(toEl.value) : null; }
   }
-
   async function applyFilter(){ parsePeriod(); await loadReports(); }
 
   async function exportOrdersCsv(){
@@ -2204,8 +2199,13 @@
             const ovRef = c3(window.firebaseDb, 'schedule_overrides');
             const snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', ovEventType), w3('hour','==', hh)));
             if (!snap.empty){
-              const ref = doc(window.firebaseDb, 'schedule_overrides', snap.docs[0].id);
-              await updateDoc(ref, { locked: !(snap.docs[0].data().locked===true) });
+              // Atualizar todos os documentos correspondentes para evitar inconsistências de trava
+              const anyUnlocked = snap.docs.some(d => d.data()?.locked !== true);
+              const newLocked = anyUnlocked ? true : false;
+              for (const d of snap.docs) {
+                const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
+                await updateDoc(ref, { locked: newLocked });
+              }
             } else {
               await addDoc(ovRef, { date, eventType: ovEventType, hour: hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
             }
@@ -2303,18 +2303,20 @@ async function buildExportList(date, eventType, hour){
     teams.push({ name, createdAt: r.createdAt?.toDate?.() || new Date(0) });
   });
   teams.sort((a,b)=> (a.createdAt?.getTime?.()||0) - (b.createdAt?.getTime?.()||0));
+  // Definir capacidade por tipo (modo liga = 15; demais = 12)
+  const type = String(eventType||'').toLowerCase();
+  const capacity = type.includes('liga') ? 15 : 12;
   const slots = [];
-  for (let i=1;i<=12;i++){
+  for (let i=1;i<=capacity;i++){
     const t = teams[i-1]?.name || '';
     slots.push({ idx: i, team: t });
   }
   const dd = date.split('-');
   const dateBr = dd.length===3 ? `${dd[2]}/${dd[1]}` : date;
   const H = hh;
-  const type = String(eventType||'').toLowerCase();
   if (type.includes('semanal')){
     const header = `░𝐒𝐄𝐌𝐀𝐍𝐀𝐋 𝐅𝐑𝐄𝐈𝐓𝐀𝐒//𝟏ª𝐅𝐀𝐒𝐄 ${H}𝐇░`;
-    const rules = `\n\n🆔 𝐄 𝐒𝐄𝐍𝐇𝐀 𝟏𝟎 𝐌𝐈𝐍𝐔𝐓𝐎𝐒 𝐀𝐍𝐓𝐄𝐒\n📋𝐑𝐄𝐆𝐑𝐀𝐒 𝐍𝐀 𝐃𝐄𝐒𝐂𝐑𝐈𝐂̧𝐀̃𝐎\n`;
+    const rules = `\n\n🆔 𝐄 𝐒𝐄𝐍𝐇𝐀 𝟏𝟎 𝐌𝐈𝐍𝐔𝐓𝐎𝐒 𝐀𝐍𝐓𝐄𝐒\n📋𝐑𝐄𝐆𝐑𝐀𝐒 𝐍𝐀 𝐃𝐄𝐒𝐂𝐑𝐈ÇÃ𝐎\n`;
     const lines = slots.map((s,idx)=>{
       const prefix = (idx%2===0) ? '╭⊱💚⊱╮' : '╰⊱💚⊱╯';
       const num = String(s.idx).padStart(2,'0');
@@ -2323,23 +2325,33 @@ async function buildExportList(date, eventType, hour){
     const footer = `\n\n|🛡️|𝐂𝐋𝐀𝐒𝐒𝐈𝐅𝐈𝐂𝐀𝐌 𝟒 𝐄𝐐𝐔𝐈𝐏𝐄𝐒 𝐃𝐈𝐑𝐄𝐓𝐎 𝐏𝐑𝐀 𝐅𝐈𝐍𝐀𝐋 𝐇𝐎𝐉𝐄!\n\n𝐁𝐎𝐀 𝐒𝐎𝐑𝐓𝐄 𝐀 𝐓𝐎𝐃𝐎𝐒!`;
     return `${header}\n${rules}\n${lines}\n${footer}`;
   } else if (type.includes('camp')){
-    const header = `𝐂𝐀𝐌𝐏𝐄𝐎𝐍𝐀𝐓𝐎 𝐅𝐑𝐄𝐈𝐓𝐀𝐒| 2ª𝐅𝐀𝐒𝐄 ${H}𝐇 \n\n🗓️ 𝐃𝐀𝐓𝐀 : ${dateBr}\n🆔 𝐄 𝐒𝐄𝐍𝐇𝐀 𝟏𝟎 𝐌𝐈𝐍𝐔𝐓𝐎𝐒 𝐀𝐍𝐓𝐄𝐒\n📋𝐑𝐄𝐆𝐑𝐀𝐒 𝐍𝐀 𝐃𝐄𝐒𝐂𝐑𝐈𝐂̧𝐀̃𝐎\n`;
+    const header = `𝐂𝐀𝐌𝐏𝐄𝐎𝐍𝐀𝐓𝐎 𝐅𝐑𝐄𝐈𝐓𝐀𝐒| 2ª𝐅𝐀𝐒𝐄 ${H}𝐇 \n\n🗓️ 𝐃𝐀𝐓𝐀 : ${dateBr}\n🆔 𝐄 𝐒𝐄𝐍𝐇𝐀 𝟏𝟎 𝐌𝐈𝐍𝐔𝐓𝐎𝐒 𝐀𝐍𝐓𝐄𝐒\n📋𝐑𝐄𝐆𝐑𝐀𝐒 𝐍𝐀 𝐃𝐄𝐒𝐂𝐑𝐈ÇÃ𝐎\n`;
     const lines = slots.map((s,idx)=>{
       const num = String(s.idx).padStart(2,'0');
       if (idx===0) return `╔❤️╗𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
       if (idx===slots.length-1) return `╚❤️╝𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
       return `╟❤️╢𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
     }).join('\n\n');
-    const footer = `\n\n🛡️•𝑪𝑳𝑨𝑺𝑺𝑰𝑭𝑰𝑪𝑨𝑴 𝟔 𝑬𝑸𝑼𝑰𝑷𝑬𝑺 𝑷𝑹𝑨 𝑷𝑹𝑶́𝑿𝑰𝑴𝑨 𝑭𝑨𝑺𝑬!\n\n𝐁𝐎𝐀 𝐒𝐎𝐑𝐓𝐄 𝐀 𝐓𝐎𝐃𝐎𝐒!`;
+    const footer = `\n\n🛡️•𝑪𝑳𝑨𝑺𝑺𝑰𝐅𝐈𝐂𝐀𝐌 𝟔 𝑬𝑸𝑼𝐈𝐏𝐄𝐒 𝑷𝑹𝑨 𝑷𝑹𝑶́𝑿𝐈𝐌𝐀 𝑭𝐀𝐒𝐄!\n\n𝐁𝐎𝐀 𝐒𝐎𝐑𝐓𝐄 𝐀 𝐓𝐎𝐃𝐎𝐒!`;
     return `${header}\n${lines}\n${footer}`;
+  } else if (type.includes('liga')) {
+    // Modo Liga: formato conforme exemplo enviado
+    const header = `:::𝑳𝑰𝑺𝑻𝑨 𝑴𝑶𝑫𝑶 𝑳𝑰𝑮𝑨 ⋮ 𝑿𝑻 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 ${H}H:::\n\n\n\n➺🆔 𝑬  𝑺𝑬𝑵𝐇𝑨: 𝟏𝟎 𝑴𝐈𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺\n\n➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝐈ÇÃ𝐎\n`;
+    const lines = slots.map(s=>{
+      const num = String(s.idx).padStart(2,'0');
+      return `   ⃟🩵 ${num}: ${s.team}`;
+    }).join('\n\n');
+    const footer = `\n\n「📽️」𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: \n\n「🧑🏻‍🏫」𝑪𝑶𝑨𝑪𝑯:`;
+    return `${header}\n${lines}\n\n${footer}`;
   } else {
-    const header = `:::𝑳𝑰𝑺𝑻𝑨 𝑫𝑬 𝑺𝑳𝑶𝑻 ⋮ 𝑿𝑻 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 ${H}H:::\n\n➺🆔 𝑬  𝑺𝑬𝑵𝑯𝑨: 𝟏𝟎 𝑴𝑰𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺\n➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝑰𝑪̧𝑨̃𝑶\n`;
+    // XTreino normal (padrão)
+    const header = `:::𝑳𝑰𝑺𝑻𝑨 𝑫𝑬 𝑺𝑳𝑶𝑻 ⋮ 𝑿𝑻 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 ${H}H:::\n\n➺🆔 𝑬  𝑺𝑬𝑵𝐇𝑨: 𝟏𝟎 𝑴𝐈𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺\n➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝐈ÇÃ𝐎\n`;
     const lines = slots.map(s=>{
       const num = String(s.idx).padStart(2,'0');
       return `   ⃟🩵 𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
     }).join('\n\n');
-    const footer = `\n\n「📽️」𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: `;
-    return `${header}\n${lines}\n${footer}`;
+    const footer = `\n\n「📽️」𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: \n\n「🧑🏻‍🏫」𝑪𝑶𝑨𝑪𝑯:`;
+    return `${header}\n\n${lines}\n${footer}`;
   }
 }
 
@@ -2356,7 +2368,6 @@ async function ensureFirebase(maxWaitMs = 5000) {
 function currencyBRL(value) {
     return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
-
 async function fetchRole(uid) {
     const { doc, getDoc, collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     // 1) tentativa direta por docId == uid
@@ -2669,7 +2680,6 @@ function setupPopularHoursFilters() {
         });
     }
 }
-
 // ===== FIM DO SISTEMA DE FILTROS =====
 
 async function loadTables(canManageProducts) {
@@ -2995,7 +3005,6 @@ async function approveOrder(orderId) {
         alert('Erro ao aprovar pedido');
     }
 }
-
 // Função para dar tokens a um usuário
 async function giveTokensToUser(userEmail, tokenAmount) {
     try {
@@ -3336,7 +3345,6 @@ async function saveHighlights() {
         alert('❌ Erro ao salvar destaques');
     }
 }
-
 // Tornar funções globais
 window.approveOrder = approveOrder;
 window.openHighlightsModal = openHighlightsModal;
@@ -3986,7 +3994,6 @@ async function saveProducts() {
         alert('Erro ao salvar produtos: ' + error.message);
     }
 }
-
 // Expor funções globalmente
 window.openProductsModal = openProductsModal;
 window.closeProductsModal = closeProductsModal;
@@ -4315,7 +4322,6 @@ window.saveProducts = saveProducts;
       console.error('Logout error:', e);
     }
   }
-
   // Initialize admin panel
   async function initAdmin() {
     try {
@@ -4637,7 +4643,6 @@ function updateUsersCount() {
     usersPageInfo.textContent = `Página ${usersCurrentPage} de ${totalPages}`;
   }
 }
-
 // Configurar filtros de usuários
 function setupUserFilters() {
   const filterButtons = [
@@ -4985,7 +4990,6 @@ function updateActiveUsersStats(users) {
   if (activeEl) activeEl.textContent = active;
   if (inactiveEl) inactiveEl.textContent = inactive;
 }
-
 // Expor funções globalmente
 window.loadUsers = loadUsers;
 window.loadUsersForTables = loadUsersForTables;
@@ -5293,7 +5297,6 @@ async function loadTokensUsers() {
     console.error('❌ Erro ao carregar usuários para tokens:', error);
   }
 }
-
 // Renderizar tabela de tokens
 function renderTokensTable() {
   const tbody = document.getElementById('tokensTableBody');
@@ -5608,7 +5611,6 @@ async function loadCouponUsage() {
         }
     }
 }
-
 // Renderizar tabela de uso de cupons
 function renderCouponUsageTable() {
     const tbody = document.getElementById('couponUsageTableBody');
@@ -5913,7 +5915,6 @@ function renderAdminHistoryTable() {
     }
   }
 }
-
 // Log de ação do admin
 async function logAdminAction(action, details) {
   try {
@@ -6583,7 +6584,6 @@ function renderWhatsAppLinksTable(links) {
     </tr>
   `).join('');
 }
-
 // Renderizar lista de links do WhatsApp no modal
 function renderWhatsAppLinksList(links) {
   const container = document.getElementById('whatsappLinksList');
@@ -6887,7 +6887,6 @@ async function getWhatsAppLink(eventType, schedule = null) {
     return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
   }
 }
-
 // Função para criar automaticamente todos os links do WhatsApp
 async function createAllWhatsAppLinks() {
   try {
@@ -7060,5 +7059,3 @@ window.deleteWhatsAppLink = deleteWhatsAppLink;
 window.getWhatsAppLink = getWhatsAppLink;
 window.createAllWhatsAppLinks = createAllWhatsAppLinks;
 window.filterWhatsAppLinks = filterWhatsAppLinks;
-
-

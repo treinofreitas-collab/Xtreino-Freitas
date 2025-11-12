@@ -1059,6 +1059,16 @@
                                         Amanhã
                                     </button>
                                 </div>
+                                <!-- Multi-date selection helpers -->
+                                <div class="flex gap-3">
+                                    <button type="button" onclick="addSelectedDate()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-3 rounded-lg font-semibold transition-colors">
+                                        + Adicionar esta data
+                                    </button>
+                                    <button type="button" onclick="clearSelectedDates()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-lg font-semibold transition-colors">
+                                        Limpar datas
+                                    </button>
+                                </div>
+                                <div id="selectedDatesList" class="text-sm text-gray-700 space-y-1"></div>
                             </div>
                         </div>
 

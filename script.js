@@ -2503,7 +2503,6 @@ async function loadNewsFromFirestore() {
                         <span>Por: ${newsItem.author}</span>
                         <span>${formattedDate}</span>
                     </div>
-                    <button class="text-blue-matte hover:underline font-semibold" onclick="openNewsModal(${idx})">Ver mais</button>
                 </div>
             `;
             
@@ -3003,6 +3002,7 @@ function syncMapsQtyWithNames() {
 let selectedTimes = [];
 let teams = [];
 let teamCounter = 0;
+let selectedDates = [];
 
 function openScheduleModal(eventType){
     const cfg = scheduleConfig[eventType];
@@ -3160,6 +3160,9 @@ function openScheduleModal(eventType){
         });
         dateInput._schedBound = true;
     }
+    // Resetar datas múltiplas selecionadas ao abrir
+    selectedDates = [];
+    renderSelectedDatesList();
     renderScheduleTimes();
     // Preenche dados se logado
     try{
@@ -3218,6 +3221,7 @@ function closeScheduleModal(){
         teams = [];
         teamCounter = 0;
         selectedTimes = [];
+        selectedDates = [];
         
         // Limpar resumo de reservas
         const summaryContainer = document.getElementById('reservationsSummary');
@@ -3230,6 +3234,53 @@ function closeScheduleModal(){
         }
     }
     if (window.innerWidth <= 767) maybeClearMobileModalState();
+}
+// Renderizar lista de datas selecionadas para agendamento múltiplo
+function renderSelectedDatesList(){
+    const list = document.getElementById('selectedDatesList');
+    if (!list) return;
+    if (!selectedDates || selectedDates.length === 0){
+        list.innerHTML = '';
+        updateReservationsSummary();
+        return;
+    }
+    const fmt = (d)=> {
+        try{
+            const [y,m,dd] = d.split('-').map(n=>parseInt(n,10));
+            const date = new Date(y, m-1, dd);
+            return date.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', weekday:'short' });
+        }catch(_){ return d; }
+    };
+    list.innerHTML = selectedDates.map(d=>(
+        `<div class="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-2">
+            <span>${fmt(d)}</span>
+            <button type="button" class="text-red-600 hover:text-red-800 text-xs" onclick="removeSelectedDate('${d}')">remover</button>
+         </div>`
+    )).join('');
+    updateReservationsSummary();
+}
+function addSelectedDate(){
+    const input = document.getElementById('schedDate');
+    const modal = document.getElementById('scheduleModal');
+    const eventType = modal?.dataset?.eventType || null;
+    if (!input || !input.value) return;
+    const date = input.value;
+    if (!isValidScheduleDate(date, eventType)) {
+        alert('Data inválida para este evento.');
+        return;
+    }
+    if (!selectedDates.includes(date)){
+        selectedDates.push(date);
+        renderSelectedDatesList();
+    }
+}
+function removeSelectedDate(dateStr){
+    selectedDates = selectedDates.filter(d => d !== dateStr);
+    renderSelectedDatesList();
+}
+function clearSelectedDates(){
+    selectedDates = [];
+    renderSelectedDatesList();
 }
 function initScheduleDate(){
     const input = document.getElementById('schedDate');
@@ -3731,28 +3782,33 @@ async function updateReservationsSummary() {
     let summaryHTML = '';
     let totalReservations = 0;
     
-    // Calculate total reservations (times × selected times)
-    totalReservations = teams.length * selectedTimes.length;
+    // Calculate total reservations (times × selected times × datas)
+    const datesFactor = (selectedDates && selectedDates.length > 0) ? selectedDates.length : 1;
+    totalReservations = teams.length * selectedTimes.length * datesFactor;
     
     // Verificar disponibilidade e mostrar avisos
     const date = document.getElementById('schedDate')?.value;
     let availabilityWarning = '';
     
-    if (date && eventType && window.firebaseReady) {
+    if (eventType && window.firebaseReady) {
         try {
-            const availabilityCheck = await checkMultipleSlotAvailability(date, selectedTimes, eventType, teams.length);
-            if (!availabilityCheck.available) {
-                availabilityWarning = `
-                    <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-                        <div class="flex items-center">
-                            <svg class="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                            </svg>
-                            <span class="text-red-700 font-medium">⚠️ Vagas insuficientes!</span>
+            const datesToCheck = (selectedDates && selectedDates.length > 0) ? selectedDates : (date ? [date] : []);
+            for (const d of datesToCheck){
+                const availabilityCheck = await checkMultipleSlotAvailability(d, selectedTimes, eventType, teams.length);
+                if (!availabilityCheck.available) {
+                    availabilityWarning = `
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                                </svg>
+                                <span class="text-red-700 font-medium">⚠️ Vagas insuficientes em ${d}!</span>
+                            </div>
+                            <p class="text-red-600 text-sm mt-1">Reduza o número de times ou escolha outros horários.</p>
                         </div>
-                        <p class="text-red-600 text-sm mt-1">Reduza o número de times ou escolha outros horários.</p>
-                    </div>
-                `;
+                    `;
+                    break;
+                }
             }
         } catch (error) {
             console.error('Erro ao verificar disponibilidade:', error);
@@ -3761,9 +3817,10 @@ async function updateReservationsSummary() {
     
     // Build summary
     selectedTimes.forEach(time => {
+        const perDate = (selectedDates && selectedDates.length > 0) ? ` × ${selectedDates.length} data(s)` : '';
         summaryHTML += `<div class="flex justify-between items-center py-1">
-            <span class="text-gray-700">${time} × ${teams.length} time(s)</span>
-            <span class="font-semibold">R$ ${(pricePerReservation * teams.length).toFixed(2)}</span>
+            <span class="text-gray-700">${time} × ${teams.length} time(s)${perDate}</span>
+            <span class="font-semibold">R$ ${(pricePerReservation * teams.length * ((selectedDates && selectedDates.length>0)?selectedDates.length:1)).toFixed(2)}</span>
         </div>`;
     });
     
@@ -4062,6 +4119,7 @@ async function submitSchedule(e, useTokens=false){
     
     // Lógica para eventos (agendamento múltiplo)
     const date = document.getElementById('schedDate').value;
+    const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [date];
     
     // Validar seleções
     if (selectedTimes.length === 0) {
@@ -4076,13 +4134,15 @@ async function submitSchedule(e, useTokens=false){
         return;
     }
     
-    // Verificar disponibilidade de vagas para cada horário
-    const availabilityCheck = await checkMultipleSlotAvailability(date, selectedTimes, eventType, teams.length);
-    if (!availabilityCheck.available) {
-        const message = availabilityCheck.message || 'Não há vagas suficientes para os horários selecionados.';
-        alert(message);
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-        return;
+    // Verificar disponibilidade de vagas para cada data e horário
+    for (const d of datesToUse){
+        const availabilityCheck = await checkMultipleSlotAvailability(d, selectedTimes, eventType, teams.length);
+        if (!availabilityCheck.available) {
+            const message = availabilityCheck.message || 'Não há vagas suficientes para os horários selecionados.';
+            alert(message);
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
     }
     
     // Validar dados dos times
@@ -4094,28 +4154,29 @@ async function submitSchedule(e, useTokens=false){
         }
     }
     
-    // Verificar se algum horário já passou
+    // Verificar se algum horário já passou em cada data
     const now = new Date();
-    const selectedDate = new Date(date + 'T00:00:00');
-    const isToday = selectedDate.toDateString() === now.toDateString();
-    
-    if (isToday) {
-        for (let schedule of selectedTimes) {
-            const timeStr = schedule.split(' - ')[1] || '';
-            const hour = parseInt(timeStr.replace('h', ''));
-            const currentHour = now.getHours();
-            
-            if (hour <= currentHour) {
-                alert(`O horário ${timeStr} já passou. Remova horários passados da seleção.`);
-                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-                return;
+    for (const d of datesToUse){
+        const selectedDate = new Date(d + 'T00:00:00');
+        const isToday = selectedDate.toDateString() === now.toDateString();
+        if (isToday) {
+            for (let schedule of selectedTimes) {
+                const timeStr = schedule.split(' - ')[1] || '';
+                const hour = parseInt(timeStr.replace('h', ''));
+                const currentHour = now.getHours();
+                if (hour <= currentHour) {
+                    alert(`O horário ${timeStr} já passou (${d}). Remova horários passados da seleção.`);
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+                    return;
+                }
             }
         }
     }
 
     // Se pagar com token: validar saldo total
     if (useTokens || (cfg && cfg.payWithToken)){
-        const totalCost = teams.length * selectedTimes.length * cfg.price;
+        const datesFactor = (selectedDates && selectedDates.length > 0) ? selectedDates.length : 1;
+        const totalCost = teams.length * selectedTimes.length * datesFactor * cfg.price;
         const profile = window.currentUserProfile || {};
         if (!profile || !profile.tokens || profile.tokens < totalCost){ 
             alert(`Saldo de tokens insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`); 
@@ -4124,13 +4185,15 @@ async function submitSchedule(e, useTokens=false){
         }
     }
     
-    // Verificar disponibilidade de todos os horários
-    for (let schedule of selectedTimes) {
-        const canBook = await checkSlotAvailability(date, schedule, eventType);
-        if (!canBook){ 
-            alert(`O horário ${schedule} não possui vagas. Remova da seleção.`); 
-            if (submitBtn){ submitBtn.disabled=false; submitBtn.textContent=oldText; } 
-            return; 
+    // Verificar disponibilidade de todos os horários por data
+    for (const d of datesToUse){
+        for (let schedule of selectedTimes) {
+            const canBook = await checkSlotAvailability(d, schedule, eventType);
+            if (!canBook){ 
+                alert(`O horário ${schedule} não possui vagas em ${d}. Remova da seleção.`); 
+                if (submitBtn){ submitBtn.disabled=false; submitBtn.textContent=oldText; } 
+                return; 
+            }
         }
     }
 
@@ -4144,24 +4207,26 @@ async function submitSchedule(e, useTokens=false){
         if (window.firebaseReady && !isLocal){
             const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             
-            // Criar uma reserva para cada combinação de time × horário
-            for (let team of teams) {
-                for (let schedule of selectedTimes) {
-                    const docRef = await addDoc(collection(window.firebaseDb,'registrations'),{
-                        userId: (window.firebaseAuth && window.firebaseAuth.currentUser ? window.firebaseAuth.currentUser.uid : null),
-                        teamName: team.name,
-                        email: team.email,
-                        phone: team.phone,
-                        schedule,
-                        date,
-                        eventType,
-                        title: `${cfg.label} - ${schedule} - ${date} - ${team.name}`,
-                        price: Number(cfg.price || 0),
-                        status:'pending',
-                        createdAt: serverTimestamp(),
-                        external_reference: externalRef
-                    });
-                    regIds.push(docRef.id);
+            // Criar uma reserva para cada combinação de data × time × horário
+            for (const d of datesToUse){
+                for (let team of teams) {
+                    for (let schedule of selectedTimes) {
+                        const docRef = await addDoc(collection(window.firebaseDb,'registrations'),{
+                            userId: (window.firebaseAuth && window.firebaseAuth.currentUser ? window.firebaseAuth.currentUser.uid : null),
+                            teamName: team.name,
+                            email: team.email,
+                            phone: team.phone,
+                            schedule,
+                            date: d,
+                            eventType,
+                            title: `${cfg.label} - ${schedule} - ${d} - ${team.name}`,
+                            price: Number(cfg.price || 0),
+                            status:'pending',
+                            createdAt: serverTimestamp(),
+                            external_reference: externalRef
+                        });
+                        regIds.push(docRef.id);
+                    }
                 }
             }
             
@@ -4170,10 +4235,10 @@ async function submitSchedule(e, useTokens=false){
                 try{ sessionStorage.setItem('lastRegId', regIds[0]); }catch(_){ }
                 try{ sessionStorage.setItem('lastRegInfo', JSON.stringify({ 
                     schedule: selectedTimes[0], 
-                    date, 
+                    date: datesToUse[0], 
                     eventType: modal.dataset.eventType, 
                     price: cfg.price, 
-                    title: `${cfg.label} - ${selectedTimes[0]} - ${date}`,
+                    title: `${cfg.label} - ${selectedTimes[0]} - ${datesToUse[0]}`,
                     totalReservations: regIds.length
                 })); }catch(_){ }
             }
