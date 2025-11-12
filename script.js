@@ -248,6 +248,7 @@ function toggleAccountButtons(isLogged){
     const accMob = document.getElementById('accountBtnMobile');
     if (loginDesk && accDesk){ loginDesk.classList.toggle('hidden', isLogged); accDesk.classList.toggle('hidden', !isLogged); }
     if (loginMob && accMob){ loginMob.classList.toggle('hidden', isLogged); accMob.classList.toggle('hidden', !isLogged); }
+    updateHeaderTokenBadges();
 }
 
 // Garantir estado inicial correto dos botões ao carregar a página
@@ -261,6 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (accMob) accMob.classList.add('hidden');
         if (loginDesk) loginDesk.classList.remove('hidden');
         if (loginMob) loginMob.classList.remove('hidden');
+        updateHeaderTokenBadges();
     }catch(_){ /* noop */ }
 });
 
@@ -693,6 +695,19 @@ async function loadUserProfile(uid) {
             level: 'Associado Treino'
         };
     }
+    updateHeaderTokenBadges();
+}
+
+// Atualiza o badge de tokens no header (desktop e mobile)
+function updateHeaderTokenBadges(){
+    try{
+        const isLogged = !!(window.isLoggedIn && window.currentUserProfile);
+        const bal = isLogged ? Math.round(getTokenBalance()) : 0;
+        const d = document.getElementById('tokenBadgeDesktop');
+        const m = document.getElementById('tokenBadgeMobile');
+        if (d) { d.classList.toggle('hidden', !isLogged); d.textContent = `💎 ${bal}`; }
+        if (m) { m.classList.toggle('hidden', !isLogged); m.textContent = `💎 ${bal}`; }
+    }catch(_){ }
 }
 
 // Helpers de permissão
@@ -788,6 +803,7 @@ async function spendTokens(amountBRL) {
     
     // Atualizar interface na página principal
     renderClientArea();
+    updateHeaderTokenBadges();
     
     // Re-sync do Firestore para refletir saldo final
     await syncUserTokens();
@@ -840,6 +856,7 @@ async function syncUserTokens() {
             
             // Atualizar interface
             renderClientArea();
+            updateHeaderTokenBadges();
         }
     } catch (error) {
         console.error('❌ Error syncing tokens:', error);
