@@ -2289,12 +2289,23 @@ async function buildExportList(date, eventType, hour){
   const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
   const regs = collection(window.firebaseDb,'registrations');
   const snap = await getDocs(query(regs, where('date','==', date)));
-  const evLower = String(eventType||'').toLowerCase();
+  // Normalização robusta do tipo de evento para casar variações (ex.: 'XTREINO MODO LIGA', 'modo-liga', 'modoLiga')
+  const normalize = (s)=> String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const evLower = normalize(eventType);
   const normalizeHour = (s)=>{ const m = String(s||'').match(/(\d{1,2})/); return m ? String(parseInt(m[1],10)).padStart(2,'0') : null; };
   const teams = [];
   snap.forEach(d=>{
     const r = d.data();
-    if (evLower && r.eventType && !String(r.eventType).toLowerCase().includes(evLower)) return;
+    // Aplicar filtro por tipo de evento com sinônimos
+    const rType = normalize(r.eventType);
+    if (evLower){
+      if (evLower.includes('liga')) { if (!rType.includes('liga')) return; }
+      else if (evLower.includes('semanal')) { if (!rType.includes('semanal')) return; }
+      else if (evLower.includes('camp')) { if (!rType.includes('camp')) return; }
+      else if (evLower.includes('xtreino') || evLower.includes('tokens')) {
+        if (!(rType.includes('xtreino') || rType.includes('tokens'))) return;
+      }
+    }
     const regHH = normalizeHour(r.schedule) || normalizeHour(r.hour);
     if (regHH !== hh) return;
     const st = String(r.status||'').toLowerCase();
