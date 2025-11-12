@@ -4862,6 +4862,37 @@ async function useTokensForEvent(eventType){
         'xtreino-tokens': 'XTreino Tokens'
     };
     
+    // Verificar disponibilidade do horário selecionado ANTES de debitar tokens
+    try{
+        const date = document.getElementById('schedDate')?.value || new Date().toISOString().split('T')[0];
+        const rawSchedule = document.getElementById('schedSelectedTime')?.value || document.querySelector('#schedTimes .selected')?.textContent || '';
+        const normalizeHour = (h)=>{ if (!h) return null; const m=String(h).match(/(\\d{1,2})/); return m? `${parseInt(m[1],10)}h` : null; };
+        const hour = normalizeHour(rawSchedule);
+        const weekday = (()=>{
+            try{ const d = new Date(`${date}T00:00:00`); const wd = d.toLocaleDateString('pt-BR',{ weekday:'long' }); return wd.charAt(0).toUpperCase()+wd.slice(1); }catch(_){ return ''; }
+        })();
+        const schedule = (weekday && hour) ? `${weekday} - ${hour}` : null;
+        // Mapear tipo de evento dos tokens -> tipo do site (para overrides/capacidade)
+        const mapTokenToSite = (t)=>{
+            switch(String(t||'')){
+                case 'modoLiga': return 'modo-liga';
+                case 'semanal':
+                case 'finalSemanal': return 'semanal-freitas';
+                case 'campFases': return 'camp-freitas';
+                case 'treino': return 'xtreino-tokens';
+                default: return t;
+            }
+        };
+        const siteEventType = mapTokenToSite(eventType);
+        if (schedule && siteEventType){
+            const canBook = await checkSlotAvailability(date, schedule, siteEventType);
+            if (!canBook){
+                alert('Horário indisponível para este evento (lotado ou travado). Escolha outro horário.');
+                return;
+            }
+        }
+    }catch(_){ /* se falhar, deixa seguir para manter fluxo atual */ }
+    
     if (confirm(`Confirmar uso de ${cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens para ${eventNames[eventType]}?`)) {
         const success = await spendTokens(cost);
         if (success) {
@@ -4995,6 +5026,19 @@ async function createTokenSchedule(eventType, cost) {
             'campFases': 'Camp de Fases',
             'xtreino-tokens': 'XTreino Tokens'
         };
+        
+        // Re-checar disponibilidade logo antes de criar (evita corrida)
+        try{
+            const siteTypeMap = { modoLiga:'modo-liga', semanal:'semanal-freitas', finalSemanal:'semanal-freitas', campFases:'camp-freitas', treino:'xtreino-tokens' };
+            const siteEventType = siteTypeMap[eventType] || eventType;
+            if (schedule && siteEventType){
+                const canBook = await checkSlotAvailability(date, schedule, siteEventType);
+                if (!canBook){
+                    alert('Horário indisponível (lotado/travado). Seus tokens não foram perdidos.');
+                    return;
+                }
+            }
+        }catch(_){}
         
         // Obter link do WhatsApp dinamicamente do Firestore
         const whatsappLink = await getWhatsAppLink(eventType, schedule);
