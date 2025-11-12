@@ -3451,7 +3451,7 @@ async function renderScheduleTimes(){
             btn.textContent = `${time} (Lotado)`;
             btn.onclick = null;
         } else {
-            btn.textContent = `${time} (.. /${getEventCapacity(eventType, time)})`;
+            btn.textContent = `${time} (.. /${String(getEventCapacity(eventType, time)).padStart(2,'0')})`;
             btn.onclick = ()=>{ 
                 document.getElementById('schedSelectedTime').value = schedule; 
                 document.getElementById('schedSelectedTimeDisplay').textContent = time;
@@ -3717,7 +3717,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         } else {
             btn.className = 'slot-btn';
             btn.disabled = false;
-            btn.textContent = `${time} (${String(available).padStart(2,'0')}/${capacity})`;
+            btn.textContent = `${time} (${String(available).padStart(2,'0')}/${String(capacity).padStart(2,'0')})`;
             btn.onclick = ()=>{ 
                 selectTime(schedule, btn);
             };
@@ -3869,6 +3869,33 @@ function selectTime(timeValue, element) {
     }
     
     updateReservationsSummary();
+    // Atualizar o preço em Detalhes do Evento conforme o horário selecionado
+    try {
+        const modal = document.getElementById('scheduleModal');
+        const eventType = modal?.dataset?.eventType || '';
+        const priceEl = document.getElementById('schedPrice');
+        if (priceEl) {
+            if (selectedTimes.length === 1) {
+                const hour = (selectedTimes[0].split(' - ')[1] || '').trim();
+                const p = getEventPrice(eventType, hour);
+                priceEl.textContent = p.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+            } else if (selectedTimes.length === 0) {
+                const cfg = scheduleConfig[eventType] || {};
+                priceEl.textContent = Number(cfg.price||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+            } else {
+                // Múltiplos horários: exibir a partir do menor preço
+                let min = Infinity;
+                for (const t of selectedTimes) {
+                    const h = (t.split(' - ')[1] || '').trim();
+                    const p = getEventPrice(eventType, h);
+                    if (p < min) min = p;
+                }
+                if (Number.isFinite(min)) {
+                    priceEl.textContent = min.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+                }
+            }
+        }
+    } catch(_) {}
 }
 
 // Função para lidar com compra de produtos da loja
