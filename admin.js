@@ -2049,7 +2049,7 @@
     try{
       const { collection, getDocs, query, where, doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const since = Date.now() - 24*60*60*1000;
-      let checked = 0, approved = 0;
+      let checked = 0, approved = 0, ordersChecked = 0, ordersApproved = 0, tokensCredited = 0;
       // 1) Registrations pendentes
       const regsRef = collection(window.firebaseDb,'registrations');
       const regSnap = await getDocs(query(regsRef, where('status','==','pending')));
@@ -2069,7 +2069,46 @@
           }
         }
       }
-      alert(`Reconciliados: verificados ${checked}, confirmados ${approved}.`);
+      // 2) Orders pendentes (tokens/produtos)
+      const ordersRef = collection(window.firebaseDb,'orders');
+      const ordSnap = await getDocs(query(ordersRef, where('status','in',['pending','approved','']) ));
+      for (const d of ordSnap.docs){
+        const o = d.data();
+        const ts = o.createdAt?.toDate?.()?.getTime?.() || o.timestamp || 0;
+        if ((o.external_reference || o.preference_id) && ts >= since){
+          ordersChecked++;
+          const payload = o.external_reference ? { external_reference: o.external_reference } : { preference_id: o.preference_id };
+          const res = await fetch('/.netlify/functions/check-payment-status', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+          if (res.ok){
+            const data = await res.json();
+            const st = String(data?.status||'').toLowerCase();
+            if (['approved','paid','accredited'].includes(st)){
+              await updateDoc(doc(window.firebaseDb,'orders', d.id), { status:'paid', paidAt: Date.now(), paymentStatus: 'approved' });
+              ordersApproved++;
+              // Se for compra de tokens, creditar saldo
+              const isTokens = /token/i.test(String(o.title||'')) || /token/i.test(String(o.item||'')) || /token/i.test(String(o.description||''));
+              if (isTokens){
+                try{
+                  const email = o.customer || o.buyerEmail;
+                  if (email){
+                    const { getDocs: g2, query: q2, where: w2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                    const usersRef = collection(window.firebaseDb,'users');
+                    const userSnap = await g2(q2(usersRef, w2('email','==', email)));
+                    if (!userSnap.empty){
+                      const u = userSnap.docs[0];
+                      const current = Number(u.data().tokens||0);
+                      const qty = parseInt(String(o.title||'').match(/(\\d+)/)?.[1] || '1', 10);
+                      await updateDoc(doc(window.firebaseDb,'users', u.id), { tokens: current + qty });
+                      tokensCredited += qty;
+                    }
+                  }
+                }catch(_){}
+              }
+            }
+          }
+        }
+      }
+      alert(`Reconciliados:\nInscrições → verificados ${checked}, confirmados ${approved}\nPedidos → verificados ${ordersChecked}, confirmados ${ordersApproved}\nTokens creditados: ${tokensCredited}`);
     }catch(e){
       console.error('Reconcile error', e);
       alert('Falha ao reconciliar pagamentos.');
