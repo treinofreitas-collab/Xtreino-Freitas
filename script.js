@@ -2042,6 +2042,123 @@ function isBusinessHours() {
     return true;
 }
 
+// ===== Helpers de chat inteligente (sem APIs externas) =====
+function stripDiacritics(s){ try{ return s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); }catch(_){ return s; } }
+function normalizeText(s){
+    const t = stripDiacritics(String(s||'').toLowerCase());
+    return t.replace(/[^\w\s]/g,' ').replace(/\s+/g,' ').trim();
+}
+function levenshtein(a,b){
+    a = String(a); b = String(b);
+    const m = Array.from({length: a.length+1}, (_,i)=>[i]);
+    for (let j=1;j<=b.length;j++){ m[0][j]=j; }
+    for (let i=1;i<=a.length;i++){
+        for (let j=1;j<=b.length;j++){
+            const cost = a[i-1]===b[j-1] ? 0 : 1;
+            m[i][j] = Math.min(m[i-1][j]+1, m[i][j-1]+1, m[i-1][j-1]+cost);
+        }
+    }
+    return m[a.length][b.length];
+}
+function similarity(a,b){
+    const na = normalizeText(a), nb = normalizeText(b);
+    if (!na || !nb) return 0;
+    const maxLen = Math.max(na.length, nb.length);
+    const dist = levenshtein(na, nb);
+    return 1 - (dist / Math.max(1, maxLen));
+}
+const EVENT_SYNONYMS = {
+    'modo-liga': ['modo liga','liga','modoliga','xtreino liga','liga freitas'],
+    'semanal-freitas': ['semanal','semanal freitas','final semanal','final do semanal'],
+    'camp-freitas': ['camp','campeonato','camp freitas','campeonato freitas'],
+    'xtreino-tokens': ['xtreino','treino','freitas','xtreino freitas','token','tokens']
+};
+function detectEventType(text){
+    const n = normalizeText(text);
+    for (const [key, list] of Object.entries(EVENT_SYNONYMS)){
+        if (list.some(s => n.includes(normalizeText(s)))) return key;
+    }
+    return null;
+}
+function parseHourFromText(text){
+    const t = String(text||'').toLowerCase();
+    const m1 = t.match(/\b(\d{1,2})\s*h\b/); if (m1){ const h=parseInt(m1[1],10); if(h>=0&&h<=23) return `${h}h`; }
+    const m2 = t.match(/\b(\d{1,2})\s*:\s*(\d{2})\b/); if (m2){ const h=parseInt(m2[1],10); if(h>=0&&h<=23) return `${h}h`; }
+    return null;
+}
+function parseDateFromText(text){
+    try{
+        const n = normalizeText(text);
+        const today = new Date();
+        if (/\bhoje\b/.test(n)) return today.toISOString().slice(0,10);
+        if (/\bamanha\b/.test(n)) { const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); }
+        const m = n.match(/\b(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?\b/);
+        if (m){
+            const dd = parseInt(m[1],10), MM=parseInt(m[2],10), yyyy = m[3]? parseInt(m[3],10) : today.getFullYear();
+            const y4 = yyyy<100 ? 2000+yyyy : yyyy;
+            const ds = `${y4}-${String(MM).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+            const d = new Date(ds+'T00:00:00'); if (!isNaN(d)) return ds;
+        }
+    }catch(_){}
+    return null;
+}
+let __faqKbCache = null;
+async function loadFaqKb(){
+    if (__faqKbCache !== null) return __faqKbCache;
+    try{
+        const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const snap = await getDocs(collection(window.firebaseDb,'faq_kb'));
+        __faqKbCache = [];
+        snap.forEach(d=>{ const data=d.data(); if (data?.q && data?.a) __faqKbCache.push({q:String(data.q), a:String(data.a)}); });
+        return __faqKbCache;
+    }catch(_){ __faqKbCache = []; return __faqKbCache; }
+}
+async function smartChatAnswer(message){
+    const text = String(message||'');
+    const ntext = normalizeText(text);
+    // 1) FAQ KB por similaridade
+    const kb = await loadFaqKb();
+    let best = {score:0, a:''};
+    for (const item of kb){
+        const s = similarity(ntext, item.q);
+        if (s > best.score) best = { score: s, a: item.a };
+    }
+    if (best.score >= 0.72) return { answer: best.a, confidence: best.score };
+    // 2) Intenções: preço / vagas / horários
+    const ev = detectEventType(ntext);
+    const hour = parseHourFromText(ntext);
+    const date = parseDateFromText(ntext) || new Date().toISOString().slice(0,10);
+    const wantsPrice = /\b(preco|preço|valor|custa|quanto)\b/.test(ntext);
+    const wantsVacancy = /\b(vaga|vagas|lotado|tem vaga|disponivel|disponível)\b/.test(ntext);
+    const wantsHours = /\b(horario|horário|hora|horas|que horas)\b/.test(ntext);
+    if (ev && (wantsPrice || wantsHours || wantsVacancy)){
+        // Horários: listar horários do evento
+        if (wantsHours && !hour){
+            let slots = [];
+            if (ev==='modo-liga' || ev==='xtreino-tokens') slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
+            else if (ev==='semanal-freitas') slots = ['20h','21h','22h'];
+            else if (ev==='camp-freitas') slots = ['20h','21h','22h','23h'];
+            return { answer: `⏰ Horários de ${scheduleConfig[ev]?.label||'evento'}: ${slots.join(', ')}`, confidence: 0.9 };
+        }
+        // Preço: considerar preço por horário (ex.: 22h semanal = 7)
+        if (wantsPrice){
+            const p = getEventPrice(ev, hour || '');
+            return { answer: `💰 Valor de ${scheduleConfig[ev]?.label||'Evento'}${hour?` (${hour})`:''}: ${p.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`, confidence: 0.9 };
+        }
+        // Vagas: usar checkSlotAvailability
+        if (wantsVacancy && hour){
+            try{
+                const scheduleStr = `${new Date(date+'T00:00:00').toLocaleDateString('pt-BR',{ weekday:'long' })} - ${hour}`;
+                const ok = await checkSlotAvailability(date, scheduleStr, ev);
+                const cap = getEventCapacity(ev, hour);
+                return { answer: ok ? `✅ Há vagas no ${hour} (${cap} no total) para ${scheduleConfig[ev]?.label||'o evento'} em ${date.split('-').reverse().join('/')}.` : `❌ ${hour} está lotado para ${scheduleConfig[ev]?.label||'o evento'} em ${date.split('-').reverse().join('/')}.`, confidence: 0.85 };
+            }catch(_){}
+        }
+    }
+    // 3) Fallback leve: retorno vazio para usar canned
+    return { answer: '', confidence: 0 };
+}
+
 // Inicializar chat
 function initChat() {
     const chatToggle = document.getElementById('chatToggle');
@@ -2085,13 +2202,23 @@ function initChat() {
     });
     
     // Enviar mensagem
-    function sendMessage() {
+    async function sendMessage() {
         const message = chatInput.value.trim();
         if (!message || !isOnline) return;
         
         // Adicionar mensagem do usuário
         addMessage(message, 'user');
         chatInput.value = '';
+        
+        // Tenta primeiro resposta inteligente
+        try{
+            const smart = await smartChatAnswer(message);
+            if (smart && smart.answer){
+                showTypingIndicator();
+                setTimeout(() => { hideTypingIndicator(); addMessage(smart.answer, 'support'); }, 1200);
+                return;
+            }
+        }catch(_){}
         
         // Respostas prontas (FAQ curto). Se não bater, encaminha para WhatsApp
         const textLower = message.toLowerCase();
