@@ -2169,12 +2169,18 @@
             if (!confirm(`Destravar todas as travas e zerar ocupações extras de ${date} (${ovEventType})?`)) return;
             const { collection, query, where, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = collection(window.firebaseDb, 'schedule_overrides');
-            const snap = await getDocs(query(ovRef, where('date','==', date), where('eventType','==', ovEventType)));
+            const variants = Array.from(new Set([ovEventType, 'liga', 'modo liga', 'modo-liga', null]));
             const ops = [];
-            snap.forEach(d=>{
-              const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
-              ops.push(updateDoc(ref, { locked:false, extraOccupied:0 }));
-            });
+            // Por variações de eventType
+            for (const v of variants){
+              try{
+                const snap = await getDocs(query(ovRef, where('date','==', date), where('eventType','==', v)));
+                snap.forEach(d=>{
+                  const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
+                  ops.push(updateDoc(ref, { locked:false, extraOccupied:0 }));
+                });
+              }catch(_){}
+            }
             await Promise.allSettled(ops);
             alert('Travas removidas e ocupações extras zeradas para o dia.');
             await loadBoard();
@@ -2315,12 +2321,31 @@
             const hh = String(h).match(/(\d{1,2})/)?.[1];
             const { collection: c3, query: q3, where: w3, getDocs: g3, addDoc, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = c3(window.firebaseDb, 'schedule_overrides');
-            const snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', ovEventType), w3('hour','==', hh)));
-            if (!snap.empty){
-              // Atualizar todos os documentos correspondentes para evitar inconsistências de trava
-              const anyUnlocked = snap.docs.some(d => d.data()?.locked !== true);
+            // Coletar docs com diferentes variações de schema/valores antigos
+            const variants = Array.from(new Set([ovEventType, 'liga', 'modo liga', 'modo-liga', null]));
+            const toUpdate = new Map();
+            // hour como 'hour'
+            let snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', ovEventType), w3('hour','==', hh)));
+            snap.forEach(d=> toUpdate.set(d.id, d));
+            // hour como 'hh'
+            snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', ovEventType), w3('hh','==', hh)));
+            snap.forEach(d=> toUpdate.set(d.id, d));
+            // variações de eventType
+            for (const v of variants){
+              try{
+                let s1 = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', v), w3('hour','==', hh)));
+                s1.forEach(d=> toUpdate.set(d.id, d));
+              }catch(_){}
+              try{
+                let s2 = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', v), w3('hh','==', hh)));
+                s2.forEach(d=> toUpdate.set(d.id, d));
+              }catch(_){}
+            }
+            const docsArr = Array.from(toUpdate.values());
+            if (docsArr.length){
+              const anyUnlocked = docsArr.some(d => d.data()?.locked !== true);
               const newLocked = anyUnlocked ? true : false;
-              for (const d of snap.docs) {
+              for (const d of docsArr) {
                 const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
                 await updateDoc(ref, { locked: newLocked });
               }
