@@ -3320,6 +3320,17 @@ function openScheduleModal(eventType){
     
     const hint = document.getElementById('schedHint');
     if (hint) hint.textContent = cfg.label;
+    
+    // Atualizações periódicas e ao voltar o foco (evita tela antiga ficar válida)
+    try{
+        if (window.__schedRefreshInterval) { clearInterval(window.__schedRefreshInterval); window.__schedRefreshInterval = null; }
+        window.__schedRefreshInterval = setInterval(()=>{ try{ renderScheduleTimes(); }catch(_){ } }, 60000); // 60s
+        // Handlers para quando o usuário volta à aba/janela
+        window.__schedVisibilityHandler = ()=>{ if (document.visibilityState === 'visible') { try{ renderScheduleTimes(); }catch(_){ } } };
+        window.__schedFocusHandler = ()=>{ try{ renderScheduleTimes(); }catch(_){ } };
+        document.addEventListener('visibilitychange', window.__schedVisibilityHandler);
+        window.addEventListener('focus', window.__schedFocusHandler);
+    }catch(_){ }
 }
 function closeScheduleModal(){
     const modal = document.getElementById('scheduleModal');
@@ -3360,6 +3371,12 @@ function closeScheduleModal(){
             totalPriceElement.textContent = 'R$ 0,00';
         }
     }
+    // Remover timers/handlers de atualização
+    try{
+        if (window.__schedRefreshInterval) { clearInterval(window.__schedRefreshInterval); window.__schedRefreshInterval = null; }
+        if (window.__schedVisibilityHandler) { document.removeEventListener('visibilitychange', window.__schedVisibilityHandler); window.__schedVisibilityHandler = null; }
+        if (window.__schedFocusHandler) { window.removeEventListener('focus', window.__schedFocusHandler); window.__schedFocusHandler = null; }
+    }catch(_){ }
     if (window.innerWidth <= 767) maybeClearMobileModalState();
 }
 // Renderizar lista de datas selecionadas para agendamento múltiplo
