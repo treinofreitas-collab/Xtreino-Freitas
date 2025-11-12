@@ -2067,6 +2067,7 @@
       const dateEl = document.getElementById('boardDate');
       const typeEl = document.getElementById('boardEventType');
       const tbody = document.getElementById('boardTbody');
+      const btnClearLocks = document.getElementById('btnClearLocks');
       if (!dateEl || !typeEl || !tbody) return;
       const date = dateEl.value;
       const eventType = typeEl.value;
@@ -2080,6 +2081,29 @@
       const ovEventType = canonicalType(eventType);
       tbody.innerHTML = '';
       if (!date) return;
+      
+      // Handler: destravar tudo do dia
+      if (btnClearLocks && !btnClearLocks._bound){
+        btnClearLocks.addEventListener('click', async ()=>{
+          try{
+            if (!confirm(`Destravar todas as travas e zerar ocupações extras de ${date} (${ovEventType})?`)) return;
+            const { collection, query, where, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const ovRef = collection(window.firebaseDb, 'schedule_overrides');
+            const snap = await getDocs(query(ovRef, where('date','==', date), where('eventType','==', ovEventType)));
+            const ops = [];
+            snap.forEach(d=>{
+              const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
+              ops.push(updateDoc(ref, { locked:false, extraOccupied:0 }));
+            });
+            await Promise.allSettled(ops);
+            alert('Travas removidas e ocupações extras zeradas para o dia.');
+            await loadBoard();
+          }catch(e){
+            alert('Falha ao destravar tudo do dia.');
+          }
+        });
+        btnClearLocks._bound = true;
+      }
       
       // Definir horários corretos por tipo de evento (baseado nas descrições do site)
       const ev = String(eventType||'').toLowerCase();
