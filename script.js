@@ -3337,9 +3337,27 @@ function updateSelectedDate() {
 }
 const scheduleCache = {};
 
-// Capacidade de vagas por tipo de evento
-function getEventCapacity(eventType){
-    return eventType === 'modo-liga' ? 15 : 12;
+// Capacidade de vagas por tipo de evento e horário (casos especiais)
+function getEventCapacity(eventType, hourStr){
+    const type = String(eventType||'').toLowerCase();
+    const hour = String(hourStr||'').toLowerCase().replace(/\s/g,'');
+    // Modo liga: 15
+    if (type === 'modo-liga') return 15;
+    // Semanal Freitas 22h: capacidade 4
+    if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 4;
+    // Demais: 12
+    return 12;
+}
+
+// Preço por tipo de evento e horário (casos especiais)
+function getEventPrice(eventType, hourStr){
+    const type = String(eventType||'').toLowerCase();
+    const hour = String(hourStr||'').toLowerCase().replace(/\s/g,'');
+    // Semanal Freitas 22h: R$ 7,00 (vaga direto na final)
+    if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 7.00;
+    // Padrão: usar preço do config
+    const cfg = scheduleConfig[eventType] || {};
+    return Number(cfg.price || 0);
 }
 
 // Valida se a data é válida para agendamento (segunda a sexta, não passado)
@@ -3433,7 +3451,7 @@ async function renderScheduleTimes(){
             btn.textContent = `${time} (Lotado)`;
             btn.onclick = null;
         } else {
-            btn.textContent = `${time} (.. /${getEventCapacity(eventType)})`;
+            btn.textContent = `${time} (.. /${getEventCapacity(eventType, time)})`;
             btn.onclick = ()=>{ 
                 document.getElementById('schedSelectedTime').value = schedule; 
                 document.getElementById('schedSelectedTimeDisplay').textContent = time;
@@ -3517,7 +3535,7 @@ async function fetchOccupiedForDate(day, date, eventType){
                 }
                 if (ov.locked) {
                     // usar capacidade do tipo para forçar lotado
-                    const cap = getEventCapacity(eventType);
+                    const cap = getEventCapacity(eventType, `${hourNum}h`);
                     map[key] = cap;
                 }
             });
@@ -3558,12 +3576,12 @@ async function checkSlotAvailability(date, schedule, eventType){
                 const ov = d.data();
                 const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
                 if (ovHour === wantedHour){
-                    if (ov.locked) occupied = getEventCapacity(eventType);
+                    if (ov.locked) occupied = getEventCapacity(eventType, `${wantedHour}h`);
                     if (ov.extraOccupied) occupied += Number(ov.extraOccupied||0);
                 }
             });
         }catch(_){}
-        return occupied < getEventCapacity(eventType);
+        return occupied < getEventCapacity(eventType, `${wantedHour}h`);
     }catch(_){ return true; }
 }
 
@@ -3608,12 +3626,12 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
                     const ov = d.data();
                     const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
                     if (ovHour === wantedHour){
-                        if (ov.locked) occupiedSlots = getEventCapacity(eventType);
+                        if (ov.locked) occupiedSlots = getEventCapacity(eventType, `${wantedHour}h`);
                         if (ov.extraOccupied) occupiedSlots += Number(ov.extraOccupied||0);
                     }
                 });
             }catch(_){}
-            const capacity = getEventCapacity(eventType);
+            const capacity = getEventCapacity(eventType, `${wantedHour}h`);
             const availableSlots = capacity - occupiedSlots;
             
             if (availableSlots === 0) {
@@ -3669,7 +3687,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         const schedule = btn.dataset.schedule;
         const time = (schedule || '').split(' - ')[1] || '';
         const taken = occupied[schedule] || 0;
-        const capacity = getEventCapacity(eventType);
+        const capacity = getEventCapacity(eventType, time);
         const available = Math.max(0, capacity - taken);
         
         // Verificar se o horário já passou (apenas para hoje)
@@ -3777,7 +3795,6 @@ async function updateReservationsSummary() {
     const modal = document.getElementById('scheduleModal');
     const eventType = modal?.dataset?.eventType || 'modo-liga';
     const cfg = scheduleConfig[eventType];
-    const pricePerReservation = cfg.price || 0;
     
     let summaryHTML = '';
     let totalReservations = 0;
@@ -3816,18 +3833,23 @@ async function updateReservationsSummary() {
     }
     
     // Build summary
+    let computedTotal = 0;
     selectedTimes.forEach(time => {
+        const hour = (time.split(' - ')[1] || '').trim();
+        const pricePerReservation = getEventPrice(eventType, hour);
+        const lineTotal = pricePerReservation * teams.length * ((selectedDates && selectedDates.length>0)?selectedDates.length:1);
+        computedTotal += lineTotal;
         const perDate = (selectedDates && selectedDates.length > 0) ? ` × ${selectedDates.length} data(s)` : '';
         summaryHTML += `<div class="flex justify-between items-center py-1">
             <span class="text-gray-700">${time} × ${teams.length} time(s)${perDate}</span>
-            <span class="font-semibold">R$ ${(pricePerReservation * teams.length * ((selectedDates && selectedDates.length>0)?selectedDates.length:1)).toFixed(2)}</span>
+            <span class="font-semibold">R$ ${lineTotal.toFixed(2)}</span>
         </div>`;
     });
     
     summaryContainer.innerHTML = availabilityWarning + summaryHTML;
     
-    const totalPrice = totalReservations * pricePerReservation;
-    totalPriceElement.textContent = `R$ ${totalPrice.toFixed(2)}`;
+    const totalPrice = computedTotal;
+    totalPriceElement.textContent = `R$ ${Number(totalPrice||0).toFixed(2)}`;
 }
 
 // Function to handle time selection (multiple)
@@ -4176,7 +4198,11 @@ async function submitSchedule(e, useTokens=false){
     // Se pagar com token: validar saldo total
     if (useTokens || (cfg && cfg.payWithToken)){
         const datesFactor = (selectedDates && selectedDates.length > 0) ? selectedDates.length : 1;
-        const totalCost = teams.length * selectedTimes.length * datesFactor * cfg.price;
+        let totalCost = 0;
+        for (const t of selectedTimes){
+            const hour = (t.split(' - ')[1] || '').trim();
+            totalCost += getEventPrice(eventType, hour) * teams.length * datesFactor;
+        }
         const profile = window.currentUserProfile || {};
         if (!profile || !profile.tokens || profile.tokens < totalCost){ 
             alert(`Saldo de tokens insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`); 
@@ -4219,8 +4245,8 @@ async function submitSchedule(e, useTokens=false){
                             schedule,
                             date: d,
                             eventType,
-                            title: `${cfg.label} - ${schedule} - ${d} - ${team.name}`,
-                            price: Number(cfg.price || 0),
+                        title: `${cfg.label} - ${schedule} - ${d} - ${team.name}`,
+                        price: Number(getEventPrice(eventType, (schedule.split(' - ')[1]||'').trim()) || 0),
                             status:'pending',
                             createdAt: serverTimestamp(),
                             external_reference: externalRef
@@ -4340,8 +4366,13 @@ async function submitSchedule(e, useTokens=false){
         return;
     }
     // Fluxo normal: Checkout via Netlify Function
-    const totalReservations = teams.length * selectedTimes.length;
-    const originalTotal = Number((cfg.price * totalReservations).toFixed(2));
+    const datesFactor2 = (selectedDates && selectedDates.length > 0) ? selectedDates.length : 1;
+    let originalTotal = 0;
+    for (const t of selectedTimes){
+        const hour = (t.split(' - ')[1] || '').trim();
+        originalTotal += getEventPrice(eventType, hour) * teams.length * datesFactor2;
+    }
+    originalTotal = Number(originalTotal.toFixed(2));
     
     // Calcular preço final com cupom aplicado
     let finalPrice = originalTotal;
@@ -4369,7 +4400,7 @@ async function submitSchedule(e, useTokens=false){
     fetch('/.netlify/functions/create-preference',{
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ 
-            title: `${cfg.label} - ${totalReservations} reservas - ${date}`, 
+            title: `${cfg.label} - ${teams.length * selectedTimes.length * datesFactor2} reservas - ${date}`, 
             unit_price: finalPrice, 
             currency_id:'BRL', 
             quantity: 1, // Mudamos para 1 pois já calculamos o preço total
