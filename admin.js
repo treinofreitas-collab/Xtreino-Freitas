@@ -2086,6 +2086,15 @@
       let defaultHours;
       // Capacidade por evento
       let capacity = 12; // padrão
+      // Helper: capacidade por horário (casos especiais)
+      const capFor = (hourStr)=>{
+        // Modo Liga sempre 15
+        if (ev === 'liga' || ev.includes('modo-liga') || ev.includes('modo liga')) return 15;
+        // Semanal Freitas 22:00 = 4 vagas
+        if (ev.includes('semanal') && String(hourStr||'').startsWith('22')) return 4;
+        // Demais: 12
+        return 12;
+      };
       // "XTREINO MODO LIGA" no select usa value "liga"; aceitar variações
       if (ev === 'liga' || ev.includes('modo-liga') || ev.includes('modo liga')) {
         // Modo Liga: 14:00 às 23:00
@@ -2148,7 +2157,7 @@
           }
           if (ov.locked) {
             const k = `${hh}:00`;
-            map[k] = capacity;
+            map[k] = capFor(k);
           }
         });
       }catch(_){}
@@ -2158,7 +2167,8 @@
         const ov = overrides[hour] || {};
         const locked = !!ov.locked;
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/${capacity}</td><td class="py-2 space-x-2">
+        const cap = capFor(hour);
+        tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/${cap}</td><td class="py-2 space-x-2">
           <button class="px-2 py-1 bg-blue-600 text-white rounded text-xs" data-add-hour="${hour}">Adicionar</button>
           <button class="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs" data-manage-hour="${hour}">Gerenciar</button>
           <button class="px-2 py-1 bg-emerald-600 text-white rounded text-xs" data-export-hour="${hour}">Exportar</button>
