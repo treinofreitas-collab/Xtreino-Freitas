@@ -3,7 +3,7 @@
 
 [[scheduled]]
   path = "/.netlify/functions/reconcile-payments"
-  schedule = "*/10 * * * *" # a cada 10 minutos
+  schedule = "*/2 * * * *" # a cada 2 minutos (fallback automático)
 
 [build]
   functions = "netlify/functions"
