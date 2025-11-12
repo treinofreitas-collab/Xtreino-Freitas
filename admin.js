@@ -2035,6 +2035,47 @@
     downloadCsv('inscricoes.csv', rows);
   }
 
+  // Bind botão reconciliar
+  (function(){
+    const btn = document.getElementById('btnReconcile');
+    if (btn && !btn._bound){
+      btn.addEventListener('click', ()=> reconcilePayments());
+      btn._bound = true;
+    }
+  })();
+
+  // Reconciliar pagamentos (24h) pelo external_reference
+  async function reconcilePayments(){
+    try{
+      const { collection, getDocs, query, where, doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      const since = Date.now() - 24*60*60*1000;
+      let checked = 0, approved = 0;
+      // 1) Registrations pendentes
+      const regsRef = collection(window.firebaseDb,'registrations');
+      const regSnap = await getDocs(query(regsRef, where('status','==','pending')));
+      for (const d of regSnap.docs){
+        const r = d.data();
+        const ts = r.createdAt?.toDate?.()?.getTime?.() || r.timestamp || 0;
+        if ((r.external_reference || r.external_reference) && ts >= since){
+          checked++;
+          const res = await fetch('/.netlify/functions/check-payment-status', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ external_reference: r.external_reference }) });
+          if (res.ok){
+            const data = await res.json();
+            const st = String(data?.status||'').toLowerCase();
+            if (['approved','paid','accredited'].includes(st)){
+              await updateDoc(doc(window.firebaseDb,'registrations', d.id), { status:'paid', paidAt: Date.now() });
+              approved++;
+            }
+          }
+        }
+      }
+      alert(`Reconciliados: verificados ${checked}, confirmados ${approved}.`);
+    }catch(e){
+      console.error('Reconcile error', e);
+      alert('Falha ao reconciliar pagamentos.');
+    }
+  }
+
   function downloadCsv(filename, rows){
     const csv = rows.map(r=>r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
     const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
