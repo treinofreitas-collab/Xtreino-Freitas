@@ -1,3 +1,10 @@
+[functions]
+  node_bundler = "esbuild"
+
+[[scheduled]]
+  path = "/.netlify/functions/reconcile-payments"
+  schedule = "*/10 * * * *" # a cada 10 minutos
+
 [build]
   functions = "netlify/functions"
   publish = "."
@@ -8,6 +15,7 @@
   SITE_URL = "https://orgfreitas.com.br"
   MP_BACK_BASE_URL = "https://orgfreitas.com.br"
   WEBHOOK_URL = "https://orgfreitas.com.br/.netlify/functions/payment-notification"
+  MP_ACCESS_TOKEN = "APP_USR-6502424523223040-102009-bc2e614d26be8b582e772ab969fd2566-1741191818"
 
 # Configurações para as funções
 [functions]
