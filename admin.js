@@ -2101,7 +2101,8 @@
         defaultHours = ['14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'];
         capacity = 15; // Modo Liga: 15 vagas
       } else if (ev.includes('camp')) {
-        defaultHours = ['20:00','21:00','22:00','23:00'];
+        // Camp Freitas: incluir 19:00 também
+        defaultHours = ['19:00','20:00','21:00','22:00','23:00'];
       } else if (ev.includes('semanal')) {
         // 1ª fase 20h e 21h; final às 22h
         defaultHours = ['20:00','21:00','22:00'];
