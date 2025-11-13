@@ -798,7 +798,7 @@
     document.getElementById('tokensPageInfo').textContent = `Página ${pagina} de ${totalPages}`;
     
     // Gerar botões de paginação
-    gerarBotoesPaginacao('tokensPagination', pagina, totalPages, (p) => mostrarTokensPagina(p));
+    gerarBotoesPaginacao('tokensPurchasesPagination', pagina, totalPages, (p) => mostrarTokensPagina(p));
   }
 
   // Função para carregar dados de uso de tokens
@@ -5667,7 +5667,17 @@ function updateTokensPagination() {
 }
 
 function changeTokensPage(page) {
-  tokensCurrentPage = page;
+  const totalPages = Math.ceil(tokensFilteredData.length / tokensPerPage);
+  
+  // Validar página
+  if (page < 1) {
+    tokensCurrentPage = 1;
+  } else if (page > totalPages) {
+    tokensCurrentPage = totalPages;
+  } else {
+    tokensCurrentPage = page;
+  }
+  
   renderTokensTable();
   updateTokensPagination();
 }
