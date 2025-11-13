@@ -3511,11 +3511,24 @@ function getEventCapacity(eventType, hourStr){
 }
 
 // Preço por tipo de evento e horário (casos especiais)
-function getEventPrice(eventType, hourStr){
+function getEventPrice(eventType, hourStr, dateStr){
     const type = String(eventType||'').toLowerCase();
     const hour = String(hourStr||'').toLowerCase().replace(/\s/g,'');
+    const dateIso = dateStr || (document.getElementById('schedDate')?.value || null);
     // Semanal Freitas 22h: R$ 7,00 (vaga direto na final)
     if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 7.00;
+    // Camp Freitas PROMO: dias específicos a R$20,00
+    try{
+        if (type === 'camp-freitas' && dateIso){
+            // Datas em ISO (YYYY-MM-DD)
+            const promos = {
+                '2025-11-13': ['21h','22h','23h'],
+                '2025-11-14': ['20h']
+            };
+            const hours = promos[dateIso];
+            if (hours && hours.includes(hour)) return 20.00;
+        }
+    }catch(_){}
     // Padrão: usar preço do config
     const cfg = scheduleConfig[eventType] || {};
     return Number(cfg.price || 0);
@@ -3995,16 +4008,24 @@ async function updateReservationsSummary() {
     
     // Build summary
     let computedTotal = 0;
-    selectedTimes.forEach(time => {
-        const hour = (time.split(' - ')[1] || '').trim();
-        const pricePerReservation = getEventPrice(eventType, hour);
-        const lineTotal = pricePerReservation * teams.length * ((selectedDates && selectedDates.length>0)?selectedDates.length:1);
-        computedTotal += lineTotal;
-        const perDate = (selectedDates && selectedDates.length > 0) ? ` × ${selectedDates.length} data(s)` : '';
-        summaryHTML += `<div class="flex justify-between items-center py-1">
-            <span class="text-gray-700">${time} × ${teams.length} time(s)${perDate}</span>
-            <span class="font-semibold">R$ ${lineTotal.toFixed(2)}</span>
-        </div>`;
+    // Montar por data×horário (preços podem variar por data)
+    const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [document.getElementById('schedDate')?.value];
+    datesToUse.forEach(d=>{
+        selectedTimes.forEach(time => {
+            const hour = (time.split(' - ')[1] || '').trim();
+            const pricePerReservation = getEventPrice(eventType, hour, d);
+            const lineTotal = pricePerReservation * teams.length;
+            computedTotal += lineTotal;
+        });
+        // Exibição consolidada por horário (com nota de datas)
+        selectedTimes.forEach(time=>{
+            const hour = (time.split(' - ')[1] || '').trim();
+            const pricePerReservation = getEventPrice(eventType, hour, d);
+            summaryHTML += `<div class="flex justify-between items-center py-1">
+                <span class="text-gray-700">${time} (${new Date(d+'T00:00:00').toLocaleDateString('pt-BR')}) × ${teams.length} time(s)</span>
+                <span class="font-semibold">R$ ${(pricePerReservation * teams.length).toFixed(2)}</span>
+            </div>`;
+        });
     });
     
     summaryContainer.innerHTML = availabilityWarning + summaryHTML;
@@ -4385,11 +4406,13 @@ async function submitSchedule(e, useTokens=false){
 
     // Se pagar com token: validar saldo total
     if (useTokens || (cfg && cfg.payWithToken)){
-        const datesFactor = (selectedDates && selectedDates.length > 0) ? selectedDates.length : 1;
+        const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [document.getElementById('schedDate')?.value];
         let totalCost = 0;
-        for (const t of selectedTimes){
-            const hour = (t.split(' - ')[1] || '').trim();
-            totalCost += getEventPrice(eventType, hour) * teams.length * datesFactor;
+        for (const d of datesToUse){
+            for (const t of selectedTimes){
+                const hour = (t.split(' - ')[1] || '').trim();
+                totalCost += getEventPrice(eventType, hour, d) * teams.length;
+            }
         }
         const profile = window.currentUserProfile || {};
         if (!profile || !profile.tokens || profile.tokens < totalCost){ 
@@ -4554,11 +4577,13 @@ async function submitSchedule(e, useTokens=false){
         return;
     }
     // Fluxo normal: Checkout via Netlify Function
-    const datesFactor2 = (selectedDates && selectedDates.length > 0) ? selectedDates.length : 1;
+    const datesToUse2 = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [document.getElementById('schedDate')?.value];
     let originalTotal = 0;
-    for (const t of selectedTimes){
-        const hour = (t.split(' - ')[1] || '').trim();
-        originalTotal += getEventPrice(eventType, hour) * teams.length * datesFactor2;
+    for (const d of datesToUse2){
+        for (const t of selectedTimes){
+            const hour = (t.split(' - ')[1] || '').trim();
+            originalTotal += getEventPrice(eventType, hour, d) * teams.length;
+        }
     }
     originalTotal = Number(originalTotal.toFixed(2));
     
