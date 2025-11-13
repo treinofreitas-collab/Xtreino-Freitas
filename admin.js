@@ -2169,7 +2169,16 @@
             if (!confirm(`Destravar todas as travas e zerar ocupações extras de ${date} (${ovEventType})?`)) return;
             const { collection, query, where, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = collection(window.firebaseDb, 'schedule_overrides');
-            const variants = Array.from(new Set([ovEventType, 'liga', 'modo liga', 'modo-liga', null]));
+            // aliases apenas da mesma família + null para limpar legados
+            const aliasesFor = (t)=>{
+              const s = String(t||'').toLowerCase();
+              if (s==='modo-liga') return ['modo-liga','liga','modo liga'];
+              if (s==='camp-freitas') return ['camp-freitas','camp','camp freitas'];
+              if (s==='semanal-freitas') return ['semanal-freitas','semanal','semanal freitas'];
+              if (s==='xtreino-tokens') return ['xtreino-tokens','xtreino','xtreino tokens'];
+              return [s];
+            };
+            const variants = Array.from(new Set([...aliasesFor(ovEventType), null]));
             const ops = [];
             // Por variações de eventType
             for (const v of variants){
@@ -2321,8 +2330,16 @@
             const hh = String(h).match(/(\d{1,2})/)?.[1];
             const { collection: c3, query: q3, where: w3, getDocs: g3, addDoc, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = c3(window.firebaseDb, 'schedule_overrides');
-            // Coletar docs com diferentes variações de schema/valores antigos
-            const variants = Array.from(new Set([ovEventType, 'liga', 'modo liga', 'modo-liga', null]));
+            // aliases apenas da mesma família (evita travar outros eventos)
+            const aliasesFor = (t)=>{
+              const s = String(t||'').toLowerCase();
+              if (s==='modo-liga') return ['modo-liga','liga','modo liga'];
+              if (s==='camp-freitas') return ['camp-freitas','camp','camp freitas'];
+              if (s==='semanal-freitas') return ['semanal-freitas','semanal','semanal freitas'];
+              if (s==='xtreino-tokens') return ['xtreino-tokens','xtreino','xtreino tokens'];
+              return [s];
+            };
+            const variants = Array.from(new Set(aliasesFor(ovEventType)));
             const toUpdate = new Map();
             // hour como 'hour'
             let snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', ovEventType), w3('hour','==', hh)));
