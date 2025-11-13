@@ -22,3 +22,7 @@ yarn-error.log*
 .env
 .env.*
 
+# Firebase Service Account credentials (NUNCA commitar!)
+serviceAccount-*.json
+*-firebase-adminsdk-*.json
+
