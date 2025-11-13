@@ -5506,8 +5506,15 @@ async function loadTokensUsers() {
       });
     });
     
+    // Ordenar por quantidade de tokens (maior para menor)
+    tokensUsersData.sort((a, b) => {
+      const tokensA = Number(a.tokens || 0);
+      const tokensB = Number(b.tokens || 0);
+      return tokensB - tokensA; // Decrescente
+    });
+    
     console.log(`✅ ${tokensUsersData.length} usuários carregados para tokens`);
-    tokensFilteredData = [...tokensUsersData]; // Inicializar dados filtrados
+    tokensFilteredData = [...tokensUsersData]; // Inicializar dados filtrados (já ordenado)
     renderTokensTable();
     updateTokensPagination();
   } catch (error) {
@@ -5673,13 +5680,19 @@ function filterTokensUsers() {
   const searchTerm = searchInput.value.toLowerCase().trim();
   
   if (searchTerm === '') {
-    tokensFilteredData = [...tokensUsersData];
+    tokensFilteredData = [...tokensUsersData]; // Já está ordenado
   } else {
     tokensFilteredData = tokensUsersData.filter(user => 
       user.email.toLowerCase().includes(searchTerm) ||
       user.role.toLowerCase().includes(searchTerm) ||
       getRoleDisplayName(user.role).toLowerCase().includes(searchTerm)
     );
+    // Manter ordenação por tokens após filtrar
+    tokensFilteredData.sort((a, b) => {
+      const tokensA = Number(a.tokens || 0);
+      const tokensB = Number(b.tokens || 0);
+      return tokensB - tokensA; // Decrescente
+    });
   }
   
   tokensCurrentPage = 1; // Reset para primeira página
