@@ -44,8 +44,3 @@
   status = 301
   force = true
   conditions = { Host = ["www.orgfreitas.com.br"] }
-
-[[redirects]]
-  from = "/admin"
-  to = "/"
-  status = 301

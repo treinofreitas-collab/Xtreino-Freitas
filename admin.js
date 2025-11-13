@@ -6779,7 +6779,7 @@ function renderWhatsAppLinksTable(links) {
       </td>
       <td class="py-2 px-3">${link.schedule || 'Todos'}</td>
       <td class="py-2 px-3">
-        <a href="${link.link}" target="_blank" class="text-green-600 hover:text-green-800 text-xs truncate max-w-xs block">
+        <a href="${link.link}" target="_blank" class="text-green-600 hover:text-green-800 text-xs break-all" title="${link.link}">
           ${link.link}
         </a>
       </td>
@@ -6825,7 +6825,7 @@ function renderWhatsAppLinksList(links) {
             </span>
           </div>
           <p class="text-sm text-gray-800 mb-1">${link.description || 'Sem descrição'}</p>
-          <a href="${link.link}" target="_blank" class="text-green-600 hover:text-green-800 text-sm">
+          <a href="${link.link}" target="_blank" class="text-green-600 hover:text-green-800 text-sm break-all" title="${link.link}">
             ${link.link}
           </a>
         </div>
