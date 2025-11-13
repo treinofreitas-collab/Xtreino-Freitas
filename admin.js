@@ -2156,7 +2156,20 @@
         if (s==='liga' || s.includes('modo liga')) return 'modo-liga';
         if (s==='camp' || s.includes('camp freitas')) return 'camp-freitas';
         if (s==='semanal' || s.includes('semanal freitas')) return 'semanal-freitas';
+        if (s.includes('xtreino')) return 'xtreino-tokens';
         return t;
+      };
+      const aliasMap = {
+        'modo-liga': ['modo-liga','liga','modo liga'],
+        'camp-freitas': ['camp-freitas','camp','camp freitas'],
+        'semanal-freitas': ['semanal-freitas','semanal','semanal freitas'],
+        'xtreino-tokens': ['xtreino-tokens','xtreino','xtreino tokens']
+      };
+      const resolveAliases = (t)=>{
+        const canon = canonicalType(t);
+        const base = aliasMap[canon] ? [...aliasMap[canon]] : [canon];
+        base.push(null,'');
+        return Array.from(new Set(base.filter(v=>v!==undefined)));
       };
       const ovEventType = canonicalType(eventType);
       tbody.innerHTML = '';
@@ -2169,16 +2182,7 @@
             if (!confirm(`Destravar todas as travas e zerar ocupações extras de ${date} (${ovEventType})?`)) return;
             const { collection, query, where, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = collection(window.firebaseDb, 'schedule_overrides');
-            // aliases apenas da mesma família + null para limpar legados
-            const aliasesFor = (t)=>{
-              const s = String(t||'').toLowerCase();
-              if (s==='modo-liga') return ['modo-liga','liga','modo liga'];
-              if (s==='camp-freitas') return ['camp-freitas','camp','camp freitas'];
-              if (s==='semanal-freitas') return ['semanal-freitas','semanal','semanal freitas'];
-              if (s==='xtreino-tokens') return ['xtreino-tokens','xtreino','xtreino tokens'];
-              return [s];
-            };
-            const variants = Array.from(new Set([...aliasesFor(ovEventType), null]));
+            const variants = resolveAliases(ovEventType);
             const ops = [];
             // Por variações de eventType
             for (const v of variants){
@@ -2264,25 +2268,29 @@
       try{
         const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const ovRef = c2(window.firebaseDb, 'schedule_overrides');
-        const ovSnap = await g2(q2(ovRef, w2('date','==', date), w2('eventType','==', ovEventType)));
-        ovSnap.forEach(d=>{
-          const raw = d.data();
-          const hh = String(raw.hour||raw.hh||'').padStart(2,'0').replace(/\D/g,'');
-          if (!hh) return;
-          const k = `${hh}:00`;
-          // Agregar por hora: lockedAny + soma de extraOccupied
-          const agg = overrides[k] || { lockedAny:false, extraOccupied:0 };
-          agg.lockedAny = agg.lockedAny || (raw.locked === true);
-          if (raw.extraOccupied) agg.extraOccupied += Number(raw.extraOccupied||0);
-          overrides[k] = agg;
-          // Aplicar efeitos no contador
-          if (raw.extraOccupied) {
-            map[k] = (map[k]||0) + Number(raw.extraOccupied||0);
-          }
-          if (raw.locked) {
-            map[k] = capFor(k);
-          }
-        });
+        const variants = resolveAliases(ovEventType);
+        for (const v of variants){
+          if (v===undefined) continue;
+          try{
+            const ovSnap = await g2(q2(ovRef, w2('date','==', date), w2('eventType','==', v)));
+            ovSnap.forEach(d=>{
+              const raw = d.data();
+              const hh = String(raw.hour||raw.hh||'').padStart(2,'0').replace(/\D/g,'');
+              if (!hh) return;
+              const k = `${hh}:00`;
+              const agg = overrides[k] || { lockedAny:false, extraOccupied:0 };
+              agg.lockedAny = agg.lockedAny || (raw.locked === true);
+              if (raw.extraOccupied) agg.extraOccupied += Number(raw.extraOccupied||0);
+              overrides[k] = agg;
+              if (raw.extraOccupied) {
+                map[k] = (map[k]||0) + Number(raw.extraOccupied||0);
+              }
+              if (raw.locked) {
+                map[k] = capFor(k);
+              }
+            });
+          }catch(_){}
+        }
       }catch(_){}
       
       entries.forEach((hour)=>{
@@ -2330,16 +2338,7 @@
             const hh = String(h).match(/(\d{1,2})/)?.[1];
             const { collection: c3, query: q3, where: w3, getDocs: g3, addDoc, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = c3(window.firebaseDb, 'schedule_overrides');
-            // aliases apenas da mesma família (evita travar outros eventos)
-            const aliasesFor = (t)=>{
-              const s = String(t||'').toLowerCase();
-              if (s==='modo-liga') return ['modo-liga','liga','modo liga'];
-              if (s==='camp-freitas') return ['camp-freitas','camp','camp freitas'];
-              if (s==='semanal-freitas') return ['semanal-freitas','semanal','semanal freitas'];
-              if (s==='xtreino-tokens') return ['xtreino-tokens','xtreino','xtreino tokens'];
-              return [s];
-            };
-            const variants = Array.from(new Set(aliasesFor(ovEventType)));
+            const variants = resolveAliases(ovEventType);
             const toUpdate = new Map();
             // hour como 'hour'
             let snap = await g3(q3(ovRef, w3('date','==', date), w3('eventType','==', ovEventType), w3('hour','==', hh)));
