@@ -2190,10 +2190,22 @@
                 const snap = await getDocs(query(ovRef, where('date','==', date), where('eventType','==', v)));
                 snap.forEach(d=>{
                   const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
-                  ops.push(updateDoc(ref, { locked:false, extraOccupied:0 }));
+                  ops.push(updateDoc(ref, { locked:false, extraOccupied:0, eventType: ovEventType }));
                 });
               }catch(_){}
             }
+            // fallback: documentos sem eventType definido
+            try{
+              const snapAll = await getDocs(query(ovRef, where('date','==', date)));
+              snapAll.forEach(d=>{
+                const raw = d.data() || {};
+                const docFamily = canonicalType(raw.eventType || raw.event_type || '');
+                if (docFamily && docFamily !== ovEventType) return;
+                if (!docFamily && !variants.includes(null) && !variants.includes('')) return;
+                const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
+                ops.push(updateDoc(ref, { locked:false, extraOccupied:0, eventType: ovEventType }));
+              });
+            }catch(_){}
             await Promise.allSettled(ops);
             alert('Travas removidas e ocupações extras zeradas para o dia.');
             await loadBoard();
@@ -2291,6 +2303,28 @@
             });
           }catch(_){}
         }
+        try{
+          const allSnap = await g2(q2(ovRef, w2('date','==', date)));
+          allSnap.forEach(d=>{
+            const raw = d.data() || {};
+            const hh = String(raw.hour||raw.hh||'').padStart(2,'0').replace(/\D/g,'');
+            if (!hh) return;
+            const docFamily = canonicalType(raw.eventType || raw.event_type || '');
+            if (docFamily && docFamily !== ovEventType) return;
+            if (!docFamily && !variants.includes(null) && !variants.includes('')) return;
+            const k = `${hh}:00`;
+            const agg = overrides[k] || { lockedAny:false, extraOccupied:0 };
+            agg.lockedAny = agg.lockedAny || (raw.locked === true);
+            if (raw.extraOccupied) agg.extraOccupied += Number(raw.extraOccupied||0);
+            overrides[k] = agg;
+            if (raw.extraOccupied) {
+              map[k] = (map[k]||0) + Number(raw.extraOccupied||0);
+            }
+            if (raw.locked) {
+              map[k] = capFor(k);
+            }
+          });
+        }catch(_){}
       }catch(_){}
       
       entries.forEach((hour)=>{
@@ -2357,16 +2391,29 @@
                 s2.forEach(d=> toUpdate.set(d.id, d));
               }catch(_){}
             }
+            // fallback: documentos sem eventType definido
+            try{
+              const snapAll = await g3(q3(ovRef, w3('date','==', date)));
+              snapAll.forEach(d=>{
+                const raw = d.data() || {};
+                const hhDoc = String(raw.hour||raw.hh||'').padStart(2,'0').replace(/\D/g,'');
+                if (!hhDoc || hhDoc !== hh) return;
+                const docFamily = canonicalType(raw.eventType || raw.event_type || '');
+                if (docFamily && docFamily !== ovEventType) return;
+                if (!docFamily && !variants.includes(null) && !variants.includes('')) return;
+                toUpdate.set(d.id, d);
+              });
+            }catch(_){}
             const docsArr = Array.from(toUpdate.values());
             if (docsArr.length){
               const anyUnlocked = docsArr.some(d => d.data()?.locked !== true);
               const newLocked = anyUnlocked ? true : false;
               for (const d of docsArr) {
                 const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
-                await updateDoc(ref, { locked: newLocked });
+                await updateDoc(ref, { locked: newLocked, eventType: ovEventType, hour: hh, hh });
               }
             } else {
-              await addDoc(ovRef, { date, eventType: ovEventType, hour: hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
+              await addDoc(ovRef, { date, eventType: ovEventType, hour: hh, hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
             }
             await loadBoard();
           }catch(err){ alert('Falha ao alternar trava.'); }
