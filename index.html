@@ -35,9 +35,17 @@
                         LOGIN
                     </button>
                     <span id="tokenBadgeDesktop" class="hidden bg-yellow-400 text-[var(--brand-black)] px-3 py-1 rounded-full text-xs font-bold shadow-sm">💎 0</span>
-                    <button id="accountBtnDesktop" onclick="window.location.href='client.html'" class="hidden bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
-                        MINHA CONTA
-                    </button>
+                    <div id="accountSectionDesktop" class="hidden flex items-center space-x-3">
+                        <button id="accountBtnDesktop" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
+                            MINHA CONTA
+                        </button>
+                        <button onclick="window.location.href='client.html'" class="relative w-10 h-10 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg" id="profileAvatarDesktop" title="Meu Perfil">
+                            <img id="profileAvatarImageDesktop" src="" alt="Foto de perfil" class="w-full h-full object-cover hidden">
+                            <div id="profileAvatarInitialsDesktop" class="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                                U
+                            </div>
+                        </button>
+                    </div>
                 </div>
                 
                 <!-- Mobile Menu Button -->
@@ -59,9 +67,17 @@
                         LOGIN
                     </button>
                     <div id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-3 py-2 rounded-full text-xs font-bold shadow-sm w-max">💎 0</div>
-                    <button id="accountBtnMobile" onclick="window.location.href='client.html'" class="hidden bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors w-full">
-                        MINHA CONTA
-                    </button>
+                    <div id="accountSectionMobile" class="hidden flex items-center space-x-3 w-full">
+                        <button id="accountBtnMobile" onclick="window.location.href='client.html'" class="flex-1 bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
+                            MINHA CONTA
+                        </button>
+                        <button onclick="window.location.href='client.html'" class="relative w-10 h-10 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg flex-shrink-0" id="profileAvatarMobile" title="Meu Perfil">
+                            <img id="profileAvatarImageMobile" src="" alt="Foto de perfil" class="w-full h-full object-cover hidden">
+                            <div id="profileAvatarInitialsMobile" class="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                                U
+                            </div>
+                        </button>
+                    </div>
                 </div>
             </div>
         </nav>

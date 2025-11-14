@@ -707,7 +707,72 @@ function updateHeaderTokenBadges(){
         const m = document.getElementById('tokenBadgeMobile');
         if (d) { d.classList.toggle('hidden', !isLogged); d.textContent = `💎 ${bal}`; }
         if (m) { m.classList.toggle('hidden', !isLogged); m.textContent = `💎 ${bal}`; }
+        
+        // Atualizar foto de perfil no header
+        updateHeaderProfilePhoto();
     }catch(_){ }
+}
+
+// Atualiza a foto de perfil no header
+function updateHeaderProfilePhoto() {
+    try {
+        const isLogged = !!(window.isLoggedIn && window.currentUserProfile);
+        const profile = window.currentUserProfile;
+        
+        if (!isLogged || !profile) {
+            // Esconder seções de conta
+            const accountSectionDesktop = document.getElementById('accountSectionDesktop');
+            const accountSectionMobile = document.getElementById('accountSectionMobile');
+            if (accountSectionDesktop) accountSectionDesktop.classList.add('hidden');
+            if (accountSectionMobile) accountSectionMobile.classList.add('hidden');
+            return;
+        }
+        
+        // Mostrar seções de conta
+        const accountSectionDesktop = document.getElementById('accountSectionDesktop');
+        const accountSectionMobile = document.getElementById('accountSectionMobile');
+        if (accountSectionDesktop) accountSectionDesktop.classList.remove('hidden');
+        if (accountSectionMobile) accountSectionMobile.classList.remove('hidden');
+        
+        // Obter nome para iniciais
+        const name = profile.name || window.firebaseAuth?.currentUser?.displayName || window.firebaseAuth?.currentUser?.email?.split('@')[0] || 'Usuário';
+        const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || 'U';
+        
+        // Obter foto de perfil
+        const photoURL = profile.photoURL || profile.photoUrl || '';
+        
+        // Desktop
+        const avatarImageDesktop = document.getElementById('profileAvatarImageDesktop');
+        const avatarInitialsDesktop = document.getElementById('profileAvatarInitialsDesktop');
+        if (avatarImageDesktop && avatarInitialsDesktop) {
+            if (photoURL) {
+                avatarImageDesktop.src = photoURL;
+                avatarImageDesktop.classList.remove('hidden');
+                avatarInitialsDesktop.classList.add('hidden');
+            } else {
+                avatarInitialsDesktop.textContent = initials;
+                avatarImageDesktop.classList.add('hidden');
+                avatarInitialsDesktop.classList.remove('hidden');
+            }
+        }
+        
+        // Mobile
+        const avatarImageMobile = document.getElementById('profileAvatarImageMobile');
+        const avatarInitialsMobile = document.getElementById('profileAvatarInitialsMobile');
+        if (avatarImageMobile && avatarInitialsMobile) {
+            if (photoURL) {
+                avatarImageMobile.src = photoURL;
+                avatarImageMobile.classList.remove('hidden');
+                avatarInitialsMobile.classList.add('hidden');
+            } else {
+                avatarInitialsMobile.textContent = initials;
+                avatarImageMobile.classList.add('hidden');
+                avatarInitialsMobile.classList.remove('hidden');
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar foto de perfil no header:', error);
+    }
 }
 
 // Helpers de permissão
