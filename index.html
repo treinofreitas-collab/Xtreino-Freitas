@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="scroll-smooth scroll-pt-24">
+<html lang="pt-BR" class="scroll-smooth scroll-pt-24" id="htmlRoot">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,6 +35,12 @@
                         LOGIN
                     </button>
                     <span id="tokenBadgeDesktop" class="hidden bg-yellow-400 text-[var(--brand-black)] px-3 py-1 rounded-full text-xs font-bold shadow-sm">💎 0</span>
+                    <!-- Dark Mode Toggle Desktop -->
+                    <button id="darkModeToggleDesktop" onclick="toggleDarkMode()" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" title="Alternar tema">
+                        <svg id="darkModeIconDesktop" class="w-5 h-5 text-gray-700 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path id="darkModeIconPathDesktop" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                        </svg>
+                    </button>
                     <div id="accountSectionDesktop" class="hidden flex items-center space-x-3">
                         <button id="accountBtnDesktop" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
                             MINHA CONTA
@@ -50,13 +56,19 @@
                 
                 <!-- Mobile Menu - Always Visible -->
                 <div class="md:hidden flex items-center space-x-2 overflow-x-auto flex-1 ml-4">
-                    <a href="#xtreinos" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">TREINO/CAMP</a>
-                    <a href="#loja" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">LOJA</a>
-                    <a href="#" onclick="requestAdminAccess()" id="adminLinkMobile" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2 hidden">ADMIN</a>
+                    <a href="#xtreinos" class="text-black dark:text-gray-200 hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">TREINO/CAMP</a>
+                    <a href="#loja" class="text-black dark:text-gray-200 hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">LOJA</a>
+                    <a href="#" onclick="requestAdminAccess()" id="adminLinkMobile" class="text-black dark:text-gray-200 hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2 hidden">ADMIN</a>
                     <button id="loginBtnMobile" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-colors whitespace-nowrap flex-shrink-0">
                         LOGIN
                     </button>
                     <span id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-2 py-1 rounded-full text-xs font-bold shadow-sm whitespace-nowrap flex-shrink-0">💎 0</span>
+                    <!-- Dark Mode Toggle Mobile -->
+                    <button id="darkModeToggleMobile" onclick="toggleDarkMode()" class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex-shrink-0" title="Alternar tema">
+                        <svg id="darkModeIconMobile" class="w-5 h-5 text-gray-700 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path id="darkModeIconPathMobile" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                        </svg>
+                    </button>
                     <!-- Avatar apenas - sem botão CONTA -->
                     <button onclick="window.location.href='client.html'" class="relative w-8 h-8 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600" id="profileAvatarMobile" title="Meu Perfil">
                         <img id="profileAvatarImageMobile" src="" alt="Foto de perfil" class="absolute inset-0 w-full h-full object-cover hidden">
