@@ -4138,7 +4138,6 @@ async function renderScheduleTimes(){
     }
     const now = new Date();
     const selectedDate = new Date(date + 'T00:00:00');
-    const now = new Date();
     const isToday = selectedDate.toDateString() === now.toDateString();
     
     // Render imediato com estado neutro e atualiza assíncrono
@@ -4148,18 +4147,32 @@ async function renderScheduleTimes(){
         btn.className = 'slot-btn';
         btn.dataset.schedule = schedule;
         
-        // Verificar se o horário já passou (apenas para hoje)
-        let isPastTime = false;
+        // Verificar se o horário já está disponível (12 minutos antes do horário)
+        let isTimeAvailable = true;
+        let timeMessage = '';
         if (isToday) {
             const hour = parseInt(time.replace('h', ''));
-            const currentHour = now.getHours();
-            isPastTime = hour <= currentHour;
+            const eventTime = new Date(selectedDate);
+            eventTime.setHours(hour, 0, 0, 0);
+            
+            const minutesUntilEvent = (eventTime - now) / (1000 * 60); // minutos até o evento
+            
+            if (minutesUntilEvent < 0) {
+                // Horário já passou
+                isTimeAvailable = false;
+                timeMessage = 'Horário passou';
+            } else if (minutesUntilEvent < 12) {
+                // Ainda não passaram 12 minutos antes do horário
+                isTimeAvailable = false;
+                const minutesLeft = Math.ceil(minutesUntilEvent);
+                timeMessage = `Disponível em ${minutesLeft} min`;
+            }
         }
         
-        if (isPastTime) {
+        if (!isTimeAvailable) {
             btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
             btn.disabled = true;
-            btn.textContent = `${time} (Horário passou)`;
+            btn.textContent = `${time} (${timeMessage})`;
             btn.onclick = null;
         } else if (eventType === 'semanal-freitas' && time === '19h') {
             // Semanal Freitas: 19h sempre esgotado
@@ -4407,18 +4420,32 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         const capacity = getEventCapacity(eventType, time);
         const available = Math.max(0, capacity - taken);
         
-        // Verificar se o horário já passou (apenas para hoje)
-        let isPastTime = false;
+        // Verificar se o horário já está disponível (12 minutos antes do horário)
+        let isTimeAvailable = true;
+        let timeMessage = '';
         if (isToday) {
             const hour = parseInt(time.replace('h', ''));
-            const currentHour = now.getHours();
-            isPastTime = hour <= currentHour;
+            const eventTime = new Date(selectedDate);
+            eventTime.setHours(hour, 0, 0, 0);
+            
+            const minutesUntilEvent = (eventTime - now) / (1000 * 60); // minutos até o evento
+            
+            if (minutesUntilEvent < 0) {
+                // Horário já passou
+                isTimeAvailable = false;
+                timeMessage = 'Horário passou';
+            } else if (minutesUntilEvent < 12) {
+                // Ainda não passaram 12 minutos antes do horário
+                isTimeAvailable = false;
+                const minutesLeft = Math.ceil(minutesUntilEvent);
+                timeMessage = `Disponível em ${minutesLeft} min`;
+            }
         }
         
-        if (isPastTime) {
+        if (!isTimeAvailable) {
             btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
             btn.disabled = true;
-            btn.textContent = `${time} (Horário passou)`;
+            btn.textContent = `${time} (${timeMessage})`;
             btn.onclick = null;
         } else if (eventType === 'semanal-freitas' && time === '19h'){
             // Semanal Freitas: 19h sempre esgotado
@@ -4929,7 +4956,7 @@ async function submitSchedule(e, useTokens=false){
         }
     }
     
-    // Verificar se algum horário já passou em cada data
+    // Verificar se algum horário já está disponível (12 minutos antes) em cada data
     const now = new Date();
     for (const d of datesToUse){
         const selectedDate = new Date(d + 'T00:00:00');
@@ -4938,9 +4965,18 @@ async function submitSchedule(e, useTokens=false){
             for (let schedule of selectedTimes) {
                 const timeStr = schedule.split(' - ')[1] || '';
                 const hour = parseInt(timeStr.replace('h', ''));
-                const currentHour = now.getHours();
-                if (hour <= currentHour) {
-                    alert(`O horário ${timeStr} já passou (${d}). Remova horários passados da seleção.`);
+                const eventTime = new Date(selectedDate);
+                eventTime.setHours(hour, 0, 0, 0);
+                
+                const minutesUntilEvent = (eventTime - now) / (1000 * 60); // minutos até o evento
+                
+                if (minutesUntilEvent < 0) {
+                    showErrorToast(`O horário ${timeStr} já passou (${d}). Remova horários passados da seleção.`);
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+                    return;
+                } else if (minutesUntilEvent < 12) {
+                    const minutesLeft = Math.ceil(minutesUntilEvent);
+                    showErrorToast(`O horário ${timeStr} ainda não está disponível. Faltam ${minutesLeft} minutos para o evento começar.`);
                     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                     return;
                 }
@@ -5634,6 +5670,27 @@ async function createTokenSchedule(eventType, cost) {
             'xtreino-tokens': 'XTreino Tokens'
         };
         
+        // Verificar se o horário já está disponível (12 minutos antes) - apenas para hoje
+        const now = new Date();
+        const selectedDate = new Date(date + 'T00:00:00');
+        const isToday = selectedDate.toDateString() === now.toDateString();
+        if (isToday && hour) {
+            const hourNum = parseInt(hour.replace('h', ''));
+            const eventTime = new Date(selectedDate);
+            eventTime.setHours(hourNum, 0, 0, 0);
+            
+            const minutesUntilEvent = (eventTime - now) / (1000 * 60); // minutos até o evento
+            
+            if (minutesUntilEvent < 0) {
+                showErrorToast('O horário já passou. Seus tokens não foram perdidos.');
+                return;
+            } else if (minutesUntilEvent < 12) {
+                const minutesLeft = Math.ceil(minutesUntilEvent);
+                showErrorToast(`O horário ainda não está disponível. Faltam ${minutesLeft} minutos para o evento começar. Seus tokens não foram perdidos.`);
+                return;
+            }
+        }
+        
         // Re-checar disponibilidade logo antes de criar (evita corrida)
         try{
             const siteTypeMap = { modoLiga:'modo-liga', semanal:'semanal-freitas', finalSemanal:'semanal-freitas', campFases:'camp-freitas', treino:'xtreino-tokens' };
@@ -5641,7 +5698,7 @@ async function createTokenSchedule(eventType, cost) {
             if (schedule && siteEventType){
                 const canBook = await checkSlotAvailability(date, schedule, siteEventType);
                 if (!canBook){
-                    alert('Horário indisponível (lotado/travado). Seus tokens não foram perdidos.');
+                    showErrorToast('Horário indisponível (lotado/travado). Seus tokens não foram perdidos.');
                     return;
                 }
             }
