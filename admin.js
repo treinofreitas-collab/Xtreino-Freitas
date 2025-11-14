@@ -1294,11 +1294,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
     // APLICAR CONTROLE DE VISIBILIDADE APÓS CARREGAMENTO DE TODOS OS DADOS
     // Usar um delay maior e garantir que seja a última chamada
     setTimeout(() => {
-      console.log('🔒 Aplicando controle de visibilidade para role:', roleLower);
-      controlSectionVisibility(roleLower);
+      const finalRole = (roleLower || '').toLowerCase().trim();
+      console.log('🔒 Aplicando controle de visibilidade para role:', finalRole, '(original:', role, ')');
+      // Resetar flag para permitir reaplicação se necessário
+      window.visibilityApplied = false;
+      controlSectionVisibility(finalRole);
       try { renderTokensSectionPager(); } catch(_) {}
       // Garantir que a visibilidade não seja alterada depois
-      window.lastAppliedRole = roleLower;
+      window.lastAppliedRole = finalRole;
     }, 1500); // Delay maior para garantir que tudo foi carregado
   });
 
