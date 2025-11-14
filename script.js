@@ -3585,8 +3585,18 @@ async function renderScheduleTimes(){
         // XTreino Modo Liga: 14h às 23h
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'camp-freitas') {
-        // Camp Freitas: 19h às 23h
-        slots = ['19h','20h','21h','22h','23h'];
+        // Camp Freitas: verificar se é hoje - se for, apenas 20h
+        const now = new Date();
+        const selectedDate = new Date(date + 'T00:00:00');
+        const isToday = selectedDate.toDateString() === now.toDateString();
+        
+        if (isToday) {
+            // Hoje: apenas 20h disponível
+            slots = ['20h'];
+        } else {
+            // Outros dias: 19h às 23h
+            slots = ['19h','20h','21h','22h','23h'];
+        }
     } else if (eventType === 'semanal-freitas') {
         // Semanal Freitas: 19h, 20h, 21h, 22h
         slots = ['19h','20h','21h','22h'];
