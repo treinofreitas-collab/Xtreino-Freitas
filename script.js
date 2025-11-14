@@ -2113,6 +2113,11 @@ async function loadHighlightsFromFirestore() {
             }
         });
         
+        // Apply animations after rendering
+        setTimeout(() => {
+            reinitAnimations(track);
+        }, 50);
+        
         // Inicializar carousel
         initCarousel();
         
