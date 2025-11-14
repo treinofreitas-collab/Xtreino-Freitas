@@ -2327,42 +2327,16 @@
         }catch(_){}
       }catch(_){}
       
-      // Travar fixo os horários 16h e 17h do modo liga
+      // Travar fixo os horários 16h e 17h do modo liga (apenas marcar como travado na UI, sem fazer consultas pesadas)
+      // A trava real será aplicada apenas quando o usuário tentar destravar
       if (ovEventType === 'modo-liga') {
         const fixedLockHours = ['16:00', '17:00'];
         for (const fixedHour of fixedLockHours) {
-          const hh = fixedHour.replace(':00', '');
-          try {
-            const { collection: cFix, query: qFix, where: wFix, getDocs: gFix, addDoc, updateDoc, doc: dFix } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            const ovRefFix = cFix(window.firebaseDb, 'schedule_overrides');
-            const variantsFix = resolveAliases(ovEventType);
-            const toUpdateFix = new Set();
-            
-            // Buscar documentos existentes
-            for (const v of variantsFix) {
-              if (v === undefined) continue;
-              try {
-                let snapFix = await gFix(qFix(ovRefFix, wFix('date', '==', date), wFix('eventType', '==', v), wFix('hour', '==', hh)));
-                snapFix.forEach(d => toUpdateFix.add(d.id));
-                snapFix = await gFix(qFix(ovRefFix, wFix('date', '==', date), wFix('eventType', '==', v), wFix('hh', '==', hh)));
-                snapFix.forEach(d => toUpdateFix.add(d.id));
-              } catch (_) {}
-            }
-            
-            // Atualizar ou criar override travado
-            if (toUpdateFix.size > 0) {
-              for (const docId of toUpdateFix) {
-                const refFix = dFix(window.firebaseDb, 'schedule_overrides', docId);
-                await updateDoc(refFix, { locked: true, eventType: ovEventType, hour: hh, hh });
-              }
-            } else {
-              await addDoc(ovRefFix, { date, eventType: ovEventType, hour: hh, hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
-            }
-            
-            // Garantir que está marcado como travado no override
-            overrides[fixedHour] = { lockedAny: true, extraOccupied: overrides[fixedHour]?.extraOccupied || 0 };
-          } catch (err) {
-            console.error('Erro ao travar horário fixo:', err);
+          // Apenas garantir que está marcado como travado no override (sem fazer consultas)
+          if (!overrides[fixedHour]) {
+            overrides[fixedHour] = { lockedAny: true, extraOccupied: 0 };
+          } else {
+            overrides[fixedHour].lockedAny = true;
           }
         }
       }
@@ -2379,7 +2353,7 @@
           <button class="px-2 py-1 bg-blue-600 text-white rounded text-xs" data-add-hour="${hour}">Adicionar</button>
           <button class="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs" data-manage-hour="${hour}">Gerenciar</button>
           <button class="px-2 py-1 bg-emerald-600 text-white rounded text-xs" data-export-hour="${hour}">Exportar</button>
-          <button class="px-2 py-1 ${locked?'bg-red-600 text-white':'bg-yellow-400 text-black'} rounded text-xs ${isFixedLock ? 'opacity-50 cursor-not-allowed' : ''}" data-toggle-lock="${hour}" ${isFixedLock ? 'disabled title="Horário fixo travado - só destrava manualmente"' : ''}>${locked?'Destravar':'Travar'}</button>
+          <button class="px-2 py-1 ${locked?'bg-red-600 text-white':'bg-yellow-400 text-black'} rounded text-xs" data-toggle-lock="${hour}" ${isFixedLock ? 'title="Horário fixo - confirmação necessária para destravar"' : ''}>${locked?'Destravar':'Travar'}</button>
         </td>`;
         tbody.appendChild(tr);
       });
@@ -2412,10 +2386,18 @@
           const h = btnToggle.getAttribute('data-toggle-lock');
           // Verificar se é horário fixo travado (modo liga 16h e 17h)
           const isFixedLock = (ovEventType === 'modo-liga' && (h === '16:00' || h === '17:00'));
+          
+          // Se for horário fixo e estiver tentando destravar, pedir confirmação
           if (isFixedLock) {
-            alert('Este horário está fixo travado. Para destravar, use a opção "Destravar tudo do dia" ou destrave manualmente no banco de dados.');
-            return;
+            const currentLocked = btnToggle.textContent.trim() === 'Destravar';
+            if (currentLocked) {
+              // Tentando destravar horário fixo - pedir confirmação
+              if (!confirm(`⚠️ ATENÇÃO: Este horário (${h}) está configurado como fixo travado para o Modo Liga.\n\nDeseja realmente destravar?`)) {
+                return;
+              }
+            }
           }
+          
           try{
             const hh = String(h).match(/(\d{1,2})/)?.[1];
             const { collection: c3, query: q3, where: w3, getDocs: g3, addDoc, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -3110,53 +3092,6 @@ async function main() {
         try { await signOut(window.firebaseAuth); } catch {}
     });
 
-    // Botão para recarregar role do banco
-    const btnRefreshRole = document.getElementById('btnRefreshRole');
-    btnRefreshRole?.addEventListener('click', async () => {
-        try {
-            const user = window.firebaseAuth?.currentUser;
-            if (!user) {
-                alert('Usuário não autenticado');
-                return;
-            }
-            
-            // Limpar cache
-            delete window.adminRoleLower;
-            sessionStorage.removeItem('adminSession');
-            
-            // Recarregar role do Firestore
-            const role = await fetchRole(user.uid);
-            const roleLower = (role.role || 'viewer').toLowerCase();
-            window.adminRoleLower = roleLower;
-            
-            // Atualizar sessionStorage
-            try {
-                const session = JSON.parse(sessionStorage.getItem('adminSession') || '{}');
-                session.role = roleLower;
-                session.uid = user.uid;
-                session.email = user.email;
-                session.timestamp = Date.now();
-                sessionStorage.setItem('adminSession', JSON.stringify(session));
-            } catch (_) {}
-            
-            // Atualizar UI
-            const roleBadge = document.getElementById('roleBadge');
-            if (roleBadge) {
-                roleBadge.textContent = `Permissões: ${role.role || 'viewer'}`;
-            }
-            
-            // Recarregar dashboard com nova role
-            if (typeof setView === 'function') {
-                setView(role);
-            }
-            
-            alert(`Permissões atualizadas: ${role.role || 'viewer'}`);
-        } catch (error) {
-            console.error('Erro ao recarregar role:', error);
-            alert('Erro ao recarregar permissões. Tente fazer logout e login novamente.');
-        }
-    });
-
     onAuthStateChanged(window.firebaseAuth, async (user) => {
         if (!user) {
             gate.classList.remove('hidden');
@@ -3167,15 +3102,6 @@ async function main() {
         let role = { role: 'viewer' };
         try {
             role = await fetchRole(user.uid);
-            // Atualizar cache da role
-            const roleLower = (role.role || 'viewer').toLowerCase();
-            window.adminRoleLower = roleLower;
-            // Atualizar sessionStorage também
-            try {
-                const session = JSON.parse(sessionStorage.getItem('adminSession') || '{}');
-                session.role = roleLower;
-                sessionStorage.setItem('adminSession', JSON.stringify(session));
-            } catch (_) {}
         } catch {}
         roleBadge.textContent = `Permissões: ${role.role || 'viewer'}`;
 
