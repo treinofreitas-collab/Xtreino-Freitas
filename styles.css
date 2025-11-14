@@ -37,28 +37,6 @@ html, body { scroll-padding-top: calc(var(--header-h) + env(safe-area-inset-top,
     --brand-black: #181818;
 }
 
-/* Dark Mode Variables */
-:root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f9fafb;
-    --text-primary: #181818;
-    --text-secondary: #6b7280;
-    --border-color: #e5e7eb;
-}
-
-.dark {
-    --bg-primary: #111827;
-    --bg-secondary: #1f2937;
-    --text-primary: #f9fafb;
-    --text-secondary: #d1d5db;
-    --border-color: #374151;
-}
-
-/* Transição suave para dark mode */
-* {
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
-}
-
 /* Fontes: substitua as URLs quando disponibilizar os arquivos oficiais */
 /*
 @font-face {
@@ -366,19 +344,10 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.dark .glass-effect {
-    background: rgba(17, 24, 39, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
 /* Melhorar contraste de textos dentro de cards com glass-effect em fundo claro */
 .glass-effect p { color: #4b5563; }
 .glass-effect .text-gray-300 { color: #374151; }
 .glass-effect .text-gray-400 { color: #4b5563; }
-
-.dark .glass-effect p { color: #d1d5db; }
-.dark .glass-effect .text-gray-300 { color: #f3f4f6; }
-.dark .glass-effect .text-gray-400 { color: #9ca3af; }
 
 .neon-glow {
     box-shadow: 0 0 20px rgba(7, 183, 180, 0.3);
