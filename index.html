@@ -16,11 +16,11 @@
     </div>
     <!-- Header -->
     <header class="fixed w-full top-0 z-50 glass-effect">
-        <nav class="container mx-auto px-6 py-4">
+        <nav class="container mx-auto px-4 md:px-6 py-3 md:py-4">
             <div class="flex items-center justify-between">
                 <!-- Logo -->
-                <a href="#home" class="flex items-center">
-                    <img src="assets/images/Logo - Xtreino Freitas.png" alt="X-TREINO FREITAS" class="h-20 w-20 rounded-lg object-contain" />
+                <a href="#home" class="flex items-center flex-shrink-0">
+                    <img src="assets/images/Logo - Xtreino Freitas.png" alt="X-TREINO FREITAS" class="h-12 w-12 md:h-20 md:w-20 rounded-lg object-contain" />
                 </a>
                 
                 <!-- Desktop Menu -->
@@ -48,32 +48,25 @@
                     </div>
                 </div>
                 
-                <!-- Mobile Menu Button -->
-                <button onclick="toggleMobileMenu()" class="md:hidden text-black">
-                    <i class="fas fa-bars text-2xl"></i>
-                </button>
-            </div>
-            
-            <!-- Mobile Menu -->
-            <div id="mobileMenu" class="hidden md:hidden mt-4 pb-4">
-                <div class="flex flex-col space-y-4">
-                    <a href="#home" class="text-black hover:text-blue-matte transition-colors">HOME</a>
-                    <a href="#xtreinos" class="text-black hover:text-blue-matte transition-colors">TREINO/CAMP</a>
-                    <a href="#loja" class="text-black hover:text-blue-matte transition-colors">LOJA</a>
-                    <a href="#sobre" class="text-black hover:text-blue-matte transition-colors">SOBRE NÓS</a>
-                    <a href="#contato" class="text-black hover:text-blue-matte transition-colors">CONTATO</a>
-                    <a href="#" onclick="requestAdminAccess()" id="adminLinkMobile" class="text-black hover:text-blue-matte transition-colors hidden">ADMIN</a>
-                    <button id="loginBtnMobile" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors w-full">
+                <!-- Mobile Menu - Always Visible -->
+                <div class="md:hidden flex items-center space-x-2 overflow-x-auto flex-1 ml-4">
+                    <a href="#home" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">HOME</a>
+                    <a href="#xtreinos" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">TREINO/CAMP</a>
+                    <a href="#loja" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">LOJA</a>
+                    <a href="#sobre" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">SOBRE</a>
+                    <a href="#contato" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">CONTATO</a>
+                    <a href="#" onclick="requestAdminAccess()" id="adminLinkMobile" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2 hidden">ADMIN</a>
+                    <button id="loginBtnMobile" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-colors whitespace-nowrap flex-shrink-0">
                         LOGIN
                     </button>
-                    <div id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-3 py-2 rounded-full text-xs font-bold shadow-sm w-max">💎 0</div>
-                    <div id="accountSectionMobile" class="hidden flex items-center space-x-3 w-full">
-                        <button id="accountBtnMobile" onclick="window.location.href='client.html'" class="flex-1 bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
-                            MINHA CONTA
+                    <span id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-2 py-1 rounded-full text-xs font-bold shadow-sm whitespace-nowrap flex-shrink-0">💎 0</span>
+                    <div id="accountSectionMobile" class="hidden flex items-center space-x-2 flex-shrink-0">
+                        <button id="accountBtnMobile" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-colors whitespace-nowrap">
+                            CONTA
                         </button>
-                        <button onclick="window.location.href='client.html'" class="relative w-10 h-10 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600" id="profileAvatarMobile" title="Meu Perfil">
+                        <button onclick="window.location.href='client.html'" class="relative w-8 h-8 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600" id="profileAvatarMobile" title="Meu Perfil">
                             <img id="profileAvatarImageMobile" src="" alt="Foto de perfil" class="absolute inset-0 w-full h-full object-cover hidden">
-                            <div id="profileAvatarInitialsMobile" class="w-full h-full flex items-center justify-center text-white font-bold text-sm">
+                            <div id="profileAvatarInitialsMobile" class="w-full h-full flex items-center justify-center text-white font-bold text-xs">
                                 U
                             </div>
                         </button>

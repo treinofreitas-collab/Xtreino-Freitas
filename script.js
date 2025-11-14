@@ -532,10 +532,10 @@ async function logout(){
 
 
 // Todas as funções do modal de conta removidas - agora usa client.html
-// Mobile menu toggle
+// Mobile menu toggle - Removido, menu agora é sempre visível
+// Função mantida para compatibilidade mas não faz nada
 function toggleMobileMenu() {
-    const menu = document.getElementById('mobileMenu');
-    menu.classList.toggle('hidden');
+    // Menu mobile agora é sempre visível, não precisa de toggle
 }
 
 // Smooth scroll to sections
