@@ -1397,8 +1397,16 @@
         function setHeaderAndHomeSizes(){
             const header = document.querySelector('header');
             const home = document.getElementById('home');
+            const topAlert = document.getElementById('topAlert');
             if (!header || !home) return;
-            const headerH = Math.ceil(header.getBoundingClientRect().height);
+            
+            // Calcular altura total do header (incluindo topAlert se visível)
+            let headerH = Math.ceil(header.getBoundingClientRect().height);
+            if (topAlert && !topAlert.classList.contains('hidden')) {
+                const alertH = Math.ceil(topAlert.getBoundingClientRect().height);
+                headerH += alertH;
+            }
+            
             document.documentElement.style.setProperty('--header-h', headerH + 'px');
             const vh = getViewportHeight();
             // Marca layout compacto quando vh < 800px (aperta tipografia/espacamentos)
@@ -1409,15 +1417,33 @@
             }
             const minH = Math.max(360, vh - headerH); // nunca menor que 360px
             home.style.minHeight = minH + 'px';
-            // Aplicar padding-top dinamicamente no mobile
+            // Aplicar padding-top dinamicamente no mobile (sempre, não só no carregamento)
             if (window.innerWidth <= 767) {
                 home.style.paddingTop = (headerH + 16) + 'px';
+            } else {
+                // Desktop: remover padding inline se houver, deixar CSS gerenciar
+                home.style.paddingTop = '';
             }
         }
         const rerender = ()=> window.requestAnimationFrame(setHeaderAndHomeSizes);
+        // Executar imediatamente no DOMContentLoaded para aplicar padding antes do render
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setHeaderAndHomeSizes);
+        } else {
+            setHeaderAndHomeSizes();
+        }
         window.addEventListener('load', setHeaderAndHomeSizes);
         window.addEventListener('resize', rerender);
         window.addEventListener('orientationchange', rerender);
+        
+        // Observar mudanças no topAlert para recalcular quando ele aparecer/desaparecer
+        const topAlert = document.getElementById('topAlert');
+        if (topAlert) {
+            const observer = new MutationObserver(() => {
+                setHeaderAndHomeSizes();
+            });
+            observer.observe(topAlert, { attributes: true, attributeFilter: ['class'] });
+        }
         if (window.visualViewport){
             window.visualViewport.addEventListener('resize', rerender);
         }
