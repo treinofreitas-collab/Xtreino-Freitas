@@ -1816,17 +1816,30 @@ async function loadProfileStats() {
     try {
         if (!currentUser || !currentUser.uid) return;
         
-        // Total gasto
+        // Buscar orders e registrations
         const orders = await fetchUserDocs('orders', 200, true);
-        const totalSpent = orders
-            .filter(o => o.data.status === 'paid' || o.data.status === 'confirmed')
-            .reduce((sum, o) => sum + (Number(o.data.amount) || 0), 0);
+        const registrations = await fetchUserDocs('registrations', 200, true);
+        
+        // Filtrar apenas pedidos pagos para o cálculo
+        const paidOrders = orders.filter(o => {
+            const status = (o.data.status || '').toLowerCase();
+            return status === 'paid' || status === 'approved' || status === 'confirmed';
+        });
+        
+        // Filtrar apenas registrations pagos (não pagos com tokens)
+        const paidRegs = registrations.filter(r => {
+            const status = (r.data.status || '').toLowerCase();
+            return (status === 'paid' || status === 'approved' || status === 'confirmed') && !r.data.paidWithTokens;
+        });
+        
+        // Calcular valor gasto: orders pagos + registrations pagos (não com tokens)
+        let totalSpent = paidOrders.reduce((sum, o) => sum + (Number(o.data.total || o.data.amount || 0)), 0);
+        totalSpent += paidRegs.reduce((sum, r) => sum + (Number(r.data.price || r.data.amount || r.data.total || 0)), 0);
         
         document.getElementById('profileTotalSpent').textContent = 
             totalSpent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         
         // Eventos participados
-        const registrations = await fetchUserDocs('registrations', 200, true);
         const eventsCount = registrations.filter(r => 
             r.data.status === 'paid' || r.data.status === 'confirmed' || r.data.paidWithTokens === true
         ).length;
