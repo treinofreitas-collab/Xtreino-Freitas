@@ -3110,7 +3110,15 @@ async function main() {
             dash.classList.add('hidden');
             return;
         }
-        nameEl.textContent = user.displayName || user.email || 'Usuário';
+        const userName = user.displayName || user.email || 'Usuário';
+        nameEl.textContent = userName;
+        
+        // Atualizar iniciais do admin
+        if (initialsEl) {
+            const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || 'A';
+            initialsEl.textContent = initials;
+        }
+        
         let role = { role: 'viewer' };
         try {
             role = await fetchRole(user.uid);
