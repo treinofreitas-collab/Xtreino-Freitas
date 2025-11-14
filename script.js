@@ -4055,11 +4055,12 @@ function selectTime(timeValue, element) {
     try {
         const modal = document.getElementById('scheduleModal');
         const eventType = modal?.dataset?.eventType || '';
+        const dateStr = document.getElementById('schedDate')?.value || null;
         const priceEl = document.getElementById('schedPrice');
         if (priceEl) {
             if (selectedTimes.length === 1) {
                 const hour = (selectedTimes[0].split(' - ')[1] || '').trim();
-                const p = getEventPrice(eventType, hour);
+                const p = getEventPrice(eventType, hour, dateStr);
                 priceEl.textContent = p.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
             } else if (selectedTimes.length === 0) {
                 const cfg = scheduleConfig[eventType] || {};
@@ -4069,7 +4070,7 @@ function selectTime(timeValue, element) {
                 let min = Infinity;
                 for (const t of selectedTimes) {
                     const h = (t.split(' - ')[1] || '').trim();
-                    const p = getEventPrice(eventType, h);
+                    const p = getEventPrice(eventType, h, dateStr);
                     if (p < min) min = p;
                 }
                 if (Number.isFinite(min)) {
