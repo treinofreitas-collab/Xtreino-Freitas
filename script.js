@@ -2461,6 +2461,8 @@ function initChat() {
         chatWindow.classList.toggle('hidden');
         if (!chatWindow.classList.contains('hidden')) {
             chatInput.focus();
+            // Carregar histórico quando abrir o chat
+            loadChatHistory();
         }
     });
     
@@ -2874,21 +2876,23 @@ function getChatHistory() {
 
 // Limpar histórico do chat
 function clearChatHistory() {
-    if (confirm('Deseja limpar todo o histórico de conversas?')) {
-        localStorage.removeItem('chatHistory');
-        const chatMessages = document.getElementById('chatMessages');
-        if (chatMessages) {
-            chatMessages.innerHTML = `
-                <div class="flex justify-start">
-                    <div class="bg-gray-100 rounded-lg p-3 max-w-xs">
-                        <p class="text-sm text-gray-700">Histórico limpo! Como posso ajudá-lo hoje?</p>
-                        <span class="text-xs text-gray-500">Agora</span>
+    showConfirm('Limpar Histórico', 'Deseja limpar todo o histórico de conversas? Esta ação não pode ser desfeita.', 'Limpar', 'Cancelar').then((confirmed) => {
+        if (confirmed) {
+            localStorage.removeItem('chatHistory');
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages) {
+                chatMessages.innerHTML = `
+                    <div class="flex justify-start">
+                        <div class="bg-gray-100 rounded-lg p-3 max-w-xs">
+                            <p class="text-sm text-gray-700">Histórico limpo! Como posso ajudá-lo hoje?</p>
+                            <span class="text-xs text-gray-500">Agora</span>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
+            showSuccessToast('Histórico limpo com sucesso!');
         }
-        showSuccessToast('Histórico limpo com sucesso!');
-    }
+    });
 }
 
 // Enviar mensagem rápida (sugestões)
