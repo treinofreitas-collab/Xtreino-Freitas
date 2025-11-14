@@ -3379,11 +3379,30 @@ async function loadConfirmedOrders() {
                     return dateB - dateA;
                 });
                 
+                // Função auxiliar para obter nome do item/evento
+                const getItemName = (order) => {
+                  // Se tiver eventType, mapear para nome legível
+                  if (order.eventType) {
+                    const eventMap = {
+                      'modo-liga': 'Modo Liga',
+                      'xtreino-tokens': 'XTreino Tokens',
+                      'xtreino': 'XTreino Tokens',
+                      'semanal-freitas': 'Semanal Freitas',
+                      'semanal': 'Semanal Freitas',
+                      'camp-freitas': 'Camp Freitas',
+                      'camp': 'Camp Freitas'
+                    };
+                    return eventMap[order.eventType.toLowerCase()] || order.eventType;
+                  }
+                  // Tentar outros campos
+                  return order.title || order.item || order.productName || 'Item não informado';
+                };
+                
                 orders.forEach(order => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td class="py-2">${order.customerName || order.customer || '-'}</td>
-                        <td class="py-2">${order.title || order.item || '-'}</td>
+                        <td class="py-2">${getItemName(order)}</td>
                         <td class="py-2">R$ ${(order.amount || order.total || 0).toFixed(2)}</td>
                         <td class="py-2">${order.createdAt ? new Date(order.createdAt.toDate ? order.createdAt.toDate() : order.createdAt).toLocaleDateString('pt-BR') : '-'}</td>
                     `;
