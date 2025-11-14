@@ -2830,9 +2830,26 @@ function loadChatHistory() {
     try {
         const history = getChatHistory();
         const chatMessages = document.getElementById('chatMessages');
-        if (!chatMessages || history.length === 0) return;
+        if (!chatMessages) return;
         
-        // Limpar mensagem inicial
+        // Se não houver histórico, manter mensagem inicial
+        if (history.length === 0) {
+            // Verificar se já tem a mensagem inicial
+            const hasInitialMessage = chatMessages.querySelector('.bg-gray-100');
+            if (!hasInitialMessage) {
+                chatMessages.innerHTML = `
+                    <div class="flex justify-start">
+                        <div class="bg-gray-100 rounded-lg p-3 max-w-xs">
+                            <p class="text-sm text-gray-700">Olá! Como posso ajudá-lo hoje?</p>
+                            <span class="text-xs text-gray-500">Agora</span>
+                        </div>
+                    </div>
+                `;
+            }
+            return;
+        }
+        
+        // Limpar mensagem inicial e adicionar histórico
         chatMessages.innerHTML = '';
         
         // Adicionar todas as mensagens do histórico
