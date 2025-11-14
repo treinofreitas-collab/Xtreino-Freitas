@@ -898,9 +898,25 @@ img[loading="lazy"]:not(.loaded) {
   transition: opacity 0.3s ease-in-out;
 }
 
-img[loading="lazy"].loaded,
+/* Garantir que imagens lazy carregadas apareçam */
+img[loading="lazy"].loaded {
+  opacity: 1 !important;
+}
+
+/* Garantir que imagens sem lazy sempre apareçam */
 img:not([loading="lazy"]) {
-  opacity: 1;
+  opacity: 1 !important;
+}
+
+/* Fallback: se uma imagem lazy não recebeu a classe loaded após 2 segundos, mostrar mesmo assim */
+img[loading="lazy"] {
+  animation: fadeInFallback 0.3s ease-in 2s forwards;
+}
+
+@keyframes fadeInFallback {
+  to {
+    opacity: 1;
+  }
 }
 
 

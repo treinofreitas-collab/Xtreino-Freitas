@@ -3104,17 +3104,33 @@ function initScrollReveal() {
 function initLazyImageAnimations() {
     const images = document.querySelectorAll('img[loading="lazy"]');
     images.forEach(img => {
-        if (img.complete) {
+        // Se a imagem já está carregada, marcar como loaded imediatamente
+        if (img.complete && img.naturalHeight !== 0) {
             img.classList.add('loaded');
         } else {
-            img.addEventListener('load', () => {
+            // Adicionar listeners para quando a imagem carregar
+            const handleLoad = () => {
                 img.classList.add('loaded');
-            });
+            };
+            
+            img.addEventListener('load', handleLoad);
+            img.addEventListener('error', handleLoad); // Mostrar mesmo se houver erro
+            
             // Fallback: se a imagem já carregou mas o evento não disparou
-            img.addEventListener('error', () => {
-                img.classList.add('loaded'); // Mostrar mesmo se houver erro
-            });
+            if (img.complete) {
+                setTimeout(() => {
+                    if (!img.classList.contains('loaded')) {
+                        img.classList.add('loaded');
+                    }
+                }, 100);
+            }
         }
+    });
+    
+    // Também verificar todas as imagens sem loading="lazy" para garantir que apareçam
+    const allImages = document.querySelectorAll('img:not([loading="lazy"])');
+    allImages.forEach(img => {
+        img.style.opacity = '1'; // Forçar visibilidade
     });
 }
 
@@ -3160,17 +3176,31 @@ function reinitAnimations(container) {
     });
     
     // Also handle images in the container
-    const images = container.querySelectorAll('img[loading="lazy"]');
+    const images = container.querySelectorAll('img');
     images.forEach(img => {
-        if (img.complete) {
-            img.classList.add('loaded');
-        } else {
-            img.addEventListener('load', () => {
+        if (img.hasAttribute('loading') && img.getAttribute('loading') === 'lazy') {
+            // Imagens lazy
+            if (img.complete && img.naturalHeight !== 0) {
                 img.classList.add('loaded');
-            });
-            img.addEventListener('error', () => {
-                img.classList.add('loaded'); // Mostrar mesmo se houver erro
-            });
+            } else {
+                const handleLoad = () => {
+                    img.classList.add('loaded');
+                };
+                img.addEventListener('load', handleLoad);
+                img.addEventListener('error', handleLoad);
+                
+                // Fallback
+                if (img.complete) {
+                    setTimeout(() => {
+                        if (!img.classList.contains('loaded')) {
+                            img.classList.add('loaded');
+                        }
+                    }, 100);
+                }
+            }
+        } else {
+            // Imagens sem lazy - garantir que apareçam
+            img.style.opacity = '1';
         }
     });
 }
