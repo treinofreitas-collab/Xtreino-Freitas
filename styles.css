@@ -3,6 +3,15 @@ html {
 	scroll-behavior: smooth;
 }
 
+/* Esconder scrollbar mas manter funcionalidade de scroll */
+.scrollbar-hide {
+	-ms-overflow-style: none;  /* IE and Edge */
+	scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+	display: none;  /* Chrome, Safari and Opera */
+}
+
 /* Ajustes mobile para não sobrepor o header fixo */
 :root { --header-h: 96px; }
 /* Aplicar scroll padding para âncoras considerando safe-area */
