@@ -2436,15 +2436,26 @@
             }catch(_){}
             const docsArr = Array.from(toUpdate.values());
             if (docsArr.length){
-              const anyUnlocked = docsArr.some(d => d.data()?.locked !== true);
-              const newLocked = anyUnlocked ? true : false;
+              // Verificar se algum está travado para determinar o novo estado
+              const anyLocked = docsArr.some(d => d.data()?.locked === true);
+              const newLocked = !anyLocked; // Inverter: se algum está travado, destravar; se todos estão destravados, travar
+              
+              // Atualizar todos os documentos encontrados usando batch para evitar duplicação
+              const { writeBatch } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+              const batch = writeBatch(window.firebaseDb);
+              
               for (const d of docsArr) {
                 const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
-                await updateDoc(ref, { locked: newLocked, eventType: ovEventType, hour: hh, hh });
+                batch.update(ref, { locked: newLocked, eventType: ovEventType, hour: hh, hh });
               }
+              
+              await batch.commit();
             } else {
+              // Se não encontrou nenhum documento, criar apenas um
               await addDoc(ovRef, { date, eventType: ovEventType, hour: hh, hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
             }
+            
+            // Recarregar board (já limpa o tbody internamente)
             await loadBoard();
           }catch(err){ alert('Falha ao alternar trava.'); }
         }
