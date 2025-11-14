@@ -869,23 +869,21 @@ function updateHeaderProfilePhoto() {
         if (!isLogged || !profile) {
             // Esconder seções de conta
             const accountSectionDesktop = document.getElementById('accountSectionDesktop');
-            const accountSectionMobile = document.getElementById('accountSectionMobile');
+            const profileAvatarMobile = document.getElementById('profileAvatarMobile');
             if (accountSectionDesktop) accountSectionDesktop.classList.add('hidden');
-            if (accountSectionMobile) accountSectionMobile.classList.add('hidden');
+            if (profileAvatarMobile) profileAvatarMobile.classList.add('hidden');
             return;
         }
         
-        // Mostrar seções de conta (botão + foto)
+        // Mostrar seções de conta (botão + foto desktop, apenas avatar mobile)
         const accountSectionDesktop = document.getElementById('accountSectionDesktop');
-        const accountSectionMobile = document.getElementById('accountSectionMobile');
+        const profileAvatarMobile = document.getElementById('profileAvatarMobile');
         if (accountSectionDesktop) accountSectionDesktop.classList.remove('hidden');
-        if (accountSectionMobile) accountSectionMobile.classList.remove('hidden');
+        if (profileAvatarMobile) profileAvatarMobile.classList.remove('hidden');
         
-        // Garantir que o botão também está visível
+        // Garantir que o botão desktop também está visível
         const accountBtnDesktop = document.getElementById('accountBtnDesktop');
-        const accountBtnMobile = document.getElementById('accountBtnMobile');
         if (accountBtnDesktop) accountBtnDesktop.classList.remove('hidden');
-        if (accountBtnMobile) accountBtnMobile.classList.remove('hidden');
         
         // Obter nome para iniciais
         const name = profile.name || window.firebaseAuth?.currentUser?.displayName || window.firebaseAuth?.currentUser?.email?.split('@')[0] || 'Usuário';
