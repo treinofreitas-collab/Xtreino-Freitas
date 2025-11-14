@@ -298,7 +298,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // Control section visibility based on role
   function controlSectionVisibility(userRole) {
-    const role = (userRole || '').toLowerCase();
+    const role = (userRole || '').toLowerCase().trim();
     
     // Prevenir múltiplas chamadas conflitantes - se já foi aplicado para este role, não aplicar novamente
     if (window.lastAppliedRole === role && window.visibilityApplied) {
@@ -306,7 +306,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       return;
     }
     
-    console.log('🔒 Aplicando visibilidade para role:', role);
+    console.log('🔒 Aplicando visibilidade para role:', role, '(recebido:', userRole, ')');
     window.lastAppliedRole = role;
     window.visibilityApplied = true;
     
@@ -401,7 +401,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
       console.log('✅ Socio permissions applied - limited access');
     }
     // CEO: Can see and edit everything
-    else if (role === 'ceo') {
+    else if (role === 'ceo' || role === 'ceo') {
+      console.log('✅ Aplicando permissões de CEO - todas as seções visíveis');
       // Mostrar todas as seções
       if (sectionKPIs) sectionKPIs.style.display = 'block';
       if (sectionFilters) sectionFilters.style.display = 'block';
@@ -418,9 +419,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (sectionHighlights) sectionHighlights.style.display = 'block';
       if (sectionNews) sectionNews.style.display = 'block';
       if (sectionAdminHistory) sectionAdminHistory.style.display = 'block';
+      console.log('✅ Permissões de CEO aplicadas com sucesso');
     }
     // Admin: Can see and edit everything
-    if (role === 'admin') {
+    else if (role === 'admin') {
       // Mostrar todas as seções
       if (sectionKPIs) sectionKPIs.style.display = 'block';
       if (sectionFilters) sectionFilters.style.display = 'block';
@@ -1183,7 +1185,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }
     authGate.classList.add('hidden');
     dashboard.classList.remove('hidden');
-    const roleLower = (role||'').toLowerCase();
+    const roleLower = (role||'').toLowerCase().trim();
+    console.log('👤 Role detectado:', role, '→ normalizado:', roleLower);
     const isManager = ['ceo','gerente'].includes(roleLower);
     const isCeo = roleLower==='ceo';
     const isSocio = roleLower==='socio' || roleLower==='ceo';
