@@ -1516,6 +1516,25 @@
             </div>
         </div>
         
+        <!-- Sugestões de Perguntas Frequentes -->
+        <div id="chatSuggestions" class="px-4 pb-2 border-t border-gray-200">
+            <p class="text-xs text-gray-500 mb-2">Perguntas frequentes:</p>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="sendQuickMessage('Qual o preço dos treinos?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
+                    💰 Preços
+                </button>
+                <button onclick="sendQuickMessage('Quais horários estão disponíveis?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
+                    🕐 Horários
+                </button>
+                <button onclick="sendQuickMessage('Como comprar tokens?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
+                    💎 Tokens
+                </button>
+                <button onclick="openWhatsAppDirect()" class="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-full transition-colors">
+                    💬 WhatsApp
+                </button>
+            </div>
+        </div>
+        
         <!-- Input de Mensagem -->
         <div class="p-4 border-t">
             <div class="flex space-x-2">
@@ -1524,7 +1543,12 @@
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </div>
-            <p class="text-xs text-gray-500 mt-2">Atendimento: Segunda a Sexta, 08h às 23h</p>
+            <div class="flex items-center justify-between mt-2">
+                <p class="text-xs text-gray-500">Atendimento: Segunda a Sexta, 08h às 23h</p>
+                <button onclick="clearChatHistory()" class="text-xs text-gray-400 hover:text-gray-600 transition-colors" title="Limpar histórico">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
     </div>
   </div>
 </div>

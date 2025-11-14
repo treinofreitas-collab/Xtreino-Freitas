@@ -2784,7 +2784,8 @@ function addMessage(text, sender) {
     
     const messageDiv = document.createElement('div');
     const isUser = sender === 'user';
-    const time = new Date().toLocaleTimeString('pt-BR', { 
+    const now = new Date();
+    const time = now.toLocaleTimeString('pt-BR', { 
         hour: '2-digit', 
         minute: '2-digit' 
     });
@@ -2802,6 +2803,111 @@ function addMessage(text, sender) {
     
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Salvar mensagem no histórico
+    saveMessageToHistory(text, sender, now.toISOString());
+}
+
+// Salvar mensagem no histórico (localStorage)
+function saveMessageToHistory(text, sender, timestamp) {
+    try {
+        const history = getChatHistory();
+        history.push({ text, sender, timestamp });
+        // Manter apenas as últimas 100 mensagens
+        if (history.length > 100) {
+            history.shift();
+        }
+        localStorage.setItem('chatHistory', JSON.stringify(history));
+    } catch (e) {
+        console.error('Erro ao salvar histórico:', e);
+    }
+}
+
+// Carregar histórico do chat
+function loadChatHistory() {
+    try {
+        const history = getChatHistory();
+        const chatMessages = document.getElementById('chatMessages');
+        if (!chatMessages || history.length === 0) return;
+        
+        // Limpar mensagem inicial
+        chatMessages.innerHTML = '';
+        
+        // Adicionar todas as mensagens do histórico
+        history.forEach(msg => {
+            const messageDiv = document.createElement('div');
+            const isUser = msg.sender === 'user';
+            const date = new Date(msg.timestamp);
+            const time = date.toLocaleTimeString('pt-BR', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+            const textWithLinks = msg.text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
+            
+            messageDiv.innerHTML = `
+                <div class="${isUser ? 'bg-blue-matte text-white' : 'bg-gray-100'} rounded-lg p-3 max-w-xs">
+                    <p class="text-sm whitespace-pre-line">${textWithLinks}</p>
+                    <span class="text-xs ${isUser ? 'text-blue-100' : 'text-gray-500'}">${time}</span>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+        });
+        
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    } catch (e) {
+        console.error('Erro ao carregar histórico:', e);
+    }
+}
+
+// Obter histórico do localStorage
+function getChatHistory() {
+    try {
+        const stored = localStorage.getItem('chatHistory');
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// Limpar histórico do chat
+function clearChatHistory() {
+    if (confirm('Deseja limpar todo o histórico de conversas?')) {
+        localStorage.removeItem('chatHistory');
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.innerHTML = `
+                <div class="flex justify-start">
+                    <div class="bg-gray-100 rounded-lg p-3 max-w-xs">
+                        <p class="text-sm text-gray-700">Histórico limpo! Como posso ajudá-lo hoje?</p>
+                        <span class="text-xs text-gray-500">Agora</span>
+                    </div>
+                </div>
+            `;
+        }
+        showSuccessToast('Histórico limpo com sucesso!');
+    }
+}
+
+// Enviar mensagem rápida (sugestões)
+function sendQuickMessage(message) {
+    const chatInput = document.getElementById('chatInput');
+    const chatSend = document.getElementById('chatSend');
+    
+    if (chatInput && chatSend && !chatInput.disabled) {
+        chatInput.value = message;
+        chatSend.click();
+    }
+}
+
+// Abrir WhatsApp diretamente
+function openWhatsAppDirect() {
+    const whatsNumber = '5511949830454';
+    const message = encodeURIComponent('Olá! Preciso de ajuda no site XTreino Freitas.');
+    const whatsLink = `https://wa.me/${whatsNumber}?text=${message}`;
+    window.open(whatsLink, '_blank');
 }
 
 // Carregar notícias do Firestore
