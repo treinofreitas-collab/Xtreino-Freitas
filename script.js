@@ -372,15 +372,26 @@ function toggleAccountButtons(isLogged){
     const loginDesk = document.getElementById('loginBtnDesktop');
     const accountSectionDesktop = document.getElementById('accountSectionDesktop');
     const loginMob = document.getElementById('loginBtnMobile');
-    const accountSectionMobile = document.getElementById('accountSectionMobile');
+    const profileAvatarMobile = document.getElementById('profileAvatarMobile');
+    const accountBtnMobileExpanded = document.getElementById('accountBtnMobileExpanded');
+    
+    // Desktop
     if (loginDesk && accountSectionDesktop){ 
         loginDesk.classList.toggle('hidden', isLogged); 
         accountSectionDesktop.classList.toggle('hidden', !isLogged); 
     }
-    if (loginMob && accountSectionMobile){ 
+    
+    // Mobile - Avatar sempre visível quando logado, botão CONTA no menu expandido
+    if (loginMob && profileAvatarMobile){ 
         loginMob.classList.toggle('hidden', isLogged); 
-        accountSectionMobile.classList.toggle('hidden', !isLogged); 
+        profileAvatarMobile.classList.toggle('hidden', !isLogged); 
     }
+    
+    // Botão CONTA no menu expandido
+    if (accountBtnMobileExpanded) {
+        accountBtnMobileExpanded.classList.toggle('hidden', !isLogged);
+    }
+    
     updateHeaderTokenBadges();
 }
 
@@ -489,6 +500,9 @@ async function updateAdminLinkVisibility() {
     };
     toggle(adminLink, hasAccess);
     toggle(adminLinkMobile, hasAccess);
+    if (adminLinkMobileExpanded) {
+        toggle(adminLinkMobileExpanded, hasAccess);
+    }
     console.log(hasAccess ? '✅ Link ADMIN mostrado' : '❌ Link ADMIN escondido');
 }
 

@@ -60,16 +60,22 @@
                         LOGIN
                     </button>
                     <span id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-2 py-1 rounded-full text-xs font-bold shadow-sm whitespace-nowrap flex-shrink-0">💎 0</span>
-                    <div id="accountSectionMobile" class="hidden flex items-center space-x-2 flex-shrink-0">
-                        <button id="accountBtnMobile" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-colors whitespace-nowrap">
-                            CONTA
+                    <!-- Avatar apenas - sem botão CONTA -->
+                    <button onclick="window.location.href='client.html'" class="relative w-8 h-8 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600" id="profileAvatarMobile" title="Meu Perfil">
+                        <img id="profileAvatarImageMobile" src="" alt="Foto de perfil" class="absolute inset-0 w-full h-full object-cover hidden">
+                        <div id="profileAvatarInitialsMobile" class="w-full h-full flex items-center justify-center text-white font-bold text-xs">
+                            U
+                        </div>
+                    </button>
+                </div>
+                
+                <!-- Mobile Menu Expandido (aparece ao rolar para baixo) -->
+                <div id="mobileMenuExpanded" class="md:hidden hidden border-t border-gray-200 mt-2 pt-3 pb-2">
+                    <div class="flex flex-col space-y-2">
+                        <button id="accountBtnMobileExpanded" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-4 py-2 rounded-lg text-white text-sm font-semibold transition-colors w-full text-left hidden">
+                            MINHA CONTA
                         </button>
-                        <button onclick="window.location.href='client.html'" class="relative w-8 h-8 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600" id="profileAvatarMobile" title="Meu Perfil">
-                            <img id="profileAvatarImageMobile" src="" alt="Foto de perfil" class="absolute inset-0 w-full h-full object-cover hidden">
-                            <div id="profileAvatarInitialsMobile" class="w-full h-full flex items-center justify-center text-white font-bold text-xs">
-                                U
-                            </div>
-                        </button>
+                        <a href="#" onclick="requestAdminAccess()" id="adminLinkMobileExpanded" class="text-black hover:text-blue-matte transition-colors text-sm font-medium px-2 hidden">ADMIN</a>
                     </div>
                 </div>
             </div>
