@@ -112,16 +112,58 @@ async function createAuthAccountsForFirestoreUsers() {
         console.log(`   🔨 Criando conta no Auth...`);
         
         try {
-          // Tentar criar com o UID do documento
-          const newUser = await auth.createUser({
+          // Validar número de telefone (formato E.164)
+          let phoneNumber = null;
+          if (userData.phone) {
+            const phone = String(userData.phone).trim();
+            // Verificar se está no formato E.164 (começa com +)
+            if (phone.startsWith('+') && phone.length >= 10) {
+              phoneNumber = phone;
+            } else if (/^\d{10,15}$/.test(phone.replace(/\D/g, ''))) {
+              // Tentar converter para E.164 (assumindo Brasil +55)
+              const digits = phone.replace(/\D/g, '');
+              if (digits.length >= 10) {
+                phoneNumber = `+55${digits}`;
+              }
+            }
+            // Se não for válido, deixar null
+          }
+          
+          // Validar photoURL (deve ser URL válida ou null)
+          let photoURL = null;
+          if (userData.photoURL) {
+            try {
+              const url = String(userData.photoURL).trim();
+              if (url.startsWith('http://') || url.startsWith('https://')) {
+                new URL(url); // Valida se é URL válida
+                photoURL = url;
+              }
+            } catch (_) {
+              // URL inválida, deixar null
+            }
+          }
+          
+          // Preparar objeto de criação (só incluir campos válidos)
+          const createData = {
             uid: uid,
             email: email,
             emailVerified: false,
             displayName: userData.name || userData.displayName || email.split('@')[0],
-            photoURL: userData.photoURL || null,
-            phoneNumber: userData.phone || null,
             disabled: false
-          });
+          };
+          
+          // Só adicionar photoURL se for válido
+          if (photoURL) {
+            createData.photoURL = photoURL;
+          }
+          
+          // Só adicionar phoneNumber se for válido
+          if (phoneNumber) {
+            createData.phoneNumber = phoneNumber;
+          }
+          
+          // Tentar criar com o UID do documento
+          const newUser = await auth.createUser(createData);
           
           // Gerar senha temporária
           const tempPassword = generateTempPassword();
@@ -150,14 +192,54 @@ async function createAuthAccountsForFirestoreUsers() {
           if (createError.code === 'auth/uid-already-exists') {
             // UID já existe, tentar criar sem UID específico
             console.log(`   ⚠️  UID já existe, criando sem UID específico...`);
-            const newUser = await auth.createUser({
+            
+            // Validar número de telefone (formato E.164)
+            let phoneNumber = null;
+            if (userData.phone) {
+              const phone = String(userData.phone).trim();
+              if (phone.startsWith('+') && phone.length >= 10) {
+                phoneNumber = phone;
+              } else if (/^\d{10,15}$/.test(phone.replace(/\D/g, ''))) {
+                const digits = phone.replace(/\D/g, '');
+                if (digits.length >= 10) {
+                  phoneNumber = `+55${digits}`;
+                }
+              }
+            }
+            
+            // Validar photoURL (deve ser URL válida ou null)
+            let photoURL = null;
+            if (userData.photoURL) {
+              try {
+                const url = String(userData.photoURL).trim();
+                if (url.startsWith('http://') || url.startsWith('https://')) {
+                  new URL(url); // Valida se é URL válida
+                  photoURL = url;
+                }
+              } catch (_) {
+                // URL inválida, deixar null
+              }
+            }
+            
+            // Preparar objeto de criação (só incluir campos válidos)
+            const createData2 = {
               email: email,
               emailVerified: false,
               displayName: userData.name || userData.displayName || email.split('@')[0],
-              photoURL: userData.photoURL || null,
-              phoneNumber: userData.phone || null,
               disabled: false
-            });
+            };
+            
+            // Só adicionar photoURL se for válido
+            if (photoURL) {
+              createData2.photoURL = photoURL;
+            }
+            
+            // Só adicionar phoneNumber se for válido
+            if (phoneNumber) {
+              createData2.phoneNumber = phoneNumber;
+            }
+            
+            const newUser = await auth.createUser(createData2);
             
             const tempPassword = generateTempPassword();
             await auth.updateUser(newUser.uid, {
