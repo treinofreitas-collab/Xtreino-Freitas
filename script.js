@@ -2183,6 +2183,9 @@ function initCarousel() {
 if (window.firebaseReady) {
     loadHighlightsFromFirestore();
     loadNewsFromFirestore();
+    
+    // Initialize smooth animations
+    initSmoothAnimations();
     initChat();
 } else {
     window.addEventListener('load', () => {
@@ -2820,6 +2823,11 @@ async function loadNewsFromFirestore() {
             `;
             return;
         }
+        
+        // Apply animations after rendering
+        setTimeout(() => {
+            reinitAnimations(container);
+        }, 50);
         
         // função de truncar texto para o card
         const truncate = (txt, max = 160) => {
