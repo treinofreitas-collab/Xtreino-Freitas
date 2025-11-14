@@ -3110,6 +3110,53 @@ async function main() {
         try { await signOut(window.firebaseAuth); } catch {}
     });
 
+    // Botão para recarregar role do banco
+    const btnRefreshRole = document.getElementById('btnRefreshRole');
+    btnRefreshRole?.addEventListener('click', async () => {
+        try {
+            const user = window.firebaseAuth?.currentUser;
+            if (!user) {
+                alert('Usuário não autenticado');
+                return;
+            }
+            
+            // Limpar cache
+            delete window.adminRoleLower;
+            sessionStorage.removeItem('adminSession');
+            
+            // Recarregar role do Firestore
+            const role = await fetchRole(user.uid);
+            const roleLower = (role.role || 'viewer').toLowerCase();
+            window.adminRoleLower = roleLower;
+            
+            // Atualizar sessionStorage
+            try {
+                const session = JSON.parse(sessionStorage.getItem('adminSession') || '{}');
+                session.role = roleLower;
+                session.uid = user.uid;
+                session.email = user.email;
+                session.timestamp = Date.now();
+                sessionStorage.setItem('adminSession', JSON.stringify(session));
+            } catch (_) {}
+            
+            // Atualizar UI
+            const roleBadge = document.getElementById('roleBadge');
+            if (roleBadge) {
+                roleBadge.textContent = `Permissões: ${role.role || 'viewer'}`;
+            }
+            
+            // Recarregar dashboard com nova role
+            if (typeof setView === 'function') {
+                setView(role);
+            }
+            
+            alert(`Permissões atualizadas: ${role.role || 'viewer'}`);
+        } catch (error) {
+            console.error('Erro ao recarregar role:', error);
+            alert('Erro ao recarregar permissões. Tente fazer logout e login novamente.');
+        }
+    });
+
     onAuthStateChanged(window.firebaseAuth, async (user) => {
         if (!user) {
             gate.classList.remove('hidden');
@@ -3120,6 +3167,15 @@ async function main() {
         let role = { role: 'viewer' };
         try {
             role = await fetchRole(user.uid);
+            // Atualizar cache da role
+            const roleLower = (role.role || 'viewer').toLowerCase();
+            window.adminRoleLower = roleLower;
+            // Atualizar sessionStorage também
+            try {
+                const session = JSON.parse(sessionStorage.getItem('adminSession') || '{}');
+                session.role = roleLower;
+                sessionStorage.setItem('adminSession', JSON.stringify(session));
+            } catch (_) {}
         } catch {}
         roleBadge.textContent = `Permissões: ${role.role || 'viewer'}`;
 

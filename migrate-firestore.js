@@ -25,7 +25,13 @@ const KNOWN_COLLECTIONS = [
   'schedule_overrides',
   'whatsapp_links',
   'news',
-  'highlights'
+  'highlights',
+  'adminHistory',
+  'couponUsage',
+  'coupons',
+  'digital_deliveries',
+  'products',
+  'test'
 ];
 
 // ===== INICIALIZAÇÃO =====
