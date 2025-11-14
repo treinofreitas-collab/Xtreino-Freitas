@@ -4138,6 +4138,7 @@ async function renderScheduleTimes(){
     }
     const now = new Date();
     const selectedDate = new Date(date + 'T00:00:00');
+    const now = new Date();
     const isToday = selectedDate.toDateString() === now.toDateString();
     
     // Render imediato com estado neutro e atualiza assíncrono
