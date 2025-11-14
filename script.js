@@ -734,11 +734,17 @@ function updateHeaderProfilePhoto() {
             return;
         }
         
-        // Mostrar seções de conta
+        // Mostrar seções de conta (botão + foto)
         const accountSectionDesktop = document.getElementById('accountSectionDesktop');
         const accountSectionMobile = document.getElementById('accountSectionMobile');
         if (accountSectionDesktop) accountSectionDesktop.classList.remove('hidden');
         if (accountSectionMobile) accountSectionMobile.classList.remove('hidden');
+        
+        // Garantir que o botão também está visível
+        const accountBtnDesktop = document.getElementById('accountBtnDesktop');
+        const accountBtnMobile = document.getElementById('accountBtnMobile');
+        if (accountBtnDesktop) accountBtnDesktop.classList.remove('hidden');
+        if (accountBtnMobile) accountBtnMobile.classList.remove('hidden');
         
         // Obter nome para iniciais
         const name = profile.name || window.firebaseAuth?.currentUser?.displayName || window.firebaseAuth?.currentUser?.email?.split('@')[0] || 'Usuário';

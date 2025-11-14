@@ -3076,6 +3076,7 @@ async function main() {
     const emailForm = document.getElementById('emailLoginForm');
     const btnLogout = document.getElementById('btnLogout');
     const nameEl = document.getElementById('adminUserName');
+    const initialsEl = document.getElementById('adminUserInitials');
     const roleBadge = document.getElementById('roleBadge');
 
     gate.classList.add('hidden');
