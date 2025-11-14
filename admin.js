@@ -388,11 +388,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
       
       console.log('✅ Socio permissions applied - limited access');
-    } else {
-      console.log('❌ Role does not match socio. Role:', role);
     }
     // CEO: Can see and edit everything
-    if (role === 'ceo') {
+    else if (role === 'ceo') {
       // Mostrar todas as seções
       if (sectionKPIs) sectionKPIs.style.display = 'block';
       if (sectionFilters) sectionFilters.style.display = 'block';
@@ -1146,6 +1144,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
   	  }
     }catch(_){ }
   }
+  // Expor submitAddTeam globalmente
+  window.submitAddTeam = submitAddTeam;
+  
   onAuthStateChanged(window.firebaseAuth, async (user) => {
     if (!user){
       authGate.classList.remove('hidden');
@@ -3238,12 +3239,48 @@ async function main() {
             return;
         }
         const userName = user.displayName || user.email || 'Usuário';
-        nameEl.textContent = userName;
+        if (nameEl) nameEl.textContent = userName;
         
-        // Atualizar iniciais do admin
+        // Buscar foto de perfil do Firestore
+        let photoURL = user.photoURL || '';
+        try {
+            const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const userDoc = await getDoc(doc(window.firebaseDb, 'users', user.uid));
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                photoURL = userData.photoURL || userData.photoUrl || photoURL;
+            }
+        } catch (err) {
+            console.error('Erro ao buscar foto de perfil:', err);
+        }
+        
+        // Atualizar avatar do admin (foto ou iniciais)
+        const photoEl = document.getElementById('adminUserPhoto');
         if (initialsEl) {
             const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || 'A';
             initialsEl.textContent = initials;
+        }
+        
+        if (photoEl) {
+            if (photoURL) {
+                photoEl.src = photoURL;
+                photoEl.onload = function() {
+                    photoEl.classList.remove('hidden');
+                    if (initialsEl) initialsEl.classList.add('hidden');
+                };
+                photoEl.onerror = function() {
+                    photoEl.classList.add('hidden');
+                    if (initialsEl) initialsEl.classList.remove('hidden');
+                };
+                // Verificar se já está carregado
+                if (photoEl.complete && photoEl.naturalHeight > 0) {
+                    photoEl.classList.remove('hidden');
+                    if (initialsEl) initialsEl.classList.add('hidden');
+                }
+            } else {
+                photoEl.classList.add('hidden');
+                if (initialsEl) initialsEl.classList.remove('hidden');
+            }
         }
         
         let role = { role: 'viewer' };
@@ -4406,7 +4443,8 @@ window.saveProducts = saveProducts;
     if (savedSession) {
       try {
         const sessionData = JSON.parse(savedSession);
-        if (Date.now() - sessionData.timestamp < SESSION_TIMEOUT) {
+        const SESSION_TIMEOUT_LOCAL = 30 * 60 * 1000; // 30 minutes
+        if (Date.now() - sessionData.timestamp < SESSION_TIMEOUT_LOCAL) {
           // Session still valid, check with Firebase
           const user = window.firebaseAuth.currentUser;
           if (user && await isAuthorizedAdmin(user)) {
