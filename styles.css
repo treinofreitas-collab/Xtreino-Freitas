@@ -892,16 +892,14 @@ body {
   }
 }
 
-/* Smooth image loading */
-img {
+/* Smooth image loading - only apply to images that haven't loaded yet */
+img[loading="lazy"]:not(.loaded) {
+  opacity: 0;
   transition: opacity 0.3s ease-in-out;
 }
 
-img[loading="lazy"] {
-  opacity: 0;
-}
-
-img[loading="lazy"].loaded {
+img[loading="lazy"].loaded,
+img:not([loading="lazy"]) {
   opacity: 1;
 }
 

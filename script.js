@@ -3056,9 +3056,128 @@ window.closeFAQModal = function() {
     document.getElementById('faqModal').classList.add('hidden');
 }
 
+// ==================== SMOOTH ANIMATIONS SYSTEM ====================
 
+// Initialize fade-in animations for cards
+function initFadeInAnimations() {
+    const cards = document.querySelectorAll('.product-card, .news-card, article');
+    cards.forEach((card, index) => {
+        card.classList.add('fade-in');
+        if (index < 4) {
+            card.classList.add(`fade-in-delay-${index + 1}`);
+        }
+        
+        // Use Intersection Observer for better performance
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.1 });
+        
+        observer.observe(card);
+    });
+}
 
+// Initialize scroll reveal animations
+function initScrollReveal() {
+    const elements = document.querySelectorAll('section, h2, h3');
+    elements.forEach(el => {
+        el.classList.add('scroll-reveal');
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('revealed');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+        
+        observer.observe(el);
+    });
+}
 
+// Handle lazy loaded images
+function initLazyImageAnimations() {
+    const images = document.querySelectorAll('img[loading="lazy"]');
+    images.forEach(img => {
+        if (img.complete) {
+            img.classList.add('loaded');
+        } else {
+            img.addEventListener('load', () => {
+                img.classList.add('loaded');
+            });
+            // Fallback: se a imagem já carregou mas o evento não disparou
+            img.addEventListener('error', () => {
+                img.classList.add('loaded'); // Mostrar mesmo se houver erro
+            });
+        }
+    });
+}
+
+// Main initialization function
+function initSmoothAnimations() {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            initFadeInAnimations();
+            initScrollReveal();
+            initLazyImageAnimations();
+        });
+    } else {
+        // DOM already loaded
+        setTimeout(() => {
+            initFadeInAnimations();
+            initScrollReveal();
+            initLazyImageAnimations();
+        }, 100);
+    }
+}
+
+// Re-initialize animations when new content is loaded (e.g., news, products)
+function reinitAnimations(container) {
+    if (!container) return;
+    const newCards = container.querySelectorAll('.product-card, .news-card, article, .min-w-full');
+    newCards.forEach((card, index) => {
+        card.classList.add('fade-in');
+        if (index < 4) {
+            card.classList.add(`fade-in-delay-${index + 1}`);
+        }
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.1 });
+        
+        observer.observe(card);
+    });
+    
+    // Also handle images in the container
+    const images = container.querySelectorAll('img[loading="lazy"]');
+    images.forEach(img => {
+        if (img.complete) {
+            img.classList.add('loaded');
+        } else {
+            img.addEventListener('load', () => {
+                img.classList.add('loaded');
+            });
+            img.addEventListener('error', () => {
+                img.classList.add('loaded'); // Mostrar mesmo se houver erro
+            });
+        }
+    });
+}
+
+// Make functions globally available
+window.reinitAnimations = reinitAnimations;
+window.initSmoothAnimations = initSmoothAnimations;
 
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
