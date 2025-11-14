@@ -290,6 +290,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     dashboard.classList.remove('hidden');
     setView(userRole);
     startSessionTimer();
+    // NÃO chamar controlSectionVisibility aqui - será chamado no onAuthStateChanged após carregar dados
   }
   
   // Expor showDashboard globalmente imediatamente
@@ -298,6 +299,16 @@ window.showWarningToast = function(message, title = 'Atenção') {
   // Control section visibility based on role
   function controlSectionVisibility(userRole) {
     const role = (userRole || '').toLowerCase();
+    
+    // Prevenir múltiplas chamadas conflitantes - se já foi aplicado para este role, não aplicar novamente
+    if (window.lastAppliedRole === role && window.visibilityApplied) {
+      console.log('⚠️ Visibilidade já aplicada para role:', role, '- ignorando chamada duplicada');
+      return;
+    }
+    
+    console.log('🔒 Aplicando visibilidade para role:', role);
+    window.lastAppliedRole = role;
+    window.visibilityApplied = true;
     
     // Get all section elements
     const sectionKPIs = document.getElementById('sectionKPIs');
@@ -1278,10 +1289,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }
     
     // APLICAR CONTROLE DE VISIBILIDADE APÓS CARREGAMENTO DE TODOS OS DADOS
+    // Usar um delay maior e garantir que seja a última chamada
     setTimeout(() => {
+      console.log('🔒 Aplicando controle de visibilidade para role:', roleLower);
       controlSectionVisibility(roleLower);
       try { renderTokensSectionPager(); } catch(_) {}
-    }, 1000); // Delay maior para garantir que tudo foi carregado
+      // Garantir que a visibilidade não seja alterada depois
+      window.lastAppliedRole = roleLower;
+    }, 1500); // Delay maior para garantir que tudo foi carregado
   });
 
   // ---- Relatórios ----
