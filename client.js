@@ -2,11 +2,13 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, limit, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
 let app = null;
 let auth = null;
 let db = null;
+let storage = null;
 
 // Inicializar Firebase imediatamente
 function initializeFirebase() {
@@ -20,6 +22,7 @@ function initializeFirebase() {
     app = window.firebaseApp;
     auth = window.firebaseAuth;
     db = window.firebaseDb;
+    storage = getStorage(app);
     console.log('✅ Firebase initialized from global instances');
     console.log('🔍 DB after global init:', typeof db, db ? db.constructor.name : 'null');
     return true;
@@ -31,6 +34,7 @@ function initializeFirebase() {
     app = initializeApp(window.FIREBASE_CONFIG);
     auth = getAuth(app);
     db = getFirestore(app);
+    storage = getStorage(app);
     console.log('✅ Firebase initialized from FIREBASE_CONFIG');
     console.log('🔍 DB after local init:', typeof db, db ? db.constructor.name : 'null');
     return true;
@@ -1756,9 +1760,22 @@ async function loadProfile() {
         document.getElementById('profileHeaderName').textContent = name;
         document.getElementById('profileHeaderEmail').textContent = userProfile.email || currentUser?.email || '-';
         
-        // Iniciais do avatar
-        const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || 'U';
-        document.getElementById('profileInitials').textContent = initials;
+        // Foto de perfil ou iniciais
+        const photoURL = userProfile.photoURL || userProfile.photoUrl || '';
+        const avatarContainer = document.getElementById('profileAvatarContainer');
+        const avatarImage = document.getElementById('profileAvatarImage');
+        const initialsElement = document.getElementById('profileInitials');
+        
+        if (photoURL) {
+            avatarImage.src = photoURL;
+            avatarImage.classList.remove('hidden');
+            initialsElement.classList.add('hidden');
+        } else {
+            const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || 'U';
+            initialsElement.textContent = initials;
+            avatarImage.classList.add('hidden');
+            initialsElement.classList.remove('hidden');
+        }
         
         // Tokens badge
         const tokens = userProfile.tokens || 0;
@@ -1835,7 +1852,122 @@ function resetProfileForm() {
         document.getElementById('profileNickname').value = userProfile.nickname || '';
         document.getElementById('profileTeam').value = userProfile.team || '';
         document.getElementById('profileAge').value = userProfile.age || '';
+        document.getElementById('profilePhotoInputForm').value = '';
     }
+}
+
+// Handle photo upload
+async function handlePhotoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Validar tamanho (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        alert('A imagem deve ter no máximo 5MB');
+        event.target.value = '';
+        return;
+    }
+    
+    // Validar tipo
+    if (!file.type.startsWith('image/')) {
+        alert('Por favor, selecione uma imagem válida');
+        event.target.value = '';
+        return;
+    }
+    
+    if (!currentUser || !currentUser.uid) {
+        alert('Você precisa estar logado para fazer upload de foto');
+        return;
+    }
+    
+    try {
+        // Mostrar progresso
+        const progressDiv = document.getElementById('photoUploadProgress');
+        if (progressDiv) {
+            progressDiv.classList.remove('hidden');
+        }
+        
+        // Criar referência no Storage
+        const storageRef = ref(storage, `profile-photos/${currentUser.uid}/${Date.now()}_${file.name}`);
+        
+        // Fazer upload
+        const snapshot = await uploadBytes(storageRef, file);
+        
+        // Obter URL de download
+        const downloadURL = await getDownloadURL(snapshot.ref);
+        
+        // Deletar foto antiga se existir (usar apenas o path, não a URL completa)
+        if (userProfile.photoURL || userProfile.photoUrl) {
+            try {
+                const oldPhotoURL = userProfile.photoURL || userProfile.photoUrl;
+                // Extrair o path do Storage da URL completa
+                // Exemplo: https://firebasestorage.googleapis.com/v0/b/.../profile-photos/uid/file.jpg
+                // Precisamos apenas: profile-photos/uid/file.jpg
+                const urlParts = oldPhotoURL.split('/profile-photos/');
+                if (urlParts.length > 1) {
+                    const path = `profile-photos/${urlParts[1].split('?')[0]}`;
+                    const oldPhotoRef = ref(storage, path);
+                    await deleteObject(oldPhotoRef);
+                }
+            } catch (error) {
+                // Ignorar erro se a foto antiga não existir
+                console.log('Foto antiga não encontrada ou já deletada:', error.message);
+            }
+        }
+        
+        // Atualizar perfil no Firestore
+        await setDoc(doc(db, 'users', currentUser.uid), {
+            photoURL: downloadURL,
+            updatedAt: new Date()
+        }, { merge: true });
+        
+        // Atualizar userProfile local
+        userProfile.photoURL = downloadURL;
+        
+        // Atualizar avatar na tela
+        const avatarImage = document.getElementById('profileAvatarImage');
+        const initialsElement = document.getElementById('profileInitials');
+        if (avatarImage && initialsElement) {
+            avatarImage.src = downloadURL;
+            avatarImage.classList.remove('hidden');
+            initialsElement.classList.add('hidden');
+        }
+        
+        // Esconder progresso
+        if (progressDiv) {
+            progressDiv.classList.add('hidden');
+        }
+        
+        // Mostrar notificação de sucesso
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2';
+        notification.innerHTML = `
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            <span>Foto de perfil atualizada com sucesso!</span>
+        `;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            notification.style.transition = 'opacity 0.3s';
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Error uploading photo:', error);
+        alert('Erro ao fazer upload da foto. Tente novamente.');
+        
+        // Esconder progresso
+        const progressDiv = document.getElementById('photoUploadProgress');
+        if (progressDiv) {
+            progressDiv.classList.add('hidden');
+        }
+    }
+    
+    // Limpar input
+    event.target.value = '';
 }
 
 // Save profile
