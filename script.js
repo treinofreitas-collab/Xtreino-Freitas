@@ -4049,16 +4049,17 @@ function getEventPrice(eventType, hourStr, dateStr){
     const dateIso = dateStr || (document.getElementById('schedDate')?.value || null);
     // Semanal Freitas 22h: R$ 7,00 (vaga direto na final)
     if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 7.00;
-    // Camp Freitas PROMO: dias específicos a R$20,00
+    // Camp Freitas PROMO: dias específicos
     try{
         if (type === 'camp-freitas' && dateIso){
             // Datas em ISO (YYYY-MM-DD)
             const promos = {
-                '2025-11-13': ['21h','22h','23h'],
-                '2025-11-14': ['20h']
+                '2024-11-17': { price: 25.00, hours: ['21h','22h'] }, // Dia 17/11: R$25,00 apenas 21h e 22h
+                '2025-11-13': { price: 20.00, hours: ['21h','22h','23h'] },
+                '2025-11-14': { price: 20.00, hours: ['20h'] }
             };
-            const hours = promos[dateIso];
-            if (hours && hours.includes(hour)) return 20.00;
+            const promo = promos[dateIso];
+            if (promo && promo.hours && promo.hours.includes(hour)) return promo.price;
         }
     }catch(_){}
     // Padrão: usar preço do config
@@ -4118,11 +4119,16 @@ async function renderScheduleTimes(){
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'camp-freitas') {
         // Camp Freitas: verificar se é hoje - se for, apenas 20h
+        // Dia 17/11: apenas 21h e 22h
         const now = new Date();
         const selectedDate = new Date(date + 'T00:00:00');
         const isToday = selectedDate.toDateString() === now.toDateString();
+        const isNov17 = date === '2024-11-17' || date === '2025-11-17';
         
-        if (isToday) {
+        if (isNov17) {
+            // 17/11: apenas 21h e 22h
+            slots = ['21h','22h'];
+        } else if (isToday) {
             // Hoje: apenas 20h disponível
             slots = ['20h'];
         } else {

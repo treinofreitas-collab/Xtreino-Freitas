@@ -178,3 +178,18 @@ Posso começar por qualquer uma dessas melhorias. As mais impactantes e rápidas
 
 Qual você prefere que eu comece?
 
+---
+
+## 🎮 Eventos e Campeonatos
+
+### 💎 CAMP DE R$2.000,00 | VAGA DIRETO NAS OITAVAS
+
+**💰 Apenas R$25,00**
+
+- **Prêmio Total**: R$ 2.000,00
+- **Benefício**: Vaga direto nas oitavas de final
+- **Data e Horário**: 17/11 às 21h e 22h
+- **Valor**: R$ 25,00
+
+---
+
