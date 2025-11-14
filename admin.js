@@ -4461,9 +4461,19 @@ window.saveProducts = saveProducts;
         const SESSION_TIMEOUT_LOCAL = 30 * 60 * 1000; // 30 minutes
         if (Date.now() - sessionData.timestamp < SESSION_TIMEOUT_LOCAL) {
           // Session still valid, check with Firebase
-          const user = window.firebaseAuth.currentUser;
+          const user = window.firebaseAuth?.currentUser;
           if (user && await isAuthorizedAdmin(user)) {
-            showDashboard(user.role || 'admin');
+            // Buscar role do Firestore, não usar user.role que pode não existir
+            try {
+              const { doc, getDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+              const userRef = doc(collection(window.firebaseDb, 'users'), user.uid);
+              const userSnap = await getDoc(userRef);
+              const userRole = userSnap.exists() ? (userSnap.data().role || 'admin') : 'admin';
+              showDashboard(userRole);
+            } catch (err) {
+              console.error('Erro ao buscar role:', err);
+              showDashboard('admin');
+            }
             return;
           }
         }
