@@ -1409,7 +1409,10 @@
             }
             const minH = Math.max(360, vh - headerH); // nunca menor que 360px
             home.style.minHeight = minH + 'px';
-            // padding-top já é aplicado via CSS com var(--header-h)
+            // Aplicar padding-top dinamicamente no mobile
+            if (window.innerWidth <= 767) {
+                home.style.paddingTop = (headerH + 16) + 'px';
+            }
         }
         const rerender = ()=> window.requestAnimationFrame(setHeaderAndHomeSizes);
         window.addEventListener('load', setHeaderAndHomeSizes);
