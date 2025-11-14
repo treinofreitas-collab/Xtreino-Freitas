@@ -757,10 +757,23 @@ function updateHeaderProfilePhoto() {
         const avatarImageDesktop = document.getElementById('profileAvatarImageDesktop');
         const avatarInitialsDesktop = document.getElementById('profileAvatarInitialsDesktop');
         if (avatarImageDesktop && avatarInitialsDesktop) {
-            if (photoURL) {
+            if (photoURL && photoURL.trim() !== '') {
                 avatarImageDesktop.src = photoURL;
-                avatarImageDesktop.classList.remove('hidden');
-                avatarInitialsDesktop.classList.add('hidden');
+                avatarImageDesktop.onload = function() {
+                    avatarImageDesktop.classList.remove('hidden');
+                    avatarInitialsDesktop.classList.add('hidden');
+                };
+                avatarImageDesktop.onerror = function() {
+                    // Se a imagem falhar ao carregar, mostrar iniciais
+                    avatarInitialsDesktop.textContent = initials;
+                    avatarImageDesktop.classList.add('hidden');
+                    avatarInitialsDesktop.classList.remove('hidden');
+                };
+                // Se já estiver carregada
+                if (avatarImageDesktop.complete && avatarImageDesktop.naturalHeight !== 0) {
+                    avatarImageDesktop.classList.remove('hidden');
+                    avatarInitialsDesktop.classList.add('hidden');
+                }
             } else {
                 avatarInitialsDesktop.textContent = initials;
                 avatarImageDesktop.classList.add('hidden');
@@ -772,10 +785,23 @@ function updateHeaderProfilePhoto() {
         const avatarImageMobile = document.getElementById('profileAvatarImageMobile');
         const avatarInitialsMobile = document.getElementById('profileAvatarInitialsMobile');
         if (avatarImageMobile && avatarInitialsMobile) {
-            if (photoURL) {
+            if (photoURL && photoURL.trim() !== '') {
                 avatarImageMobile.src = photoURL;
-                avatarImageMobile.classList.remove('hidden');
-                avatarInitialsMobile.classList.add('hidden');
+                avatarImageMobile.onload = function() {
+                    avatarImageMobile.classList.remove('hidden');
+                    avatarInitialsMobile.classList.add('hidden');
+                };
+                avatarImageMobile.onerror = function() {
+                    // Se a imagem falhar ao carregar, mostrar iniciais
+                    avatarInitialsMobile.textContent = initials;
+                    avatarImageMobile.classList.add('hidden');
+                    avatarInitialsMobile.classList.remove('hidden');
+                };
+                // Se já estiver carregada
+                if (avatarImageMobile.complete && avatarImageMobile.naturalHeight !== 0) {
+                    avatarImageMobile.classList.remove('hidden');
+                    avatarInitialsMobile.classList.remove('hidden');
+                }
             } else {
                 avatarInitialsMobile.textContent = initials;
                 avatarImageMobile.classList.add('hidden');
