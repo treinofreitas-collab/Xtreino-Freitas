@@ -1,3 +1,130 @@
+// ==================== TOAST NOTIFICATION SYSTEM ====================
+let confirmResolve = null;
+
+function showToast(type, message, title = null, duration = 5000) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    
+    const icons = {
+        success: '✓',
+        error: '✕',
+        info: 'ℹ',
+        warning: '⚠'
+    };
+    
+    const titles = {
+        success: 'Sucesso',
+        error: 'Erro',
+        info: 'Informação',
+        warning: 'Atenção'
+    };
+
+    toast.innerHTML = `
+        <div class="toast-icon">${icons[type] || 'ℹ'}</div>
+        <div class="toast-content">
+            ${title ? `<div class="toast-title">${title}</div>` : ''}
+            <div class="toast-message">${message}</div>
+        </div>
+        <button class="toast-close" onclick="removeToast(this.parentElement)">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+
+    container.appendChild(toast);
+
+    // Auto remove after duration
+    if (duration > 0) {
+        setTimeout(() => {
+            removeToast(toast);
+        }, duration);
+    }
+
+    return toast;
+}
+
+function removeToast(toast) {
+    if (!toast) return;
+    toast.classList.add('toast-exit');
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.parentElement.removeChild(toast);
+        }
+    }, 300);
+}
+
+// Replace alert() with toast
+window.alert = function(message) {
+    showToast('info', message, null, 4000);
+};
+
+// Elegant confirmation modal
+function showConfirm(title, message, confirmText = 'Confirmar', cancelText = 'Cancelar') {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirmModal');
+        const titleEl = document.getElementById('confirmTitle');
+        const messageEl = document.getElementById('confirmMessage');
+        const okBtn = document.getElementById('confirmOkBtn');
+        
+        if (!modal || !titleEl || !messageEl || !okBtn) {
+            resolve(false);
+            return;
+        }
+
+        titleEl.textContent = title || 'Confirmar';
+        messageEl.textContent = message || '';
+        okBtn.textContent = confirmText;
+        
+        confirmResolve = resolve;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    });
+}
+
+function closeConfirmModal() {
+    const modal = document.getElementById('confirmModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+    if (confirmResolve) {
+        confirmResolve(false);
+        confirmResolve = null;
+    }
+}
+
+function handleConfirmOk() {
+    closeConfirmModal();
+    if (confirmResolve) {
+        confirmResolve(true);
+        confirmResolve = null;
+    }
+}
+
+// Replace confirm() with elegant modal
+window.confirm = function(message) {
+    return showConfirm('Confirmar', message);
+};
+
+// Helper functions for different toast types
+window.showSuccessToast = function(message, title = 'Sucesso') {
+    showToast('success', message, title);
+};
+
+window.showErrorToast = function(message, title = 'Erro') {
+    showToast('error', message, title);
+};
+
+window.showInfoToast = function(message, title = 'Informação') {
+    showToast('info', message, title);
+};
+
+window.showWarningToast = function(message, title = 'Atenção') {
+    showToast('warning', message, title);
+};
+
 // --- Auth (novo) ---
 function validateEmail(email) {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -214,7 +341,7 @@ function onAuthLogged(user){
                         return;
                     }
                 }
-                alert('Acesso ao painel restrito (CEO, Gerente, Vendedor, Design ou Sócio).');
+                showErrorToast('Acesso ao painel restrito (CEO, Gerente, Vendedor, Design ou Sócio).', 'Acesso Negado');
                 window.postLoginRedirect = null;
             } catch (_) { window.postLoginRedirect = null; }
         }, 100);
@@ -377,7 +504,7 @@ function requestAdminAccess(){
         if (hasAccess) {
             window.location.href = 'admin.html';
         } else {
-            alert('Acesso ao painel restrito. Apenas administradores autorizados.');
+            showErrorToast('Acesso ao painel restrito. Apenas administradores autorizados.', 'Acesso Negado');
         }
     })();
 }
@@ -1138,13 +1265,13 @@ function scheduleTraining(trainingType) {
     const t = trainings[trainingType];
     if (!t) return;
     if (!canSpendTokens(t.cost)){
-        alert(`Saldo insuficiente. Você precisa de ${t.cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+        showErrorToast(`Saldo insuficiente. Você precisa de ${t.cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`, 'Saldo Insuficiente');
         return;
     }
     if (confirm(`Confirmar uso de ${t.cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens para ${t.label}?`)){
         spendTokens(t.cost);
         renderClientArea();
-        alert('Token resgatado! Nossa equipe entrará em contato para agendar.');
+        showSuccessToast('Token resgatado! Nossa equipe entrará em contato para agendar.', 'Sucesso');
     }
 }
 
@@ -1174,11 +1301,11 @@ function handleContactForm(event) {
                     mensagem,
                     criadoEm: serverTimestamp()
                 });
-                alert('Mensagem enviada com sucesso!');
+                showSuccessToast('Mensagem enviada com sucesso!', 'Sucesso');
                 form.reset();
             } catch (err) {
                 console.error('Erro ao salvar contato:', err);
-                alert('Não foi possível enviar agora. Tente novamente mais tarde.');
+                showErrorToast('Não foi possível enviar agora. Tente novamente mais tarde.', 'Erro');
             }
         })();
     } else {
