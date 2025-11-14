@@ -25,6 +25,78 @@ try {
   }
 } catch (_) {}
 
+// Função para obter link do WhatsApp do Firestore
+async function getWhatsAppLinkForRegistration(eventType, schedule) {
+    try {
+        const db = admin.firestore();
+        const whatsappLinksRef = db.collection('whatsapp_links');
+        
+        // Normalizar tipo de evento
+        const normalizeType = (t) => String(t || '')
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, '-')
+            .replace('xtreino-gratuito', 'xtreino-gratuito')
+            .replace('xtreino-tokens', 'xtreino-tokens')
+            .replace('modo liga', 'modo-liga')
+            .replace('camp', 'camp-freitas');
+        
+        // Normalizar horário
+        const normalizeHour = (h) => {
+            if (!h) return null;
+            const s = String(h).toLowerCase().trim();
+            const m = s.match(/(\d{1,2})/);
+            return m ? `${parseInt(m[1], 10)}h` : null;
+        };
+        
+        const type = normalizeType(eventType);
+        const hour = normalizeHour(schedule);
+        
+        // Buscar link específico para o horário
+        if (hour) {
+            const specificQuery = whatsappLinksRef
+                .where('eventType', '==', type)
+                .where('schedule', '==', hour)
+                .where('status', '==', 'active')
+                .limit(1);
+            
+            const specificSnapshot = await specificQuery.get();
+            if (!specificSnapshot.empty) {
+                return specificSnapshot.docs[0].data().link;
+            }
+        }
+        
+        // Buscar link geral (schedule = null)
+        const generalQuery = whatsappLinksRef
+            .where('eventType', '==', type)
+            .where('schedule', '==', null)
+            .where('status', '==', 'active')
+            .limit(1);
+        
+        const generalSnapshot = await generalQuery.get();
+        if (!generalSnapshot.empty) {
+            return generalSnapshot.docs[0].data().link;
+        }
+        
+        // Fallback: buscar com schedule vazio
+        const emptyQuery = whatsappLinksRef
+            .where('eventType', '==', type)
+            .where('schedule', '==', '')
+            .where('status', '==', 'active')
+            .limit(1);
+        
+        const emptySnapshot = await emptyQuery.get();
+        if (!emptySnapshot.empty) {
+            return emptySnapshot.docs[0].data().link;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Erro ao buscar link do WhatsApp:', error);
+        return null;
+    }
+}
+
 // Função para gerar links de download baseado no produto
 async function generateDownloadLinks(productId, productOptions = {}) {
     try {
@@ -451,16 +523,38 @@ exports.handler = async (event, context) => {
                         if (!registrationsSnapshot.empty) {
                             // Atualizar TODOS os registros associados a este pagamento
                             const batch = db.batch();
-                            registrationsSnapshot.forEach(doc => {
-                                batch.update(doc.ref, {
+                            
+                            for (const doc of registrationsSnapshot.docs) {
+                                const regData = doc.data();
+                                const updateData = {
                                     status: 'paid',
                                     paymentId: payment.id,
                                     paymentStatus: 'approved',
                                     paidAt: admin.firestore.FieldValue.serverTimestamp()
-                                });
-                            });
+                                };
+                                
+                                // Buscar e adicionar link do WhatsApp se não existir
+                                if (!regData.groupLink && !regData.whatsappLink) {
+                                    try {
+                                        const whatsappLink = await getWhatsAppLinkForRegistration(
+                                            regData.eventType || regData.event_type,
+                                            regData.schedule || regData.hour
+                                        );
+                                        if (whatsappLink) {
+                                            updateData.groupLink = whatsappLink;
+                                            updateData.whatsappLink = whatsappLink;
+                                            console.log(`✅ Link do WhatsApp adicionado ao registro ${doc.id}:`, whatsappLink);
+                                        }
+                                    } catch (linkError) {
+                                        console.error('Erro ao buscar link do WhatsApp:', linkError);
+                                    }
+                                }
+                                
+                                batch.update(doc.ref, updateData);
+                            }
+                            
                             await batch.commit();
-                            console.log('Registrations updated to paid:', registrationsSnapshot.size);
+                            console.log('✅ Registrations updated to paid:', registrationsSnapshot.size);
                         } else {
                             console.log('❌ No order or registration found for external_reference:', externalRef);
                         }

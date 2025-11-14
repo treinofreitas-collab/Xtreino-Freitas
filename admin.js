@@ -2327,17 +2327,59 @@
         }catch(_){}
       }catch(_){}
       
+      // Travar fixo os horários 16h e 17h do modo liga
+      if (ovEventType === 'modo-liga') {
+        const fixedLockHours = ['16:00', '17:00'];
+        for (const fixedHour of fixedLockHours) {
+          const hh = fixedHour.replace(':00', '');
+          try {
+            const { collection: cFix, query: qFix, where: wFix, getDocs: gFix, addDoc, updateDoc, doc: dFix } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const ovRefFix = cFix(window.firebaseDb, 'schedule_overrides');
+            const variantsFix = resolveAliases(ovEventType);
+            const toUpdateFix = new Set();
+            
+            // Buscar documentos existentes
+            for (const v of variantsFix) {
+              if (v === undefined) continue;
+              try {
+                let snapFix = await gFix(qFix(ovRefFix, wFix('date', '==', date), wFix('eventType', '==', v), wFix('hour', '==', hh)));
+                snapFix.forEach(d => toUpdateFix.add(d.id));
+                snapFix = await gFix(qFix(ovRefFix, wFix('date', '==', date), wFix('eventType', '==', v), wFix('hh', '==', hh)));
+                snapFix.forEach(d => toUpdateFix.add(d.id));
+              } catch (_) {}
+            }
+            
+            // Atualizar ou criar override travado
+            if (toUpdateFix.size > 0) {
+              for (const docId of toUpdateFix) {
+                const refFix = dFix(window.firebaseDb, 'schedule_overrides', docId);
+                await updateDoc(refFix, { locked: true, eventType: ovEventType, hour: hh, hh });
+              }
+            } else {
+              await addDoc(ovRefFix, { date, eventType: ovEventType, hour: hh, hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
+            }
+            
+            // Garantir que está marcado como travado no override
+            overrides[fixedHour] = { lockedAny: true, extraOccupied: overrides[fixedHour]?.extraOccupied || 0 };
+          } catch (err) {
+            console.error('Erro ao travar horário fixo:', err);
+          }
+        }
+      }
+      
       entries.forEach((hour)=>{
         const cnt = map[hour] || 0;
         const ov = overrides[hour] || {};
-        const locked = !!(ov.lockedAny === undefined ? ov.locked : ov.lockedAny);
+        // Para modo liga 16h e 17h, sempre travado
+        const isFixedLock = (ovEventType === 'modo-liga' && (hour === '16:00' || hour === '17:00'));
+        const locked = isFixedLock ? true : !!(ov.lockedAny === undefined ? ov.locked : ov.lockedAny);
         const tr = document.createElement('tr');
         const cap = capFor(hour);
         tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/${cap}</td><td class="py-2 space-x-2">
           <button class="px-2 py-1 bg-blue-600 text-white rounded text-xs" data-add-hour="${hour}">Adicionar</button>
           <button class="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs" data-manage-hour="${hour}">Gerenciar</button>
           <button class="px-2 py-1 bg-emerald-600 text-white rounded text-xs" data-export-hour="${hour}">Exportar</button>
-          <button class="px-2 py-1 ${locked?'bg-red-600 text-white':'bg-yellow-400 text-black'} rounded text-xs" data-toggle-lock="${hour}">${locked?'Destravar':'Travar'}</button>
+          <button class="px-2 py-1 ${locked?'bg-red-600 text-white':'bg-yellow-400 text-black'} rounded text-xs ${isFixedLock ? 'opacity-50 cursor-not-allowed' : ''}" data-toggle-lock="${hour}" ${isFixedLock ? 'disabled title="Horário fixo travado - só destrava manualmente"' : ''}>${locked?'Destravar':'Travar'}</button>
         </td>`;
         tbody.appendChild(tr);
       });
@@ -2368,6 +2410,12 @@
           }
         } else if (btnToggle){
           const h = btnToggle.getAttribute('data-toggle-lock');
+          // Verificar se é horário fixo travado (modo liga 16h e 17h)
+          const isFixedLock = (ovEventType === 'modo-liga' && (h === '16:00' || h === '17:00'));
+          if (isFixedLock) {
+            alert('Este horário está fixo travado. Para destravar, use a opção "Destravar tudo do dia" ou destrave manualmente no banco de dados.');
+            return;
+          }
           try{
             const hh = String(h).match(/(\d{1,2})/)?.[1];
             const { collection: c3, query: q3, where: w3, getDocs: g3, addDoc, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -2554,19 +2602,23 @@ async function buildExportList(date, eventType, hour){
   } else if (type.includes('liga')) {
     // Modo Liga: formato conforme exemplo enviado
     const header = `:::𝑳𝑰𝑺𝑻𝑨 𝑴𝑶𝑫𝑶 𝑳𝑰𝑮𝑨 ⋮ 𝑿𝑻 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 ${H}H:::\n\n\n\n➺🆔 𝑬  𝑺𝑬𝑵𝐇𝑨: 𝟏𝟎 𝑴𝐈𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺\n\n➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝐈ÇÃ𝐎\n`;
+    // Garantir que todos os slots sejam incluídos, mesmo vazios, sem pular linhas
     const lines = slots.map(s=>{
       const num = String(s.idx).padStart(2,'0');
-      return `   ⃟🩵 ${num}: ${s.team}`;
-    }).join('\n\n');
+      const teamName = s.team || ''; // Slot vazio fica sem nome, mas linha é criada
+      return `   ⃟🩵 ${num}: ${teamName}`;
+    }).filter(line => line.trim()).join('\n\n'); // Filtrar linhas completamente vazias
     const footer = `\n\n「📽️」𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: \n\n「🧑🏻‍🏫」𝑪𝑶𝑨𝑪𝑯:`;
     return `${header}\n${lines}\n\n${footer}`;
   } else {
     // XTreino normal (padrão)
     const header = `:::𝑳𝑰𝑺𝑻𝑨 𝑫𝑬 𝑺𝑳𝑶𝑻 ⋮ 𝑿𝑻 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 ${H}H:::\n\n➺🆔 𝑬  𝑺𝑬𝑵𝐇𝑨: 𝟏𝟎 𝑴𝐈𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺\n➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝐈ÇÃ𝐎\n`;
+    // Garantir que todos os slots sejam incluídos, mesmo vazios, sem pular linhas
     const lines = slots.map(s=>{
       const num = String(s.idx).padStart(2,'0');
-      return `   ⃟🩵 𝑺𝑳𝑶𝑻 ${num}: ${s.team}`;
-    }).join('\n\n');
+      const teamName = s.team || ''; // Slot vazio fica sem nome, mas linha é criada
+      return `   ⃟🩵 𝑺𝑳𝑶𝑻 ${num}: ${teamName}`;
+    }).filter(line => line.trim()).join('\n\n'); // Filtrar linhas completamente vazias
     const footer = `\n\n「📽️」𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: \n\n「🧑🏻‍🏫」𝑪𝑶𝑨𝑪𝑯:`;
     return `${header}\n\n${lines}\n${footer}`;
   }

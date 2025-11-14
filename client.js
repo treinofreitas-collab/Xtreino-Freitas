@@ -1639,8 +1639,24 @@ async function loadStats() {
         const orders = await fetchUserDocs('orders', 200, false);
         const regs = await fetchUserDocs('registrations', 200, false);
         const regsPaidWithTokens = regs.filter(r => r.data.paidWithTokens === true);
-        let totalOrders = orders.length + regsPaidWithTokens.length;
-        let totalSpent = orders.reduce((sum, r) => sum + (r.data.total || r.data.amount || 0), 0);
+        
+        // Filtrar apenas pedidos pagos para o cálculo
+        const paidOrders = orders.filter(o => {
+            const status = (o.data.status || '').toLowerCase();
+            return status === 'paid' || status === 'approved' || status === 'confirmed';
+        });
+        
+        // Filtrar apenas registrations pagos (não pagos com tokens)
+        const paidRegs = regs.filter(r => {
+            const status = (r.data.status || '').toLowerCase();
+            return (status === 'paid' || status === 'approved' || status === 'confirmed') && !r.data.paidWithTokens;
+        });
+        
+        let totalOrders = paidOrders.length + regsPaidWithTokens.length;
+        
+        // Calcular valor gasto: orders pagos + registrations pagos (não com tokens)
+        let totalSpent = paidOrders.reduce((sum, r) => sum + (r.data.total || r.data.amount || 0), 0);
+        totalSpent += paidRegs.reduce((sum, r) => sum + (r.data.price || r.data.amount || r.data.total || 0), 0);
 
         console.log('🔍 Stats data:', { totalOrders, totalSpent, userProfile });
 
