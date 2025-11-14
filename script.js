@@ -243,11 +243,17 @@ function onAuthLogged(user){
 
 function toggleAccountButtons(isLogged){
     const loginDesk = document.getElementById('loginBtnDesktop');
-    const accDesk = document.getElementById('accountBtnDesktop');
+    const accountSectionDesktop = document.getElementById('accountSectionDesktop');
     const loginMob = document.getElementById('loginBtnMobile');
-    const accMob = document.getElementById('accountBtnMobile');
-    if (loginDesk && accDesk){ loginDesk.classList.toggle('hidden', isLogged); accDesk.classList.toggle('hidden', !isLogged); }
-    if (loginMob && accMob){ loginMob.classList.toggle('hidden', isLogged); accMob.classList.toggle('hidden', !isLogged); }
+    const accountSectionMobile = document.getElementById('accountSectionMobile');
+    if (loginDesk && accountSectionDesktop){ 
+        loginDesk.classList.toggle('hidden', isLogged); 
+        accountSectionDesktop.classList.toggle('hidden', !isLogged); 
+    }
+    if (loginMob && accountSectionMobile){ 
+        loginMob.classList.toggle('hidden', isLogged); 
+        accountSectionMobile.classList.toggle('hidden', !isLogged); 
+    }
     updateHeaderTokenBadges();
 }
 
