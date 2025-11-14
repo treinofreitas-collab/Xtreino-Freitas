@@ -1736,10 +1736,101 @@ async function fetchUserDocs(colName, max = 50, sortDesc = false){
 }
 
 // Load profile
-function loadProfile() {
+async function loadProfile() {
+    // Garantir que o userProfile seja carregado primeiro
+    if (!userProfile && currentUser) {
+        await loadUserProfile();
+    }
+    
     if (userProfile) {
+        // Preencher campos do formulário
         document.getElementById('profileName').value = userProfile.name || '';
         document.getElementById('profileEmail').value = userProfile.email || '';
+        document.getElementById('profilePhone').value = userProfile.phone || '';
+        document.getElementById('profileNickname').value = userProfile.nickname || '';
+        document.getElementById('profileTeam').value = userProfile.team || '';
+        document.getElementById('profileAge').value = userProfile.age || '';
+        
+        // Atualizar header do perfil
+        const name = userProfile.name || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Usuário';
+        document.getElementById('profileHeaderName').textContent = name;
+        document.getElementById('profileHeaderEmail').textContent = userProfile.email || currentUser?.email || '-';
+        
+        // Iniciais do avatar
+        const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || 'U';
+        document.getElementById('profileInitials').textContent = initials;
+        
+        // Tokens badge
+        const tokens = userProfile.tokens || 0;
+        document.getElementById('profileTokensBadge').textContent = `${tokens} Token${tokens !== 1 ? 's' : ''}`;
+        
+        // Role badge
+        const role = userProfile.role || 'user';
+        const roleNames = {
+            'admin': 'Administrador',
+            'gerente': 'Gerente',
+            'vendedor': 'Vendedor',
+            'socio': 'Sócio',
+            'design': 'Designer',
+            'user': 'Usuário'
+        };
+        const roleElement = document.getElementById('profileRoleBadge');
+        if (roleElement) {
+            roleElement.querySelector('span').textContent = roleNames[role.toLowerCase()] || 'Usuário';
+        }
+        
+        // Carregar estatísticas
+        await loadProfileStats();
+    }
+}
+
+// Load profile statistics
+async function loadProfileStats() {
+    try {
+        if (!currentUser || !currentUser.uid) return;
+        
+        // Total gasto
+        const orders = await fetchUserDocs('orders', 200, true);
+        const totalSpent = orders
+            .filter(o => o.data.status === 'paid' || o.data.status === 'confirmed')
+            .reduce((sum, o) => sum + (Number(o.data.amount) || 0), 0);
+        
+        document.getElementById('profileTotalSpent').textContent = 
+            totalSpent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        
+        // Eventos participados
+        const registrations = await fetchUserDocs('registrations', 200, true);
+        const eventsCount = registrations.filter(r => 
+            r.data.status === 'paid' || r.data.status === 'confirmed' || r.data.paidWithTokens === true
+        ).length;
+        
+        document.getElementById('profileEventsCount').textContent = eventsCount;
+        
+        // Membro desde
+        const createdAt = userProfile.createdAt?.toDate?.() || 
+                         userProfile.createdAt || 
+                         currentUser.metadata?.creationTime;
+        
+        if (createdAt) {
+            const date = createdAt instanceof Date ? createdAt : new Date(createdAt);
+            const formatted = date.toLocaleDateString('pt-BR', { 
+                month: 'long', 
+                year: 'numeric' 
+            });
+            document.getElementById('profileMemberSince').textContent = 
+                formatted.charAt(0).toUpperCase() + formatted.slice(1);
+        } else {
+            document.getElementById('profileMemberSince').textContent = '-';
+        }
+    } catch (error) {
+        console.error('Error loading profile stats:', error);
+    }
+}
+
+// Reset profile form
+function resetProfileForm() {
+    if (userProfile) {
+        document.getElementById('profileName').value = userProfile.name || '';
         document.getElementById('profilePhone').value = userProfile.phone || '';
         document.getElementById('profileNickname').value = userProfile.nickname || '';
         document.getElementById('profileTeam').value = userProfile.team || '';
@@ -1771,6 +1862,7 @@ async function saveProfile(e) {
         
         // Update userProfile
         userProfile = { ...userProfile, ...profileData };
+        
         // Atualizar mensagem de boas-vindas após atualizar perfil
         const welcomeMessageElement = document.getElementById('welcomeMessage');
         if (welcomeMessageElement) {
@@ -1779,7 +1871,41 @@ async function saveProfile(e) {
             welcomeMessageElement.textContent = `Bem-vindo à sua conta, ${firstName}!`;
         }
         
-        alert('Perfil atualizado com sucesso!');
+        // Atualizar header do perfil
+        const name = profileData.name || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Usuário';
+        document.getElementById('profileHeaderName').textContent = name;
+        
+        // Atualizar iniciais
+        const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) || 'U';
+        document.getElementById('profileInitials').textContent = initials;
+        
+        // Mostrar feedback visual
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<svg class="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Salvando...';
+        submitBtn.disabled = true;
+        
+        setTimeout(() => {
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+            
+            // Mostrar notificação de sucesso
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2';
+            notification.innerHTML = `
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>Perfil atualizado com sucesso!</span>
+            `;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }, 500);
     } catch (error) {
         console.error('Error saving profile:', error);
         alert('Erro ao salvar perfil. Tente novamente.');
