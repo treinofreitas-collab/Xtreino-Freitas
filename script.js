@@ -800,7 +800,7 @@ function updateHeaderProfilePhoto() {
                 // Se já estiver carregada
                 if (avatarImageMobile.complete && avatarImageMobile.naturalHeight !== 0) {
                     avatarImageMobile.classList.remove('hidden');
-                    avatarInitialsMobile.classList.remove('hidden');
+                    avatarInitialsMobile.classList.add('hidden');
                 }
             } else {
                 avatarInitialsMobile.textContent = initials;
