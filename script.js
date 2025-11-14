@@ -4442,23 +4442,27 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
             }
         }
         
-        if (!isTimeAvailable) {
-            btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
-            btn.disabled = true;
-            btn.textContent = `${time} (${timeMessage})`;
-            btn.onclick = null;
-        } else if (eventType === 'semanal-freitas' && time === '19h'){
+        // Verificar lotação primeiro (antes da verificação de tempo)
+        if (eventType === 'semanal-freitas' && time === '19h'){
             // Semanal Freitas: 19h sempre esgotado
             btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
             btn.disabled = true;
             btn.textContent = `${time} (Lotado)`;
             btn.onclick = null;
         } else if (available === 0){
+            // Horário lotado - prioridade sobre verificação de tempo
             btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
             btn.disabled = true;
             btn.textContent = `${time} (Lotado)`;
             btn.onclick = null;
+        } else if (!isTimeAvailable) {
+            // Verificar disponibilidade de tempo (12 minutos antes)
+            btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
+            btn.disabled = true;
+            btn.textContent = `${time} (${timeMessage})`;
+            btn.onclick = null;
         } else {
+            // Horário disponível
             btn.className = 'slot-btn';
             btn.disabled = false;
             btn.textContent = `${time} (${String(available).padStart(2,'0')}/${String(capacity).padStart(2,'0')})`;
