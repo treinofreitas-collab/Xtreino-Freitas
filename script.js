@@ -4692,6 +4692,7 @@ async function submitSchedule(e, useTokens=false){
     }
     // Fluxo normal: Checkout via Netlify Function
     const datesToUse2 = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [document.getElementById('schedDate')?.value];
+    const datesCount = datesToUse2.length;
     let originalTotal = 0;
     for (const d of datesToUse2){
         for (const t of selectedTimes){
@@ -4724,10 +4725,13 @@ async function submitSchedule(e, useTokens=false){
         };
     }
     
+    // Calcular número total de reservas
+    const totalReservations = teams.length * selectedTimes.length * datesCount;
+    
     fetch('/.netlify/functions/create-preference',{
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ 
-            title: `${cfg.label} - ${teams.length * selectedTimes.length * datesFactor2} reservas - ${date}`, 
+            title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : date}`, 
             unit_price: finalPrice, 
             currency_id:'BRL', 
             quantity: 1, // Mudamos para 1 pois já calculamos o preço total
@@ -4736,7 +4740,7 @@ async function submitSchedule(e, useTokens=false){
             multiple_reservations: {
                 teams: teams.map(t => t.name),
                 schedules: selectedTimes,
-                date: date,
+                dates: datesToUse2,
                 eventType: eventType
             },
             external_reference: externalRef
