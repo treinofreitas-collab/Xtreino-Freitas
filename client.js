@@ -1858,6 +1858,12 @@ function resetProfileForm() {
 
 // Handle photo upload
 async function handlePhotoUpload(event) {
+    // Verificar se storage está inicializado
+    if (!storage) {
+        console.error('Storage não inicializado');
+        alert('Erro: Storage não inicializado. Recarregue a página.');
+        return;
+    }
     const file = event.target.files[0];
     if (!file) return;
     
@@ -1969,6 +1975,9 @@ async function handlePhotoUpload(event) {
     // Limpar input
     event.target.value = '';
 }
+
+// Tornar função acessível globalmente
+window.handlePhotoUpload = handlePhotoUpload;
 
 // Save profile
 async function saveProfile(e) {
