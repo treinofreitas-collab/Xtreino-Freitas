@@ -2,7 +2,7 @@
 (async function(){
   // Security: Check if running in admin context
   if (!window.location.pathname.includes('admin.html') && !window.location.pathname.includes('admin')) {
-    
+    console.warn('Admin script loaded outside admin context');
     return;
   }
 
@@ -10,9 +10,14 @@
   const waitReady = () => new Promise(res => {
     const tick = () => {
       if (window.firebaseReady && window.firebaseDb && window.firebaseAuth) {
-        
+        console.log('✅ Firebase completamente inicializado');
         res();
       } else {
+        console.log('⏳ Aguardando inicialização do Firebase...', {
+          firebaseReady: window.firebaseReady,
+          firebaseDb: !!window.firebaseDb,
+          firebaseAuth: !!window.firebaseAuth
+        });
         setTimeout(tick, 100);
       }
     };
@@ -45,20 +50,26 @@
   // Security: Check if user is authorized admin
   async function isAuthorizedAdmin(user) {
     if (!user || !user.email) return false;
-
+    
+    console.log('🔍 Verificando autorização para:', user.email);
+    console.log('🔍 Firebase Auth disponível:', !!window.firebaseAuth);
+    console.log('🔍 Firebase DB disponível:', !!window.firebaseDb);
+    
     // Para socio, permitir qualquer email
     if (user.email.toLowerCase().includes('cleitondouglass') || user.email.toLowerCase().includes('gilmario')) {
-      :', user.email);
+      console.log('✅ Email autorizado (socio/admin):', user.email);
     } else {
-      
+      console.log('⚠️ Email não está na lista, mas continuando para verificar cargo...');
     }
 
     // Check user role in Firestore
     try {
-      
+      console.log('🔍 Tentando acessar documento do usuário:', user.uid);
       const userDoc = await getDoc(doc(window.firebaseDb, 'users', user.uid));
       if (!userDoc.exists()) {
-
+        console.log('❌ Documento de usuário não encontrado no Firestore');
+        console.log('🔧 Criando documento do usuário automaticamente...');
+        
         // Criar documento do usuário automaticamente
         const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const userData = {
@@ -70,19 +81,21 @@
         };
         
         await setDoc(doc(window.firebaseDb, 'users', user.uid), userData);
-
+        console.log('✅ Documento do usuário criado com sucesso!');
+        
         // Agora tentar novamente
         const newUserDoc = await getDoc(doc(window.firebaseDb, 'users', user.uid));
         if (!newUserDoc.exists()) {
-          
+          console.log('❌ Erro ao criar documento do usuário');
           return false;
         }
         
         const newUserData = newUserDoc.data();
         const role = (newUserData.role || '').toLowerCase();
-
+        console.log('🎭 Cargo definido:', role);
+        
         if (role === 'socio' || role === 'sócio' || role === 'ceo') {
-          ');
+          console.log('✅ Acesso liberado para Socio (documento criado)');
           return true;
         }
         
@@ -91,15 +104,19 @@
       
       const userData = userDoc.data();
       const role = (userData.role || '').toLowerCase();
-
+      
+      console.log('🎭 Cargo encontrado:', userData.role, '-> normalizado:', role);
+      console.log('📊 Dados completos do usuário:', userData);
+      
       // Para socio, permitir acesso total
       if (role === 'socio' || role === 'sócio' || role === 'ceo') {
-        
+        console.log('✅ Acesso liberado para Socio');
         return true;
       }
       
       const isAuthorized = ['admin', 'gerente', 'vendedor', 'design', 'designer', 'desgin'].includes(role);
-
+      console.log('🔐 Autorizado para outros cargos:', isAuthorized);
+      
       return isAuthorized;
     } catch (error) {
       console.error('❌ Erro ao verificar cargo:', error);
@@ -111,7 +128,7 @@
   function startSessionTimer() {
     if (sessionTimer) clearTimeout(sessionTimer);
     sessionTimer = setTimeout(() => {
-      
+      console.log('Session timeout - logging out');
       logout();
     }, SESSION_TIMEOUT);
   }
@@ -222,16 +239,16 @@
       
       if (sectionPasseBooyah) {
         sectionPasseBooyah.style.display = 'block';
-        
+        console.log('✅ Passe Booyah section displayed for Socio');
       } else {
-        
+        console.log('❌ sectionPasseBooyah not found');
       }
       
       if (sectionSchedules) {
         sectionSchedules.style.display = 'block';
-        
+        console.log('✅ Schedules section displayed for Socio');
       } else {
-        
+        console.log('❌ sectionSchedules not found');
       }
       
       // Ocultar seções administrativas
@@ -242,9 +259,10 @@
       if (sectionHighlights) sectionHighlights.style.display = 'none';
       if (sectionNews) sectionNews.style.display = 'none';
       if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
-
-    } else {
       
+      console.log('✅ Socio permissions applied - limited access');
+    } else {
+      console.log('❌ Role does not match socio. Role:', role);
     }
     // CEO: Can see and edit everything
     if (role === 'ceo') {
@@ -342,7 +360,8 @@
     
     // Combine all editable elements
     const allEditableElements = [...inputs, ...buttons, ...editButtons, ...editableElements];
-
+    
+    
     // Design: Can only edit highlights and news sections
     if (role === 'design' || role === 'desgin' || role === 'designer') {
       
@@ -542,11 +561,13 @@
         console.error('❌ Firebase não inicializado - carregarUsuarios');
         return;
       }
-
+      
+      console.log('🔍 Tentando carregar usuários...');
       // Buscar usuários no Firestore
       const usersRef = collection(window.firebaseDb, 'users');
       const snapshot = await getDocs(usersRef);
-
+      console.log('✅ Usuários carregados com sucesso:', snapshot.size);
+      
       // Armazenar todos os dados
       usuariosData = [];
       snapshot.forEach(doc => {
@@ -692,11 +713,11 @@
         return;
       }
       
-      // 
+      // console.log('🔍 Carregando dados de tokens...');
       // Buscar pedidos de tokens
       const ordersRef = collection(window.firebaseDb, 'orders');
       const ordersSnapshot = await getDocs(ordersRef);
-      // 
+      // console.log('📊 Total de pedidos encontrados:', ordersSnapshot.size);
       
       tokensData = [];
       ordersSnapshot.forEach(doc => {
@@ -736,7 +757,7 @@
       // Atualizar contador
       document.getElementById('tokensCount').textContent = `${tokensData.length} compras`;
       document.getElementById('totalTokensPurchased').textContent = tokensData.length;
-      // 
+      // console.log('✅ Tokens carregados:', tokensData.length);
       
       // Mostrar primeira página
       mostrarTokensPagina(1);
@@ -868,11 +889,11 @@
         return;
       }
       
-      // 
+      // console.log('🔍 Carregando pedidos confirmados...');
       // Buscar pedidos confirmados
       const ordersRef = collection(window.firebaseDb, 'orders');
       const ordersSnapshot = await getDocs(ordersRef);
-      // 
+      // console.log('📊 Total de pedidos encontrados:', ordersSnapshot.size);
       
       confirmedOrdersData = [];
       ordersSnapshot.forEach(doc => {
@@ -900,7 +921,7 @@
       
       // Atualizar contador
       document.getElementById('confirmedCount').textContent = `${confirmedOrdersData.length} pedidos`;
-      // 
+      // console.log('✅ Pedidos confirmados carregados:', confirmedOrdersData.length);
       
       // Mostrar primeira página
       mostrarPedidosConfirmadosPagina(1);
@@ -1015,7 +1036,7 @@
       if (snap.exists()) role = (snap.data().role)||'Vendedor';
     }catch(e){}
 
-    // 
+    // console.log('ADMIN UID:', uid, 'ROLE:', role);
     if (!['ceo','gerente','vendedor','design','designer','desgin','socio','sócio'].includes((role||'').toLowerCase())){
       authGate.classList.remove('hidden');
       dashboard.classList.add('hidden');
@@ -1249,7 +1270,7 @@
 
   // Funções para gerenciar tokens
   async function loadTokensData() {
-    
+    console.log('🔍 Loading tokens data...');
     try {
       await loadTokenPurchases();
       await loadTokenUsage();
@@ -1260,7 +1281,7 @@
   }
 
   async function loadTokenPurchases() {
-    
+    console.log('🔍 Loading token purchases...');
     try {
       const ordersSnap = await getDocs(collection(window.firebaseDb, 'orders'));
       const orders = [];
@@ -1275,6 +1296,8 @@
         }
       });
 
+      console.log('🔍 Found token orders:', orders.length);
+      
       // Ordenar por data mais recente
       orders.sort((a, b) => {
         const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.timestamp || 0);
@@ -1309,7 +1332,7 @@
     }
   }
   async function loadTokenUsage() {
-    
+    console.log('🔍 Loading token usage...');
     try {
       const regsSnap = await getDocs(collection(window.firebaseDb, 'registrations'));
       const usages = [];
@@ -1324,6 +1347,8 @@
         }
       });
 
+      console.log('🔍 Found token usages:', usages.length);
+      
       // Ordenar por data mais recente
       usages.sort((a, b) => {
         const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.timestamp || 0);
@@ -1378,7 +1403,7 @@
   }
 
   async function updateTokenStats() {
-    
+    console.log('🔍 Updating token stats...');
     try {
       const TOKENS_PER_USE = 5; // cada uso/slot equivale a 5 tokens
       // Calcular tokens comprados
@@ -1402,6 +1427,8 @@
           totalTokensUsed += getTokenCountForEvent(data.eventType);
         }
       });
+
+      console.log('🔍 Token stats:', { totalTokensPurchased, totalTokensUsed });
 
       // Atualizar UI
       const purchasedEl = document.getElementById('totalTokensPurchased');
@@ -1436,6 +1463,8 @@
     const kpiRecEl = document.getElementById('kpiReceivable');
     const kpiActiveEl = document.getElementById('kpiActiveUsers');
     if (!kpiTodayEl || !kpiMonthEl || !kpiRecEl) return;
+
+    console.log('🔍 loadKpis: Calculando vendas...');
 
     // Usar a mesma lógica da loadKPIs() que está funcionando corretamente
     const { collection, query, where, getDocsFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -1476,7 +1505,9 @@
             receivable += val;
         }
     });
-
+    
+    console.log('📊 loadKpis - Vendas hoje:', sumToday, 'Vendas mês:', sumMonth, 'A receber:', receivable);
+    
     kpiTodayEl.textContent = brl(sumToday);
     kpiMonthEl.textContent = brl(sumMonth);
     kpiRecEl.textContent = brl(receivable);
@@ -1641,20 +1672,35 @@
   // Nova função para carregar dados de tokens
   async function loadTokensData(){
     try {
-
+      console.log('=== DEBUG: Carregando dados de tokens ===');
+      
       // Debug: mostrar todos os orders
       const ordersSnap = await getDocs(collection(window.firebaseDb,'orders'));
-      
+      console.log('Total orders:', ordersSnap.size);
       ordersSnap.forEach(d => {
         const o = d.data();
+        console.log('Order:', {
+          id: d.id,
+          description: o.description,
+          item: o.item,
+          status: o.status,
+          customer: o.customer || o.buyerEmail
         });
+      });
       
       // Debug: mostrar todas as registrations
       const regsSnap = await getDocs(collection(window.firebaseDb,'registrations'));
-      
+      console.log('Total registrations:', regsSnap.size);
       regsSnap.forEach(d => {
         const r = d.data();
+        console.log('Registration:', {
+          id: d.id,
+          email: r.email,
+          eventType: r.eventType,
+          paidWithTokens: r.paidWithTokens,
+          status: r.status
         });
+      });
       
       // Carregar compras de tokens
       await loadTokenPurchases();
@@ -1694,6 +1740,13 @@
                            description.match(/token[:\s]*(\d+)/i) ||
                            description.match(/(\d+)\s*xtreino/i);
           const tokenCount = tokenMatch ? parseInt(tokenMatch[1]) : 1;
+          
+          console.log('Token purchase found:', {
+            description,
+            tokenCount,
+            client: o.customer || o.buyerEmail,
+            status: o.status
+          });
           
           tokenPurchases.push({
             ts,
@@ -1742,6 +1795,12 @@
         
         // Verifica se foi pago com tokens
         if (r.paidWithTokens === true) {
+          console.log('Token usage found:', {
+            client: r.email,
+            event: r.title || r.eventType,
+            paidWithTokens: r.paidWithTokens,
+            status: r.status
+          });
           const ts = (r.createdAt?.toDate ? r.createdAt.toDate() : (r.timestamp ? new Date(r.timestamp) : new Date()));
           if (period.from && ts < period.from) return;
           if (period.to && ts > period.to) return;
@@ -2377,26 +2436,15 @@
             }catch(_){}
             const docsArr = Array.from(toUpdate.values());
             if (docsArr.length){
-              // Verificar se algum está travado para determinar o novo estado
-              const anyLocked = docsArr.some(d => d.data()?.locked === true);
-              const newLocked = !anyLocked; // Inverter: se algum está travado, destravar; se todos estão destravados, travar
-              
-              // Atualizar todos os documentos encontrados usando batch
-              const { writeBatch } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-              const batch = writeBatch(window.firebaseDb);
-              
+              const anyUnlocked = docsArr.some(d => d.data()?.locked !== true);
+              const newLocked = anyUnlocked ? true : false;
               for (const d of docsArr) {
                 const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
-                batch.update(ref, { locked: newLocked, eventType: ovEventType, hour: hh, hh });
+                await updateDoc(ref, { locked: newLocked, eventType: ovEventType, hour: hh, hh });
               }
-              
-              await batch.commit();
             } else {
-              // Se não encontrou nenhum documento, criar apenas um
               await addDoc(ovRef, { date, eventType: ovEventType, hour: hh, hh, locked: true, extraOccupied: 0, createdAt: Date.now() });
             }
-            
-            // Recarregar board (já limpa o tbody internamente)
             await loadBoard();
           }catch(err){ alert('Falha ao alternar trava.'); }
         }
@@ -2465,7 +2513,7 @@
       let active = 0; snap.forEach(d=>{ const u=d.data(); if (Number(u.lastLogin||0) >= thirtyDaysAgo) active++; });
   	  const kpiActiveEl = document.getElementById('kpiActiveUsers');
   	  if (kpiActiveEl) kpiActiveEl.textContent = String(active);
-    }catch(e){ }
+    }catch(e){ console.log('Erro ativos', e); }
   }
 
   // [removido duplicado]
@@ -2602,6 +2650,8 @@ async function loadKPIs() {
     const { collection, query, where, orderBy, limit, getDocsFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const ordersCol = collection(window.firebaseDb, 'orders');
 
+    console.log('🔍 loadKPIs: Calculando vendas...');
+
     // Today sales (sum) - apenas pedidos pagos
     const today = new Date();
     today.setHours(0,0,0,0);
@@ -2616,6 +2666,7 @@ async function loadKPIs() {
         }
     });
     document.getElementById('kpiToday').textContent = currencyBRL(sumToday);
+    console.log('📊 Vendas hoje:', sumToday);
 
     // Month sales - apenas pedidos pagos
     const firstMonth = new Date();
@@ -2640,7 +2691,7 @@ async function loadKPIs() {
     });
     document.getElementById('kpiMonth').textContent = currencyBRL(sumMonth);
     document.getElementById('kpiReceivable').textContent = currencyBRL(receivable);
-    
+    console.log('📊 Vendas mês:', sumMonth, 'A receber:', receivable);
 }
 
 async function loadCharts() {
@@ -2690,7 +2741,7 @@ let popularHoursChart = null;
 async function loadEventOptions() {
     try {
         if (!window.firebaseDb) {
-            
+            console.warn('Firebase não inicializado ainda');
             return;
         }
         
@@ -2734,7 +2785,7 @@ function getDayOfWeek(date) {
 async function loadPopularHoursData(dayFilter = '', eventFilter = '') {
     try {
         if (!window.firebaseDb) {
-            
+            console.warn('Firebase não inicializado ainda');
             return { labels: [], data: [] };
         }
         
@@ -3237,6 +3288,7 @@ async function giveTokensToUser(userEmail, tokenAmount) {
         alert('Erro ao dar tokens ao usuário');
     }
 }
+
 
 // ===== GERENCIAMENTO DE DESTAQUES =====
 
@@ -3831,7 +3883,7 @@ async function loadProducts() {
         });
         
         updateProductsPreview();
-        .length);
+        console.log('Produtos carregados:', Object.keys(productsData).length);
     } catch (error) {
         console.error('Erro ao carregar produtos:', error);
     }
@@ -3910,7 +3962,7 @@ async function createDefaultProducts() {
     
     productsData = defaultProducts;
     updateProductsPreview();
-    
+    console.log('Produtos padrão criados');
 }
 
 // Atualizar preview dos produtos
@@ -4229,13 +4281,18 @@ window.saveProducts = saveProducts;
   // Security: Enhanced login handler
   async function handleLogin(email, password) {
     try {
-
+      console.log('🔍 Iniciando processo de login...');
+      console.log('🔍 Email:', email);
+      console.log('🔍 Firebase Auth disponível:', !!window.firebaseAuth);
+      
       const { signInWithEmailAndPassword: signIn, signOut: signOutFn } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
       const { doc: docRef, getDoc: getDocFn } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
+      
+      console.log('🔍 Tentando fazer login...');
       const userCredential = await signIn(window.firebaseAuth, email, password);
       const user = userCredential.user;
-
+      console.log('✅ Login bem-sucedido!', user.email);
+      
       // Check if user is authorized
       if (!user || !user.email) {
         await signOutFn(window.firebaseAuth);
@@ -4244,12 +4301,14 @@ window.saveProducts = saveProducts;
       }
       
       // Get user role from Firestore
-
+      console.log('🔍 Verificando documento do usuário no Firestore...');
+      console.log('🔍 UID do usuário:', user.uid);
       const userDoc = await getDocFn(docRef(window.firebaseDb, 'users', user.uid));
-      );
+      console.log('🔍 Documento existe?', userDoc.exists());
       
       if (!userDoc.exists()) {
-
+        console.log('🔧 Criando documento do usuário automaticamente...');
+        
         // Criar documento do usuário automaticamente
         const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const userData = {
@@ -4261,7 +4320,8 @@ window.saveProducts = saveProducts;
         };
         
         await setDoc(docRef(window.firebaseDb, 'users', user.uid), userData);
-
+        console.log('✅ Documento do usuário criado com sucesso!');
+        
         // Agora tentar novamente
         const newUserDoc = await getDocFn(docRef(window.firebaseDb, 'users', user.uid));
         if (!newUserDoc.exists()) {
@@ -4272,7 +4332,8 @@ window.saveProducts = saveProducts;
         
         const newUserData = newUserDoc.data();
         const role = (newUserData.role || '').toLowerCase().trim();
-
+        console.log('🎭 Cargo definido:', role);
+        
         // Continuar com o processo de login
         const authorizedRoles = ['admin', 'gerente', 'vendedor', 'design', 'designer', 'desgin', 'socio', 'sócio'];
         const isAuthorized = authorizedRoles.includes(role);
@@ -4285,7 +4346,7 @@ window.saveProducts = saveProducts;
         
         // Para socio, permitir qualquer email
         if (role === 'socio' || role === 'sócio' || role === 'ceo') {
-          ');
+          console.log('✅ Acesso liberado para Socio (documento criado)');
           
           // Save session
           const sessionData = {
@@ -4302,7 +4363,8 @@ window.saveProducts = saveProducts;
           if (authGate && dashboard) {
             authGate.classList.add('hidden');
             dashboard.classList.remove('hidden');
-
+            console.log('✅ Dashboard mostrado com sucesso');
+            
             // Inicializar dashboard
             setTimeout(() => {
               if (typeof setView === 'function') {
@@ -4323,31 +4385,40 @@ window.saveProducts = saveProducts;
       
       const userData = userDoc.data();
       const role = (userData.role || '').toLowerCase();
-
+      
+      console.log('🔍 Documento encontrado!');
+      console.log('🔍 Dados do usuário:', userData);
+      console.log('🔍 Cargo encontrado no Firestore:', userData.role, '-> normalizado:', role);
+      
       // Limpar espaços em branco e caracteres especiais do cargo
       const cleanRole = role.trim();
-
+      console.log('🔍 Cargo limpo:', `"${cleanRole}"`);
+      
       // Check if role is authorized (including variations and typos)
       const authorizedRoles = ['admin', 'gerente', 'vendedor', 'design', 'designer', 'desgin', 'socio', 'sócio'];
       const isAuthorized = authorizedRoles.includes(cleanRole);
-
-      :', `"${role}"`);
-      :', `"${cleanRole}"`);
-
+      
+      console.log('🔍 Cargos autorizados:', authorizedRoles);
+      console.log('🔍 Cargo do usuário (original):', `"${role}"`);
+      console.log('🔍 Cargo do usuário (limpo):', `"${cleanRole}"`);
+      console.log('🔍 Está autorizado?', isAuthorized);
+      
       if (!isAuthorized) {
-        
+        console.log('❌ Cargo não autorizado, negando acesso');
         await signOutFn(window.firebaseAuth);
         showLoginError('Acesso negado. Você não tem permissão para acessar o painel administrativo.');
         return;
       }
-
+      
+      console.log('✅ Cargo autorizado, continuando...');
+      
       // For admin/gerente/vendedor/ceo, check email whitelist
       // For design/designer/socio/sócio, allow any email with the correct role
-      
-      );
+      console.log('🔍 Verificando se precisa validar email...');
+      console.log('🔍 Cargo é admin/gerente/vendedor/ceo?', ['admin', 'gerente', 'vendedor', 'ceo'].includes(cleanRole));
       
       if (['admin', 'gerente', 'vendedor', 'ceo'].includes(cleanRole)) {
-        
+        console.log('🔍 Validando email para cargo:', role);
         const ADMIN_EMAILS = [
           'cleitondouglass@gmail.com',
           'cleitondouglass123@hotmail.com',
@@ -4355,23 +4426,25 @@ window.saveProducts = saveProducts;
           'gilmariofreitas387@gmail.com',
           'flavetyr@gmail.com'
         ];
-
-        );
-        ));
+        
+        console.log('🔍 Verificando email:', user.email, 'na lista:', ADMIN_EMAILS);
+        console.log('🔍 Email em minúsculas:', user.email.toLowerCase());
+        console.log('🔍 Está na lista?', ADMIN_EMAILS.includes(user.email.toLowerCase()));
         
         if (!ADMIN_EMAILS.includes(user.email.toLowerCase())) {
-          
+          console.log('❌ Email não autorizado:', user.email);
           await signOutFn(window.firebaseAuth);
           showLoginError('Acesso negado. Email não autorizado para administração.');
           return;
         }
-
-      } else {
         
+        console.log('✅ Email autorizado:', user.email);
+      } else {
+        console.log('✅ Cargo é socio/design, não precisa validar email');
       }
 
       // Save session
-      
+      console.log('🔍 Salvando sessão...');
       const sessionData = {
         uid: user.uid,
         email: user.email,
@@ -4379,22 +4452,26 @@ window.saveProducts = saveProducts;
         timestamp: Date.now()
       };
       sessionStorage.setItem('adminSession', JSON.stringify(sessionData));
+      console.log('✅ Sessão salva:', sessionData);
 
       // Show dashboard
-      
+      console.log('🔍 Tentando mostrar dashboard...');
       if (typeof showDashboard === 'function') {
-        
+        console.log('✅ Usando função showDashboard');
         showDashboard(role);
       } else {
-        
+        console.log('⚠️ showDashboard não está disponível, usando fallback');
         // Fallback: mostrar dashboard manualmente
         const authGate = document.getElementById('authGate');
         const dashboard = document.getElementById('dashboard');
-
+        console.log('🔍 authGate encontrado:', !!authGate);
+        console.log('🔍 dashboard encontrado:', !!dashboard);
+        
         if (authGate && dashboard) {
           authGate.classList.add('hidden');
           dashboard.classList.remove('hidden');
-
+          console.log('✅ Dashboard mostrado com sucesso!');
+          
           if (typeof setView === 'function') {
             setView(cleanRole);
           }
@@ -4545,21 +4622,25 @@ window.saveProducts = saveProducts;
   // Função de teste para verificar permissões
   async function testFirestorePermissions() {
     try {
-      
+      console.log('🧪 Testando permissões do Firestore...');
       const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       
       // Testar leitura de usuários
       const usersRef = collection(window.firebaseDb, 'users');
       const usersSnapshot = await getDocs(usersRef);
-
+      console.log('✅ Teste de usuários: OK -', usersSnapshot.size, 'documentos');
+      
       // Testar leitura de pedidos
       const ordersRef = collection(window.firebaseDb, 'orders');
       const ordersSnapshot = await getDocs(ordersRef);
-
+      console.log('✅ Teste de pedidos: OK -', ordersSnapshot.size, 'documentos');
+      
       // Testar leitura de registros
       const regsRef = collection(window.firebaseDb, 'registrations');
       const regsSnapshot = await getDocs(regsRef);
-
+      console.log('✅ Teste de registros: OK -', regsSnapshot.size, 'documentos');
+      
+      console.log('🎉 Todos os testes de permissão passaram!');
       return true;
     } catch (error) {
       console.error('❌ Erro no teste de permissões:', error);
@@ -4593,7 +4674,7 @@ let currentUserFilter = 'all'; // 'all', '30days', '7days', '1day'
 // Carregar usuários do Firestore
 async function loadUsers() {
   try {
-    
+    console.log('🔄 Carregando usuários...');
     const { collection, getDocs, query, orderBy, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     // 1) Carrega usuários
     const usersRef = collection(window.firebaseDb, 'users');
@@ -4625,7 +4706,7 @@ async function loadUsers() {
     });
 
     // 2) Usa atividade recente de pedidos como fallback de "último login"
-    
+    console.log('🔎 Buscando atividade recente em pedidos...');
     const ordersRef = collection(window.firebaseDb, 'orders');
     // Pega os mais recentes para manter leve
     const ordersSnap = await getDocs(query(ordersRef, orderBy('createdAt', 'desc'), limit(500)));
@@ -4657,7 +4738,8 @@ async function loadUsers() {
       }
       return u;
     });
-
+    
+    console.log(`✅ ${allUsers.length} usuários carregados`);
     applyUserFilter();
     updateUsersStats();
     displayUsers();
@@ -4965,7 +5047,7 @@ function setupFilterEventListeners() {
 // Esta função não é mais usada - foi substituída por renderPermissionsTable
 // Mantida apenas para compatibilidade, mas não deve ser chamada
 function renderUsersTable(users) {
-  
+  console.log('⚠️ renderUsersTable está obsoleta - use renderPermissionsTable');
   // Não fazer nada - a tabela de permissões é gerenciada separadamente
 }
 
@@ -5050,7 +5132,8 @@ async function updateUserRole(userId, newRole) {
     if (activeUserIndex !== -1) {
       newTablesUsers[activeUserIndex].role = newRole;
     }
-
+    
+    console.log('✅ Função do usuário atualizada com sucesso!');
   } catch (error) {
     console.error('Erro ao atualizar função do usuário:', error);
     alert('Erro ao atualizar função do usuário');
@@ -5174,7 +5257,7 @@ const permissionsPerPage = 10;
 // Carregar usuários especificamente para o card de permissões
 async function loadPermissionsUsers() {
   try {
-    
+    console.log('🔄 Carregando usuários para permissões...');
     const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     
     const usersRef = collection(window.firebaseDb, 'users');
@@ -5191,7 +5274,8 @@ async function loadPermissionsUsers() {
         lastLogin: userData.lastLoginAt ? userData.lastLoginAt.toDate() : null
       });
     });
-
+    
+    console.log(`✅ ${permissionsUsersData.length} usuários carregados para permissões`);
     renderPermissionsTable();
     updatePermissionsPagination();
   } catch (error) {
@@ -5203,7 +5287,7 @@ async function loadPermissionsUsers() {
 function renderPermissionsTable() {
   const tbody = document.getElementById('permissionsTableBody');
   if (!tbody) {
-    
+    console.log('❌ permissionsTableBody não encontrado');
     return;
   }
   
@@ -5326,7 +5410,7 @@ async function updatePermissionsUserRole(userId) {
     const currentRole = selectElement.getAttribute('data-current-role');
     
     if (newRole === currentRole) {
-      
+      console.log('ℹ️ Função não alterada para o usuário:', userId);
       return;
     }
     
@@ -5355,7 +5439,9 @@ async function updatePermissionsUserRole(userId) {
     if (user) {
       await logAdminAction('change_role', `Alterou cargo de ${user.email} para ${getRoleDisplayName(newRole)}`);
     }
-
+    
+    console.log('✅ Função do usuário atualizada com sucesso!');
+    
     // Mostrar feedback visual
     const button = selectElement.parentElement.nextElementSibling.querySelector('button');
     const originalText = button.textContent;
@@ -5438,7 +5524,7 @@ const tokensPerPage = 5;
 // Carregar usuários para gerenciamento de tokens
 async function loadTokensUsers() {
   try {
-    
+    console.log('🔄 Carregando usuários para tokens...');
     const { collection, getDocsFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const usersCol = collection(window.firebaseDb, 'users');
     const snapUsers = await getDocsFromServer(usersCol);
@@ -5460,7 +5546,8 @@ async function loadTokensUsers() {
       const tokensB = Number(b.tokens || 0);
       return tokensB - tokensA; // Decrescente
     });
-
+    
+    console.log(`✅ ${tokensUsersData.length} usuários carregados para tokens`);
     tokensFilteredData = [...tokensUsersData]; // Inicializar dados filtrados (já ordenado)
     renderTokensTable();
     updateTokensPagination();
@@ -5668,7 +5755,7 @@ let couponUsageFilters = { period: '7d', context: 'all' };
 // Carregar cupons
 async function loadCoupons() {
     try {
-        
+        console.log('🔄 Carregando cupons...');
         const { collection, getDocs, orderBy, query } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const couponsRef = collection(window.firebaseDb, 'coupons');
         const q = query(couponsRef, orderBy('createdAt', 'desc'));
@@ -5684,7 +5771,8 @@ async function loadCoupons() {
                 expirationDate: data.expirationDate?.toDate() || null
             });
         });
-
+        
+        console.log(`✅ ${couponsData.length} cupons carregados`);
         renderCouponsTable();
     } catch (error) {
         console.error('❌ Erro ao carregar cupons:', error);
@@ -5766,7 +5854,7 @@ function renderCouponsTable() {
 // Carregar histórico de uso de cupons
 async function loadCouponUsage() {
     try {
-        
+        console.log('🔄 Carregando histórico de uso de cupons...');
         const { collection, getDocs, orderBy, query } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const usageRef = collection(window.firebaseDb, 'couponUsage');
         const q = query(usageRef, orderBy('usedAt', 'desc'));
@@ -5781,7 +5869,8 @@ async function loadCouponUsage() {
                 usedAt: data.usedAt?.toDate() || new Date()
             });
         });
-
+        
+        console.log(`✅ ${couponUsageData.length} usos de cupons carregados`);
         // Inicializa filtros padrão e aplica
         applyCouponUsageFilters();
     } catch (error) {
@@ -5931,7 +6020,8 @@ async function createCoupon(event) {
     }
     
     try {
-
+        console.log('🔄 Criando cupom:', couponData.code);
+        
         // Verificar se o código já existe
         const existingCoupon = couponsData.find(c => c.code === couponData.code);
         if (existingCoupon) {
@@ -5942,7 +6032,8 @@ async function createCoupon(event) {
         // Salvar no Firestore
         const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const docRef = await addDoc(collection(window.firebaseDb, 'coupons'), couponData);
-
+        console.log('✅ Cupom criado com ID:', docRef.id);
+        
         // Log da ação
         await logAdminAction('create_coupon', `Criou cupom ${couponData.code} (${couponData.discountType === 'percentage' ? couponData.discountValue + '%' : 'R$ ' + couponData.discountValue})`);
         
@@ -5963,7 +6054,8 @@ async function createCoupon(event) {
 // Alternar status do cupom
 async function toggleCouponStatus(couponId, newStatus) {
     try {
-
+        console.log(`🔄 ${newStatus ? 'Ativando' : 'Desativando'} cupom:`, couponId);
+        
         const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         await updateDoc(doc(window.firebaseDb, 'coupons', couponId), {
             isActive: newStatus
@@ -5992,7 +6084,8 @@ async function deleteCoupon(couponId) {
     }
     
     try {
-
+        console.log('🔄 Excluindo cupom:', couponId);
+        
         const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         await deleteDoc(doc(window.firebaseDb, 'coupons', couponId));
         
@@ -6021,7 +6114,7 @@ const adminHistoryPerPage = 5;
 // Carregar histórico do admin
 async function loadAdminHistory() {
   try {
-    
+    console.log('🔄 Carregando histórico do admin...');
     const { collection, getDocsFromServer, orderBy, limit, query } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const historyCol = collection(window.firebaseDb, 'adminHistory');
     const q = query(historyCol, orderBy('timestamp', 'desc'), limit(50));
@@ -6035,7 +6128,8 @@ async function loadAdminHistory() {
         ...data
       });
     });
-
+    
+    console.log(`✅ ${adminHistoryData.length} ações carregadas do histórico`);
     adminHistoryFilteredData = [...adminHistoryData]; // Inicializar dados filtrados
     renderAdminHistoryTable();
     updateAdminHistoryPagination();
@@ -6098,7 +6192,7 @@ function renderAdminHistoryTable() {
 // Log de ação do admin
 async function logAdminAction(action, details) {
   try {
-    
+    console.log('🔄 Registrando ação do admin:', action, details);
     const { collection, addDoc, serverTimestamp, doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const historyCol = collection(window.firebaseDb, 'adminHistory');
     
@@ -6108,19 +6202,22 @@ async function logAdminAction(action, details) {
     const uid = sessionUser.uid || authUser?.uid || null;
     let adminEmail = sessionUser.email || authUser?.email || 'N/A';
     let adminRole = sessionUser.role || (window.adminRoleLower || '').toLowerCase() || 'N/A';
-
+    console.log('👤 Session user:', sessionUser);
+    console.log('👤 Auth user:', { uid: authUser?.uid, email: authUser?.email });
+    
     // Buscar dados completos do usuário para obter o nome
     let adminName = 'N/A';
     if (uid) {
       try {
-        
+        console.log('🔍 Buscando dados do usuário no Firebase...');
         const userRef = doc(window.firebaseDb, 'users', uid);
         const userSnap = await getDoc(userRef);
-        );
+        console.log('📄 Documento do usuário existe:', userSnap.exists());
         
         if (userSnap.exists()) {
           const userData = userSnap.data();
-
+          console.log('📊 Dados do usuário:', userData);
+          
           // Tentar diferentes campos para o nome
           if (userData.name && userData.name.trim() !== '') {
             adminName = userData.name;
@@ -6136,9 +6233,10 @@ async function logAdminAction(action, details) {
           // Completar email/role se faltarem
           if (adminEmail === 'N/A' && userData.email) adminEmail = userData.email;
           if (!adminRole || adminRole === 'N/A') adminRole = (userData.role || '').toLowerCase() || 'N/A';
-
-        } else {
           
+          console.log('👤 Nome extraído:', adminName);
+        } else {
+          console.warn('⚠️ Documento do usuário não existe no Firebase');
           // Usar parte do email como nome
           if (adminEmail && adminEmail !== 'N/A') {
             adminName = adminEmail.split('@')[0];
@@ -6147,7 +6245,7 @@ async function logAdminAction(action, details) {
           }
         }
       } catch (error) {
-        
+        console.warn('⚠️ Erro ao buscar nome do usuário:', error);
         // Usar parte do email como nome
         if (adminEmail && adminEmail !== 'N/A') {
           adminName = adminEmail.split('@')[0];
@@ -6156,7 +6254,7 @@ async function logAdminAction(action, details) {
         }
       }
     } else {
-      
+      console.warn('⚠️ UID não encontrado na sessão');
       // Usar parte do email como nome
       if (adminEmail && adminEmail !== 'N/A') {
         adminName = adminEmail.split('@')[0];
@@ -6171,9 +6269,12 @@ async function logAdminAction(action, details) {
       adminName: adminName,
       timestamp: serverTimestamp()
     };
-
+    
+    console.log('📝 Dados do log:', logData);
+    
     await addDoc(historyCol, logData);
-
+    console.log('✅ Ação registrada com sucesso no histórico');
+    
     // Recarregar histórico
     loadAdminHistory();
   } catch (error) {
@@ -6609,6 +6710,7 @@ async function recomputeTokenTotals(){
     const countEl = document.getElementById('tokensCount');
     if (countEl) countEl.textContent = `${totalPurchased} compras`;
 
+    console.log('✅ Tokens recomputed:', { totalPurchased, totalUsed });
   }catch(err){
     console.error('❌ Error recomputing tokens:', err);
   }
@@ -6670,7 +6772,7 @@ function clearWhatsAppLinkForm() {
 async function loadAdminWhatsAppLinks() {
   try {
     if (!window.firebaseDb) {
-      
+      console.warn('Firebase não inicializado ainda');
       return;
     }
     
@@ -6854,7 +6956,8 @@ async function saveWhatsAppLink() {
     
     // Limpar cache para forçar atualização
     whatsappLinksCache.clear();
-
+    console.log('🔍 Cache de links limpo após salvar');
+    
     clearWhatsAppLinkForm();
     loadAdminWhatsAppLinks();
     
@@ -6867,7 +6970,8 @@ async function saveWhatsAppLink() {
 // Editar link do WhatsApp
 async function editWhatsAppLink(linkId) {
   try {
-
+    console.log('🔍 Editando link:', linkId);
+    
     if (!window.firebaseDb) {
       showNotification('Firebase não inicializado ainda', 'error');
       return;
@@ -6880,7 +6984,8 @@ async function editWhatsAppLink(linkId) {
     
     if (linkSnap.exists()) {
       const linkData = linkSnap.data();
-
+      console.log('🔍 Dados do link:', linkData);
+      
       currentEditingWhatsAppLink = linkId;
       
       // Preencher o formulário
@@ -6893,9 +6998,10 @@ async function editWhatsAppLink(linkId) {
       
       // Abrir o modal
       openWhatsAppLinksModal();
-
-    } else {
       
+      console.log('✅ Formulário preenchido e modal aberto');
+    } else {
+      console.log('❌ Link não encontrado');
       showNotification('Link não encontrado', 'error');
     }
     
@@ -6938,9 +7044,10 @@ const CACHE_TTL = 30000; // 30 segundos
 // Função para obter link do WhatsApp dinamicamente
 async function getWhatsAppLink(eventType, schedule = null) {
   try {
+    console.log('🔍 getWhatsAppLink - EventType:', eventType, 'Schedule:', schedule);
 
     if (!window.firebaseDb) {
-      
+      console.warn('⚠️ Firebase não inicializado ainda');
       return 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
     }
 
@@ -6969,7 +7076,7 @@ async function getWhatsAppLink(eventType, schedule = null) {
     const cacheKey = `${type}_${hour || 'general'}`;
     const cached = whatsappLinksCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
-      
+      console.log('🔍 Link encontrado no cache:', cached.link);
       return cached.link;
     }
 
@@ -6979,7 +7086,7 @@ async function getWhatsAppLink(eventType, schedule = null) {
 
     // 1) Tenta link específico para o horário (schedule = '18h')
     if (hour) {
-      
+      console.log('🔍 Buscando link específico para horário normalizado:', hour);
       const specificQuery = query(
         whatsappLinksRef,
         where('eventType', '==', type),
@@ -6988,8 +7095,11 @@ async function getWhatsAppLink(eventType, schedule = null) {
       );
       const specificSnapshot = await getDocs(specificQuery);
 
+      console.log('🔍 Resultado busca específica:', specificSnapshot.docs.length, 'documentos');
+
       if (!specificSnapshot.empty) {
         const link = specificSnapshot.docs[0].data().link;
+        console.log('✅ Link específico encontrado:', link);
 
         whatsappLinksCache.set(cacheKey, { link, timestamp: Date.now() });
         return link;
@@ -6997,7 +7107,7 @@ async function getWhatsAppLink(eventType, schedule = null) {
     }
 
     // 2) Tenta link geral eventType + schedule = null
-    para evento:', type);
+    console.log('🔍 Buscando link geral (schedule null) para evento:', type);
     const generalQuery = query(
       whatsappLinksRef,
       where('eventType', '==', type),
@@ -7008,13 +7118,13 @@ async function getWhatsAppLink(eventType, schedule = null) {
 
     if (!generalSnapshot.empty) {
       const link = generalSnapshot.docs[0].data().link;
-      encontrado:', link);
+      console.log('✅ Link geral (null) encontrado:', link);
       whatsappLinksCache.set(cacheKey, { link, timestamp: Date.now() });
       return link;
     }
 
     // 3) Alguns cadastros podem usar string vazia em vez de null para "sem horário"
-    para evento:', type);
+    console.log('🔍 Buscando link geral (schedule vazio) para evento:', type);
     const generalEmptyQuery = query(
       whatsappLinksRef,
       where('eventType', '==', type),
@@ -7025,7 +7135,7 @@ async function getWhatsAppLink(eventType, schedule = null) {
 
     if (!generalEmptySnapshot.empty) {
       const link = generalEmptySnapshot.docs[0].data().link;
-      encontrado:', link);
+      console.log('✅ Link geral (vazio) encontrado:', link);
       whatsappLinksCache.set(cacheKey, { link, timestamp: Date.now() });
       return link;
     }
@@ -7041,6 +7151,7 @@ async function getWhatsAppLink(eventType, schedule = null) {
     };
 
     const fallbackLink = defaultLinks[type] || 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO';
+    console.log('🔍 Usando link padrão:', fallbackLink);
 
     whatsappLinksCache.set(cacheKey, { link: fallbackLink, timestamp: Date.now() });
     return fallbackLink;
@@ -7108,10 +7219,10 @@ async function createAllWhatsAppLinks() {
           createdBy: 'system'
         });
         createdCount++;
-        
+        console.log(`✅ Link geral criado para ${config.name}`);
       } else {
         skippedCount++;
-        
+        console.log(`⏭️ Link geral já existe para ${config.name}`);
       }
 
       // Criar links específicos para cada horário
@@ -7134,10 +7245,10 @@ async function createAllWhatsAppLinks() {
             createdBy: 'system'
           });
           createdCount++;
-          
+          console.log(`✅ Link criado para ${config.name} - ${schedule}`);
         } else {
           skippedCount++;
-          
+          console.log(`⏭️ Link já existe para ${config.name} - ${schedule}`);
         }
       }
     }
@@ -7161,7 +7272,9 @@ function filterWhatsAppLinks() {
   const eventFilter = document.getElementById('whatsappEventFilter')?.value || '';
   const statusFilter = document.getElementById('whatsappStatusFilter')?.value || '';
   const searchFilter = document.getElementById('whatsappSearchFilter')?.value.toLowerCase() || '';
-
+  
+  console.log('🔍 Filtros aplicados:', { eventFilter, statusFilter, searchFilter });
+  
   let filteredLinks = allWhatsAppLinks.filter(link => {
     // Filtro por evento
     if (eventFilter && link.eventType !== eventFilter) {
@@ -7183,7 +7296,9 @@ function filterWhatsAppLinks() {
     
     return true;
   });
-
+  
+  console.log('🔍 Links filtrados:', filteredLinks.length);
+  
   // Renderizar apenas os links filtrados
   renderWhatsAppLinksTable(filteredLinks);
   renderWhatsAppLinksList(filteredLinks);

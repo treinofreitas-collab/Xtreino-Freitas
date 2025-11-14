@@ -268,72 +268,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Verificar se usuário é admin autorizado
 async function checkAdminAccess() {
-
+    console.log('🔍 Verificando acesso admin...');
+    
     if (!window.isLoggedIn || !window.firebaseAuth?.currentUser) {
-        
+        console.log('❌ Usuário não logado');
         return false;
     }
     
     const user = window.firebaseAuth.currentUser;
     const authorizedEmails = ['cleitondouglass@gmail.com', 'cleitondouglass123@hotmail.com', 'gilmariofreitas378@gmail.com', 'gilmariofreitas387@gmail.com'];
-
+    
+    console.log('📧 Email do usuário:', user.email);
+    
     // Verificar role no Firestore primeiro
     try {
         const uid = user.uid;
-
+        console.log('🔍 UID do usuário:', uid);
+        console.log('🔍 Firebase DB disponível:', !!window.firebaseDb);
+        
         const { doc, getDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const snap = await getDoc(doc(collection(window.firebaseDb,'users'), uid));
         if (snap.exists()) {
             const userData = snap.data();
             const role = (userData.role || '').toLowerCase();
-
+            console.log('🎭 Role encontrado:', userData.role, '-> normalizado:', role);
+            console.log('📊 Dados completos do usuário:', userData);
+            
             // Para design e socio, permitir qualquer email (incluindo variações)
             const designVariations = ['design', 'designer', 'desgin', 'desgine'];
             const socioVariations = ['socio', 'sócio'];
-
-            );
-            );
+            
+            console.log('🔍 Verificando cargo:', role);
+            console.log('🔍 É design?', designVariations.includes(role));
+            console.log('🔍 É socio?', socioVariations.includes(role));
             
             // Verificação adicional para socio com diferentes variações
             const isSocio = role === 'socio' || role === 'sócio' || role.includes('socio') || role.includes('sócio');
-            ?', isSocio);
+            console.log('🔍 É socio (verificação adicional)?', isSocio);
             
             if (designVariations.includes(role) || socioVariations.includes(role) || isSocio) {
-                ');
+                console.log('✅ Acesso liberado para Design/Sócio (cargo:', role, ')');
                 return true;
             }
-
+            
+            console.log('❌ Cargo não autorizado:', role, '- Variações de design:', designVariations, '- Variações de socio:', socioVariations);
+            
             // Para outros cargos, verificar email na whitelist
             if (['admin', 'ceo', 'gerente', 'vendedor'].includes(role)) {
                 if (!authorizedEmails.includes(user.email.toLowerCase())) {
-                    
+                    console.log('❌ Email não autorizado:', user.email);
                     return false;
                 }
-                
+                console.log('✅ Email autorizado para', role);
                 return true;
             }
         } else {
-            
+            console.log('❌ Documento de usuário não encontrado no Firestore');
         }
     } catch (error) {
         console.error('❌ Erro ao verificar acesso admin:', error);
     }
-
+    
+    console.log('❌ Retornando false - nenhuma condição de acesso foi atendida');
     return false;
 }
 
 // Mostrar/esconder link ADMIN baseado no acesso
 async function updateAdminLinkVisibility() {
-    
+    console.log('🔄 Atualizando visibilidade do link ADMIN...');
     const adminLink = document.getElementById('adminLink');
     const adminLinkMobile = document.getElementById('adminLinkMobile');
     if (!adminLink && !adminLinkMobile) {
-        
+        console.log('❌ Elementos adminLink/adminLinkMobile não encontrados');
         return;
     }
-
+    
+    console.log('👤 Usuário logado:', window.isLoggedIn);
+    console.log('🔥 Firebase Auth:', !!window.firebaseAuth?.currentUser);
+    
     const hasAccess = await checkAdminAccess();
-
+    console.log('🔐 Has access:', hasAccess);
+    
     const toggle = (el, show) => {
         if (!el) return;
         if (show) el.classList.remove('hidden');
@@ -341,7 +356,7 @@ async function updateAdminLinkVisibility() {
     };
     toggle(adminLink, hasAccess);
     toggle(adminLinkMobile, hasAccess);
-    
+    console.log(hasAccess ? '✅ Link ADMIN mostrado' : '❌ Link ADMIN escondido');
 }
 
 function requestAdminAccess(){
@@ -381,6 +396,7 @@ async function logout(){
 // Função removida - agora usa client.html
 
 // Função removida - agora usa client.html
+
 
 // Todas as funções do modal de conta removidas - agora usa client.html
 // Mobile menu toggle
@@ -516,12 +532,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const sp = new URLSearchParams(location.search);
                 const mpStatus = sp.get('mp_status');
                 const preferenceId = sp.get('preference-id');
-
+                console.log('MP Return Check:', { mpStatus, preferenceId, url: window.location.href });
+                
                 // Só verificar pagamentos se há evidência real de uma tentativa de pagamento
                 const hasPaymentEvidence = mpStatus || preferenceId || sessionStorage.getItem('lastExternalRef') || sessionStorage.getItem('lastRegId');
                 
                 if (!mpStatus && preferenceId) {
-                    
+                    console.log('No mp_status but has preference-id, checking payment status...');
                     // Mostrar modal de processamento enquanto verifica
                     openPaymentConfirmModal('Pagamento em processamento', 'Estamos aguardando a confirmação do PIX. Assim que aprovado, avisaremos aqui.');
                     checkPaymentStatus(preferenceId);
@@ -529,13 +546,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Se não tem mp_status mas há evidência de pagamento, tentar usar external_reference salvo
                     const externalRef = sessionStorage.getItem('lastExternalRef');
                     if (externalRef) {
-                        
+                        console.log('No mp_status or preference-id, checking with external_reference...');
                         // Mostrar modal de processamento enquanto verifica
                         openPaymentConfirmModal('Pagamento em processamento', 'Estamos aguardando a confirmação do PIX. Assim que aprovado, avisaremos aqui.');
                         checkPaymentStatus(externalRef);
                     }
                 } else if (!hasPaymentEvidence) {
-                    
+                    console.log('No payment evidence found - user is just visiting the site normally');
                     // Limpar dados antigos de pagamento se existirem
                     sessionStorage.removeItem('lastExternalRef');
                     sessionStorage.removeItem('lastRegId');
@@ -544,9 +561,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 } else if (mpStatus === 'success') {
                     if (mpStatus === 'success') {
-                        
+                        console.log('Payment successful, processing...');
                         const regId = sessionStorage.getItem('lastRegId');
-                        
+                        console.log('RegId from sessionStorage:', regId);
                         if (regId) {
                             import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js')
                                 .then(({ doc, setDoc, getDoc, collection }) => {
@@ -555,21 +572,21 @@ document.addEventListener('DOMContentLoaded', function() {
                                       .then(()=> getDoc(ref))
                                       .then(snap=>{ const d = snap.exists()? snap.data():{}; return d.groupLink || null; });
                                 }).then((groupLink)=>{
-                                    
+                                    console.log('Registration updated, showing modal');
                                     openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.', groupLink);
                                 }).catch((e)=>{
                                     console.error('Error updating registration:', e);
                                     openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
                                 });
                         } else {
-                            
+                            console.log('No regId, creating local order');
                             // Fallback: cria registro local para exibir na aba pedidos
                             try{
                                 const info = JSON.parse(sessionStorage.getItem('lastRegInfo')||'{}');
                                 const orders = JSON.parse(localStorage.getItem('localOrders')||'[]');
                                 orders.unshift({ title: info.title||'Reserva', amount: info.price||0, status:'paid', date: new Date().toISOString() });
                                 localStorage.setItem('localOrders', JSON.stringify(orders));
-                                
+                                console.log('Local order created:', orders[0]);
                             }catch(e){ console.error('Error creating local order:', e); }
                             openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
                         }
@@ -584,6 +601,7 @@ document.addEventListener('DOMContentLoaded', function() {
     checkFirebaseReady();
 });
 
+
 // Função para sincronizar dados offline quando a conexão voltar
 async function syncOfflineData() {
     try {
@@ -597,10 +615,10 @@ async function syncOfflineData() {
             const { doc, setDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ref = doc(collection(window.firebaseDb, 'users'), uid);
             await setDoc(ref, profile, { merge: true });
-            
+            console.log('Dados offline sincronizados com Firestore');
         }
     } catch (e) {
-        
+        console.log('Erro ao sincronizar dados offline:', e);
     }
 }
 
@@ -609,7 +627,7 @@ async function checkAuthState() {
         if (window.firebaseReady && window.firebaseAuth) {
             const { onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
             onAuthStateChanged(window.firebaseAuth, (user) => {
-                
+                console.log('Auth state changed:', user ? 'Logged in' : 'Logged out');
                 if (user) {
                     // Usuário está logado
                     window.isLoggedIn = true;
@@ -640,7 +658,7 @@ async function loadUserProfile(uid) {
             const snap = await getDoc(ref);
             if (snap.exists()) {
                 window.currentUserProfile = snap.data();
-                
+                console.log('Perfil carregado do Firestore');
             } else {
                 // Cria perfil básico se não existir
                 window.currentUserProfile = {
@@ -651,7 +669,7 @@ async function loadUserProfile(uid) {
                     role: 'Vendedor',
                     level: 'Associado Treino'
                 };
-                ');
+                console.log('Perfil básico criado (Firebase pronto, sem doc)');
             }
         } else {
             // Fallback: cria perfil básico se Firebase não estiver pronto (sem localStorage)
@@ -663,7 +681,7 @@ async function loadUserProfile(uid) {
                 role: 'Usuario',
                 level: 'Associado Treino'
             };
-            ');
+            console.log('Perfil básico criado (Firebase offline, em memória)');
         }
     } catch (e) {
         console.error('Erro ao carregar perfil:', e);
@@ -746,13 +764,18 @@ function loadTokenHistory() {
 // Helpers de token (saldo simples em perfil.tokens, número decimal em BRL)
 function getTokenBalance() {
     const balance = Number(window.currentUserProfile?.tokens || 0);
+    console.log('🔍 Token balance check:', { 
+        profile: window.currentUserProfile, 
+        tokens: window.currentUserProfile?.tokens, 
+        balance 
+    });
     return balance;
 }
 function canSpendTokens(amountBRL) {
     const balance = getTokenBalance();
     const amount = Number(amountBRL || 0);
     const canSpend = balance >= amount;
-    
+    console.log('🔍 Can spend tokens check:', { balance, amount, canSpend });
     return canSpend;
 }
 async function spendTokens(amountBRL) {
@@ -761,7 +784,9 @@ async function spendTokens(amountBRL) {
     
     const newBalance = Number((getTokenBalance() - amt).toFixed(2));
     window.currentUserProfile.tokens = newBalance;
-
+    
+    console.log(`🔍 Spending ${amt} tokens. New balance: ${newBalance}`);
+    
     // Persistir no Firestore (sem localStorage)
     await persistUserProfile(window.currentUserProfile);
     
@@ -812,21 +837,23 @@ async function syncUserTokens() {
             
             if (localTokens === 0 || currentTokens > localTokens + 5) {
                 window.currentUserProfile.tokens = currentTokens;
-                
+                console.log('✅ Tokens synced from Firestore:', currentTokens);
             } else {
-                
+                console.log('🔍 Local tokens are more recent, keeping:', localTokens);
             }
             
             // Dar token inicial apenas se o usuário realmente não tem tokens (não é 0, mas undefined/null)
             if (window.currentUserProfile.tokens === undefined || window.currentUserProfile.tokens === null) {
                 await setDoc(userRef, { tokens: 1 }, { merge: true });
                 window.currentUserProfile.tokens = 1;
-                
+                console.log('🎁 Initial token given to user with undefined tokens');
             }
             
             // Atualizar localStorage também
             localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile));
-
+            
+            console.log('✅ Final token balance:', window.currentUserProfile.tokens);
+            
             // Atualizar interface
             renderClientArea();
             updateHeaderTokenBadges();
@@ -862,16 +889,16 @@ async function ensureUserProfile(user) {
             if (!snap.exists()) {
                 await setDoc(ref, baseProfile);
                 window.currentUserProfile = baseProfile;
-                
+                console.log('✅ Perfil criado no Firestore');
             } else {
                 const data = snap.data();
                 window.currentUserProfile = { ...baseProfile, ...data };
-                
+                console.log('✅ Perfil carregado do Firestore:', { tokens: data.tokens });
             }
         } else {
             // Sem Firebase: usa somente base em memória (não persiste em localStorage)
                 window.currentUserProfile = baseProfile;
-            
+            console.log('⚠️ Firebase indisponível — usando perfil em memória.');
         }
         
         // Sincronização automática removida para evitar reset do saldo
@@ -879,13 +906,14 @@ async function ensureUserProfile(user) {
         //     await syncUserTokens();
         // }
     } catch (err) {
-        
+        console.warn('Perfil: erro ao carregar, usando perfil em memória.', err);
         window.currentUserProfile = baseProfile;
     }
 }
 
 async function persistUserProfile(profile){
     try {
+        console.log('🔍 Persisting profile:', { firebaseReady: window.firebaseReady, hasUid: !!profile?.uid });
 
         // Garantir UID presente
         if (!profile.uid && window.firebaseAuth && window.firebaseAuth.currentUser) {
@@ -900,9 +928,9 @@ async function persistUserProfile(profile){
             const { doc, setDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ref = doc(collection(window.firebaseDb, 'users'), profile.uid);
             await setDoc(ref, profile, { merge: true });
-            
+            console.log('✅ Profile saved to Firestore');
         } else {
-            
+            console.warn('⚠️ Firebase unavailable when persisting profile; keeping in memory only');
         }
     } catch(error) {
         console.error('❌ Error persisting profile:', error);
@@ -1211,15 +1239,15 @@ function showProductModal(productId){
     }
 
     // Campo de cupom apenas para eventos (ids iniciando com evt-), exceto Xtreino Tokens
-    , 'is not xtreino-gratuito:', productId !== 'evt-xtreino-gratuito');
+    console.log('🔍 Debug cupom - productId:', productId, 'startsWith evt-:', productId.startsWith('evt-'), 'is not xtreino-gratuito:', productId !== 'evt-xtreino-gratuito');
     if (productId.startsWith('evt-') && productId !== 'evt-xtreino-gratuito'){
-        
+        console.log('✅ Adicionando campo de cupom para:', productId);
         const cupomWrap = document.createElement('div');
         cupomWrap.className = 'mt-3';
         cupomWrap.innerHTML = '<label class="block text-sm font-medium mb-2">Cupom de desconto</label><input id="couponCode" type="text" placeholder="ADMFALL" class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none">\n<p class="text-xs text-gray-500 mt-1">Use <strong>ADMFALL</strong> para 5% de desconto.</p>';
         optContainer.appendChild(cupomWrap);
     } else {
-        
+        console.log('❌ NÃO adicionando campo de cupom para:', productId);
     }
 
     // Preço inicial e atualização dinâmica
@@ -1417,7 +1445,8 @@ async function applyCoupon() {
     }
     
     try {
-
+        console.log('🔄 Validando cupom:', couponCode);
+        
         // Importar Firebase
         const { collection, getDocs, query, where, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         
@@ -1445,7 +1474,9 @@ async function applyCoupon() {
         appliedCoupon = coupon;
         updatePriceWithCoupon();
         showCouponMessage(`Cupom aplicado! Desconto: ${getDiscountText(coupon)}`, 'success');
-
+        
+        console.log('✅ Cupom aplicado:', coupon);
+        
     } catch (error) {
         console.error('❌ Erro ao validar cupom:', error);
         showCouponMessage('Erro ao validar cupom. Tente novamente.', 'error');
@@ -1564,6 +1595,7 @@ function getDiscountText(coupon) {
     }
 }
 
+
 async function handlePurchase(event) {
     event.preventDefault();
     const product = products[currentProduct];
@@ -1655,9 +1687,11 @@ async function handlePurchase(event) {
                 timestamp: Date.now(),
                 type: 'digital_product' // Marcar como produto digital
             };
-
+            
+            console.log('🔍 Attempting to save digital product order:', orderData);
             const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
-
+            console.log('✅ Digital product order saved to Firestore with ID:', docRef.id);
+            
             // Salvar external_reference para o webhook
             const externalRef = `digital_${docRef.id}`;
             await updateDoc(docRef, { external_reference: externalRef });
@@ -2003,7 +2037,7 @@ async function heroPurchaseTokens(){
             await updateDoc(docRef, { external_reference: externalRef });
             try { sessionStorage.setItem('lastExternalRef', externalRef); } catch(_) {}
         } catch(e) {
-            
+            console.warn('Não foi possível criar ordem local para tokens:', e);
         }
 
         const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined, external_reference: externalRef }) });
@@ -2779,6 +2813,10 @@ window.closeFAQModal = function() {
     document.getElementById('faqModal').classList.add('hidden');
 }
 
+
+
+
+
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
@@ -3181,7 +3219,9 @@ function openScheduleModal(eventType){
         if (submitBtn) {
             submitBtn.textContent = '🛒 Finalizar Compra';
         }
-
+        
+        console.log('Modal de produto aberto - coluna esquerda escondida');
+        
         // Esconder botão "Comprar tokens"
         const buyTokensBtn = document.getElementById('buyTokensBtn');
         if (buyTokensBtn) buyTokensBtn.classList.add('hidden');
@@ -4134,9 +4174,11 @@ async function handleProductPurchase(productId, cfg) {
                 timestamp: Date.now(),
                 type: 'digital_product'
             };
-
+            
+            console.log('🔍 Attempting to save product order:', orderData);
             const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
-
+            console.log('✅ Product order saved to Firestore with ID:', docRef.id);
+            
             // Salvar external_reference para o webhook
             var externalRef = `digital_${docRef.id}`;
             await updateDoc(docRef, { external_reference: externalRef });
@@ -4499,7 +4541,8 @@ async function submitSchedule(e, useTokens=false){
                         updatedAt: new Date()
                     });
                 }
-
+                
+                console.log(`✅ ${regIds.length} reservas confirmadas e atualizadas com pagamento via tokens`);
             } catch (updateError) {
                 console.error('Erro ao atualizar reservas:', updateError);
                 alert('Reservas criadas mas houve erro ao confirmar. Contate o suporte.');
@@ -4643,7 +4686,7 @@ function closeFreeWhatsModal(){
 
 // Modal confirmação
 function openPaymentConfirmModal(title, msg, groupLink){
-    
+    console.log('Opening payment confirmation modal:', { title, msg, groupLink });
     const m = document.getElementById('paymentConfirmModal');
     const t = document.getElementById('paymentConfirmTitle');
     const p = document.getElementById('paymentConfirmMsg');
@@ -4686,7 +4729,7 @@ function openPaymentConfirmModal(title, msg, groupLink){
     // Garantir centralização: container precisa estar em display:flex
     m.classList.remove('hidden');
     m.classList.add('flex');
-    
+    console.log('Payment confirmation modal opened successfully');
 }
 function closePaymentConfirmModal(){
     const m = document.getElementById('paymentConfirmModal');
@@ -4696,7 +4739,8 @@ function closePaymentConfirmModal(){
 // Verificar status do pagamento via API do Mercado Pago
 async function checkPaymentStatus(preferenceId) {
     try {
-
+        console.log('Checking payment status for preference:', preferenceId);
+        
         // Marcar que estamos verificando um pagamento real
         sessionStorage.setItem('checkingPayment', 'true');
         
@@ -4715,18 +4759,19 @@ async function checkPaymentStatus(preferenceId) {
         }
         
         const data = await response.json();
-
+        console.log('Payment status response:', data);
+        
         if (data.status === 'approved') {
-            
+            console.log('Payment approved, processing...');
             processSuccessfulPayment();
         } else if (data.status === 'pending') {
-            
+            console.log('Payment still pending, will check again in 10 seconds...');
             setTimeout(() => checkPaymentStatus(preferenceId), 10000);
         } else if (data.status === 'rejected') {
-            
+            console.log('Payment was rejected');
             openPaymentConfirmModal('Pagamento Rejeitado', 'Seu pagamento foi rejeitado. Tente novamente ou use outro método de pagamento.');
         } else {
-            
+            console.log('Payment status:', data.status);
             // Para outros status, não mostrar modal automaticamente
             // O usuário pode verificar o status na área do cliente
         }
@@ -4742,7 +4787,8 @@ async function checkPaymentStatus(preferenceId) {
 function processSuccessfulPayment() {
     const regId = sessionStorage.getItem('lastRegId');
     const extRef = sessionStorage.getItem('lastExternalRef');
-
+    console.log('Processing successful payment, regId:', regId);
+    
     // Limpar dados de pagamento após processar com sucesso
     sessionStorage.removeItem('lastExternalRef');
     sessionStorage.removeItem('lastRegId');
@@ -4779,21 +4825,21 @@ function processSuccessfulPayment() {
                   .then(()=> getDoc(ref))
                   .then(snap=>{ const d = snap.exists()? snap.data():{}; return d.groupLink || null; });
             }).then((groupLink)=>{
-                
+                console.log('Registration updated, showing modal');
                 openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.', groupLink);
             }).catch((e)=>{
                 console.error('Error updating registration:', e);
                 openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
             });
     } else {
-        
+        console.log('No regId, creating local order');
         // Fallback: cria registro local para exibir na aba pedidos
         try{
             const info = JSON.parse(sessionStorage.getItem('lastRegInfo')||'{}');
             const orders = JSON.parse(localStorage.getItem('localOrders')||'[]');
             orders.unshift({ title: info.title||'Reserva', amount: info.price||0, status:'paid', date: new Date().toISOString() });
             localStorage.setItem('localOrders', JSON.stringify(orders));
-            
+            console.log('Local order created:', orders[0]);
         }catch(e){ console.error('Error creating local order:', e); }
         openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
     }
@@ -4848,14 +4894,15 @@ async function useTokensForEvent(eventType){
     }
     
     // Sincronização forçada removida para evitar reset do saldo
-    // 
+    // console.log('🔄 Forcing token sync before use...');
     // await syncUserTokens();
     
     // Verificar se tem tokens suficientes
     const profile = window.currentUserProfile || {};
-
+    console.log('🔍 useTokensForEvent - Profile check:', { profile, tokens: profile.tokens, cost });
+    
     if (!profile || profile.tokens === undefined || profile.tokens === null || Number(profile.tokens) < Number(cost)) {
-        
+        console.log('❌ Insufficient tokens:', { profile, tokens: profile.tokens, cost });
         alert(`Saldo insuficiente. Você precisa de ${cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
         return;
     }
@@ -5075,7 +5122,9 @@ async function createTokenSchedule(eventType, cost) {
             createdAt: new Date(),
             timestamp: Date.now()
         };
-
+        
+        console.log('🔍 Creating token schedule:', scheduleData);
+        
         // Salvar no Firestore
         const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         
@@ -5084,7 +5133,8 @@ async function createTokenSchedule(eventType, cost) {
             ...scheduleData,
             createdAt: serverTimestamp() // Usar serverTimestamp para consistência
         });
-
+        console.log('✅ Token schedule created with ID:', regDocRef.id);
+        
         // 2. Criar registro leve em 'orders' para aparecer no "Meus Pedidos"
         try {
             await addDoc(collection(window.firebaseDb, 'orders'), {
@@ -5108,7 +5158,7 @@ async function createTokenSchedule(eventType, cost) {
                 timestamp: Date.now()
             });
         } catch(orderErr) {
-            :', orderErr);
+            console.warn('⚠️ Falha ao criar ordem leve para tokens (seguindo com registrations):', orderErr);
         }
         // Apenas salvar o registration acima e atualizar UI/local
         
@@ -5191,14 +5241,14 @@ function updateProfile(event){
                     return setDoc(ref, profile, { merge: true });
                 })
                 .then(() => {
-                    
+                    console.log('Perfil salvo no Firestore');
                 })
                 .catch((e) => {
-                    
+                    console.log('Firestore offline, perfil salvo localmente');
                 });
         }
     } catch (e) {
-        
+        console.log('Firestore offline, perfil salvo localmente');
     }
     
     // Atualizar perfil local
@@ -5274,7 +5324,8 @@ async function applyScheduleCoupon() {
     }
     
     try {
-
+        console.log('🔄 Validando cupom para eventos:', couponCode);
+        
         // Importar Firebase
         const { collection, getDocs, query, where, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         
@@ -5302,7 +5353,9 @@ async function applyScheduleCoupon() {
         appliedScheduleCoupon = coupon;
         updateSchedulePriceWithCoupon();
         showScheduleCouponMessage(`Cupom aplicado! Desconto: ${getDiscountText(coupon)}`, 'success');
-
+        
+        console.log('✅ Cupom aplicado para eventos:', coupon);
+        
     } catch (error) {
         console.error('❌ Erro ao validar cupom:', error);
         showScheduleCouponMessage('Erro ao validar cupom. Tente novamente.', 'error');
@@ -5396,7 +5449,8 @@ async function recordCouponUsage(couponId, couponCode, orderValue, discountAmoun
         
         // Atualizar contador de uso do cupom
         await updateCouponUsageCount(couponId);
-
+        
+        console.log('✅ Uso de cupom registrado:', usageData);
     } catch (error) {
         console.error('❌ Erro ao registrar uso de cupom:', error);
     }
@@ -5411,7 +5465,8 @@ async function updateCouponUsageCount(couponId) {
         await updateDoc(couponRef, {
             usageCount: increment(1)
         });
-
+        
+        console.log('✅ Contador de uso do cupom atualizado');
     } catch (error) {
         console.error('❌ Erro ao atualizar contador de uso:', error);
     }
@@ -5429,4 +5484,5 @@ window.openTokensModal = openTokensModal;
 window.closeTokensModal = closeTokensModal;
 window.openFreeWhatsModal = openFreeWhatsModal;
 window.closeFreeWhatsModal = closeFreeWhatsModal;
+
 

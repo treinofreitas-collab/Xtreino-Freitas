@@ -10,22 +10,29 @@ let db = null;
 
 // Inicializar Firebase imediatamente
 function initializeFirebase() {
-
+  console.log('🔍 Initializing Firebase...');
+  console.log('🔍 window.firebaseApp:', !!window.firebaseApp);
+  console.log('🔍 window.firebaseAuth:', !!window.firebaseAuth);
+  console.log('🔍 window.firebaseDb:', !!window.firebaseDb);
+  console.log('🔍 window.FIREBASE_CONFIG:', !!window.FIREBASE_CONFIG);
+  
   if (window.firebaseApp && window.firebaseAuth && window.firebaseDb) {
     app = window.firebaseApp;
     auth = window.firebaseAuth;
     db = window.firebaseDb;
-
+    console.log('✅ Firebase initialized from global instances');
+    console.log('🔍 DB after global init:', typeof db, db ? db.constructor.name : 'null');
     return true;
   }
   
   if (window.FIREBASE_CONFIG) {
     // Fallback: initialize here if global init hasn't run yet
-    
+    console.log('🔍 Initializing Firebase from FIREBASE_CONFIG...');
     app = initializeApp(window.FIREBASE_CONFIG);
     auth = getAuth(app);
     db = getFirestore(app);
-
+    console.log('✅ Firebase initialized from FIREBASE_CONFIG');
+    console.log('🔍 DB after local init:', typeof db, db ? db.constructor.name : 'null');
     return true;
   }
   
@@ -35,6 +42,7 @@ function initializeFirebase() {
 
 // Inicializar Firebase
 const firebaseInitialized = initializeFirebase();
+console.log('🔍 Firebase initialization result:', firebaseInitialized);
 
 // Ensure local persistence for auth session
 if (auth && auth.setPersistence) {
@@ -63,23 +71,24 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // Check authentication state
 async function checkAuthState() {
-
+    console.log('🔍 Checking auth state...');
+    console.log('🔍 Auth instance:', auth ? 'Available' : 'NULL');
     if (!auth) {
-        
+        console.log('❌ Auth not available, showing login prompt');
         showLoginPrompt();
         return;
     }
     onAuthStateChanged(auth, async (user) => {
-        ` : 'User logged out');
+        console.log('🔍 Auth state changed:', user ? `User logged in: ${user.email} (${user.uid})` : 'User logged out');
         if (user) {
             currentUser = user;
-            
+            console.log('✅ User authenticated, loading profile and dashboard');
             await loadUserProfile();
             await loadDashboard();
             // Hide login prompt if user is logged in
             hideLoginPrompt();
         } else {
-            
+            console.log('❌ User not authenticated, showing login prompt');
             // Show login prompt instead of redirecting
             showLoginPrompt();
         }
@@ -155,14 +164,16 @@ async function loadUserProfile() {
     try {
         // Verificar se o usuário está autenticado
         if (!currentUser || !currentUser.uid) {
-            
+            console.warn('Usuário não autenticado, não é possível carregar perfil');
             return;
         }
-
+        
+        console.log('🔍 Loading user profile for:', currentUser.uid);
+        
         // Usar o mesmo perfil do script.js para manter consistência
         if (window.currentUserProfile && window.currentUserProfile.uid === currentUser.uid) {
             userProfile = window.currentUserProfile;
-            
+            console.log('✅ User profile loaded from window.currentUserProfile:', userProfile);
         } else {
             // Fallback: carregar do Firestore se não estiver disponível no window
             const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
@@ -170,9 +181,9 @@ async function loadUserProfile() {
                 userProfile = userDoc.data();
                 // Sincronizar com window.currentUserProfile
                 window.currentUserProfile = userProfile;
-                
+                console.log('✅ User profile loaded from Firestore and synced:', userProfile);
             } else {
-                
+                console.log('❌ User document not found, creating default profile');
                 // Create default profile
                 userProfile = {
                     name: currentUser.displayName || '',
@@ -188,7 +199,7 @@ async function loadUserProfile() {
                 await setDoc(doc(db, 'users', currentUser.uid), userProfile);
                 // Sincronizar com window.currentUserProfile
                 window.currentUserProfile = userProfile;
-                
+                console.log('✅ Default profile created and synced:', userProfile);
             }
         }
         
@@ -209,7 +220,7 @@ async function loadDashboard() {
     try {
         // Garantir que o userProfile seja carregado primeiro
         if (!userProfile && currentUser) {
-            
+            console.log('🔍 UserProfile not loaded, loading it first...');
             await loadUserProfile();
         }
         
@@ -228,7 +239,7 @@ async function loadRecentOrders() {
     try {
         // Verificar se o usuário está autenticado
         if (!currentUser || !currentUser.uid) {
-            
+            console.warn('Usuário não autenticado, mostrando pedidos vazios');
             displayRecentOrders([]);
             return;
         }
@@ -317,9 +328,10 @@ let allOrdersData = [];
 // Load all orders with pagination
 async function loadOrders() {
     try {
-        
+        console.log('🔍 Carregando pedidos...');
         const ordersData = await fetchUserDocs('orders', 200, true);
-
+        console.log('🔍 Orders raw data:', ordersData);
+        
         const mappedOrders = ordersData.map(d => ({
             id: d.id,
             date: d.data.createdAt?.toDate?.() || new Date(),
@@ -333,10 +345,12 @@ async function loadOrders() {
             tokensUsed: d.data.tokensUsed || 0,
             whatsappLink: d.data.whatsappLink || null
         }));
+        console.log('🔍 Mapped orders:', mappedOrders);
 
         // Incluir eventos das registrations: tokens e pagamentos aprovados (paid/confirmed)
         const regsData = await fetchUserDocs('registrations', 200, true);
-
+        console.log('🔍 Registrations raw data:', regsData);
+        
         const mappedRegs = regsData
           .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed')
           .map(d => ({
@@ -352,9 +366,12 @@ async function loadOrders() {
             tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0,
             whatsappLink: d.data.whatsappLink || null
           }));
+        console.log('🔍 Mapped registrations:', mappedRegs);
 
         allOrdersData = [...mappedOrders, ...mappedRegs]
           .sort((a,b)=> (b.date?.getTime?.()||0) - (a.date?.getTime?.()||0));
+        
+        console.log('🔍 All orders data final:', allOrdersData);
 
         await displayAllOrdersPaginated();
     } catch (error) {
@@ -410,10 +427,12 @@ async function loadProducts() {
 // Função para converter data e horário do evento em DateTime
 function getEventDateTime(dateStr, scheduleStr) {
     try {
-
+        console.log('🔍 getEventDateTime - dateStr:', dateStr, 'scheduleStr:', scheduleStr);
+        console.log('🔍 Tipo de dateStr:', typeof dateStr);
+        
         // Verificar se dateStr é válido
         if (!dateStr || dateStr === 'undefined' || dateStr === 'null') {
-            
+            console.log('❌ dateStr inválido:', dateStr);
             return new Date(NaN);
         }
         
@@ -422,18 +441,18 @@ function getEventDateTime(dateStr, scheduleStr) {
         if (dateStr instanceof Date) {
             // Criar nova data usando o timezone local para evitar problemas
             date = new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate());
-            
+            console.log('🔍 dateStr é Date, criando nova Date local:', date);
         } else if (typeof dateStr === 'string') {
-            
+            console.log('🔍 dateStr é string, processando...');
             // Tentar diferentes formatos de data
             if (dateStr.includes('/')) {
                 // Formato DD/MM/YYYY
-                
+                console.log('🔍 Formato DD/MM/YYYY detectado');
                 const parts = dateStr.split('/');
                 if (parts.length === 3) {
                     // Criar data no timezone local
                     date = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-                    
+                    console.log('🔍 Data criada a partir de partes:', parts, '->', date);
                 } else {
                     // Tentar parsing direto mas criar no timezone local depois
                     const tempDate = new Date(dateStr);
@@ -441,34 +460,35 @@ function getEventDateTime(dateStr, scheduleStr) {
                 }
             } else if (dateStr.includes('-')) {
                 // Formato YYYY-MM-DD
-                
+                console.log('🔍 Formato YYYY-MM-DD detectado');
                 // IMPORTANTE: usar timezone local, não UTC
                 // Parse da data sem T para evitar problemas de timezone
                 const parts = dateStr.split('-');
                 if (parts.length === 3) {
                     date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-                    
+                    console.log('🔍 Data criada no timezone local a partir de partes:', parts, '->', date);
                 } else {
                     // Fallback: criar Date e depois ajustar para local
                     const tempDate = new Date(dateStr + 'T12:00:00');
                     date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
                 }
             } else {
-                ');
+                console.log('🔍 Formato não reconhecido, usando new Date()');
                 const tempDate = new Date(dateStr);
                 date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
             }
         } else {
-            
+            console.log('🔍 Tipo não reconhecido, tentando converter...');
             const tempDate = new Date(dateStr);
             date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
         }
-
-        ));
+        
+        console.log('🔍 Data base criada:', date);
+        console.log('🔍 Data base é válida?', !isNaN(date.getTime()));
         
         // Verificar se a data é válida
         if (isNaN(date.getTime())) {
-            
+            console.log('❌ Data inválida após parsing');
             return new Date(NaN);
         }
         
@@ -477,7 +497,8 @@ function getEventDateTime(dateStr, scheduleStr) {
         if (scheduleStr && scheduleStr.includes(' - ')) {
             timeStr = scheduleStr.split(' - ')[1]; // Pega a parte após " - "
         }
-
+        console.log('🔍 Time string extraída:', timeStr);
+        
         // Normalizar e converter horário (aceita 19, 19h, 19:00, "Terça-feira - 19h")
         const normalizeHour = (s)=>{
             if (!s) return NaN;
@@ -485,19 +506,20 @@ function getEventDateTime(dateStr, scheduleStr) {
             return m ? parseInt(m[1],10) : NaN;
         };
         const hour = normalizeHour(timeStr);
-
+        console.log('🔍 Hora convertida:', hour);
+        
         // Verificar se a hora é válida
         if (isNaN(hour) || hour < 0 || hour > 23) {
-            
+            console.log('❌ Hora inválida:', hour);
             return new Date(NaN);
         }
         
         // Definir a data e hora do evento no timezone local
         date.setHours(hour, 0, 0, 0);
-        
-        ));
-        :', date.toISOString());
-        :', date.toLocaleString('pt-BR'));
+        console.log('🔍 Data/hora final:', date);
+        console.log('🔍 Data/hora final é válida?', !isNaN(date.getTime()));
+        console.log('🔍 Data/hora final (ISO):', date.toISOString());
+        console.log('🔍 Data/hora final (local):', date.toLocaleString('pt-BR'));
         
         return date;
     } catch (error) {
@@ -541,10 +563,14 @@ function formatShortDatePtBr(dateStr){
     }catch(_){ return dateStr||''; }
 }
 
+
 // Display all orders with pagination (filtered for events only)
 async function displayAllOrdersPaginated() {
     const container = document.getElementById('allOrders');
-
+    
+    console.log('🔍 Total de pedidos carregados:', allOrdersData.length);
+    console.log('🔍 Todos os pedidos:', allOrdersData);
+    
     // Filter only events (Treinos, Camps, Semanal, Modo Liga) -
     // incluir xtreino-tokens (consumo via tokens) e excluir compras de tokens
     const eventsOnly = allOrdersData.filter(order => {
@@ -552,10 +578,18 @@ async function displayAllOrdersPaginated() {
         const item = (order.item || '').toLowerCase();
         const eventType = (order.eventType || '').toLowerCase();
         
+        console.log('🔍 Analisando pedido:', {
+            title,
+            item,
+            eventType,
+            status: order.status,
+            whatsappLink: order.whatsappLink
+        });
+        
         // Excluir compras de tokens (orders com descrição/item contendo token)
         // mas manter registros de consumo (eventType === 'xtreino-tokens')
         if ((title.includes('token') || item.includes('token')) && eventType !== 'xtreino-tokens') {
-            
+            console.log('❌ Pedido excluído - compra de token');
             return false;
         }
         
@@ -569,10 +603,14 @@ async function displayAllOrdersPaginated() {
                item.includes('camp') || 
                item.includes('semanal') || 
                item.includes('modo liga');
-
+        
+        console.log(isEvent ? '✅ Pedido incluído - é evento' : '❌ Pedido excluído - não é evento');
         return isEvent;
     });
-
+    
+    console.log('🔍 Pedidos de eventos filtrados:', eventsOnly.length);
+    console.log('🔍 Eventos encontrados:', eventsOnly);
+    
     if (eventsOnly.length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-center">Nenhum evento encontrado</p>';
         return;
@@ -701,6 +739,7 @@ function displayAllProductsPaginated(productsData) {
     container.innerHTML = productsHTML + paginationHTML;
 }
 
+
 // Generate pagination HTML for products
 function generateProductsPaginationHTML(currentPage, totalPages) {
     if (totalPages <= 1) return '';
@@ -791,36 +830,41 @@ function generateWhatsAppPaginationHTML(currentPage, totalPages) {
     return paginationHTML;
 }
 
+
 // Função para obter link do WhatsApp dinamicamente
 async function getWhatsAppLinkForOrder(order) {
     try {
-
+        console.log('🔍 getWhatsAppLinkForOrder - Order:', order);
+        console.log('🔍 EventType:', order.eventType);
+        console.log('🔍 Schedule:', order.schedule);
+        
         // Se o pedido já tem um link salvo, usar ele
         if (order.whatsappLink) {
-            
+            console.log('✅ Usando link salvo no pedido:', order.whatsappLink);
             return order.whatsappLink;
         }
         
         // Buscar no Firestore (links do admin)
         if (window.getWhatsAppLink) {
-            
+            console.log('🔍 Buscando link no admin...');
             try {
                 const adminLink = await window.getWhatsAppLink(order.eventType, order.schedule);
-
+                console.log('🔍 Link encontrado no admin:', adminLink);
+                
                 if (adminLink && adminLink !== 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO' && adminLink !== 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS') {
-                    
+                    console.log('✅ Usando link do admin:', adminLink);
                     return adminLink;
                 }
             } catch (error) {
                 console.error('❌ Erro ao buscar link no admin:', error);
             }
         } else {
-            
+            console.warn('⚠️ Função getWhatsAppLink não disponível');
         }
         
         // Tentar buscar diretamente no Firestore se a função não estiver disponível
         try {
-            
+            console.log('🔍 Tentando buscar diretamente no Firestore...');
             const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             
             if (window.firebaseDb) {
@@ -849,7 +893,7 @@ async function getWhatsAppLinkForOrder(order) {
                     
                     if (!specificSnapshot.empty) {
                         const link = specificSnapshot.docs[0].data().link;
-                        
+                        console.log('✅ Link específico encontrado diretamente:', link);
                         return link;
                     }
                 }
@@ -865,7 +909,7 @@ async function getWhatsAppLinkForOrder(order) {
                 
                 if (!generalSnapshot.empty) {
                     const link = generalSnapshot.docs[0].data().link;
-                    
+                    console.log('✅ Link geral encontrado diretamente:', link);
                     return link;
                 }
 
@@ -879,7 +923,7 @@ async function getWhatsAppLinkForOrder(order) {
                 const generalEmptySnapshot = await getDocs(generalEmptyQuery);
                 if (!generalEmptySnapshot.empty) {
                     const link = generalEmptySnapshot.docs[0].data().link;
-                    encontrado diretamente:', link);
+                    console.log('✅ Link geral (vazio) encontrado diretamente:', link);
                     return link;
                 }
             }
@@ -889,7 +933,7 @@ async function getWhatsAppLinkForOrder(order) {
         
         // Fallback desativado: se não houver link válido, retornar vazio
         const fallbackLink = '';
-        
+        console.log('🔍 Usando link padrão:', fallbackLink);
         return fallbackLink;
     } catch (error) {
         console.error('❌ Erro ao obter link do WhatsApp:', error);
@@ -899,12 +943,15 @@ async function getWhatsAppLinkForOrder(order) {
 
 // Get appropriate action button for order (events only)
 async function getOrderActionButton(order) {
-
+    console.log('🔍 getOrderActionButton - Order:', order);
+    
     // Verificar se é um evento (não produto da loja)
     const title = (order.title || '').toLowerCase();
     const item = (order.item || '').toLowerCase();
     const eventType = (order.eventType || '').toLowerCase();
-
+    
+    console.log('🔍 Title:', title, 'Item:', item, 'EventType:', eventType);
+    
     // Excluir produtos da loja virtual
     if (title.includes('planilhas') || 
         title.includes('sensibilidades') || 
@@ -916,19 +963,22 @@ async function getOrderActionButton(order) {
         item.includes('imagens aéreas') || 
         item.includes('camisa') ||
         (item.includes('token') && eventType !== 'xtreino-tokens')) {
-        
+        console.log('❌ Produto da loja excluído');
         return '';
     }
     
     // Verificar se o pedido está confirmado
     if (!(order.status === 'paid' || order.status === 'confirmed')) {
-        
+        console.log('❌ Pedido não confirmado, status:', order.status);
         return '';
     }
-
+    
+    console.log('✅ Pedido válido, obtendo link do WhatsApp...');
+    
     // Obter link do WhatsApp dinamicamente
     const whatsappLink = await getWhatsAppLinkForOrder(order);
-
+    console.log('🔍 Link obtido:', whatsappLink);
+    
     // Calcular janela de disponibilidade (1 hora antes até 1 hora depois)
     let isAvailable = false;
     // Padrão: não disponível até provar o contrário
@@ -945,8 +995,9 @@ async function getOrderActionButton(order) {
     if (hasSchedule && (order.eventDate || order.date)) {
         // SEMPRE priorizar eventDate se disponível, pois é a data do evento
         let actualDateStr = order.eventDate || order.date;
-
-        );
+        console.log('🔍 Dados do evento - eventDate:', order.eventDate, 'date:', order.date);
+        console.log('🔍 Horário:', scheduleStr);
+        console.log('🔍 Order completo:', JSON.stringify(order, null, 2));
         
         // Converter para string no formato YYYY-MM-DD se necessário
         if (actualDateStr instanceof Date) {
@@ -955,16 +1006,17 @@ async function getOrderActionButton(order) {
             const month = String(actualDateStr.getMonth() + 1).padStart(2, '0');
             const day = String(actualDateStr.getDate()).padStart(2, '0');
             actualDateStr = `${year}-${month}-${day}`;
-            
+            console.log('🔍 Convertendo Date para string YYYY-MM-DD:', actualDateStr);
         } else if (typeof actualDateStr === 'string') {
             // Se já é string, garantir formato correto
-
+            console.log('🔍 dateStr já é string:', actualDateStr);
+            
             // Se está em formato DD/MM/YYYY, converter para YYYY-MM-DD
             if (actualDateStr.includes('/')) {
                 const parts = actualDateStr.split('/');
                 if (parts.length === 3) {
                     actualDateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                    
+                    console.log('🔍 Convertido de DD/MM/YYYY para YYYY-MM-DD:', actualDateStr);
                 }
             }
             
@@ -976,7 +1028,7 @@ async function getOrderActionButton(order) {
                     const month = String(tempDate.getMonth() + 1).padStart(2, '0');
                     const day = String(tempDate.getDate()).padStart(2, '0');
                     actualDateStr = `${year}-${month}-${day}`;
-                    
+                    console.log('🔍 Convertido para YYYY-MM-DD via parsing:', actualDateStr);
                 }
             }
         } else if (actualDateStr && typeof actualDateStr === 'object' && actualDateStr.seconds) {
@@ -986,21 +1038,24 @@ async function getOrderActionButton(order) {
             const month = String(tempDate.getMonth() + 1).padStart(2, '0');
             const day = String(tempDate.getDate()).padStart(2, '0');
             actualDateStr = `${year}-${month}-${day}`;
-            
+            console.log('🔍 Convertido de Timestamp Firestore para YYYY-MM-DD:', actualDateStr);
         }
-
+        
+        console.log('🔍 Data final a ser usada:', actualDateStr);
+        
         const startDt = getEventDateTime(actualDateStr, scheduleStr);
-
+        console.log('🔍 Data/hora calculada:', startDt);
+        
         if (!isNaN(startDt.getTime())) {
             // Garantir que estamos usando o horário local atual
             const now = new Date();
             const oneHourBefore = new Date(startDt.getTime() - (60 * 60 * 1000)); // 1 hora antes
             const oneHourAfter = new Date(startDt.getTime() + (60 * 60 * 1000)); // 1 hora depois
             
-            , '(', now.toLocaleString('pt-BR'), ')');
-            , '(', oneHourBefore.toLocaleString('pt-BR'), ')');
-            , '(', oneHourAfter.toLocaleString('pt-BR'), ')');
-            , '(', startDt.toLocaleString('pt-BR'), ')');
+            console.log('🔍 Agora:', now.toISOString(), '(', now.toLocaleString('pt-BR'), ')');
+            console.log('🔍 1h antes:', oneHourBefore.toISOString(), '(', oneHourBefore.toLocaleString('pt-BR'), ')');
+            console.log('🔍 1h depois:', oneHourAfter.toISOString(), '(', oneHourAfter.toLocaleString('pt-BR'), ')');
+            console.log('🔍 Evento em:', startDt.toISOString(), '(', startDt.toLocaleString('pt-BR'), ')');
             
             // Calcular diferenças em minutos para debug (usando timestamps)
             const nowTime = now.getTime();
@@ -1011,30 +1066,37 @@ async function getOrderActionButton(order) {
             const minutesUntilStart = Math.floor((startTime - nowTime) / (1000 * 60));
             const minutesAfterStart = Math.floor((nowTime - startTime) / (1000 * 60));
             const minutesUntilAvailable = Math.floor((beforeTime - nowTime) / (1000 * 60));
-
+            
+            console.log('🔍 Timestamps - Agora:', nowTime, 'Evento:', startTime);
+            console.log('🔍 Minutos até o evento:', minutesUntilStart);
+            console.log('🔍 Minutos após o evento:', minutesAfterStart);
+            console.log('🔍 Minutos até disponível:', minutesUntilAvailable);
+            
             // Regra solicitada: disponível imediatamente após a compra e expira 1h após o horário
             // Portanto: disponível enquanto "agora" for menor ou igual a (início + 1h)
             if (nowTime <= afterTime) {
                 isAvailable = true;
                 buttonText = 'Entrar no Grupo';
                 buttonClass = 'text-green-700 bg-green-100 hover:bg-green-200';
-
+                console.log('✅ Link disponível até 1h após o horário');
+                console.log('✅ Comparação: ', nowTime, '<=', afterTime);
             } else {
                 // Já expirou - evento passou
                 buttonText = 'Link Expirado';
                 buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
                 isAvailable = false;
-
+                console.log('❌ Link expirado - evento passou 1h do horário');
+                console.log('❌ Comparação: ', nowTime, '>', afterTime);
             }
         } else {
-            
+            console.log('❌ Data/hora inválida - não foi possível calcular o horário do evento');
             // Mesmo com data inválida, se tiver link, mostrar como indisponível
             buttonText = 'Link indisponível';
             buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
             isAvailable = false;
         }
     } else {
-        
+        console.log('❌ Dados de data/hora insuficientes');
         // Garantir que o botão seja cinza quando não há dados suficientes
         buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
         buttonText = 'Link indisponível';
@@ -1046,11 +1108,12 @@ async function getOrderActionButton(order) {
         buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
         buttonText = 'Link indisponível';
         isAvailable = false;
-        
+        console.log('⚠️ Sem link do WhatsApp - marcando como indisponível');
     }
     
     // Debug final
-
+    console.log('🔍 Estado final - isAvailable:', isAvailable, 'hasLink:', hasLink, 'buttonText:', buttonText, 'buttonClass:', buttonClass);
+    
     return `
         <div class="mt-3 space-y-2">
             <!-- Link do WhatsApp: clicável imediatamente após compra até 1h após o horário -->
@@ -1545,7 +1608,7 @@ async function getProductInfo(productId) {
         if (productDoc.exists()) {
             return productDoc.data();
         } else {
-            
+            console.log('Produto não encontrado:', productId);
             return null;
         }
     } catch (error) {
@@ -1559,7 +1622,7 @@ async function loadStats() {
     try {
         // Verificar se o usuário está autenticado
         if (!currentUser || !currentUser.uid) {
-            
+            console.warn('Usuário não autenticado, carregando stats padrão');
             // Mostrar stats padrão se não autenticado
             const totalOrdersElement = document.getElementById('totalOrders');
             const totalSpentElement = document.getElementById('totalSpent');
@@ -1595,6 +1658,8 @@ async function loadStats() {
         let totalSpent = paidOrders.reduce((sum, r) => sum + (r.data.total || r.data.amount || 0), 0);
         totalSpent += paidRegs.reduce((sum, r) => sum + (r.data.price || r.data.amount || r.data.total || 0), 0);
 
+        console.log('🔍 Stats data:', { totalOrders, totalSpent, userProfile });
+
         const totalOrdersElement = document.getElementById('totalOrders');
         const totalSpentElement = document.getElementById('totalSpent');
         const availableTokensElement = document.getElementById('availableTokens');
@@ -1613,7 +1678,7 @@ async function loadStats() {
 async function fetchUserDocs(colName, max = 50, sortDesc = false){
     // Verificar se o usuário está autenticado
     if (!currentUser || !currentUser.uid) {
-        
+        console.warn('Usuário não autenticado, não é possível buscar documentos');
         return [];
     }
     
@@ -1642,19 +1707,20 @@ async function fetchUserDocs(colName, max = 50, sortDesc = false){
             where('ownerId','==', currentUser.uid)
         ];
     }
-
+    
+    console.log(`🔍 Searching in collection '${colName}' with email: ${currentUser.email}, uid: ${currentUser.uid}`);
     const resultMap = new Map();
     for (const cond of candidates){
         try{
             const qy = query(colRef, cond);
             const snap = await getDocs(qy);
-            }):`, snap.size, 'documents');
+            console.log(`🔍 Query result for ${colName} (${String(cond?.fieldPath||'')}):`, snap.size, 'documents');
             snap.forEach(d => {
                 const data = d.data();
                 resultMap.set(d.id, { id: d.id, data });
             });
         }catch(e){
-            
+            console.log(`🔍 Query error for ${colName}:`, e);
         }
     }
     const results = Array.from(resultMap.values());
@@ -1665,7 +1731,7 @@ async function fetchUserDocs(colName, max = 50, sortDesc = false){
             return sortDesc ? bt - at : at - bt;
         })
         .slice(0, max);
-    
+    console.log(`🔍 Final results for ${colName}:`, limited.length, 'documents');
     return limited;
 }
 
@@ -1766,7 +1832,7 @@ async function loadTokensHistory() {
 async function loadMyTokens() {
     // Verificar se o usuário está autenticado
     if (!currentUser || !currentUser.uid) {
-        
+        console.warn('Usuário não autenticado, não é possível carregar tokens');
         // Mostrar 0 tokens se não autenticado
         const balanceElement = document.getElementById('myTokenBalance');
         if (balanceElement) {
@@ -1777,7 +1843,7 @@ async function loadMyTokens() {
     
     // Garantir que o userProfile seja carregado
     if (!userProfile) {
-        
+        console.log('🔍 UserProfile not loaded, loading it first...');
         await loadUserProfile();
     }
     
@@ -1789,9 +1855,9 @@ async function loadMyTokens() {
         if (balanceElement) {
             balanceElement.textContent = `${userProfile.tokens || 0} Tokens`;
         }
-        
+        console.log('🔍 My tokens loaded:', userProfile.tokens);
     } else {
-        
+        console.log('❌ userProfile not available in loadMyTokens');
     }
     
     // Carregar histórico de uso dos tokens
@@ -1806,7 +1872,7 @@ async function loadTokenUsageHistory() {
     try {
         // Verificar se o usuário está autenticado
         if (!currentUser || !currentUser.uid) {
-            
+            console.warn('Usuário não autenticado, não é possível carregar histórico de tokens');
             return;
         }
         
@@ -1960,15 +2026,17 @@ async function persistUserProfile(profile) {
     try {
         const isLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
         const isNetlify = /netlify\.app$/i.test(location.hostname);
-
+        
+        console.log('🔍 Persisting profile:', { isLocal, isNetlify, firebaseReady: window.firebaseReady, hasUid: !!profile?.uid });
+        
         if (window.firebaseReady && !isLocal && profile?.uid) {
             const { doc, setDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ref = doc(collection(db, 'users'), profile.uid);
             await setDoc(ref, profile, { merge: true });
-            
+            console.log('✅ Profile saved to Firestore');
         } else {
             localStorage.setItem('assoc_profile', JSON.stringify(profile));
-            
+            console.log('✅ Profile saved to localStorage');
         }
     } catch(error) {
         console.error('❌ Error persisting profile:', error);
@@ -2014,15 +2082,27 @@ function getStatusColor(status, orderData = null) {
 
 function getStatusText(status, orderData = null) {
     // Debug detalhado
+    console.log('🔍 getStatusText called with:', { 
+        status, 
+        orderData: orderData ? {
+            title: orderData.title,
+            item: orderData.item,
+            eventType: orderData.eventType,
+            booyahConfirmed: orderData.booyahConfirmed
+        } : null
+    });
+    
     // Caso especial para XTreino Tokens - verificar se é um token independente do status
     if (orderData) {
         const title = (orderData.title || '').toLowerCase();
         const item = (orderData.item || '').toLowerCase();
         const eventType = (orderData.eventType || '').toLowerCase();
-
+        
+        console.log('🔍 Checking for XTreino Tokens:', { title, item, eventType });
+        
         // Se for XTreino Tokens, sempre retornar "Token"
         if (title.includes('xtreino tokens') || item.includes('xtreino tokens') || eventType === 'xtreino-tokens') {
-            
+            console.log('✅ Found XTreino Tokens, returning "Token"');
             return 'Token';
         }
         
@@ -2185,8 +2265,12 @@ window.purchaseTokens = async function(quantity) {
             // Salvar order no Firestore ANTES de redirecionar
             try {
                 const currentUser = auth.currentUser;
-                ` : 'Not authenticated');
-
+                console.log('🔍 Current user:', currentUser ? `${currentUser.uid} (${currentUser.email})` : 'Not authenticated');
+                console.log('🔍 DB instance:', db ? 'Available' : 'NULL - Firebase not initialized');
+                console.log('🔍 DB type:', typeof db);
+                console.log('🔍 DB constructor:', db ? db.constructor.name : 'null');
+                console.log('🔍 DB has collection method:', db && typeof db.collection === 'function' ? 'YES' : 'NO');
+                
                 if (currentUser && db) {
                     const orderData = {
                         // Usar basePrice (garante valor correto mesmo quando quantity não é passado)
@@ -2207,9 +2291,10 @@ window.purchaseTokens = async function(quantity) {
                         createdAt: new Date(),
                         timestamp: Date.now()
                     };
-
-                    const docRef = await addDoc(collection(db, 'orders'), orderData);
                     
+                    console.log('🔍 Attempting to save order:', orderData);
+                    const docRef = await addDoc(collection(db, 'orders'), orderData);
+                    console.log('✅ Order saved to Firestore with ID:', docRef.id);
                 } else {
                     console.error('❌ Cannot save order: User not authenticated or DB not available');
                     console.error('❌ User:', currentUser ? 'Authenticated' : 'Not authenticated');
@@ -2308,8 +2393,12 @@ window.purchaseTokensQuick = async function(quantity) {
         if (data.init_point) {
             // Salvar order no Firestore ANTES de redirecionar
             try {
-                ` : 'Not authenticated');
-
+                console.log('🔍 Quick purchase - Current user:', currentUser ? `${currentUser.uid} (${currentUser.email})` : 'Not authenticated');
+                console.log('🔍 Quick purchase - DB instance:', db ? 'Available' : 'NULL - Firebase not initialized');
+                console.log('🔍 Quick purchase - DB type:', typeof db);
+                console.log('🔍 Quick purchase - DB constructor:', db ? db.constructor.name : 'null');
+                console.log('🔍 Quick purchase - DB has collection method:', db && typeof db.collection === 'function' ? 'YES' : 'NO');
+                
                 if (currentUser && db) {
                     const orderData = {
                     title: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
@@ -2329,9 +2418,10 @@ window.purchaseTokensQuick = async function(quantity) {
                     createdAt: new Date(),
                     timestamp: Date.now()
                 };
-
+                
+                    console.log('🔍 Attempting to save quick order:', orderData);
                     const docRef = await addDoc(collection(db, 'orders'), orderData);
-                    
+                    console.log('✅ Quick order saved to Firestore with ID:', docRef.id);
                 } else {
                     console.error('❌ Cannot save quick order: User not authenticated or DB not available');
                     console.error('❌ User:', currentUser ? 'Authenticated' : 'Not authenticated');
