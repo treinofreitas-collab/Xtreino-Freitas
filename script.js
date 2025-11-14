@@ -404,6 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const accMob = document.getElementById('accountBtnMobile');
         if (accDesk) accDesk.classList.add('hidden');
         if (accMob) accMob.classList.add('hidden');
+        if (profileAvatarMobile) profileAvatarMobile.classList.add('hidden');
         if (loginDesk) loginDesk.classList.remove('hidden');
         if (loginMob) loginMob.classList.remove('hidden');
         updateHeaderTokenBadges();
@@ -5717,6 +5718,24 @@ if (backBtn) {
     backBtn.addEventListener('click', () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
+}
+
+// Mobile menu expandido - aparece ao rolar para baixo
+let lastScrollY = 0;
+const mobileMenuExpanded = document.getElementById('mobileMenuExpanded');
+if (mobileMenuExpanded) {
+    window.addEventListener('scroll', () => {
+        const currentScrollY = window.scrollY;
+        
+        // Mostrar menu expandido quando rolar para baixo (scroll > 50px)
+        if (currentScrollY > 50) {
+            mobileMenuExpanded.classList.remove('hidden');
+        } else {
+            mobileMenuExpanded.classList.add('hidden');
+        }
+        
+        lastScrollY = currentScrollY;
+    }, { passive: true });
 }
 
 function maybeClearMobileModalState(){
