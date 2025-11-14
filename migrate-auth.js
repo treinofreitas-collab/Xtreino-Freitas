@@ -97,7 +97,7 @@ async function importUsers(users) {
         console.log(`  ✓ ${imported} usuários importados...`);
       }
     } catch (error) {
-      if (error.code === 'auth/uid-already-exists') {
+      if (error.code === 'auth/uid-already-exists' || error.code === 'auth/email-already-exists') {
         console.log(`  ⚠️  Usuário ${user.email} já existe, pulando...`);
       } else {
         console.error(`  ✗ Erro ao importar ${user.email}: ${error.message}`);
@@ -132,21 +132,7 @@ async function migrate() {
   console.log('   Os usuários precisarão usar "Esqueci minha senha" para redefinir.');
   console.log('   Ou você precisa exportar os hashes (mais complexo).\n');
 
-  const confirm = require('readline').createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-
-  await new Promise(resolve => {
-    confirm.question('Deseja continuar? (s/n): ', answer => {
-      confirm.close();
-      if (answer.toLowerCase() !== 's') {
-        console.log('Migração cancelada.');
-        process.exit(0);
-      }
-      resolve();
-    });
-  });
+  console.log('🚀 Iniciando migração automaticamente...\n');
 
   await importUsers(users);
 
