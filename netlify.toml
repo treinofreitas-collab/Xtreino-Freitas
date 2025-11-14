@@ -37,56 +37,6 @@
     X-Robots-Tag = "noindex, nofollow, noarchive"
     Cache-Control = "no-store, no-cache, must-revalidate, max-age=0"
 
-# Exceções para assets (imagens, CSS, JS) - DEVEM VIR ANTES do redirect de manutenção
-[[redirects]]
-  from = "/assets/*"
-  to = "/assets/:splat"
-  status = 200
-  force = false
-
-[[redirects]]
-  from = "/*.css"
-  to = "/:splat.css"
-  status = 200
-  force = false
-
-[[redirects]]
-  from = "/*.js"
-  to = "/:splat.js"
-  status = 200
-  force = false
-
-[[redirects]]
-  from = "/*.png"
-  to = "/:splat.png"
-  status = 200
-  force = false
-
-[[redirects]]
-  from = "/*.jpg"
-  to = "/:splat.jpg"
-  status = 200
-  force = false
-
-[[redirects]]
-  from = "/*.svg"
-  to = "/:splat.svg"
-  status = 200
-  force = false
-
-[[redirects]]
-  from = "/maintenance.html"
-  to = "/maintenance.html"
-  status = 200
-  force = false
-
-# Manutenção - Redirecionar tudo para maintenance.html
-[[redirects]]
-  from = "/*"
-  to = "/maintenance.html"
-  status = 200
-  force = true
-
 # Redirecionar www para domínio canônico
 [[redirects]]
   from = "/*"
