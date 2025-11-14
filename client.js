@@ -61,6 +61,16 @@ let selectedTokensQty = 0;
 
 // Initialize client area
 document.addEventListener('DOMContentLoaded', async function() {
+    // Garantir que o Storage está inicializado
+    if (!storage && window.firebaseApp) {
+        try {
+            storage = getStorage(window.firebaseApp);
+            console.log('✅ Storage inicializado no DOMContentLoaded');
+        } catch (error) {
+            console.error('❌ Erro ao inicializar Storage:', error);
+        }
+    }
+    
     await checkAuthState();
     setupEventListeners();
     // Se vier com ?tab=myTokens, abrir direto essa aba
