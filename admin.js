@@ -6250,6 +6250,10 @@ function renderCouponsTable() {
                 <td class="py-2 px-2">${statusBadge}</td>
                 <td class="py-2 px-2">
                     <div class="flex gap-1">
+                        <button onclick="editCoupon('${coupon.id}')" 
+                                class="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                            Editar
+                        </button>
                         <button onclick="toggleCouponStatus('${coupon.id}', ${!isActive})" 
                                 class="px-2 py-1 text-xs rounded ${isActive ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}">
                             ${isActive ? 'Desativar' : 'Ativar'}
@@ -6554,17 +6558,98 @@ function populateCouponAffiliateSelect() {
     });
 }
 
-// Fechar modal de criação de cupom
+// Fechar modal de criação/edição de cupom
 function closeCreateCouponModal() {
     const modal = document.getElementById('createCouponModal');
     if (modal) {
         modal.classList.add('hidden');
+        // Limpar ID de edição
+        const editIdInput = document.getElementById('couponEditId');
+        if (editIdInput) editIdInput.value = '';
+        // Resetar título do modal
+        const modalTitle = modal.querySelector('h3');
+        if (modalTitle) modalTitle.textContent = 'Criar Novo Cupom';
+        // Resetar botão de submit
+        const submitBtn = document.querySelector('#createCouponForm button[type="submit"]');
+        if (submitBtn) submitBtn.textContent = 'Criar Cupom';
     }
 }
 
-// Criar novo cupom
+// Editar cupom existente
+async function editCoupon(couponId) {
+    try {
+        const coupon = couponsData.find(c => c.id === couponId);
+        if (!coupon) {
+            alert('Cupom não encontrado');
+            return;
+        }
+        
+        // Abrir modal
+        const modal = document.getElementById('createCouponModal');
+        if (!modal) {
+            alert('Modal não encontrado');
+            return;
+        }
+        
+        modal.classList.remove('hidden');
+        
+        // Mudar título do modal
+        const modalTitle = modal.querySelector('h3');
+        if (modalTitle) modalTitle.textContent = 'Editar Cupom';
+        
+        // Popular select de afiliados
+        populateCouponAffiliateSelect();
+        
+        // Preencher formulário com dados do cupom
+        document.getElementById('couponCode').value = coupon.code || '';
+        document.getElementById('discountType').value = coupon.discountType || 'percentage';
+        document.getElementById('discountValue').value = coupon.discountValue || 0;
+        
+        // Data de expiração
+        if (coupon.expirationDate) {
+            const expDate = coupon.expirationDate.toDate ? coupon.expirationDate.toDate() : new Date(coupon.expirationDate);
+            const dateStr = expDate.toISOString().split('T')[0];
+            document.getElementById('expirationDate').value = dateStr;
+        } else {
+            document.getElementById('expirationDate').value = '';
+        }
+        
+        document.getElementById('couponUsageType').value = coupon.usageType || 'both';
+        
+        // Selecionar afiliado se houver
+        if (coupon.affiliateId) {
+            const affiliateSelect = document.getElementById('couponAffiliateId');
+            if (affiliateSelect) {
+                affiliateSelect.value = coupon.affiliateId;
+            }
+        }
+        
+        // Adicionar campo hidden com ID do cupom sendo editado
+        let editIdInput = document.getElementById('couponEditId');
+        if (!editIdInput) {
+            editIdInput = document.createElement('input');
+            editIdInput.type = 'hidden';
+            editIdInput.id = 'couponEditId';
+            document.getElementById('createCouponForm').appendChild(editIdInput);
+        }
+        editIdInput.value = couponId;
+        
+        // Mudar texto do botão de submit
+        const submitBtn = document.querySelector('#createCouponForm button[type="submit"]');
+        if (submitBtn) submitBtn.textContent = 'Salvar Alterações';
+        
+    } catch (error) {
+        console.error('Erro ao editar cupom:', error);
+        alert('Erro ao carregar dados do cupom');
+    }
+}
+
+// Criar ou atualizar cupom
 async function createCoupon(event) {
     event.preventDefault();
+    
+    const editId = document.getElementById('couponEditId')?.value?.trim();
+    const isEditing = !!editId;
     
     const affiliateIdValue = document.getElementById('couponAffiliateId')?.value?.trim() || null;
     
@@ -6576,10 +6661,6 @@ async function createCoupon(event) {
             new Date(document.getElementById('expirationDate').value) : null,
         usageType: document.getElementById('couponUsageType').value,
         specificEvents: [],
-        isActive: true,
-        usageCount: 0,
-        createdAt: new Date(),
-        createdBy: window.adminRoleLower || 'admin',
         affiliateId: affiliateIdValue || null // Vincular afiliado ao cupom
     };
     
@@ -6595,22 +6676,72 @@ async function createCoupon(event) {
     }
     
     try {
-        console.log('🔄 Criando cupom:', couponData.code);
-        
-        // Verificar se o código já existe
-        const existingCoupon = couponsData.find(c => c.code === couponData.code);
-        if (existingCoupon) {
-            alert('Já existe um cupom com este código');
-            return;
+        if (isEditing) {
+            // Atualizar cupom existente
+            console.log('🔄 Atualizando cupom:', editId);
+            
+            const { doc, updateDoc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const couponRef = doc(window.firebaseDb, 'coupons', editId);
+            const couponDoc = await getDoc(couponRef);
+            
+            if (!couponDoc.exists()) {
+                alert('Cupom não encontrado');
+                return;
+            }
+            
+            const existingCoupon = couponDoc.data();
+            
+            // Verificar se o código mudou e se já existe outro cupom com esse código
+            if (couponData.code !== existingCoupon.code) {
+                const existingCouponWithCode = couponsData.find(c => c.code === couponData.code && c.id !== editId);
+                if (existingCouponWithCode) {
+                    alert('Já existe outro cupom com este código');
+                    return;
+                }
+            }
+            
+            // Manter campos que não devem ser alterados
+            couponData.isActive = existingCoupon.isActive;
+            couponData.usageCount = existingCoupon.usageCount || 0;
+            couponData.createdAt = existingCoupon.createdAt;
+            couponData.createdBy = existingCoupon.createdBy;
+            couponData.updatedAt = new Date();
+            couponData.updatedBy = window.adminRoleLower || 'admin';
+            
+            await updateDoc(couponRef, couponData);
+            console.log('✅ Cupom atualizado:', editId);
+            
+            // Log da ação
+            await logAdminAction('update_coupon', `Atualizou cupom ${couponData.code} (${couponData.discountType === 'percentage' ? couponData.discountValue + '%' : 'R$ ' + couponData.discountValue})`);
+            
+            alert('Cupom atualizado com sucesso!');
+        } else {
+            // Criar novo cupom
+            console.log('🔄 Criando cupom:', couponData.code);
+            
+            // Verificar se o código já existe
+            const existingCoupon = couponsData.find(c => c.code === couponData.code);
+            if (existingCoupon) {
+                alert('Já existe um cupom com este código');
+                return;
+            }
+            
+            // Adicionar campos de criação
+            couponData.isActive = true;
+            couponData.usageCount = 0;
+            couponData.createdAt = new Date();
+            couponData.createdBy = window.adminRoleLower || 'admin';
+            
+            // Salvar no Firestore
+            const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const docRef = await addDoc(collection(window.firebaseDb, 'coupons'), couponData);
+            console.log('✅ Cupom criado com ID:', docRef.id);
+            
+            // Log da ação
+            await logAdminAction('create_coupon', `Criou cupom ${couponData.code} (${couponData.discountType === 'percentage' ? couponData.discountValue + '%' : 'R$ ' + couponData.discountValue})`);
+            
+            alert('Cupom criado com sucesso!');
         }
-        
-        // Salvar no Firestore
-        const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const docRef = await addDoc(collection(window.firebaseDb, 'coupons'), couponData);
-        console.log('✅ Cupom criado com ID:', docRef.id);
-        
-        // Log da ação
-        await logAdminAction('create_coupon', `Criou cupom ${couponData.code} (${couponData.discountType === 'percentage' ? couponData.discountValue + '%' : 'R$ ' + couponData.discountValue})`);
         
         // Recarregar dados
         await loadCoupons();
@@ -6618,11 +6749,9 @@ async function createCoupon(event) {
         // Fechar modal
         closeCreateCouponModal();
         
-        alert('Cupom criado com sucesso!');
-        
     } catch (error) {
-        console.error('❌ Erro ao criar cupom:', error);
-        alert('Erro ao criar cupom: ' + error.message);
+        console.error('❌ Erro ao salvar cupom:', error);
+        alert('Erro ao salvar cupom: ' + error.message);
     }
 }
 
@@ -7603,6 +7732,7 @@ window.closeShirtOrderModal = closeShirtOrderModal;
 window.openCreateCouponModal = openCreateCouponModal;
 window.closeCreateCouponModal = closeCreateCouponModal;
 window.createCoupon = createCoupon;
+window.editCoupon = editCoupon;
 window.toggleCouponStatus = toggleCouponStatus;
 window.deleteCoupon = deleteCoupon;
 
