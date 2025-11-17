@@ -1351,7 +1351,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         snap.forEach(d => {
           const o = d.data();
           const ts = new Date(o.createdAt || o.timestamp || 0);
-          items.push({ ts, amount: Number(o.amount||o.total||0), item: (o.item||o.productName||'Pedido'), customer:(o.customer||o.buyerEmail||'-'), status:(o.status||'') });
+          items.push({ ts, amount: Number(o.amount||o.total||0), item: (o.item||o.productName||'Pedido'), customer:(o.customer||o.buyerEmail||'-'), status:(o.status||''), paymentMethod: (o.paidWithTokens ? 'tokens' : (o.paymentMethod || 'mercado_pago')) });
         });
       }catch(_){}
       // Registrations
@@ -1360,7 +1360,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         regs.forEach(d => {
           const r = d.data();
           const ts = (r.createdAt?.toDate ? r.createdAt.toDate() : (r.timestamp? new Date(r.timestamp) : new Date()));
-          items.push({ ts, amount: Number(r.price||0), item:(r.title||r.eventType||'Reserva'), customer:(r.email||'-'), status:(r.status||'') });
+          items.push({ ts, amount: Number(r.price||0), item:(r.title||r.eventType||'Reserva'), customer:(r.email||'-'), status:(r.status||''), paymentMethod: (r.paidWithTokens ? 'tokens' : 'mercado_pago') });
         });
       }catch(_){}
     } catch(_){}
@@ -1373,6 +1373,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // await loadTokensData().catch(()=>{}); // Desabilitado - usando novas funções de paginação
       await renderSalesChart().catch(()=>{});
       await renderTopProducts().catch(()=>{});
+      await renderPaymentMethodsChart().catch(()=>{});
       await renderPopularHours().catch(()=>{});
       await renderActiveUsers().catch(()=>{});
     }catch(e){ console.error('Erro ao carregar relatórios', e); }
@@ -1707,20 +1708,123 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
     while (cur <= endDay){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1); }
-    const labels = days.map(d=>d.toLocaleDateString('pt-BR'));
-    const dataMap = Object.fromEntries(labels.map(l=>[l,0]));
+    const labels = days.map(d=>d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }));
+    
+    // Mapear faturamento e quantidade por dia
+    const revenueMap = Object.fromEntries(labels.map(l=>[l,0]));
+    const quantityMap = Object.fromEntries(labels.map(l=>[l,0]));
+    
     all.forEach(o => {
       const ts = o.ts;
       if (period.from && ts < period.from) return;
       if (period.to && ts > period.to) return;
-      const label = ts.toLocaleDateString('pt-BR');
-      if (dataMap[label] !== undefined && (o.status||'').toLowerCase()==='paid') dataMap[label] += Number(o.amount||0);
+      const status = (o.status||'').toLowerCase();
+      if (status === 'paid' || status === 'confirmed') {
+        const label = ts.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        if (revenueMap[label] !== undefined) {
+          revenueMap[label] += Number(o.amount||0);
+          quantityMap[label] += 1;
+        }
+      }
     });
-    const data = labels.map(l=>dataMap[l]);
+    
+    const revenueData = labels.map(l=>revenueMap[l]);
+    const quantityData = labels.map(l=>quantityMap[l]);
+    
     try { if (charts.sales) { charts.sales.destroy(); } } catch(_){}
+    
     charts.sales = new Chart(canvas.getContext('2d'), {
-      type: 'line', data: { labels, datasets: [{label:'Vendas', data, borderColor:'#2563eb', tension:.3}]}, options:{plugins:{legend:{display:false}}}
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Faturamento (R$)',
+            data: revenueData,
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            tension: 0.4,
+            fill: true,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Quantidade de Vendas',
+            data: quantityData,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            tension: 0.4,
+            fill: true,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              font: { size: 12, weight: 'bold' },
+              padding: 15,
+              usePointStyle: true
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                if (context.datasetIndex === 0) {
+                  return `Faturamento: R$ ${context.parsed.y.toFixed(2).replace('.', ',')}`;
+                } else {
+                  return `Quantidade: ${context.parsed.y} venda${context.parsed.y !== 1 ? 's' : ''}`;
+                }
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return 'R$ ' + value.toFixed(0);
+              }
+            },
+            title: {
+              display: true,
+              text: 'Faturamento (R$)',
+              font: { size: 12, weight: 'bold' }
+            }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            beginAtZero: true,
+            grid: {
+              drawOnChartArea: false
+            },
+            ticks: {
+              stepSize: 1
+            },
+            title: {
+              display: true,
+              text: 'Quantidade',
+              font: { size: 12, weight: 'bold' }
+            }
+          }
+        }
+      }
     });
+    
     // Atualiza título com o intervalo
     try {
       const title = document.getElementById('salesChartTitle');
@@ -1728,15 +1832,213 @@ window.showWarningToast = function(message, title = 'Atenção') {
     } catch(_){ }
   }
 
+  // Função para normalizar nomes de produtos
+  function normalizeProductName(name) {
+    if (!name || name === 'undefined' || name === 'Item' || name === 'Pedido') {
+      return 'Produto Diverso';
+    }
+    
+    const normalized = String(name).trim();
+    
+    // Normalizar tokens
+    if (normalized.toLowerCase().includes('token')) {
+      const match = normalized.match(/(\d+)\s*token/i);
+      if (match) {
+        return `${match[1]} Token${match[1] > 1 ? 's' : ''} XTreino`;
+      }
+      if (normalized.toLowerCase().includes('undefined')) {
+        return 'Token XTreino';
+      }
+      return normalized.replace(/undefined/gi, '').trim() || 'Token XTreino';
+    }
+    
+    // Normalizar eventos/treinos
+    if (normalized.toLowerCase().includes('modo liga') || normalized.toLowerCase().includes('modo-liga')) {
+      return 'XTreino Modo Liga';
+    }
+    if (normalized.toLowerCase().includes('semanal')) {
+      return 'Semanal Freitas';
+    }
+    if (normalized.toLowerCase().includes('camp') || normalized.toLowerCase().includes('campeonato')) {
+      return 'Camp Freitas';
+    }
+    if (normalized.toLowerCase().includes('reserva') || normalized.toLowerCase().includes('treino')) {
+      return 'Reserva de Evento';
+    }
+    
+    // Normalizar sensibilidades
+    if (normalized.toLowerCase().includes('sensibilidade') || normalized.toLowerCase().includes('sensibilidade')) {
+      return 'Sensibilidade Free Fire';
+    }
+    
+    // Limpar "undefined" de qualquer nome
+    return normalized.replace(/undefined/gi, '').trim() || 'Produto Diverso';
+  }
+
   async function renderTopProducts(){
     const canvas = document.getElementById('topProductsChart');
     if (!canvas) return;
     const all = await fetchUnifiedOrders();
-    const map = {};
-    all.forEach(o=>{ if ((o.status||'').toLowerCase()!=='paid') return; const name=(o.item||'Item'); map[name]=(map[name]||0)+Number(o.amount||0); });
-    const entries = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const revenueMap = {}; // Faturamento por produto
+    const quantityMap = {}; // Quantidade por produto
+    
+    all.forEach(o => {
+      if ((o.status||'').toLowerCase() !== 'paid' && (o.status||'').toLowerCase() !== 'confirmed') return;
+      
+      const rawName = o.item || 'Produto Diverso';
+      const normalizedName = normalizeProductName(rawName);
+      const amount = Number(o.amount || 0);
+      
+      revenueMap[normalizedName] = (revenueMap[normalizedName] || 0) + amount;
+      quantityMap[normalizedName] = (quantityMap[normalizedName] || 0) + 1;
+    });
+    
+    // Ordenar por faturamento e pegar top 5
+    const entries = Object.entries(revenueMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, revenue]) => ({
+        name,
+        revenue,
+        quantity: quantityMap[name] || 0
+      }));
+    
     try { if (charts.top) { charts.top.destroy(); } } catch(_){}
-    charts.top = new Chart(canvas.getContext('2d'), { type:'bar', data:{ labels: entries.map(e=>e[0]), datasets:[{label:'Receita', data: entries.map(e=>e[1]), backgroundColor:'#60a5fa'}] }, options:{plugins:{legend:{display:false}}} });
+    
+    charts.top = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: entries.map(e => e.name),
+        datasets: [{
+          label: 'Faturamento (R$)',
+          data: entries.map(e => e.revenue),
+          backgroundColor: '#3b82f6',
+          borderColor: '#2563eb',
+          borderWidth: 2,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              font: { size: 12, weight: 'bold' },
+              padding: 15
+            }
+          },
+          tooltip: {
+            callbacks: {
+              afterLabel: function(context) {
+                const index = context.dataIndex;
+                const quantity = entries[index].quantity;
+                return `Quantidade: ${quantity} venda${quantity !== 1 ? 's' : ''}`;
+              },
+              label: function(context) {
+                return `Faturamento: R$ ${context.parsed.y.toFixed(2).replace('.', ',')}`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return 'R$ ' + value.toFixed(0);
+              }
+            },
+            title: {
+              display: true,
+              text: 'Faturamento (R$)',
+              font: { size: 12, weight: 'bold' }
+            }
+          },
+          x: {
+            ticks: {
+              maxRotation: 45,
+              minRotation: 45,
+              font: { size: 10 }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Renderizar gráfico de formas de pagamento
+  async function renderPaymentMethodsChart(){
+    const canvas = document.getElementById('paymentMethodsChart');
+    if (!canvas) return;
+    const all = await fetchUnifiedOrders();
+    
+    const paymentMap = {
+      tokens: { count: 0, revenue: 0, label: 'Tokens' },
+      mercado_pago: { count: 0, revenue: 0, label: 'QR Code / Mercado Pago' }
+    };
+    
+    all.forEach(o => {
+      const status = (o.status||'').toLowerCase();
+      if (status === 'paid' || status === 'confirmed') {
+        const method = o.paymentMethod || 'mercado_pago';
+        const key = method === 'tokens' ? 'tokens' : 'mercado_pago';
+        paymentMap[key].count += 1;
+        paymentMap[key].revenue += Number(o.amount || 0);
+      }
+    });
+    
+    const labels = Object.values(paymentMap).map(p => p.label);
+    const countData = Object.values(paymentMap).map(p => p.count);
+    const revenueData = Object.values(paymentMap).map(p => p.revenue);
+    
+    try { if (charts.payment) { charts.payment.destroy(); } } catch(_){}
+    
+    charts.payment = new Chart(canvas.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Quantidade de Vendas',
+            data: countData,
+            backgroundColor: ['#10b981', '#3b82f6'],
+            borderColor: ['#059669', '#2563eb'],
+            borderWidth: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              font: { size: 12, weight: 'bold' },
+              padding: 15,
+              usePointStyle: true
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const index = context.dataIndex;
+                const revenue = revenueData[index];
+                const count = countData[index];
+                return [
+                  `${context.label}: ${count} venda${count !== 1 ? 's' : ''}`,
+                  `Faturamento: R$ ${revenue.toFixed(2).replace('.', ',')}`
+                ];
+              }
+            }
+          }
+        }
+      }
+    });
   }
 
   // Atualiza todos os componentes do dashboard
@@ -1744,6 +2046,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     try { await loadKpis(); } catch(_){ }
     try { await renderSalesChart(); } catch(_){ }
     try { await renderTopProducts(); } catch(_){ }
+    try { await renderPaymentMethodsChart(); } catch(_){ }
     try { await loadTokensData(); } catch(_){ }
   }
 
