@@ -200,8 +200,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     await checkAuthState();
     setupEventListeners();
-    // Verificar se é afiliado
-    await checkAffiliateRole();
+    // Verificação de afiliado será feita após autenticação no onAuthStateChanged
     // Se vier com ?tab=myTokens, abrir direto essa aba
     try{
         const sp = new URLSearchParams(location.search);
@@ -228,8 +227,12 @@ async function checkAuthState() {
             console.log('✅ User authenticated, loading profile and dashboard');
             await loadUserProfile();
             await loadDashboard();
-            // Verificar role de afiliado após carregar perfil
+            // Verificar role de afiliado após carregar perfil (já é chamado no loadDashboard, mas garantir)
             await checkAffiliateRole();
+            // Verificar novamente após um delay para garantir que o DOM está pronto
+            setTimeout(async () => {
+                await checkAffiliateRole();
+            }, 500);
             // Hide login prompt if user is logged in
             hideLoginPrompt();
         } else {
@@ -304,6 +307,8 @@ async function switchTab(tabName) {
             loadProfile();
             break;
         case 'affiliate':
+            // Verificar novamente se é afiliado antes de carregar
+            await checkAffiliateRole();
             await loadAffiliateData();
             break;
     }
@@ -373,6 +378,9 @@ async function loadDashboard() {
             console.log('🔍 UserProfile not loaded, loading it first...');
             await loadUserProfile();
         }
+        
+        // Verificar role de afiliado após carregar perfil
+        await checkAffiliateRole();
         
         // Load recent orders
         await loadRecentOrders();
@@ -2799,12 +2807,25 @@ document.addEventListener('DOMContentLoaded', () => {
 // Verificar se é afiliado ao carregar perfil
 async function checkAffiliateRole() {
     try {
+        // Aguardar um pouco para garantir que o DOM está pronto
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         if (!currentUser || !currentUser.uid) {
             console.log('⚠️ checkAffiliateRole: Usuário não autenticado');
             return;
         }
         
         console.log('🔍 Verificando role de afiliado para:', currentUser.uid);
+        
+        // Verificar se o elemento existe
+        const affiliateTab = document.getElementById('affiliateTab');
+        if (!affiliateTab) {
+            console.error('❌ Elemento affiliateTab não encontrado no DOM');
+            // Tentar novamente após um delay
+            setTimeout(() => checkAffiliateRole(), 500);
+            return;
+        }
+        
         const userRole = await getUserRole(currentUser.uid);
         console.log('🔍 Role obtido:', userRole);
         
@@ -2813,20 +2834,22 @@ async function checkAffiliateRole() {
         
         if (roleLower === 'afiliado') {
             console.log('✅ Usuário é afiliado, mostrando aba');
-            const affiliateTab = document.getElementById('affiliateTab');
-            if (affiliateTab) {
+            affiliateTab.classList.remove('hidden');
+            console.log('✅ Aba de afiliado mostrada - classe hidden removida');
+            
+            // Verificar se realmente foi removido
+            if (affiliateTab.classList.contains('hidden')) {
+                console.warn('⚠️ Aba ainda tem classe hidden, forçando remoção');
                 affiliateTab.classList.remove('hidden');
-                console.log('✅ Aba de afiliado mostrada');
-            } else {
-                console.error('❌ Elemento affiliateTab não encontrado');
+                affiliateTab.style.display = '';
             }
         } else {
             console.log('ℹ️ Usuário não é afiliado, role:', roleLower);
-            const affiliateTab = document.getElementById('affiliateTab');
-            if (affiliateTab) affiliateTab.classList.add('hidden');
+            affiliateTab.classList.add('hidden');
         }
     } catch (error) {
         console.error('❌ Erro ao verificar role de afiliado:', error);
+        console.error('❌ Stack trace:', error.stack);
     }
 }
 
