@@ -1285,46 +1285,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (btnLoadBoard) btnLoadBoard.onclick = loadBoard;
     const formAddTeam = document.getElementById('formAddTeam');
     if (formAddTeam) formAddTeam.onsubmit = submitAddTeam;
-    // Bind filtros do histórico de cupons
-    try {
-      const periodSel = document.getElementById('couponUsagePeriod');
-      const ctxSel = document.getElementById('couponUsageContext');
-      const codeSel = document.getElementById('couponUsageCodeFilter');
-      const productInput = document.getElementById('couponUsageProductFilter');
-      const applyBtn = document.getElementById('couponUsageApply');
-      const resetBtn = document.getElementById('couponUsageReset');
-      const exportBtn = document.getElementById('couponUsageExport');
-      
-      const applyFn = ()=>{
-        couponUsageFilters.period = (periodSel?.value || '7d');
-        couponUsageFilters.context = (ctxSel?.value || 'all');
-        couponUsageFilters.couponCode = (codeSel?.value || 'all');
-        couponUsageFilters.productName = (productInput?.value || '');
-        applyCouponUsageFilters();
-      };
-      
-      if (applyBtn) applyBtn.onclick = applyFn;
-      if (resetBtn) resetBtn.onclick = () => {
-        if (periodSel) periodSel.value = '7d';
-        if (ctxSel) ctxSel.value = 'all';
-        if (codeSel) codeSel.value = 'all';
-        if (productInput) productInput.value = '';
-        couponUsageFilters = { period: '7d', context: 'all', couponCode: 'all', productName: '' };
-        applyCouponUsageFilters();
-      };
-      if (exportBtn) exportBtn.onclick = exportCouponUsageData;
-      
-      // também aplicar ao mudar selects
-      if (periodSel) periodSel.onchange = applyFn;
-      if (ctxSel) ctxSel.onchange = applyFn;
-      if (codeSel) codeSel.onchange = applyFn;
-      if (productInput) {
-        productInput.addEventListener('input', () => {
-          couponUsageFilters.productName = productInput.value;
-          applyCouponUsageFilters();
-        });
-      }
-    }catch(_){}
+    // Bind filtros do histórico de cupons - configurar após DOM estar pronto
+    setupCouponUsageFilters();
     // Carrega relatórios e pendências para todas as funções
     await loadReports().catch(()=>{});
     if (canViewAll){
@@ -4958,6 +4920,8 @@ window.saveProducts = saveProducts;
   document.addEventListener('DOMContentLoaded', () => {
     setupUserFilters();
     try { setupRoleGuards(); } catch (_) {}
+    // Configurar filtros de cupons quando DOM estiver pronto
+    setupCouponUsageFilters();
   });
 
 // ==================== FUNÇÕES DE USUÁRIOS ====================
@@ -6805,6 +6769,106 @@ window.filterAdminHistory = filterAdminHistory;
 // Expor funções de cupons globalmente
 window.loadCoupons = loadCoupons;
 window.loadCouponUsage = loadCouponUsage;
+
+// Configurar event listeners dos filtros de cupons
+function setupCouponUsageFilters() {
+  // Aguardar um pouco para garantir que o DOM está pronto
+  setTimeout(() => {
+    try {
+      const periodSel = document.getElementById('couponUsagePeriod');
+      const ctxSel = document.getElementById('couponUsageContext');
+      const codeSel = document.getElementById('couponUsageCodeFilter');
+      const productInput = document.getElementById('couponUsageProductFilter');
+      const applyBtn = document.getElementById('couponUsageApply');
+      const resetBtn = document.getElementById('couponUsageReset');
+      const exportBtn = document.getElementById('couponUsageExport');
+      
+      if (!applyBtn || !resetBtn || !exportBtn) {
+        console.warn('Elementos de filtro de cupons não encontrados, tentando novamente...');
+        // Tentar novamente após mais tempo
+        setTimeout(setupCouponUsageFilters, 500);
+        return;
+      }
+      
+      // Função para aplicar filtros
+      const applyFn = (e) => {
+        if (e) e.preventDefault();
+        couponUsageFilters.period = (periodSel?.value || '7d');
+        couponUsageFilters.context = (ctxSel?.value || 'all');
+        couponUsageFilters.couponCode = (codeSel?.value || 'all');
+        couponUsageFilters.productName = (productInput?.value || '');
+        applyCouponUsageFilters();
+      };
+      
+      // Função para resetar filtros
+      const resetFn = (e) => {
+        if (e) e.preventDefault();
+        if (periodSel) periodSel.value = '7d';
+        if (ctxSel) ctxSel.value = 'all';
+        if (codeSel) codeSel.value = 'all';
+        if (productInput) productInput.value = '';
+        couponUsageFilters = { period: '7d', context: 'all', couponCode: 'all', productName: '' };
+        applyCouponUsageFilters();
+      };
+      
+      // Função para exportar
+      const exportFn = (e) => {
+        if (e) e.preventDefault();
+        exportCouponUsageData();
+      };
+      
+      // Remover listeners antigos e adicionar novos
+      applyBtn.replaceWith(applyBtn.cloneNode(true));
+      resetBtn.replaceWith(resetBtn.cloneNode(true));
+      exportBtn.replaceWith(exportBtn.cloneNode(true));
+      
+      // Re-obter referências após clonar
+      const applyBtnNew = document.getElementById('couponUsageApply');
+      const resetBtnNew = document.getElementById('couponUsageReset');
+      const exportBtnNew = document.getElementById('couponUsageExport');
+      
+      // Adicionar listeners
+      if (applyBtnNew) {
+        applyBtnNew.addEventListener('click', applyFn);
+        applyBtnNew.onclick = applyFn; // Fallback
+      }
+      
+      if (resetBtnNew) {
+        resetBtnNew.addEventListener('click', resetFn);
+        resetBtnNew.onclick = resetFn; // Fallback
+      }
+      
+      if (exportBtnNew) {
+        exportBtnNew.addEventListener('click', exportFn);
+        exportBtnNew.onclick = exportFn; // Fallback
+      }
+      
+      // Configurar listeners dos selects e input
+      if (periodSel) {
+        periodSel.onchange = applyFn;
+        periodSel.addEventListener('change', applyFn);
+      }
+      if (ctxSel) {
+        ctxSel.onchange = applyFn;
+        ctxSel.addEventListener('change', applyFn);
+      }
+      if (codeSel) {
+        codeSel.onchange = applyFn;
+        codeSel.addEventListener('change', applyFn);
+      }
+      if (productInput) {
+        productInput.addEventListener('input', () => {
+          couponUsageFilters.productName = productInput.value;
+          applyCouponUsageFilters();
+        });
+      }
+      
+      console.log('✅ Filtros de cupons configurados com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao configurar filtros de cupons:', error);
+    }
+  }, 100);
+}
 // Listar pedidos de camisa e marcar envio
 async function loadShirtOrders(){
   try{
