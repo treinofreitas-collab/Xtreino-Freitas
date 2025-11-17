@@ -6527,7 +6527,7 @@ function exportCouponUsageData() {
 }
 
 // Abrir modal de criação de cupom
-function openCreateCouponModal() {
+async function openCreateCouponModal() {
     const modal = document.getElementById('createCouponModal');
     if (modal) {
         modal.classList.remove('hidden');
@@ -6535,21 +6535,41 @@ function openCreateCouponModal() {
         const form = document.getElementById('createCouponForm');
         if (form) form.reset();
         
-        // Popular select de afiliados
-        populateCouponAffiliateSelect();
+        // Popular select de afiliados (agora é async)
+        await populateCouponAffiliateSelect();
     }
 }
 
 // Popular select de afiliados no modal de cupom
-function populateCouponAffiliateSelect() {
+async function populateCouponAffiliateSelect() {
     const select = document.getElementById('couponAffiliateId');
     if (!select) return;
     
     // Limpar opções existentes (exceto a primeira)
+    select.innerHTML = '<option value="">Carregando afiliados...</option>';
+    
+    // Se affiliatesData estiver vazio, carregar afiliados primeiro
+    if (!affiliatesData || affiliatesData.length === 0) {
+        try {
+            await loadAffiliates();
+        } catch (error) {
+            console.error('Erro ao carregar afiliados:', error);
+            select.innerHTML = '<option value="">Erro ao carregar afiliados</option>';
+            return;
+        }
+    }
+    
+    // Limpar e adicionar opção padrão
     select.innerHTML = '<option value="">Nenhum afiliado</option>';
     
     // Adicionar afiliados ativos
     const activeAffiliates = affiliatesData.filter(a => a.affiliateStatus === 'active');
+    
+    if (activeAffiliates.length === 0) {
+        select.innerHTML = '<option value="">Nenhum afiliado ativo</option>';
+        return;
+    }
+    
     activeAffiliates.forEach(affiliate => {
         const option = document.createElement('option');
         option.value = affiliate.id;
@@ -6597,8 +6617,8 @@ async function editCoupon(couponId) {
         const modalTitle = modal.querySelector('h3');
         if (modalTitle) modalTitle.textContent = 'Editar Cupom';
         
-        // Popular select de afiliados
-        populateCouponAffiliateSelect();
+        // Popular select de afiliados (agora é async)
+        await populateCouponAffiliateSelect();
         
         // Preencher formulário com dados do cupom
         document.getElementById('couponCode').value = coupon.code || '';
@@ -7134,6 +7154,7 @@ async function loadAffiliates() {
                 commissionRateEvents: data.commissionRateEvents || data.commissionRate || 10,
                 commissionRateProducts: data.commissionRateProducts || data.commissionRate || 10,
                 status: data.affiliateStatus || 'active',
+                affiliateStatus: data.affiliateStatus || 'active', // Manter ambos para compatibilidade
                 createdAt: data.createdAt?.toDate() || new Date()
             });
         });

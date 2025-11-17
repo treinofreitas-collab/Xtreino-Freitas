@@ -228,6 +228,8 @@ async function checkAuthState() {
             console.log('✅ User authenticated, loading profile and dashboard');
             await loadUserProfile();
             await loadDashboard();
+            // Verificar role de afiliado após carregar perfil
+            await checkAffiliateRole();
             // Hide login prompt if user is logged in
             hideLoginPrompt();
         } else {
@@ -2797,14 +2799,34 @@ document.addEventListener('DOMContentLoaded', () => {
 // Verificar se é afiliado ao carregar perfil
 async function checkAffiliateRole() {
     try {
-        if (!currentUser || !currentUser.uid) return;
+        if (!currentUser || !currentUser.uid) {
+            console.log('⚠️ checkAffiliateRole: Usuário não autenticado');
+            return;
+        }
+        
+        console.log('🔍 Verificando role de afiliado para:', currentUser.uid);
         const userRole = await getUserRole(currentUser.uid);
-        if (userRole?.role?.toLowerCase() === 'afiliado') {
+        console.log('🔍 Role obtido:', userRole);
+        
+        const roleLower = userRole?.role?.toLowerCase();
+        console.log('🔍 Role em lowercase:', roleLower);
+        
+        if (roleLower === 'afiliado') {
+            console.log('✅ Usuário é afiliado, mostrando aba');
             const affiliateTab = document.getElementById('affiliateTab');
-            if (affiliateTab) affiliateTab.classList.remove('hidden');
+            if (affiliateTab) {
+                affiliateTab.classList.remove('hidden');
+                console.log('✅ Aba de afiliado mostrada');
+            } else {
+                console.error('❌ Elemento affiliateTab não encontrado');
+            }
+        } else {
+            console.log('ℹ️ Usuário não é afiliado, role:', roleLower);
+            const affiliateTab = document.getElementById('affiliateTab');
+            if (affiliateTab) affiliateTab.classList.add('hidden');
         }
     } catch (error) {
-        console.error('Erro ao verificar role de afiliado:', error);
+        console.error('❌ Erro ao verificar role de afiliado:', error);
     }
 }
 
