@@ -4198,35 +4198,7 @@ async function renderScheduleTimes(){
         slots = ['19h','20h','21h','22h','23h'];
     }
     
-    // Filtrar horários travados - não mostrar na lista
-    try {
-        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const ovRef = collection(window.firebaseDb, 'schedule_overrides');
-        const ovSnap = await getDocs(query(ovRef, where('date','==', date)));
-        
-        const lockedHours = new Set();
-        ovSnap.forEach(doc => {
-            const ov = doc.data();
-            if (ov.locked) {
-                const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
-                if (!isNaN(ovHour)) {
-                    const ovEventType = ov.eventType || null;
-                    // Aplicar se for genérico ou corresponder ao eventType
-                    if (!ovEventType || ovEventType === eventType || !eventType) {
-                        lockedHours.add(ovHour);
-                    }
-                }
-            }
-        });
-        
-        // Remover horários travados da lista
-        slots = slots.filter(slot => {
-            const hour = parseInt(slot.replace('h', ''));
-            return !lockedHours.has(hour);
-        });
-    } catch (err) {
-        console.error('Erro ao verificar horários travados ao renderizar:', err);
-    }
+    // NÃO filtrar horários travados - eles devem aparecer como "Lotado"
     const now = new Date();
     const selectedDate = new Date(date + 'T00:00:00');
     const isToday = selectedDate.toDateString() === now.toDateString();
@@ -4591,12 +4563,15 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         const schedule = btn.dataset.schedule;
         const time = (schedule || '').split(' - ')[1] || '';
         const hour = parseInt(time.replace('h', ''));
-        const taken = occupied[schedule] || 0;
         const capacity = getEventCapacity(eventType, time);
-        const available = Math.max(0, capacity - taken);
         
         // Verificar se o horário está travado (prioridade máxima)
         const isLocked = lockedHours.has(hour);
+        
+        // Se estiver travado, forçar como lotado (taken = capacity)
+        // Isso faz aparecer como (15/15) ou (capacidade/capacidade)
+        const taken = isLocked ? capacity : (occupied[schedule] || 0);
+        const available = Math.max(0, capacity - taken);
         
         // Verificar se o horário já está disponível (12 minutos antes do horário)
         let isTimeAvailable = true;
@@ -4621,10 +4596,10 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         
         // Verificar travamento primeiro (prioridade máxima)
         if (isLocked) {
-            // Horário travado pelo admin
-            btn.className = 'slot-btn bg-gray-400 text-gray-600 cursor-not-allowed';
+            // Horário travado pelo admin - mostrar como LOTADO (ex: 15/15)
+            btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
             btn.disabled = true;
-            btn.textContent = `${time} (Bloqueado)`;
+            btn.textContent = `${time} (${String(capacity).padStart(2,'0')}/${String(capacity).padStart(2,'0')})`;
             btn.onclick = null;
         } else if (eventType === 'semanal-freitas' && time === '19h'){
             // Semanal Freitas: 19h sempre esgotado
