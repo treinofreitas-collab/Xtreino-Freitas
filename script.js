@@ -4281,7 +4281,8 @@ async function fetchOccupiedForDate(day, date, eventType){
         if (!window.firebaseReady) return map;
         const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const regsRef = collection(window.firebaseDb, 'registrations');
-        const clauses = [ where('date','==', date), where('status','in',['paid','confirmed']) ];
+        // Incluir 'pending' para contar todas as reservas, mesmo as que ainda não foram pagas
+        const clauses = [ where('date','==', date), where('status','in',['paid','confirmed','pending']) ];
         if (eventType) clauses.push(where('eventType','==', eventType));
         const q = query(regsRef, ...clauses);
         const snap = await getDocs(q);
@@ -4317,26 +4318,34 @@ async function fetchOccupiedForDate(day, date, eventType){
         try {
             const { collection: col2, query: q2, where: w2, getDocs: get2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const overridesRef = col2(window.firebaseDb, 'schedule_overrides');
-            const ovSnap = await get2(q2(
-                overridesRef,
-                w2('date','==', date),
-                eventType ? w2('eventType','==', eventType) : w2('eventType','==', null)
-            ));
-            ovSnap.forEach(d=>{
-                const ov = d.data();
+            
+            // Buscar TODOS os overrides da data (independente de eventType)
+            // Isso garante que pega tanto overrides específicos quanto genéricos
+            const allOverrides = await get2(q2(overridesRef, w2('date','==', date)));
+            
+            allOverrides.forEach(doc => {
+                const ov = doc.data();
                 const hourNum = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
                 if (Number.isNaN(hourNum)) return;
+                
                 const key = `${day} - ${hourNum}h`;
-                if (ov.extraOccupied) {
-                    map[key] = (map[key]||0) + Number(ov.extraOccupied||0);
-                }
-                if (ov.locked) {
-                    // usar capacidade do tipo para forçar lotado
-                    const cap = getEventCapacity(eventType, `${hourNum}h`);
-                    map[key] = cap;
+                const ovEventType = ov.eventType || null;
+                const shouldApply = !ovEventType || ovEventType === eventType || !eventType;
+                
+                if (shouldApply) {
+                    if (ov.extraOccupied) {
+                        map[key] = (map[key]||0) + Number(ov.extraOccupied||0);
+                    }
+                    if (ov.locked) {
+                        // Horário travado pelo admin: usar capacidade do tipo para forçar lotado
+                        const cap = getEventCapacity(eventType, `${hourNum}h`);
+                        map[key] = cap;
+                    }
                 }
             });
-        } catch(_){}
+        } catch(err){
+            console.error('Erro ao verificar overrides em fetchOccupiedForDate:', err);
+        }
     } catch(_) {}
     return map;
 }
@@ -4347,7 +4356,8 @@ async function checkSlotAvailability(date, schedule, eventType){
         if (!window.firebaseReady) return true;
         const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const regsRef = collection(window.firebaseDb, 'registrations');
-        const clauses = [ where('date','==', date), where('status','in',['paid','confirmed']) ];
+        // Incluir 'pending' para evitar que múltiplas reservas sejam criadas simultaneamente
+        const clauses = [ where('date','==', date), where('status','in',['paid','confirmed','pending']) ];
         if (eventType) clauses.push(where('eventType','==', eventType));
         const q = query(regsRef, ...clauses);
         const snap = await getDocs(q);
@@ -4364,20 +4374,44 @@ async function checkSlotAvailability(date, schedule, eventType){
             hh = parseInt(hh||'NaN', 10);
             if (!Number.isNaN(hh) && hh === wantedHour) occupied++;
         });
-        // Considerar overrides
+        // Considerar overrides (horários travados pelo admin)
         try{
             const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = c2(window.firebaseDb, 'schedule_overrides');
-            const ovSnap = await g2(q2(ovRef, w2('date','==', date), eventType ? w2('eventType','==', eventType) : w2('eventType','==', null)));
-            ovSnap.forEach(d=>{
-                const ov = d.data();
+            
+            // Buscar TODOS os overrides da data (independente de eventType)
+            // Isso garante que pega tanto overrides específicos quanto genéricos
+            const ovSnap = await g2(q2(ovRef, w2('date','==', date)));
+            
+            ovSnap.forEach(doc => {
+                const ov = doc.data();
                 const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
-                if (ovHour === wantedHour){
-                    if (ov.locked) occupied = getEventCapacity(eventType, `${wantedHour}h`);
-                    if (ov.extraOccupied) occupied += Number(ov.extraOccupied||0);
+                
+                // Verificar se é o horário que queremos
+                if (ovHour === wantedHour) {
+                    const ovEventType = ov.eventType || null;
+                    
+                    // Aplicar override se:
+                    // 1. Não tem eventType (genérico) OU
+                    // 2. O eventType do override corresponde ao eventType do evento OU
+                    // 3. Não temos eventType na verificação
+                    const shouldApply = !ovEventType || ovEventType === eventType || !eventType;
+                    
+                    if (shouldApply) {
+                        if (ov.locked) {
+                            // Horário travado pelo admin: marcar como lotado (capacidade total)
+                            occupied = getEventCapacity(eventType, `${wantedHour}h`);
+                            console.log(`🔒 Horário ${wantedHour}h travado para ${date} (eventType: ${eventType})`);
+                        }
+                        if (ov.extraOccupied) {
+                            occupied += Number(ov.extraOccupied||0);
+                        }
+                    }
                 }
             });
-        }catch(_){}
+        }catch(err){
+            console.error('Erro ao verificar overrides:', err);
+        }
         return occupied < getEventCapacity(eventType, `${wantedHour}h`);
     }catch(_){ return true; }
 }
@@ -4397,7 +4431,8 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
         for (let schedule of selectedTimes) {
             const clauses = [ 
                 where('date','==', date), 
-                where('status','in',['paid','confirmed']) 
+                // Incluir 'pending' para evitar que múltiplas reservas sejam criadas simultaneamente
+                where('status','in',['paid','confirmed','pending']) 
             ];
             if (eventType) clauses.push(where('eventType','==', eventType));
             const q = query(regsRef, ...clauses);
@@ -4414,20 +4449,37 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
                 hh = parseInt(hh||'NaN', 10);
                 if (!Number.isNaN(hh) && hh === wantedHour) occupiedSlots++;
             });
-            // Overrides
+            // Overrides (horários travados pelo admin)
             try{
                 const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
                 const ovRef = c2(window.firebaseDb, 'schedule_overrides');
-                const ovSnap = await g2(q2(ovRef, w2('date','==', date), eventType ? w2('eventType','==', eventType) : w2('eventType','==', null)));
-                ovSnap.forEach(d=>{
-                    const ov = d.data();
+                
+                // Buscar TODOS os overrides da data
+                const ovSnap = await g2(q2(ovRef, w2('date','==', date)));
+                
+                ovSnap.forEach(doc => {
+                    const ov = doc.data();
                     const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
-                    if (ovHour === wantedHour){
-                        if (ov.locked) occupiedSlots = getEventCapacity(eventType, `${wantedHour}h`);
-                        if (ov.extraOccupied) occupiedSlots += Number(ov.extraOccupied||0);
+                    
+                    if (ovHour === wantedHour) {
+                        const ovEventType = ov.eventType || null;
+                        const shouldApply = !ovEventType || ovEventType === eventType || !eventType;
+                        
+                        if (shouldApply) {
+                            if (ov.locked) {
+                                // Horário travado pelo admin: marcar como lotado
+                                occupiedSlots = getEventCapacity(eventType, `${wantedHour}h`);
+                                console.log(`🔒 Horário ${wantedHour}h travado para ${date} (eventType: ${eventType})`);
+                            }
+                            if (ov.extraOccupied) {
+                                occupiedSlots += Number(ov.extraOccupied||0);
+                            }
+                        }
                     }
                 });
-            }catch(_){}
+            }catch(err){
+                console.error('Erro ao verificar overrides:', err);
+            }
             const capacity = getEventCapacity(eventType, `${wantedHour}h`);
             const availableSlots = capacity - occupiedSlots;
             
@@ -5108,11 +5160,35 @@ async function submitSchedule(e, useTokens=false){
     }
     
     // Verificar disponibilidade de todos os horários por data
+    // IMPORTANTE: Esta verificação deve ser feita ANTES de criar reservas para ambos tokens e pagamento normal
     for (const d of datesToUse){
         for (let schedule of selectedTimes) {
             const canBook = await checkSlotAvailability(d, schedule, eventType);
             if (!canBook){ 
-                alert(`O horário ${schedule} não possui vagas em ${d}. Remova da seleção.`); 
+                // Verificar se o horário está travado para dar mensagem mais específica
+                try {
+                    const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                    const ovRef = collection(window.firebaseDb, 'schedule_overrides');
+                    const timeStr = schedule.split(' - ')[1] || '';
+                    const hour = parseInt(timeStr.replace('h', ''));
+                    const ovSnap = await getDocs(query(ovRef, where('date','==', d), eventType ? where('eventType','==', eventType) : where('eventType','==', null)));
+                    let isLocked = false;
+                    ovSnap.forEach(doc => {
+                        const ov = doc.data();
+                        const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+                        if (ovHour === hour && ov.locked) {
+                            isLocked = true;
+                        }
+                    });
+                    
+                    if (isLocked) {
+                        alert(`O horário ${schedule} está travado/bloqueado para ${d}. Não é possível realizar reservas neste horário.`);
+                    } else {
+                        alert(`O horário ${schedule} não possui vagas disponíveis em ${d}. Remova da seleção.`);
+                    }
+                } catch (err) {
+                    alert(`O horário ${schedule} não possui vagas em ${d}. Remova da seleção.`);
+                }
                 if (submitBtn){ submitBtn.disabled=false; submitBtn.textContent=oldText; } 
                 return; 
             }

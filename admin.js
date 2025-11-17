@@ -7146,6 +7146,21 @@ async function loadAffiliates() {
         affiliatesData = [];
         snapshot.forEach(doc => {
             const data = doc.data();
+            // Tratar createdAt de forma segura (pode ser Timestamp, Date, string ou número)
+            let createdAt = new Date();
+            if (data.createdAt) {
+                if (data.createdAt.toDate && typeof data.createdAt.toDate === 'function') {
+                    // É um Timestamp do Firestore
+                    createdAt = data.createdAt.toDate();
+                } else if (data.createdAt instanceof Date) {
+                    // Já é uma Date
+                    createdAt = data.createdAt;
+                } else if (typeof data.createdAt === 'string' || typeof data.createdAt === 'number') {
+                    // É string ou número (timestamp)
+                    createdAt = new Date(data.createdAt);
+                }
+            }
+            
             affiliatesData.push({
                 id: doc.id,
                 email: data.email || '',
@@ -7155,7 +7170,7 @@ async function loadAffiliates() {
                 commissionRateProducts: data.commissionRateProducts || data.commissionRate || 10,
                 status: data.affiliateStatus || 'active',
                 affiliateStatus: data.affiliateStatus || 'active', // Manter ambos para compatibilidade
-                createdAt: data.createdAt?.toDate() || new Date()
+                createdAt: createdAt
             });
         });
         
@@ -7184,16 +7199,41 @@ async function loadAffiliateSales() {
     try {
         const { collection, getDocs, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const salesRef = collection(window.firebaseDb, 'affiliate_sales');
-        const q = query(salesRef, orderBy('createdAt', 'desc'));
-        const snapshot = await getDocs(q);
+        
+        // Tentar com orderBy, se falhar, buscar sem orderBy
+        let snapshot;
+        try {
+            const q = query(salesRef, orderBy('createdAt', 'desc'));
+            snapshot = await getDocs(q);
+        } catch (error) {
+            // Se não houver índice, buscar sem orderBy
+            console.warn('Índice não encontrado para affiliate_sales, buscando sem orderBy:', error);
+            const q = query(salesRef);
+            snapshot = await getDocs(q);
+        }
         
         affiliateSalesData = [];
         snapshot.forEach(doc => {
             const data = doc.data();
+            // Tratar createdAt de forma segura (pode ser Timestamp, Date, string ou número)
+            let createdAt = new Date();
+            if (data.createdAt) {
+                if (data.createdAt.toDate && typeof data.createdAt.toDate === 'function') {
+                    // É um Timestamp do Firestore
+                    createdAt = data.createdAt.toDate();
+                } else if (data.createdAt instanceof Date) {
+                    // Já é uma Date
+                    createdAt = data.createdAt;
+                } else if (typeof data.createdAt === 'string' || typeof data.createdAt === 'number') {
+                    // É string ou número (timestamp)
+                    createdAt = new Date(data.createdAt);
+                }
+            }
+            
             affiliateSalesData.push({
                 id: doc.id,
                 ...data,
-                createdAt: data.createdAt?.toDate() || new Date()
+                createdAt: createdAt
             });
         });
         
