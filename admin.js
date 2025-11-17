@@ -6283,6 +6283,9 @@ async function loadCouponUsage() {
         // Popular select de cupons
         populateCouponCodeFilter();
         
+        // Inicializar filteredCouponUsageData com todos os dados antes de aplicar filtros
+        filteredCouponUsageData = [...couponUsageData];
+        
         // Inicializa filtros padrão e aplica
         applyCouponUsageFilters();
     } catch (error) {
@@ -6321,7 +6324,9 @@ function renderCouponUsageTable() {
     
     if (!tbody) return;
     
-    const data = Array.isArray(filteredCouponUsageData) && filteredCouponUsageData.length ? filteredCouponUsageData : couponUsageData;
+    // Sempre usar filteredCouponUsageData se existir (mesmo que vazio), senão usar couponUsageData
+    // Isso garante que os filtros sejam respeitados mesmo quando não há resultados
+    const data = Array.isArray(filteredCouponUsageData) ? filteredCouponUsageData : couponUsageData;
     
     if (data.length === 0) {
         tbody.innerHTML = `
@@ -6966,7 +6971,9 @@ async function loadAffiliates() {
                 id: doc.id,
                 email: data.email || '',
                 name: data.name || data.displayName || data.email?.split('@')[0] || 'N/A',
-                commissionRate: data.commissionRate || 10,
+                commissionRate: data.commissionRate || 10, // Mantido para compatibilidade
+                commissionRateEvents: data.commissionRateEvents || data.commissionRate || 10,
+                commissionRateProducts: data.commissionRateProducts || data.commissionRate || 10,
                 status: data.affiliateStatus || 'active',
                 createdAt: data.createdAt?.toDate() || new Date()
             });
@@ -7058,7 +7065,10 @@ function renderAffiliatesTable() {
             <tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="py-2 px-2 text-xs font-medium">${affiliate.name}</td>
                 <td class="py-2 px-2 text-xs">${affiliate.email}</td>
-                <td class="py-2 px-2 text-xs">${affiliate.commissionRate}%</td>
+                <td class="py-2 px-2 text-xs">
+                    <div>Eventos: ${affiliate.commissionRateEvents || affiliate.commissionRate || 10}%</div>
+                    <div class="text-gray-500">Produtos: ${affiliate.commissionRateProducts || affiliate.commissionRate || 10}%</div>
+                </td>
                 <td class="py-2 px-2 text-xs">${totalSales}</td>
                 <td class="py-2 px-2 text-xs font-medium">R$ ${totalCommission.toFixed(2)}</td>
                 <td class="py-2 px-2 text-xs text-orange-600">R$ ${pendingCommission.toFixed(2)}</td>
@@ -7115,7 +7125,10 @@ function renderAffiliateSalesTable() {
                 <td class="py-2 px-2 text-xs">${date}</td>
                 <td class="py-2 px-2 text-xs">${affiliate?.name || sale.affiliateId || 'N/A'}</td>
                 <td class="py-2 px-2 text-xs">${sale.customerName || sale.customerEmail || 'N/A'}</td>
-                <td class="py-2 px-2 text-xs">${sale.productName || sale.productId || 'N/A'}</td>
+                <td class="py-2 px-2 text-xs">
+                    <div>${sale.productName || sale.productId || 'N/A'}</div>
+                    <div class="text-xs text-gray-500">${sale.saleType === 'event' ? '📅 Evento' : '🛒 Produto'}</div>
+                </td>
                 <td class="py-2 px-2 text-xs font-medium">R$ ${(sale.saleValue || 0).toFixed(2)}</td>
                 <td class="py-2 px-2 text-xs">${(sale.commissionRate || 0).toFixed(1)}%</td>
                 <td class="py-2 px-2 text-xs font-medium text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2)}</td>
@@ -7181,7 +7194,8 @@ async function createOrUpdateAffiliate(event) {
     if (event) event.preventDefault();
     
     const email = document.getElementById('affiliateEmail')?.value?.trim();
-    const commissionRate = parseFloat(document.getElementById('affiliateCommissionRate')?.value || 0);
+    const commissionRateEvents = parseFloat(document.getElementById('affiliateCommissionRateEvents')?.value || 0);
+    const commissionRateProducts = parseFloat(document.getElementById('affiliateCommissionRateProducts')?.value || 0);
     const status = document.getElementById('affiliateStatus')?.value || 'active';
     const editId = document.getElementById('affiliateEditId')?.value;
     
@@ -7190,8 +7204,13 @@ async function createOrUpdateAffiliate(event) {
         return;
     }
     
-    if (commissionRate < 0 || commissionRate > 100) {
-        alert('Percentual de comissão deve estar entre 0 e 100');
+    if (commissionRateEvents < 0 || commissionRateEvents > 100) {
+        alert('Percentual de comissão de eventos deve estar entre 0 e 100');
+        return;
+    }
+    
+    if (commissionRateProducts < 0 || commissionRateProducts > 100) {
+        alert('Percentual de comissão de produtos deve estar entre 0 e 100');
         return;
     }
     
@@ -7214,12 +7233,14 @@ async function createOrUpdateAffiliate(event) {
         // Atualizar role e dados do afiliado
         await updateDoc(doc(window.firebaseDb, 'users', userId), {
             role: 'Afiliado',
-            commissionRate: commissionRate,
+            commissionRate: commissionRateEvents, // Mantido para compatibilidade (usa eventos como padrão)
+            commissionRateEvents: commissionRateEvents,
+            commissionRateProducts: commissionRateProducts,
             affiliateStatus: status,
             updatedAt: new Date()
         });
         
-        await logAdminAction('manage_affiliate', editId ? `Editou afiliado ${email}` : `Criou afiliado ${email} com ${commissionRate}% de comissão`);
+        await logAdminAction('manage_affiliate', editId ? `Editou afiliado ${email}` : `Criou afiliado ${email} com ${commissionRateEvents}% eventos e ${commissionRateProducts}% produtos`);
         
         // Recarregar dados
         await loadAffiliates();
@@ -7242,7 +7263,8 @@ function editAffiliate(affiliateId) {
     const modal = document.getElementById('createAffiliateModal');
     const title = document.getElementById('affiliateModalTitle');
     const emailInput = document.getElementById('affiliateEmail');
-    const commissionInput = document.getElementById('affiliateCommissionRate');
+    const commissionEventsInput = document.getElementById('affiliateCommissionRateEvents');
+    const commissionProductsInput = document.getElementById('affiliateCommissionRateProducts');
     const statusSelect = document.getElementById('affiliateStatus');
     const editId = document.getElementById('affiliateEditId');
     
@@ -7250,7 +7272,8 @@ function editAffiliate(affiliateId) {
         modal.classList.remove('hidden');
         if (title) title.textContent = 'Editar Afiliado';
         if (emailInput) emailInput.value = affiliate.email;
-        if (commissionInput) commissionInput.value = affiliate.commissionRate;
+        if (commissionEventsInput) commissionEventsInput.value = affiliate.commissionRateEvents || affiliate.commissionRate || 10;
+        if (commissionProductsInput) commissionProductsInput.value = affiliate.commissionRateProducts || affiliate.commissionRate || 10;
         if (statusSelect) statusSelect.value = affiliate.status;
         if (editId) editId.value = affiliateId;
     }

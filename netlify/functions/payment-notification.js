@@ -97,6 +97,98 @@ async function getWhatsAppLinkForRegistration(eventType, schedule) {
     }
 }
 
+// Função para calcular e criar venda de afiliado
+async function createAffiliateSale(db, orderData, saleType) {
+    try {
+        // Verificar se há código de afiliado no pedido
+        const affiliateCode = orderData.affiliateCode || orderData.affiliate_id || null;
+        if (!affiliateCode) {
+            console.log('No affiliate code found in order');
+            return;
+        }
+        
+        // Buscar afiliado pelo código (assumindo que o código é o email ou ID do afiliado)
+        const usersRef = db.collection('users');
+        let affiliateDoc = null;
+        
+        // Tentar buscar por email primeiro
+        const emailQuery = await usersRef.where('email', '==', affiliateCode).where('role', '==', 'Afiliado').get();
+        if (!emailQuery.empty) {
+            affiliateDoc = emailQuery.docs[0];
+        } else {
+            // Tentar buscar por ID
+            const idRef = usersRef.doc(affiliateCode);
+            const idDoc = await idRef.get();
+            if (idDoc.exists && idDoc.data().role === 'Afiliado') {
+                affiliateDoc = idDoc;
+            }
+        }
+        
+        if (!affiliateDoc || !affiliateDoc.exists) {
+            console.log('Affiliate not found for code:', affiliateCode);
+            return;
+        }
+        
+        const affiliateData = affiliateDoc.data();
+        const affiliateId = affiliateDoc.id;
+        
+        // Verificar se afiliado está ativo
+        if (affiliateData.affiliateStatus !== 'active') {
+            console.log('Affiliate is not active:', affiliateId);
+            return;
+        }
+        
+        // Determinar tipo de venda e comissão
+        // saleType: 'event' para registrations, 'product' para orders com type='digital_product'
+        const isEvent = saleType === 'event';
+        const isProduct = saleType === 'product' || orderData.type === 'digital_product';
+        
+        // Obter taxa de comissão correta
+        let commissionRate = 0;
+        if (isEvent) {
+            commissionRate = affiliateData.commissionRateEvents || affiliateData.commissionRate || 10;
+        } else if (isProduct) {
+            commissionRate = affiliateData.commissionRateProducts || affiliateData.commissionRate || 10;
+        } else {
+            // Fallback: usar taxa de eventos
+            commissionRate = affiliateData.commissionRateEvents || affiliateData.commissionRate || 10;
+        }
+        
+        // Calcular valor da venda e comissão
+        const saleValue = Number(orderData.amount || orderData.total || orderData.price || 0);
+        const commissionAmount = (saleValue * commissionRate) / 100;
+        
+        if (commissionAmount <= 0) {
+            console.log('Commission amount is zero or negative');
+            return;
+        }
+        
+        // Criar registro de venda de afiliado
+        const affiliateSaleData = {
+            affiliateId: affiliateId,
+            affiliateEmail: affiliateData.email,
+            orderId: orderData.id || null,
+            customerEmail: orderData.customer || orderData.buyerEmail || orderData.email,
+            customerName: orderData.customerName || orderData.name || 'N/A',
+            productId: orderData.productId || orderData.eventType || null,
+            productName: orderData.title || orderData.item || orderData.productName || 'N/A',
+            saleValue: saleValue,
+            commissionRate: commissionRate,
+            commissionAmount: commissionAmount,
+            saleType: isEvent ? 'event' : 'product',
+            status: 'pending',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        
+        await db.collection('affiliate_sales').add(affiliateSaleData);
+        console.log(`✅ Affiliate sale created: ${affiliateId}, Commission: R$ ${commissionAmount.toFixed(2)} (${commissionRate}%)`);
+        
+    } catch (error) {
+        console.error('❌ Error creating affiliate sale:', error);
+        // Não falhar o processamento do pagamento por causa de erro na comissão
+    }
+}
+
 // Função para gerar links de download baseado no produto
 async function generateDownloadLinks(productId, productOptions = {}) {
     try {
@@ -431,6 +523,10 @@ exports.handler = async (event, context) => {
                         
                         console.log('Order updated to paid:', orderDoc.id);
                         
+                        // Criar venda de afiliado se houver código de afiliado
+                        const orderDataWithId = { ...orderData, id: orderDoc.id };
+                        await createAffiliateSale(db, orderDataWithId, orderData.type === 'digital_product' ? 'product' : 'event');
+                        
                         // Verificar tipo de compra
                         console.log('Checking purchase type...');
                         console.log('Payment description:', payment.description);
@@ -555,6 +651,12 @@ exports.handler = async (event, context) => {
                             
                             await batch.commit();
                             console.log('✅ Registrations updated to paid:', registrationsSnapshot.size);
+                            
+                            // Criar vendas de afiliados para cada registro
+                            for (const doc of registrationsSnapshot.docs) {
+                                const regData = { ...doc.data(), id: doc.id };
+                                await createAffiliateSale(db, regData, 'event');
+                            }
                         } else {
                             console.log('❌ No order or registration found for external_reference:', externalRef);
                         }

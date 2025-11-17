@@ -3367,7 +3367,7 @@ window.initSmoothAnimations = initSmoothAnimations;
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 14.00 },
+    'camp-freitas': { label: 'Camp Freitas', price: 20.00 },
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
     // Produtos da loja virtual
@@ -4070,6 +4070,7 @@ function getEventPrice(eventType, hourStr, dateStr){
             // Datas em ISO (YYYY-MM-DD)
             const promos = {
                 '2024-11-17': { price: 25.00, hours: ['21h','22h'] }, // Dia 17/11: R$25,00 apenas 21h e 22h
+                '2025-11-17': { price: 25.00, hours: ['21h','22h'] }, // Dia 17/11/2025: R$25,00 apenas 21h e 22h
                 '2025-11-13': { price: 20.00, hours: ['21h','22h','23h'] },
                 '2025-11-14': { price: 20.00, hours: ['20h'] }
             };
