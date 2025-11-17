@@ -320,6 +320,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const sectionTokens = document.getElementById('sectionTokens');
     const sectionCoupons = document.getElementById('sectionCoupons');
     const sectionCouponUsage = document.getElementById('sectionCouponUsage');
+    const sectionAffiliates = document.getElementById('sectionAffiliates');
+    const sectionAffiliateSales = document.getElementById('sectionAffiliateSales');
     const sectionPasseBooyah = document.getElementById('sectionPasseBooyah');
     const sectionHighlights = document.getElementById('sectionHighlights');
     const sectionNews = document.getElementById('sectionNews');
@@ -337,6 +339,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (sectionTokens) sectionTokens.style.display = 'none';
     if (sectionCoupons) sectionCoupons.style.display = 'none';
     if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
+    if (sectionAffiliates) sectionAffiliates.style.display = 'none';
+    if (sectionAffiliateSales) sectionAffiliateSales.style.display = 'none';
     if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
     if (sectionProducts) sectionProducts.style.display = 'none';
     if (sectionSchedules) sectionSchedules.style.display = 'none';
@@ -1251,6 +1255,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
     
     if (window.loadCouponUsage) {
       window.loadCouponUsage();
+    }
+    
+    if (window.loadAffiliates) {
+      window.loadAffiliates();
     }
   // Carregar pedidos de camisa (envios)
   if (window.loadShirtOrders) {
@@ -6769,6 +6777,426 @@ window.filterAdminHistory = filterAdminHistory;
 // Expor funções de cupons globalmente
 window.loadCoupons = loadCoupons;
 window.loadCouponUsage = loadCouponUsage;
+
+// ==================== SISTEMA DE AFILIADOS - ADMIN ====================
+
+// Variáveis globais para afiliados
+let affiliatesData = [];
+let affiliateSalesData = [];
+
+// Carregar afiliados
+async function loadAffiliates() {
+    try {
+        console.log('🔄 Carregando afiliados...');
+        const { collection, getDocs, query, where, orderBy } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        
+        // Buscar usuários com role 'Afiliado'
+        const usersRef = collection(window.firebaseDb, 'users');
+        // Tentar com orderBy, se falhar, buscar sem orderBy
+        let snapshot;
+        try {
+            const q = query(usersRef, where('role', '==', 'Afiliado'), orderBy('createdAt', 'desc'));
+            snapshot = await getDocs(q);
+        } catch (error) {
+            // Se não houver índice, buscar sem orderBy
+            console.warn('Índice não encontrado, buscando sem orderBy:', error);
+            const q = query(usersRef, where('role', '==', 'Afiliado'));
+            snapshot = await getDocs(q);
+        }
+        
+        affiliatesData = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            affiliatesData.push({
+                id: doc.id,
+                email: data.email || '',
+                name: data.name || data.displayName || data.email?.split('@')[0] || 'N/A',
+                commissionRate: data.commissionRate || 10,
+                status: data.affiliateStatus || 'active',
+                createdAt: data.createdAt?.toDate() || new Date()
+            });
+        });
+        
+        console.log(`✅ ${affiliatesData.length} afiliados carregados`);
+        
+        // Carregar vendas e comissões para cada afiliado
+        await loadAffiliateSales();
+        
+        // Popular filtro de afiliados
+        populateAffiliateFilter();
+        
+        // Renderizar tabela
+        renderAffiliatesTable();
+        updateAffiliateStats();
+    } catch (error) {
+        console.error('❌ Erro ao carregar afiliados:', error);
+        const tbody = document.getElementById('affiliatesTableBody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="8" class="py-6 text-center text-red-500">Erro ao carregar afiliados</td></tr>';
+        }
+    }
+}
+
+// Carregar vendas de afiliados
+async function loadAffiliateSales() {
+    try {
+        const { collection, getDocs, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const salesRef = collection(window.firebaseDb, 'affiliate_sales');
+        const q = query(salesRef, orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        
+        affiliateSalesData = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            affiliateSalesData.push({
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate() || new Date()
+            });
+        });
+        
+        console.log(`✅ ${affiliateSalesData.length} vendas de afiliados carregadas`);
+        renderAffiliateSalesTable();
+    } catch (error) {
+        console.error('❌ Erro ao carregar vendas de afiliados:', error);
+    }
+}
+
+// Popular filtro de afiliados
+function populateAffiliateFilter() {
+    const select = document.getElementById('affiliateSalesFilter');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="all">Todos os afiliados</option>';
+    affiliatesData.forEach(affiliate => {
+        const option = document.createElement('option');
+        option.value = affiliate.id;
+        option.textContent = `${affiliate.name} (${affiliate.email})`;
+        select.appendChild(option);
+    });
+}
+
+// Renderizar tabela de afiliados
+function renderAffiliatesTable() {
+    const tbody = document.getElementById('affiliatesTableBody');
+    if (!tbody) return;
+    
+    if (affiliatesData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="py-6 text-center text-gray-500">Nenhum afiliado encontrado</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = affiliatesData.map(affiliate => {
+        // Calcular estatísticas do afiliado
+        const sales = affiliateSalesData.filter(s => s.affiliateId === affiliate.id);
+        const totalSales = sales.length;
+        const totalCommission = sales.reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+        const pendingCommission = sales
+            .filter(s => s.status === 'pending')
+            .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+        
+        const statusBadge = affiliate.status === 'active'
+            ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Ativo</span>'
+            : '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs">Inativo</span>';
+        
+        return `
+            <tr class="border-b border-gray-100 hover:bg-gray-50">
+                <td class="py-2 px-2 text-xs font-medium">${affiliate.name}</td>
+                <td class="py-2 px-2 text-xs">${affiliate.email}</td>
+                <td class="py-2 px-2 text-xs">${affiliate.commissionRate}%</td>
+                <td class="py-2 px-2 text-xs">${totalSales}</td>
+                <td class="py-2 px-2 text-xs font-medium">R$ ${totalCommission.toFixed(2)}</td>
+                <td class="py-2 px-2 text-xs text-orange-600">R$ ${pendingCommission.toFixed(2)}</td>
+                <td class="py-2 px-2 text-xs">${statusBadge}</td>
+                <td class="py-2 px-2 text-xs">
+                    <div class="flex gap-1">
+                        <button onclick="editAffiliate('${affiliate.id}')" 
+                                class="px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-xs">
+                            Editar
+                        </button>
+                        <button onclick="viewAffiliateDetails('${affiliate.id}')" 
+                                class="px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-xs">
+                            Detalhes
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Renderizar tabela de vendas de afiliados
+function renderAffiliateSalesTable() {
+    const tbody = document.getElementById('affiliateSalesTableBody');
+    if (!tbody) return;
+    
+    const affiliateFilter = document.getElementById('affiliateSalesFilter')?.value || 'all';
+    const statusFilter = document.getElementById('affiliateSalesStatusFilter')?.value || 'all';
+    
+    let filteredSales = affiliateSalesData;
+    
+    if (affiliateFilter !== 'all') {
+        filteredSales = filteredSales.filter(s => s.affiliateId === affiliateFilter);
+    }
+    
+    if (statusFilter !== 'all') {
+        filteredSales = filteredSales.filter(s => s.status === statusFilter);
+    }
+    
+    if (filteredSales.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-gray-500">Nenhuma venda encontrada</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = filteredSales.map(sale => {
+        const affiliate = affiliatesData.find(a => a.id === sale.affiliateId);
+        const date = sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('pt-BR') : 'N/A';
+        const statusBadge = sale.status === 'paid'
+            ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Paga</span>'
+            : '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Pendente</span>';
+        
+        return `
+            <tr class="border-b border-gray-100 hover:bg-gray-50">
+                <td class="py-2 px-2 text-xs">${date}</td>
+                <td class="py-2 px-2 text-xs">${affiliate?.name || sale.affiliateId || 'N/A'}</td>
+                <td class="py-2 px-2 text-xs">${sale.customerName || sale.customerEmail || 'N/A'}</td>
+                <td class="py-2 px-2 text-xs">${sale.productName || sale.productId || 'N/A'}</td>
+                <td class="py-2 px-2 text-xs font-medium">R$ ${(sale.saleValue || 0).toFixed(2)}</td>
+                <td class="py-2 px-2 text-xs">${(sale.commissionRate || 0).toFixed(1)}%</td>
+                <td class="py-2 px-2 text-xs font-medium text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2)}</td>
+                <td class="py-2 px-2 text-xs">${statusBadge}</td>
+                <td class="py-2 px-2 text-xs">
+                    ${sale.status === 'pending' ? `
+                        <button onclick="approveAffiliateCommission('${sale.id}')" 
+                                class="px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-xs">
+                            Aprovar
+                        </button>
+                    ` : ''}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Atualizar estatísticas de afiliados
+function updateAffiliateStats() {
+    const totalAffiliates = affiliatesData.length;
+    const totalSales = affiliateSalesData.length;
+    const totalCommission = affiliateSalesData.reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+    const pendingCommission = affiliateSalesData
+        .filter(s => s.status === 'pending')
+        .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+    
+    const statsTotal = document.getElementById('affiliateStatsTotal');
+    const statsSales = document.getElementById('affiliateStatsSales');
+    const statsCommission = document.getElementById('affiliateStatsCommission');
+    const statsPending = document.getElementById('affiliateStatsPending');
+    
+    if (statsTotal) statsTotal.textContent = totalAffiliates;
+    if (statsSales) statsSales.textContent = totalSales;
+    if (statsCommission) statsCommission.textContent = `R$ ${totalCommission.toFixed(2).replace('.', ',')}`;
+    if (statsPending) statsPending.textContent = `R$ ${pendingCommission.toFixed(2).replace('.', ',')}`;
+}
+
+// Abrir modal de criação de afiliado
+function openCreateAffiliateModal() {
+    const modal = document.getElementById('createAffiliateModal');
+    const title = document.getElementById('affiliateModalTitle');
+    const form = document.getElementById('createAffiliateForm');
+    const editId = document.getElementById('affiliateEditId');
+    
+    if (modal) {
+        modal.classList.remove('hidden');
+        if (title) title.textContent = 'Criar Novo Afiliado';
+        if (form) form.reset();
+        if (editId) editId.value = '';
+    }
+}
+
+// Fechar modal de criação de afiliado
+function closeCreateAffiliateModal() {
+    const modal = document.getElementById('createAffiliateModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// Criar/editar afiliado
+async function createOrUpdateAffiliate(event) {
+    if (event) event.preventDefault();
+    
+    const email = document.getElementById('affiliateEmail')?.value?.trim();
+    const commissionRate = parseFloat(document.getElementById('affiliateCommissionRate')?.value || 0);
+    const status = document.getElementById('affiliateStatus')?.value || 'active';
+    const editId = document.getElementById('affiliateEditId')?.value;
+    
+    if (!email) {
+        alert('Email é obrigatório');
+        return;
+    }
+    
+    if (commissionRate < 0 || commissionRate > 100) {
+        alert('Percentual de comissão deve estar entre 0 e 100');
+        return;
+    }
+    
+    try {
+        const { collection, query, where, getDocs, doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        
+        // Buscar usuário pelo email
+        const usersRef = collection(window.firebaseDb, 'users');
+        const q = query(usersRef, where('email', '==', email));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            alert('Usuário não encontrado. O usuário deve estar cadastrado no sistema primeiro.');
+            return;
+        }
+        
+        const userDoc = snapshot.docs[0];
+        const userId = userDoc.id;
+        
+        // Atualizar role e dados do afiliado
+        await updateDoc(doc(window.firebaseDb, 'users', userId), {
+            role: 'Afiliado',
+            commissionRate: commissionRate,
+            affiliateStatus: status,
+            updatedAt: new Date()
+        });
+        
+        await logAdminAction('manage_affiliate', editId ? `Editou afiliado ${email}` : `Criou afiliado ${email} com ${commissionRate}% de comissão`);
+        
+        // Recarregar dados
+        await loadAffiliates();
+        
+        // Fechar modal
+        closeCreateAffiliateModal();
+        
+        alert(editId ? 'Afiliado atualizado com sucesso!' : 'Afiliado criado com sucesso!');
+    } catch (error) {
+        console.error('❌ Erro ao criar/editar afiliado:', error);
+        alert('Erro ao criar/editar afiliado: ' + error.message);
+    }
+}
+
+// Editar afiliado
+function editAffiliate(affiliateId) {
+    const affiliate = affiliatesData.find(a => a.id === affiliateId);
+    if (!affiliate) return;
+    
+    const modal = document.getElementById('createAffiliateModal');
+    const title = document.getElementById('affiliateModalTitle');
+    const emailInput = document.getElementById('affiliateEmail');
+    const commissionInput = document.getElementById('affiliateCommissionRate');
+    const statusSelect = document.getElementById('affiliateStatus');
+    const editId = document.getElementById('affiliateEditId');
+    
+    if (modal) {
+        modal.classList.remove('hidden');
+        if (title) title.textContent = 'Editar Afiliado';
+        if (emailInput) emailInput.value = affiliate.email;
+        if (commissionInput) commissionInput.value = affiliate.commissionRate;
+        if (statusSelect) statusSelect.value = affiliate.status;
+        if (editId) editId.value = affiliateId;
+    }
+}
+
+// Ver detalhes do afiliado
+function viewAffiliateDetails(affiliateId) {
+    const affiliate = affiliatesData.find(a => a.id === affiliateId);
+    const sales = affiliateSalesData.filter(s => s.affiliateId === affiliateId);
+    
+    if (!affiliate) return;
+    
+    const totalSales = sales.length;
+    const totalCommission = sales.reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+    const pendingCommission = sales
+        .filter(s => s.status === 'pending')
+        .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+    
+    alert(`Detalhes do Afiliado:\n\n` +
+          `Nome: ${affiliate.name}\n` +
+          `Email: ${affiliate.email}\n` +
+          `Comissão: ${affiliate.commissionRate}%\n` +
+          `Status: ${affiliate.status === 'active' ? 'Ativo' : 'Inativo'}\n` +
+          `Total de Vendas: ${totalSales}\n` +
+          `Comissão Total: R$ ${totalCommission.toFixed(2)}\n` +
+          `Comissão Pendente: R$ ${pendingCommission.toFixed(2)}`);
+}
+
+// Aprovar comissão de afiliado
+async function approveAffiliateCommission(saleId) {
+    if (!confirm('Deseja aprovar e marcar esta comissão como paga?')) {
+        return;
+    }
+    
+    try {
+        const { doc, updateDoc, collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        
+        await updateDoc(doc(window.firebaseDb, 'affiliate_sales', saleId), {
+            status: 'paid',
+            paidAt: new Date(),
+            paidBy: window.adminRoleLower || 'admin'
+        });
+        
+        // Criar registro de comissão paga
+        const sale = affiliateSalesData.find(s => s.id === saleId);
+        if (sale) {
+            await addDoc(collection(window.firebaseDb, 'affiliate_commissions'), {
+                affiliateId: sale.affiliateId,
+                saleId: saleId,
+                amount: sale.commissionAmount,
+                status: 'paid',
+                paymentMethod: 'Manual',
+                createdAt: new Date(),
+                paidAt: new Date()
+            });
+        }
+        
+        await logAdminAction('approve_commission', `Aprovou comissão de venda ${saleId}`);
+        
+        // Recarregar dados
+        await loadAffiliateSales();
+        await loadAffiliates();
+        
+        alert('Comissão aprovada e marcada como paga!');
+    } catch (error) {
+        console.error('❌ Erro ao aprovar comissão:', error);
+        alert('Erro ao aprovar comissão: ' + error.message);
+    }
+}
+
+// Expor funções globalmente
+window.loadAffiliates = loadAffiliates;
+window.openCreateAffiliateModal = openCreateAffiliateModal;
+window.closeCreateAffiliateModal = closeCreateAffiliateModal;
+window.editAffiliate = editAffiliate;
+window.viewAffiliateDetails = viewAffiliateDetails;
+window.approveAffiliateCommission = approveAffiliateCommission;
+
+// Configurar formulário e filtros
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('createAffiliateForm');
+    if (form) {
+        form.addEventListener('submit', createOrUpdateAffiliate);
+    }
+    
+    // Configurar filtros de vendas
+    const affiliateFilter = document.getElementById('affiliateSalesFilter');
+    const statusFilter = document.getElementById('affiliateSalesStatusFilter');
+    
+    if (affiliateFilter) {
+        affiliateFilter.addEventListener('change', () => {
+            renderAffiliateSalesTable();
+        });
+    }
+    
+    if (statusFilter) {
+        statusFilter.addEventListener('change', () => {
+            renderAffiliateSalesTable();
+        });
+    }
+});
 
 // Configurar event listeners dos filtros de cupons
 function setupCouponUsageFilters() {
