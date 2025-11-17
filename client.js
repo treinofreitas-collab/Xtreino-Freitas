@@ -2526,6 +2526,20 @@ async function loadAffiliateData() {
 
         // Atualizar estatísticas
         updateAffiliateStats();
+        
+        // Adicionar listener ao filtro de vendas
+        const salesFilter = document.getElementById('affiliateSalesFilter');
+        if (salesFilter) {
+            salesFilter.addEventListener('change', () => {
+                renderAffiliateSales(window.affiliateSales || []);
+            });
+        }
+        
+        // Adicionar listener ao botão de copiar link
+        const copyLinkBtn = document.getElementById('copyAffiliateLinkBtn');
+        if (copyLinkBtn) {
+            copyLinkBtn.addEventListener('click', copyAffiliateLink);
+        }
     } catch (error) {
         console.error('Erro ao carregar dados de afiliado:', error);
     }
@@ -2555,6 +2569,9 @@ async function loadAffiliateSales() {
 
         renderAffiliateSales(sales);
         window.affiliateSales = sales;
+        
+        // Atualizar estatísticas após carregar vendas
+        updateAffiliateStats();
     } catch (error) {
         console.error('Erro ao carregar vendas:', error);
         const tbody = document.getElementById('affiliateSalesTableBody');
@@ -2583,11 +2600,18 @@ function renderAffiliateSales(sales) {
             ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Paga</span>'
             : '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Pendente</span>';
         
+        // Identificar tipo de venda
+        const saleTypeIcon = sale.saleType === 'event' ? '📅' : sale.saleType === 'product' ? '🛒' : '📦';
+        const saleTypeText = sale.saleType === 'event' ? 'Evento' : sale.saleType === 'product' ? 'Produto' : 'N/A';
+        
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="px-4 py-3 text-sm">${date}</td>
                 <td class="px-4 py-3 text-sm">${sale.customerName || sale.customerEmail || 'N/A'}</td>
-                <td class="px-4 py-3 text-sm">${sale.productName || sale.productId || 'N/A'}</td>
+                <td class="px-4 py-3 text-sm">
+                    <div>${sale.productName || sale.productId || 'N/A'}</div>
+                    <div class="text-xs text-gray-500">${saleTypeIcon} ${saleTypeText}</div>
+                </td>
                 <td class="px-4 py-3 text-sm font-medium">R$ ${(sale.saleValue || 0).toFixed(2)}</td>
                 <td class="px-4 py-3 text-sm">${(sale.commissionRate || 0).toFixed(1)}%</td>
                 <td class="px-4 py-3 text-sm font-medium text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2)}</td>
@@ -2662,14 +2686,28 @@ function updateAffiliateStats() {
     const sales = window.affiliateSales || [];
     const commissions = window.affiliateCommissions || [];
 
+    // Calcular métricas a partir das vendas (affiliate_sales)
     const totalSales = sales.length;
-    const totalCommission = commissions.reduce((sum, c) => sum + (c.amount || 0), 0);
-    const pendingCommission = commissions
-        .filter(c => c.status === 'pending')
-        .reduce((sum, c) => sum + (c.amount || 0), 0);
-    const paidCommission = commissions
+    
+    // Total de comissão de todas as vendas
+    const totalCommission = sales.reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+    
+    // Comissão pendente (vendas com status 'pending')
+    const pendingCommission = sales
+        .filter(s => s.status === 'pending')
+        .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+    
+    // Comissão paga (vendas com status 'paid')
+    const paidCommission = sales
+        .filter(s => s.status === 'paid')
+        .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+    
+    // Também incluir comissões pagas do histórico de comissões
+    const paidFromCommissions = commissions
         .filter(c => c.status === 'paid')
         .reduce((sum, c) => sum + (c.amount || 0), 0);
+    
+    const totalPaidCommission = paidCommission + paidFromCommissions;
 
     const totalSalesEl = document.getElementById('affiliateTotalSales');
     const totalCommissionEl = document.getElementById('affiliateTotalCommission');
@@ -2679,23 +2717,53 @@ function updateAffiliateStats() {
     if (totalSalesEl) totalSalesEl.textContent = totalSales;
     if (totalCommissionEl) totalCommissionEl.textContent = `R$ ${totalCommission.toFixed(2).replace('.', ',')}`;
     if (pendingCommissionEl) pendingCommissionEl.textContent = `R$ ${pendingCommission.toFixed(2).replace('.', ',')}`;
-    if (paidCommissionEl) paidCommissionEl.textContent = `R$ ${paidCommission.toFixed(2).replace('.', ',')}`;
+    if (paidCommissionEl) paidCommissionEl.textContent = `R$ ${totalPaidCommission.toFixed(2).replace('.', ',')}`;
 }
 
 // Copiar link de afiliado
-function copyAffiliateLink() {
+async function copyAffiliateLink(event) {
     const linkInput = document.getElementById('affiliateLink');
     if (!linkInput) return;
 
-    linkInput.select();
-    linkInput.setSelectionRange(0, 99999); // Para mobile
-
+    const link = linkInput.value;
+    const button = event?.target?.closest('button') || document.getElementById('copyAffiliateLinkBtn');
+    
     try {
-        document.execCommand('copy');
-        alert('Link copiado para a área de transferência!');
+        // Usar API moderna do Clipboard se disponível
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(link);
+            // Mostrar feedback visual
+            if (button) {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check mr-2"></i>Copiado!';
+                button.classList.add('bg-green-600');
+                button.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.classList.remove('bg-green-600');
+                    button.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                }, 2000);
+            } else {
+                alert('Link copiado para a área de transferência!');
+            }
+        } else {
+            // Fallback para navegadores antigos
+            linkInput.select();
+            linkInput.setSelectionRange(0, 99999);
+            document.execCommand('copy');
+            alert('Link copiado para a área de transferência!');
+        }
     } catch (err) {
         console.error('Erro ao copiar:', err);
-        alert('Erro ao copiar link. Tente selecionar e copiar manualmente.');
+        // Fallback manual
+        linkInput.select();
+        linkInput.setSelectionRange(0, 99999);
+        try {
+            document.execCommand('copy');
+            alert('Link copiado para a área de transferência!');
+        } catch (e) {
+            alert('Erro ao copiar link. Selecione e copie manualmente.');
+        }
     }
 }
 
