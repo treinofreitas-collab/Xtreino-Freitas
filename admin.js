@@ -417,6 +417,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (sectionTokens) sectionTokens.style.display = 'block';
       if (sectionCoupons) sectionCoupons.style.display = 'block';
       if (sectionCouponUsage) sectionCouponUsage.style.display = 'block';
+      if (sectionAffiliates) sectionAffiliates.style.display = 'block';
+      if (sectionAffiliateSales) sectionAffiliateSales.style.display = 'block';
       if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'block';
       if (sectionProducts) sectionProducts.style.display = 'block';
       if (sectionSchedules) sectionSchedules.style.display = 'block';
@@ -437,6 +439,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (sectionTokens) sectionTokens.style.display = 'block';
       if (sectionCoupons) sectionCoupons.style.display = 'block';
       if (sectionCouponUsage) sectionCouponUsage.style.display = 'block';
+      if (sectionAffiliates) sectionAffiliates.style.display = 'block';
+      if (sectionAffiliateSales) sectionAffiliateSales.style.display = 'block';
       if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'block';
       if (sectionProducts) sectionProducts.style.display = 'block';
       if (sectionSchedules) sectionSchedules.style.display = 'block';
