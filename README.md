@@ -11,10 +11,22 @@ Site oficial do XTreino Freitas, plataforma de treinamentos e produtos para Free
 │   │   ├── events/           # Imagens dos eventos
 │   │   └── team/             # Fotos da equipe
 │   └── downloads/            # Arquivos para download
+├── config/                    # Arquivos de configuração
+│   ├── firebase.js          # Configuração Firebase
+│   ├── firebase-cache.js    # Cache do Firebase
+│   ├── firestore.rules      # Regras do Firestore
+│   └── storage.rules        # Regras do Storage
+├── scripts/                  # Scripts utilitários e migração
+│   ├── migrate-auth.js
+│   ├── migrate-firestore.js
+│   ├── import-*.js
+│   └── ...
 ├── docs/                     # Documentação
 │   ├── politica-privacidade.html
 │   ├── termos-servico.html
-│   └── DEPLOY_FIRESTORE_RULES.md
+│   ├── DEPLOY_FIRESTORE_RULES.md
+│   ├── README-MIGRACAO.md
+│   └── SUGESTOES-MELHORIAS.md
 ├── netlify/                  # Funções serverless
 │   └── functions/
 ├── index.html                # Página principal
@@ -23,9 +35,8 @@ Site oficial do XTreino Freitas, plataforma de treinamentos e produtos para Free
 ├── script.js                 # JavaScript principal
 ├── admin.js                  # JavaScript do admin
 ├── client.js                 # JavaScript do cliente
-├── firebase.js               # Configuração Firebase
 ├── styles.css                # Estilos CSS
-├── firestore.rules           # Regras do Firestore
+├── admin-styles.css          # Estilos do admin
 └── netlify.toml              # Configuração Netlify
 ```
 
