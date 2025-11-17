@@ -6336,8 +6336,8 @@ function renderCouponUsageTable() {
     
     if (countElement) countElement.textContent = `${data.length} usos`;
     
-    // Atualizar estatísticas
-    updateCouponStats(data);
+    // Estatísticas já são atualizadas em applyCouponUsageFilters
+    // Não atualizar aqui para evitar duplicação
     
     tbody.innerHTML = data.map(usage => {
         // Usar os campos que realmente existem no banco
@@ -6393,6 +6393,9 @@ function updateCouponStats(data) {
 // Aplicar filtros de período e contexto ao histórico de cupons
 function applyCouponUsageFilters() {
     try {
+        console.log('🔍 Aplicando filtros de cupons...', couponUsageFilters);
+        console.log('📊 Dados totais:', couponUsageData.length);
+        
         const now = new Date();
         let fromDate = null;
         switch (couponUsageFilters.period) {
@@ -6405,15 +6408,22 @@ function applyCouponUsageFilters() {
         
         filteredCouponUsageData = couponUsageData.filter(u => {
             // Filtro por período
-            const usedAt = u.usedAt instanceof Date ? u.usedAt : new Date(u.usedAt);
+            let usedAt;
+            if (u.usedAt instanceof Date) {
+                usedAt = u.usedAt;
+            } else if (u.usedAt && typeof u.usedAt.toDate === 'function') {
+                usedAt = u.usedAt.toDate();
+            } else {
+                usedAt = new Date(u.usedAt);
+            }
             const inPeriod = fromDate ? usedAt >= fromDate && usedAt <= now : true;
             
             // Filtro por contexto (events, store ou ambos)
             const ctx = (u.context || '').toLowerCase();
-            const inContext = couponUsageFilters.context === 'all' ? true : ctx === couponUsageFilters.context;
+            const inContext = couponUsageFilters.context === 'all' ? true : ctx === couponUsageFilters.context.toLowerCase();
             
             // Filtro por código de cupom
-            const matchesCoupon = couponUsageFilters.couponCode === 'all' || u.couponCode === couponUsageFilters.couponCode;
+            const matchesCoupon = couponUsageFilters.couponCode === 'all' || (u.couponCode && u.couponCode === couponUsageFilters.couponCode);
             
             // Filtro por nome do produto
             const productName = (u.productName || u.productId || '').toLowerCase();
@@ -6423,17 +6433,24 @@ function applyCouponUsageFilters() {
             return inPeriod && inContext && matchesCoupon && matchesProduct;
         });
         
+        console.log('✅ Dados filtrados:', filteredCouponUsageData.length);
+        
         // Atualizar contador visível
         try {
             const cnt = document.getElementById('couponUsageCount');
             if (cnt) cnt.textContent = `${filteredCouponUsageData.length} usos`;
         } catch(_){}
         
+        // Atualizar estatísticas com dados filtrados
+        updateCouponStats(filteredCouponUsageData);
+        
+        // Renderizar tabela
         renderCouponUsageTable();
     } catch (e) {
-        console.error('Erro ao aplicar filtros de cupons:', e);
+        console.error('❌ Erro ao aplicar filtros de cupons:', e);
         // fallback
         filteredCouponUsageData = couponUsageData.slice();
+        updateCouponStats(filteredCouponUsageData);
         renderCouponUsageTable();
     }
 }
@@ -7358,73 +7375,75 @@ function setupCouponUsageFilters() {
       
       // Função para aplicar filtros
       const applyFn = (e) => {
-        if (e) e.preventDefault();
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
         couponUsageFilters.period = (periodSel?.value || '7d');
         couponUsageFilters.context = (ctxSel?.value || 'all');
         couponUsageFilters.couponCode = (codeSel?.value || 'all');
-        couponUsageFilters.productName = (productInput?.value || '');
+        couponUsageFilters.productName = (productInput?.value || '').trim();
+        console.log('🔍 Aplicando filtros:', couponUsageFilters);
         applyCouponUsageFilters();
       };
       
       // Função para resetar filtros
       const resetFn = (e) => {
-        if (e) e.preventDefault();
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
         if (periodSel) periodSel.value = '7d';
         if (ctxSel) ctxSel.value = 'all';
         if (codeSel) codeSel.value = 'all';
         if (productInput) productInput.value = '';
         couponUsageFilters = { period: '7d', context: 'all', couponCode: 'all', productName: '' };
+        console.log('🔄 Resetando filtros');
         applyCouponUsageFilters();
       };
       
       // Função para exportar
       const exportFn = (e) => {
-        if (e) e.preventDefault();
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
         exportCouponUsageData();
       };
       
-      // Remover listeners antigos e adicionar novos
-      applyBtn.replaceWith(applyBtn.cloneNode(true));
-      resetBtn.replaceWith(resetBtn.cloneNode(true));
-      exportBtn.replaceWith(exportBtn.cloneNode(true));
+      // Remover listeners antigos antes de adicionar novos
+      const newApplyBtn = applyBtn.cloneNode(true);
+      const newResetBtn = resetBtn.cloneNode(true);
+      const newExportBtn = exportBtn.cloneNode(true);
       
-      // Re-obter referências após clonar
-      const applyBtnNew = document.getElementById('couponUsageApply');
-      const resetBtnNew = document.getElementById('couponUsageReset');
-      const exportBtnNew = document.getElementById('couponUsageExport');
+      applyBtn.parentNode.replaceChild(newApplyBtn, applyBtn);
+      resetBtn.parentNode.replaceChild(newResetBtn, resetBtn);
+      exportBtn.parentNode.replaceChild(newExportBtn, exportBtn);
       
-      // Adicionar listeners
-      if (applyBtnNew) {
-        applyBtnNew.addEventListener('click', applyFn);
-        applyBtnNew.onclick = applyFn; // Fallback
-      }
-      
-      if (resetBtnNew) {
-        resetBtnNew.addEventListener('click', resetFn);
-        resetBtnNew.onclick = resetFn; // Fallback
-      }
-      
-      if (exportBtnNew) {
-        exportBtnNew.addEventListener('click', exportFn);
-        exportBtnNew.onclick = exportFn; // Fallback
-      }
+      // Adicionar listeners aos novos elementos
+      newApplyBtn.addEventListener('click', applyFn);
+      newResetBtn.addEventListener('click', resetFn);
+      newExportBtn.addEventListener('click', exportFn);
       
       // Configurar listeners dos selects e input
       if (periodSel) {
-        periodSel.onchange = applyFn;
+        periodSel.removeEventListener('change', applyFn);
         periodSel.addEventListener('change', applyFn);
       }
       if (ctxSel) {
-        ctxSel.onchange = applyFn;
+        ctxSel.removeEventListener('change', applyFn);
         ctxSel.addEventListener('change', applyFn);
       }
       if (codeSel) {
-        codeSel.onchange = applyFn;
+        codeSel.removeEventListener('change', applyFn);
         codeSel.addEventListener('change', applyFn);
       }
       if (productInput) {
+        // Remover listener antigo se existir
+        const oldHandler = productInput.oninput;
+        productInput.oninput = null;
         productInput.addEventListener('input', () => {
-          couponUsageFilters.productName = productInput.value;
+          couponUsageFilters.productName = productInput.value.trim();
           applyCouponUsageFilters();
         });
       }
