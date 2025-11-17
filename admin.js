@@ -6181,6 +6181,14 @@ async function loadCoupons() {
         });
         
         console.log(`✅ ${couponsData.length} cupons carregados`);
+        // Garantir que afiliados estejam carregados antes de renderizar
+        if (affiliatesData.length === 0) {
+            try {
+                await loadAffiliates();
+            } catch (err) {
+                console.warn('⚠️ Erro ao carregar afiliados antes de renderizar cupons:', err);
+            }
+        }
         renderCouponsTable();
     } catch (error) {
         console.error('❌ Erro ao carregar cupons:', error);
@@ -6233,7 +6241,21 @@ function renderCouponsTable() {
             : '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs">Inativo</span>';
         
         // Buscar nome do afiliado se houver
-        const affiliateName = coupon.affiliateId ? (affiliatesData.find(a => a.id === coupon.affiliateId)?.name || 'Afiliado') : null;
+        let affiliateName = null;
+        if (coupon.affiliateId) {
+            const affiliate = affiliatesData.find(a => a.id === coupon.affiliateId);
+            if (affiliate) {
+                affiliateName = affiliate.name || affiliate.email?.split('@')[0] || 'Afiliado';
+            } else {
+                // Se não encontrou, pode ser que o ID seja o email ou outro formato
+                const affiliateByEmail = affiliatesData.find(a => a.email === coupon.affiliateId);
+                if (affiliateByEmail) {
+                    affiliateName = affiliateByEmail.name || affiliateByEmail.email?.split('@')[0] || 'Afiliado';
+                } else {
+                    console.warn('⚠️ Afiliado não encontrado para cupom:', coupon.code, 'affiliateId:', coupon.affiliateId);
+                }
+            }
+        }
         
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50">
@@ -7185,6 +7207,11 @@ async function loadAffiliates() {
         // Renderizar tabela
         renderAffiliatesTable();
         updateAffiliateStats();
+        
+        // Re-renderizar cupons para atualizar nomes de afiliados vinculados
+        if (couponsData.length > 0) {
+            renderCouponsTable();
+        }
     } catch (error) {
         console.error('❌ Erro ao carregar afiliados:', error);
         const tbody = document.getElementById('affiliatesTableBody');
@@ -7420,17 +7447,17 @@ async function createOrUpdateAffiliate(event) {
     const editId = document.getElementById('affiliateEditId')?.value;
     
     if (!email) {
-        alert('Email é obrigatório');
+        showToast('error', 'Email é obrigatório', 'Erro');
         return;
     }
     
     if (commissionRateEvents < 0 || commissionRateEvents > 100) {
-        alert('Percentual de comissão de eventos deve estar entre 0 e 100');
+        showToast('error', 'Percentual de comissão de eventos deve estar entre 0 e 100', 'Erro');
         return;
     }
     
     if (commissionRateProducts < 0 || commissionRateProducts > 100) {
-        alert('Percentual de comissão de produtos deve estar entre 0 e 100');
+        showToast('error', 'Percentual de comissão de produtos deve estar entre 0 e 100', 'Erro');
         return;
     }
     
@@ -7443,7 +7470,7 @@ async function createOrUpdateAffiliate(event) {
         const snapshot = await getDocs(q);
         
         if (snapshot.empty) {
-            alert('Usuário não encontrado. O usuário deve estar cadastrado no sistema primeiro.');
+            showToast('error', 'Usuário não encontrado. O usuário deve estar cadastrado no sistema primeiro.', 'Erro');
             return;
         }
         
@@ -7468,10 +7495,10 @@ async function createOrUpdateAffiliate(event) {
         // Fechar modal
         closeCreateAffiliateModal();
         
-        alert(editId ? 'Afiliado atualizado com sucesso!' : 'Afiliado criado com sucesso!');
+        showToast('success', editId ? 'Afiliado atualizado com sucesso!' : 'Afiliado criado com sucesso!', 'Sucesso');
     } catch (error) {
         console.error('❌ Erro ao criar/editar afiliado:', error);
-        alert('Erro ao criar/editar afiliado: ' + error.message);
+        showToast('error', 'Erro ao criar/editar afiliado: ' + error.message, 'Erro');
     }
 }
 

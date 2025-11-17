@@ -699,8 +699,10 @@ body {
 
 /* Toast Notifications */
 .toast {
-  @apply bg-white rounded-lg shadow-2xl p-4 flex items-start gap-3 min-w-[300px] max-w-md pointer-events-auto transform transition-all duration-300 ease-out;
-  animation: toastSlideIn 0.3s ease-out;
+  @apply bg-white rounded-xl shadow-2xl p-5 flex items-start gap-4 min-w-[320px] max-w-md pointer-events-auto transform transition-all duration-300 ease-out;
+  animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(10px);
 }
 
 .toast.toast-exit {
@@ -709,54 +711,64 @@ body {
 
 .toast-success {
   @apply border-l-4 border-green-500;
+  background: linear-gradient(to right, #f0fdf4 0%, #ffffff 15%);
 }
 
 .toast-error {
   @apply border-l-4 border-red-500;
+  background: linear-gradient(to right, #fef2f2 0%, #ffffff 15%);
 }
 
 .toast-info {
   @apply border-l-4 border-blue-500;
+  background: linear-gradient(to right, #eff6ff 0%, #ffffff 15%);
 }
 
 .toast-warning {
   @apply border-l-4 border-yellow-500;
+  background: linear-gradient(to right, #fefce8 0%, #ffffff 15%);
 }
 
 .toast-icon {
-  @apply flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-sm font-bold;
+  @apply flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white text-base font-bold shadow-md;
+  flex-shrink: 0;
 }
 
 .toast-success .toast-icon {
-  @apply bg-green-500;
+  @apply bg-gradient-to-br from-green-500 to-green-600;
 }
 
 .toast-error .toast-icon {
-  @apply bg-red-500;
+  @apply bg-gradient-to-br from-red-500 to-red-600;
 }
 
 .toast-info .toast-icon {
-  @apply bg-blue-500;
+  @apply bg-gradient-to-br from-blue-500 to-blue-600;
 }
 
 .toast-warning .toast-icon {
-  @apply bg-yellow-500;
+  @apply bg-gradient-to-br from-yellow-500 to-yellow-600;
 }
 
 .toast-content {
-  @apply flex-1;
+  @apply flex-1 pt-0.5;
 }
 
 .toast-title {
-  @apply font-semibold text-gray-800 mb-1;
+  @apply font-bold text-gray-900 mb-1.5 text-sm;
 }
 
 .toast-message {
-  @apply text-sm text-gray-600;
+  @apply text-sm text-gray-700 leading-relaxed;
 }
 
 .toast-close {
-  @apply flex-shrink-0 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors;
+  @apply flex-shrink-0 text-gray-400 hover:text-gray-700 cursor-pointer transition-all duration-200 rounded-full p-1 hover:bg-gray-100;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @keyframes toastSlideIn {

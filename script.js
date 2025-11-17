@@ -4197,6 +4197,36 @@ async function renderScheduleTimes(){
         // Fallback padrão
         slots = ['19h','20h','21h','22h','23h'];
     }
+    
+    // Filtrar horários travados - não mostrar na lista
+    try {
+        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const ovRef = collection(window.firebaseDb, 'schedule_overrides');
+        const ovSnap = await getDocs(query(ovRef, where('date','==', date)));
+        
+        const lockedHours = new Set();
+        ovSnap.forEach(doc => {
+            const ov = doc.data();
+            if (ov.locked) {
+                const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+                if (!isNaN(ovHour)) {
+                    const ovEventType = ov.eventType || null;
+                    // Aplicar se for genérico ou corresponder ao eventType
+                    if (!ovEventType || ovEventType === eventType || !eventType) {
+                        lockedHours.add(ovHour);
+                    }
+                }
+            }
+        });
+        
+        // Remover horários travados da lista
+        slots = slots.filter(slot => {
+            const hour = parseInt(slot.replace('h', ''));
+            return !lockedHours.has(hour);
+        });
+    } catch (err) {
+        console.error('Erro ao verificar horários travados ao renderizar:', err);
+    }
     const now = new Date();
     const selectedDate = new Date(date + 'T00:00:00');
     const isToday = selectedDate.toDateString() === now.toDateString();
@@ -4528,6 +4558,31 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         try { occupied = await fetchOccupiedForDate(day, date, eventType); } catch(_) { occupied = {}; }
         scheduleCache[cacheKey] = occupied;
     }
+    
+    // Verificar horários travados diretamente do Firestore
+    let lockedHours = new Set();
+    try {
+        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const ovRef = collection(window.firebaseDb, 'schedule_overrides');
+        const ovSnap = await getDocs(query(ovRef, where('date','==', date)));
+        
+        ovSnap.forEach(doc => {
+            const ov = doc.data();
+            if (ov.locked) {
+                const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+                if (!isNaN(ovHour)) {
+                    const ovEventType = ov.eventType || null;
+                    // Aplicar se for genérico ou corresponder ao eventType
+                    if (!ovEventType || ovEventType === eventType || !eventType) {
+                        lockedHours.add(ovHour);
+                    }
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Erro ao verificar horários travados:', err);
+    }
+    
     const now = new Date();
     const selectedDate = new Date(date + 'T00:00:00');
     const isToday = selectedDate.toDateString() === now.toDateString();
@@ -4535,15 +4590,18 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
     Array.from(container.children).forEach(btn => {
         const schedule = btn.dataset.schedule;
         const time = (schedule || '').split(' - ')[1] || '';
+        const hour = parseInt(time.replace('h', ''));
         const taken = occupied[schedule] || 0;
         const capacity = getEventCapacity(eventType, time);
         const available = Math.max(0, capacity - taken);
+        
+        // Verificar se o horário está travado (prioridade máxima)
+        const isLocked = lockedHours.has(hour);
         
         // Verificar se o horário já está disponível (12 minutos antes do horário)
         let isTimeAvailable = true;
         let timeMessage = '';
         if (isToday) {
-            const hour = parseInt(time.replace('h', ''));
             const eventTime = new Date(selectedDate);
             eventTime.setHours(hour, 0, 0, 0);
             
@@ -4561,8 +4619,14 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
             }
         }
         
-        // Verificar lotação primeiro (antes da verificação de tempo)
-        if (eventType === 'semanal-freitas' && time === '19h'){
+        // Verificar travamento primeiro (prioridade máxima)
+        if (isLocked) {
+            // Horário travado pelo admin
+            btn.className = 'slot-btn bg-gray-400 text-gray-600 cursor-not-allowed';
+            btn.disabled = true;
+            btn.textContent = `${time} (Bloqueado)`;
+            btn.onclick = null;
+        } else if (eventType === 'semanal-freitas' && time === '19h'){
             // Semanal Freitas: 19h sempre esgotado
             btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
             btn.disabled = true;
@@ -5091,6 +5155,42 @@ async function submitSchedule(e, useTokens=false){
         alert('Adicione pelo menos um time.');
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
         return;
+    }
+    
+    // Verificar horários travados ANTES de verificar disponibilidade
+    for (const d of datesToUse){
+        try {
+            const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const ovRef = collection(window.firebaseDb, 'schedule_overrides');
+            const ovSnap = await getDocs(query(ovRef, where('date','==', d)));
+            
+            const lockedHours = new Set();
+            ovSnap.forEach(doc => {
+                const ov = doc.data();
+                if (ov.locked) {
+                    const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+                    if (!isNaN(ovHour)) {
+                        const ovEventType = ov.eventType || null;
+                        if (!ovEventType || ovEventType === eventType || !eventType) {
+                            lockedHours.add(ovHour);
+                        }
+                    }
+                }
+            });
+            
+            // Verificar se algum horário selecionado está travado
+            for (let schedule of selectedTimes) {
+                const timeStr = schedule.split(' - ')[1] || '';
+                const hour = parseInt(timeStr.replace('h', ''));
+                if (lockedHours.has(hour)) {
+                    alert(`O horário ${timeStr} está bloqueado/travado para ${d}. Não é possível realizar reservas neste horário.`);
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+                    return;
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao verificar horários travados:', err);
+        }
     }
     
     // Verificar disponibilidade de vagas para cada data e horário
