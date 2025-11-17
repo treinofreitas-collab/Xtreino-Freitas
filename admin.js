@@ -6205,7 +6205,7 @@ function renderCouponsTable() {
     if (couponsData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="py-6 text-center text-gray-500">Nenhum cupom encontrado</td>
+                <td colspan="6" class="py-6 text-center text-gray-500">Nenhum cupom encontrado</td>
             </tr>
         `;
         if (countElement) countElement.textContent = '0 cupons';
@@ -6232,6 +6232,9 @@ function renderCouponsTable() {
             ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Ativo</span>'
             : '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs">Inativo</span>';
         
+        // Buscar nome do afiliado se houver
+        const affiliateName = coupon.affiliateId ? (affiliatesData.find(a => a.id === coupon.affiliateId)?.name || 'Afiliado') : null;
+        
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="py-2 px-2">
@@ -6240,6 +6243,9 @@ function renderCouponsTable() {
                 <td class="py-2 px-2 text-xs">${discountText}</td>
                 <td class="py-2 px-2">
                     <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">${usageTypeText}</span>
+                </td>
+                <td class="py-2 px-2 text-xs">
+                    ${affiliateName ? `<span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded" title="Vincular a: ${affiliateName}">👤 ${affiliateName}</span>` : '<span class="text-xs text-gray-400">-</span>'}
                 </td>
                 <td class="py-2 px-2">${statusBadge}</td>
                 <td class="py-2 px-2">
@@ -6524,7 +6530,28 @@ function openCreateCouponModal() {
         // Limpar formulário
         const form = document.getElementById('createCouponForm');
         if (form) form.reset();
+        
+        // Popular select de afiliados
+        populateCouponAffiliateSelect();
     }
+}
+
+// Popular select de afiliados no modal de cupom
+function populateCouponAffiliateSelect() {
+    const select = document.getElementById('couponAffiliateId');
+    if (!select) return;
+    
+    // Limpar opções existentes (exceto a primeira)
+    select.innerHTML = '<option value="">Nenhum afiliado</option>';
+    
+    // Adicionar afiliados ativos
+    const activeAffiliates = affiliatesData.filter(a => a.affiliateStatus === 'active');
+    activeAffiliates.forEach(affiliate => {
+        const option = document.createElement('option');
+        option.value = affiliate.id;
+        option.textContent = `${affiliate.name} (${affiliate.email})`;
+        select.appendChild(option);
+    });
 }
 
 // Fechar modal de criação de cupom
@@ -6539,6 +6566,8 @@ function closeCreateCouponModal() {
 async function createCoupon(event) {
     event.preventDefault();
     
+    const affiliateIdValue = document.getElementById('couponAffiliateId')?.value?.trim() || null;
+    
     const couponData = {
         code: document.getElementById('couponCode').value.toUpperCase().trim(),
         discountType: document.getElementById('discountType').value,
@@ -6550,7 +6579,8 @@ async function createCoupon(event) {
         isActive: true,
         usageCount: 0,
         createdAt: new Date(),
-        createdBy: window.adminRoleLower || 'admin'
+        createdBy: window.adminRoleLower || 'admin',
+        affiliateId: affiliateIdValue || null // Vincular afiliado ao cupom
     };
     
     // Validações

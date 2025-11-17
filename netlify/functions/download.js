@@ -173,8 +173,17 @@ exports.handler = async (event) => {
     }
 
     if (listOnly) {
-      // Retornar lista de arquivos disponíveis (sem expor URLs reais)
-      const list = links.map((l, idx) => ({ index: idx, name: l.name || `file-${idx+1}` }));
+      // Retornar lista de arquivos disponíveis
+      // Para iOS, incluir URLs diretos do Google Drive para evitar problemas com proxy no Safari
+      const isIOS = links.length > 1 && links.some(l => l.url && l.url.includes('drive.google.com'));
+      const list = links.map((l, idx) => {
+        const item = { index: idx, name: l.name || `file-${idx+1}` };
+        // Para iOS, incluir URL direto para evitar problemas com proxy no Safari
+        if (isIOS && l.url) {
+          item.url = l.url;
+        }
+        return item;
+      });
       const body = { files: list };
       if (platformUsed) {
         body.platform = platformUsed;

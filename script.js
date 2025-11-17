@@ -1905,99 +1905,138 @@ async function handlePurchase(event) {
     }
 
     try {
+        // Validar preço final
+        if (!totalNum || totalNum <= 0 || isNaN(totalNum)) {
+            alert('Preço inválido. Por favor, verifique os dados do produto.');
+            console.error('❌ Preço inválido:', totalNum);
+            return;
+        }
+        
+        // Inicializar variáveis
+        let docRef = null;
+        let externalRef = `digital_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
+        
         // Salvar order no Firestore ANTES de redirecionar
         if (window.firebaseDb) {
-            const { addDoc, collection, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            
-            // Validação de formato de CPF para camisa (obrigatório no padrão 000.000.000-00)
-            if (currentProduct === 'camisa') {
-                const cpfVal = (document.getElementById('customerCPF')?.value || '').trim();
-                const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
-                if (!cpfVal || !cpfRegex.test(cpfVal)) {
-                    alert('CPF inválido. Use o formato 000.000.000-00.');
-                    return;
+            try {
+                const { addDoc, collection, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                
+                // Validação de formato de CPF para camisa (obrigatório no padrão 000.000.000-00)
+                if (currentProduct === 'camisa') {
+                    const cpfVal = (document.getElementById('customerCPF')?.value || '').trim();
+                    const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
+                    if (!cpfVal || !cpfRegex.test(cpfVal)) {
+                        alert('CPF inválido. Use o formato 000.000.000-00.');
+                        return;
+                    }
                 }
+                
+                const orderData = {
+                    title: product.name,
+                    description: product.description,
+                    item: product.name,
+                    amount: totalNum,
+                    total: totalNum,
+                    quantity: 1,
+                    currency: 'BRL',
+                    status: 'pending',
+                    customer: customerEmail,
+                    customerName: customerName,
+                    buyerEmail: customerEmail,
+                    userId: window.firebaseAuth.currentUser?.uid,
+                    uid: window.firebaseAuth.currentUser?.uid,
+                    productId: currentProduct,
+                    productOptions: productOptions,
+                    createdAt: new Date(),
+                    timestamp: Date.now(),
+                    type: 'digital_product', // Marcar como produto digital
+                    // Incluir affiliateId do cupom se houver
+                    affiliateCode: appliedCoupon?.affiliateId || null
+                };
+                
+                console.log('🔍 Attempting to save digital product order:', orderData);
+                docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
+                console.log('✅ Digital product order saved to Firestore with ID:', docRef.id);
+                
+                // Salvar external_reference para o webhook
+                externalRef = `digital_${docRef.id}`;
+                await updateDoc(docRef, { external_reference: externalRef });
+            } catch (firebaseError) {
+                console.error('⚠️ Erro ao salvar no Firestore, continuando com externalRef temporário:', firebaseError);
+                // Continua com externalRef gerado acima
             }
-            
-            const orderData = {
-                title: product.name,
-                description: product.description,
-                item: product.name,
-                amount: totalNum,
-                total: totalNum,
-                quantity: 1,
-                currency: 'BRL',
-                status: 'pending',
-                customer: customerEmail,
-                customerName: customerName,
-                buyerEmail: customerEmail,
-                userId: window.firebaseAuth.currentUser?.uid,
-                uid: window.firebaseAuth.currentUser?.uid,
-                productId: currentProduct,
-                productOptions: productOptions,
-                createdAt: new Date(),
-                timestamp: Date.now(),
-                type: 'digital_product' // Marcar como produto digital
-            };
-            
-            console.log('🔍 Attempting to save digital product order:', orderData);
-            const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
-            console.log('✅ Digital product order saved to Firestore with ID:', docRef.id);
-            
-            // Salvar external_reference para o webhook
-            const externalRef = `digital_${docRef.id}`;
-            await updateDoc(docRef, { external_reference: externalRef });
         }
 
         // Chamar function segura (Netlify) para criar Preference
+        const preferencePayload = {
+            title: product.name || 'Produto',
+            unit_price: Number(totalNum.toFixed(2)),
+            currency_id: 'BRL',
+            quantity: 1,
+            back_url: window.location.origin,
+            coupon_info: couponInfo,
+            external_reference: externalRef
+        };
+        
+        console.log('🔍 Enviando requisição para create-preference:', preferencePayload);
+        
         const response = await fetch('/.netlify/functions/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: product.name,
-                unit_price: totalNum,
-                currency_id: 'BRL',
-                quantity: 1,
-                back_url: window.location.origin,
-                coupon_info: couponInfo,
-                external_reference: externalRef
-            })
+            body: JSON.stringify(preferencePayload)
         });
 
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Erro na resposta do create-preference:', errorText);
+            throw new Error(errorText || 'Erro ao criar preferência de pagamento');
+        }
+        
         const data = await response.json();
+        console.log('✅ Preference criada:', data);
+        
+        // Verificar se tem init_point ou sandbox_init_point
+        const checkoutUrl = data.init_point || data.sandbox_init_point;
+        if (!checkoutUrl) {
+            console.error('❌ Resposta inválida do create-preference:', data);
+            throw new Error('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.');
+        }
         
         // Registrar uso do cupom se aplicado
         if (appliedCoupon) {
-            const discountAmount = originalPrice - totalNum;
-            await recordCouponUsage(
-                appliedCoupon.id,
-                appliedCoupon.code,
-                originalPrice,
-                discountAmount,
-                'store',
-                data.external_reference || 'product_' + Date.now(),
-                {
-                    productId: currentProduct,
-                    name: product.name,
-                    title: product.name,
-                    item: product.name
-                }
-            );
+            try {
+                const discountAmount = originalPrice - totalNum;
+                await recordCouponUsage(
+                    appliedCoupon.id,
+                    appliedCoupon.code,
+                    originalPrice,
+                    discountAmount,
+                    'store',
+                    data.external_reference || externalRef,
+                    {
+                        productId: currentProduct,
+                        name: product.name,
+                        title: product.name,
+                        item: product.name
+                    }
+                );
+            } catch (couponError) {
+                console.error('⚠️ Erro ao registrar uso do cupom:', couponError);
+                // Não falhar a compra por causa de erro no cupom
+            }
         }
         
         closePurchaseModal();
         
         // Redireciona para o checkout do Mercado Pago
-        if (data.init_point) {
-            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
-            window.location.href = data.init_point;
-        } else {
-            alert('Não foi possível iniciar o checkout.');
-        }
+        try { 
+            sessionStorage.setItem('lastCheckoutUrl', checkoutUrl); 
+        } catch(_) {}
+        window.location.href = checkoutUrl;
     } catch (error) {
-        console.error('Erro no checkout:', error);
-        alert('Falha ao iniciar checkout.');
+        console.error('❌ Erro no checkout:', error);
+        const errorMessage = error.message || 'Falha ao iniciar checkout.';
+        alert(`Falha ao processar compra.\n\n${errorMessage}\n\nPor favor, tente novamente ou entre em contato com o suporte.`);
     }
 }
 
@@ -4752,71 +4791,103 @@ async function handleProductPurchase(productId, cfg) {
             productOptions.delivery = { nome, cpf, cep, rua, numero, complemento, bairro, cidade, estado };
         }
 
+        // Validar preço final
+        if (!finalPrice || finalPrice <= 0 || isNaN(finalPrice)) {
+            alert('Preço inválido. Por favor, verifique os dados do produto.');
+            console.error('❌ Preço inválido:', finalPrice);
+            return;
+        }
+        
+        // Inicializar variáveis
+        let docRef = null;
+        let externalRef = `digital_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
+        
         // Salvar order no Firestore ANTES de redirecionar
         if (window.firebaseDb) {
-            const { addDoc, collection, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            
-            const orderData = {
-                title: cfg.label,
-                description: cfg.label,
-                item: cfg.label,
-                amount: finalPrice,
-                total: finalPrice,
-                quantity: 1,
-                currency: 'BRL',
-                status: 'pending',
-                customer: resolvedEmail,
-                customerName: resolvedName,
-                buyerEmail: resolvedEmail,
-                userId: window.firebaseAuth.currentUser?.uid,
-                uid: window.firebaseAuth.currentUser?.uid,
-                phone: resolvedPhone,
-                productId: productId,
-                productOptions: productOptions,
-                createdAt: new Date(),
-                timestamp: Date.now(),
-                type: 'digital_product'
-            };
-            
-            console.log('🔍 Attempting to save product order:', orderData);
-            const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
-            console.log('✅ Product order saved to Firestore with ID:', docRef.id);
-            
-            // Salvar external_reference para o webhook
-            var externalRef = `digital_${docRef.id}`;
-            await updateDoc(docRef, { external_reference: externalRef });
-            try { sessionStorage.setItem('lastExternalRef', externalRef); } catch(_) {}
+            try {
+                const { addDoc, collection, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                
+                const orderData = {
+                    title: cfg.label,
+                    description: cfg.label,
+                    item: cfg.label,
+                    amount: finalPrice,
+                    total: finalPrice,
+                    quantity: 1,
+                    currency: 'BRL',
+                    status: 'pending',
+                    customer: resolvedEmail,
+                    customerName: resolvedName,
+                    buyerEmail: resolvedEmail,
+                    userId: window.firebaseAuth.currentUser?.uid,
+                    uid: window.firebaseAuth.currentUser?.uid,
+                    phone: resolvedPhone,
+                    productId: productId,
+                    productOptions: productOptions,
+                    createdAt: new Date(),
+                    timestamp: Date.now(),
+                    type: 'digital_product'
+                };
+                
+                console.log('🔍 Attempting to save product order:', orderData);
+                docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
+                console.log('✅ Product order saved to Firestore with ID:', docRef.id);
+                
+                // Salvar external_reference para o webhook
+                externalRef = `digital_${docRef.id}`;
+                await updateDoc(docRef, { external_reference: externalRef });
+                try { sessionStorage.setItem('lastExternalRef', externalRef); } catch(_) {}
+            } catch (firebaseError) {
+                console.error('⚠️ Erro ao salvar no Firestore, continuando com externalRef temporário:', firebaseError);
+                // Continua com externalRef gerado acima
+            }
         }
 
         // Chamar function segura (Netlify) para criar Preference
+        const preferencePayload = {
+            title: cfg.label || 'Produto',
+            unit_price: Number(finalPrice.toFixed(2)),
+            currency_id: 'BRL',
+            quantity: 1,
+            back_url: window.location.origin,
+            external_reference: externalRef
+        };
+        
+        console.log('🔍 Enviando requisição para create-preference:', preferencePayload);
+        
         const response = await fetch('/.netlify/functions/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: cfg.label,
-                unit_price: finalPrice,
-                currency_id: 'BRL',
-                quantity: 1,
-                back_url: window.location.origin,
-                external_reference: externalRef || (`digital_${docRef?.id || Date.now()}`)
-            })
+            body: JSON.stringify(preferencePayload)
         });
 
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Erro na resposta do create-preference:', errorText);
+            throw new Error(errorText || 'Erro ao criar preferência de pagamento');
+        }
+        
         const data = await response.json();
+        console.log('✅ Preference criada:', data);
+        
+        // Verificar se tem init_point ou sandbox_init_point
+        const checkoutUrl = data.init_point || data.sandbox_init_point;
+        if (!checkoutUrl) {
+            console.error('❌ Resposta inválida do create-preference:', data);
+            throw new Error('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.');
+        }
         
         closeScheduleModal();
         
         // Redireciona para o checkout do Mercado Pago
-        if (data.init_point) {
-            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
-            window.location.href = data.init_point;
-        } else {
-            alert('Não foi possível iniciar o checkout.');
-        }
+        try { 
+            sessionStorage.setItem('lastCheckoutUrl', checkoutUrl); 
+        } catch(_) {}
+        window.location.href = checkoutUrl;
     } catch (error) {
-        console.error('Erro na compra do produto:', error);
-        alert('Falha ao processar compra.');
+        console.error('❌ Erro na compra do produto:', error);
+        const errorMessage = error.message || 'Falha ao processar compra.';
+        alert(`Falha ao processar compra.\n\n${errorMessage}\n\nPor favor, tente novamente ou entre em contato com o suporte.`);
     }
 }
 
@@ -4909,7 +4980,9 @@ async function handleProductPurchaseWithTokens(productId, cfg){
             productOptions: productOptions,
             createdAt: new Date(),
             timestamp: Date.now(),
-            type: 'digital_product'
+            type: 'digital_product',
+            // Incluir affiliateId do cupom se houver
+            affiliateCode: appliedScheduleCoupon?.affiliateId || null
         };
         // Firestore não aceita campos undefined. Adicionar shippingStatus apenas quando aplicável
         if (productId === 'camisa') {
@@ -5072,7 +5145,9 @@ async function submitSchedule(e, useTokens=false){
                         price: Number(getEventPrice(eventType, (schedule.split(' - ')[1]||'').trim()) || 0),
                             status:'pending',
                             createdAt: serverTimestamp(),
-                            external_reference: externalRef
+                            external_reference: externalRef,
+                            // Incluir affiliateId do cupom se houver
+                            affiliateCode: appliedScheduleCoupon?.affiliateId || null
                         });
                         regIds.push(docRef.id);
                     }

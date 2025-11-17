@@ -1424,23 +1424,85 @@ function downloadSensibilidades(orderId) {
           window.location.href = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=0`;
           return;
         }
+        
+        // Detectar se é iOS/Safari
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        
+        // Para iOS, verificar se os arquivos têm URLs diretos (Google Drive)
+        if (data.platform === 'ios' && files.length > 1) {
+          // Verificar se os arquivos têm URLs diretos do Google Drive
+          const firstFile = files[0];
+          if (firstFile && firstFile.url && firstFile.url.includes('drive.google.com')) {
+            // No iOS/Safari, abrir os links diretamente do Google Drive
+            if (isIOS || isSafari) {
+              // Abrir o primeiro link diretamente
+              window.location.href = firstFile.url;
+              // Abrir os outros links em novas abas após um delay
+              for (let i = 1; i < files.length; i++) {
+                const file = files[i];
+                if (file && file.url) {
+                  setTimeout(() => {
+                    // Criar um link temporário e clicar nele para evitar bloqueio de pop-up
+                    const a = document.createElement('a');
+                    a.href = file.url;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }, i * 1000);
+                }
+              }
+              return;
+            }
+          }
+        }
+        
         // Se houver múltiplos arquivos (ex.: iOS), abrir todos
         if (files.length > 1) {
-          files.forEach(f => {
-            const idx = typeof f.index === 'number' ? f.index : 0;
+          files.forEach((f, index) => {
+            const idx = typeof f.index === 'number' ? f.index : index;
             const url = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(idx)}`;
-            window.open(url, '_blank');
+            
+            // No iOS/Safari, usar window.location.href ao invés de window.open para evitar bloqueio de pop-ups
+            if (isIOS || isSafari) {
+              if (index === 0) {
+                window.location.href = url;
+              } else {
+                // Para links subsequentes, criar elemento <a> e clicar
+                setTimeout(() => {
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.target = '_blank';
+                  a.rel = 'noopener noreferrer';
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }, index * 1000);
+              }
+            } else {
+              window.open(url, '_blank');
+            }
           });
           return;
         }
+        
         // Caso contrário, baixar baseado na plataforma (ou primeiro)
         const platform = data.platform || 'pc';
         const fileIndex = files.findIndex(f => f.platform === platform);
         const idx = fileIndex >= 0 ? fileIndex : 0;
         const url = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(idx)}`;
-        window.open(url, '_blank');
+        
+        // No iOS/Safari, usar window.location.href ao invés de window.open
+        if (isIOS || isSafari) {
+          window.location.href = url;
+        } else {
+          window.open(url, '_blank');
+        }
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error('Erro ao buscar links de download:', error);
         // fallback para primeiro arquivo
         window.location.href = `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=0`;
       });
