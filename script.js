@@ -623,7 +623,8 @@ window.AssocConfig = {
         GERENTE: 'Gerente',
         CEO: 'Ceo',
         STAFF: 'Staff',
-        VENDEDOR: 'Vendedor'
+        VENDEDOR: 'Vendedor',
+        AFILIADO: 'Afiliado'
     },
     levels: {},
     // Permissões por cargo
@@ -652,6 +653,14 @@ window.AssocConfig = {
             accessExclusive: false,
             manageSalesFlow: false,
             salesAndChat: true
+        },
+        Afiliado: {
+            redeemTokens: false,
+            purchaseItems: true,
+            accessExclusive: false,
+            manageSalesFlow: false,
+            viewCommissions: true,
+            viewSales: true
         }
     },
     // Regras de valor dos tokens (BRL -> tipo de vaga)
@@ -1967,7 +1976,13 @@ async function handlePurchase(event) {
                 originalPrice,
                 discountAmount,
                 'store',
-                data.external_reference || 'product_' + Date.now()
+                data.external_reference || 'product_' + Date.now(),
+                {
+                    productId: currentProduct,
+                    name: product.name,
+                    title: product.name,
+                    item: product.name
+                }
             );
         }
         
@@ -6060,7 +6075,7 @@ function showScheduleCouponMessage(message, type) {
 }
 
 // Registrar uso de cupom
-async function recordCouponUsage(couponId, couponCode, orderValue, discountAmount, context, orderId) {
+async function recordCouponUsage(couponId, couponCode, orderValue, discountAmount, context, orderId, productInfo = null) {
     try {
         const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         
@@ -6075,7 +6090,11 @@ async function recordCouponUsage(couponId, couponCode, orderValue, discountAmoun
             context: context, // 'store' ou 'events'
             orderId: orderId,
             usedAt: new Date(),
-            userId: window.currentUser?.uid || null
+            userId: window.currentUser?.uid || null,
+            // Informações do produto
+            productId: productInfo?.productId || productInfo?.id || null,
+            productName: productInfo?.name || productInfo?.title || productInfo?.item || null,
+            discountPercentage: orderValue > 0 ? ((discountAmount / orderValue) * 100).toFixed(2) : 0
         };
         
         await addDoc(collection(window.firebaseDb, 'couponUsage'), usageData);

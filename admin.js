@@ -1289,16 +1289,41 @@ window.showWarningToast = function(message, title = 'Atenção') {
     try {
       const periodSel = document.getElementById('couponUsagePeriod');
       const ctxSel = document.getElementById('couponUsageContext');
+      const codeSel = document.getElementById('couponUsageCodeFilter');
+      const productInput = document.getElementById('couponUsageProductFilter');
       const applyBtn = document.getElementById('couponUsageApply');
+      const resetBtn = document.getElementById('couponUsageReset');
+      const exportBtn = document.getElementById('couponUsageExport');
+      
       const applyFn = ()=>{
         couponUsageFilters.period = (periodSel?.value || '7d');
         couponUsageFilters.context = (ctxSel?.value || 'all');
+        couponUsageFilters.couponCode = (codeSel?.value || 'all');
+        couponUsageFilters.productName = (productInput?.value || '');
         applyCouponUsageFilters();
       };
+      
       if (applyBtn) applyBtn.onclick = applyFn;
+      if (resetBtn) resetBtn.onclick = () => {
+        if (periodSel) periodSel.value = '7d';
+        if (ctxSel) ctxSel.value = 'all';
+        if (codeSel) codeSel.value = 'all';
+        if (productInput) productInput.value = '';
+        couponUsageFilters = { period: '7d', context: 'all', couponCode: 'all', productName: '' };
+        applyCouponUsageFilters();
+      };
+      if (exportBtn) exportBtn.onclick = exportCouponUsageData;
+      
       // também aplicar ao mudar selects
       if (periodSel) periodSel.onchange = applyFn;
       if (ctxSel) ctxSel.onchange = applyFn;
+      if (codeSel) codeSel.onchange = applyFn;
+      if (productInput) {
+        productInput.addEventListener('input', () => {
+          couponUsageFilters.productName = productInput.value;
+          applyCouponUsageFilters();
+        });
+      }
     }catch(_){}
     // Carrega relatórios e pendências para todas as funções
     await loadReports().catch(()=>{});
@@ -6023,7 +6048,7 @@ function filterTokensUsers() {
 let couponsData = [];
 let couponUsageData = [];
 let filteredCouponUsageData = [];
-let couponUsageFilters = { period: '7d', context: 'all' };
+let couponUsageFilters = { period: '7d', context: 'all', couponCode: 'all', productName: '' };
 
 // Carregar cupons
 async function loadCoupons() {
@@ -6144,6 +6169,10 @@ async function loadCouponUsage() {
         });
         
         console.log(`✅ ${couponUsageData.length} usos de cupons carregados`);
+        
+        // Popular select de cupons
+        populateCouponCodeFilter();
+        
         // Inicializa filtros padrão e aplica
         applyCouponUsageFilters();
     } catch (error) {
@@ -6152,11 +6181,28 @@ async function loadCouponUsage() {
         if (tbody) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="py-6 text-center text-red-500">Erro ao carregar histórico</td>
+                    <td colspan="8" class="py-6 text-center text-red-500">Erro ao carregar histórico</td>
                 </tr>
             `;
         }
     }
+}
+
+// Popular select de cupons no filtro
+function populateCouponCodeFilter() {
+    const select = document.getElementById('couponUsageCodeFilter');
+    if (!select) return;
+    
+    // Obter códigos únicos de cupons
+    const uniqueCodes = [...new Set(couponUsageData.map(u => u.couponCode).filter(Boolean))].sort();
+    
+    select.innerHTML = '<option value="all" selected>Todos os cupons</option>';
+    uniqueCodes.forEach(code => {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = code;
+        select.appendChild(option);
+    });
 }
 // Renderizar tabela de uso de cupons
 function renderCouponUsageTable() {
@@ -6170,14 +6216,18 @@ function renderCouponUsageTable() {
     if (data.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" class="py-6 text-center text-gray-500">Nenhum uso de cupom encontrado</td>
+                <td colspan="8" class="py-6 text-center text-gray-500">Nenhum uso de cupom encontrado</td>
             </tr>
         `;
         if (countElement) countElement.textContent = '0 usos';
+        updateCouponStats([]);
         return;
     }
     
     if (countElement) countElement.textContent = `${data.length} usos`;
+    
+    // Atualizar estatísticas
+    updateCouponStats(data);
     
     tbody.innerHTML = data.map(usage => {
         // Usar os campos que realmente existem no banco
@@ -6185,9 +6235,9 @@ function renderCouponUsageTable() {
         const discountAmount = usage.discountAmount || 0;
         const finalValue = usage.finalValue || (orderValue - discountAmount);
         
-        // Calcular percentual se possível
-        const discountPercentage = orderValue > 0 ? ((discountAmount / orderValue) * 100).toFixed(1) : 0;
-        const discountText = discountAmount > 0 ? `R$ ${discountAmount.toFixed(2)} (${discountPercentage}%)` : 'R$ 0,00';
+        // Calcular percentual - usar discountPercentage se disponível, senão calcular
+        const discountPercentage = usage.discountPercentage || (orderValue > 0 ? ((discountAmount / orderValue) * 100).toFixed(2) : '0.00');
+        const productName = usage.productName || usage.productId || 'N/A';
         
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50">
@@ -6195,13 +6245,39 @@ function renderCouponUsageTable() {
                 <td class="py-2 px-2">
                     <span class="font-mono text-xs bg-blue-100 px-2 py-1 rounded">${usage.couponCode || 'N/A'}</span>
                 </td>
-                <td class="py-2 px-2 text-xs">${usage.customerName ? usage.customerName.split(' ')[0] : (usage.customerEmail ? usage.customerEmail.split('@')[0] : 'N/A')}</td>
+                <td class="py-2 px-2 text-xs">
+                    <div class="font-medium">${usage.customerName ? usage.customerName.split(' ')[0] : 'N/A'}</div>
+                    <div class="text-gray-500 text-xs">${usage.customerEmail ? usage.customerEmail.split('@')[0] : ''}</div>
+                </td>
+                <td class="py-2 px-2 text-xs">
+                    <div class="font-medium">${productName}</div>
+                    ${usage.productId ? `<div class="text-gray-500 text-xs">ID: ${usage.productId}</div>` : ''}
+                </td>
                 <td class="py-2 px-2 text-xs">R$ ${orderValue.toFixed(2)}</td>
-                <td class="py-2 px-2 text-xs text-green-600">-${discountText}</td>
+                <td class="py-2 px-2 text-xs text-green-600 font-medium">${discountPercentage}%</td>
+                <td class="py-2 px-2 text-xs text-green-600">-R$ ${discountAmount.toFixed(2)}</td>
                 <td class="py-2 px-2 text-xs font-medium">R$ ${finalValue.toFixed(2)}</td>
             </tr>
         `;
     }).join('');
+}
+
+// Atualizar estatísticas de cupons
+function updateCouponStats(data) {
+    const total = data.length;
+    const totalDiscount = data.reduce((sum, u) => sum + (u.discountAmount || 0), 0);
+    const totalRevenue = data.reduce((sum, u) => sum + (u.finalValue || u.orderValue - (u.discountAmount || 0)), 0);
+    const averageTicket = total > 0 ? totalRevenue / total : 0;
+    
+    const statsTotal = document.getElementById('couponStatsTotal');
+    const statsDiscount = document.getElementById('couponStatsDiscount');
+    const statsRevenue = document.getElementById('couponStatsRevenue');
+    const statsAverage = document.getElementById('couponStatsAverage');
+    
+    if (statsTotal) statsTotal.textContent = total.toLocaleString('pt-BR');
+    if (statsDiscount) statsDiscount.textContent = `R$ ${totalDiscount.toFixed(2).replace('.', ',')}`;
+    if (statsRevenue) statsRevenue.textContent = `R$ ${totalRevenue.toFixed(2).replace('.', ',')}`;
+    if (statsAverage) statsAverage.textContent = `R$ ${averageTicket.toFixed(2).replace('.', ',')}`;
 }
 
 // Aplicar filtros de período e contexto ao histórico de cupons
@@ -6226,7 +6302,15 @@ function applyCouponUsageFilters() {
             const ctx = (u.context || '').toLowerCase();
             const inContext = couponUsageFilters.context === 'all' ? true : ctx === couponUsageFilters.context;
             
-            return inPeriod && inContext;
+            // Filtro por código de cupom
+            const matchesCoupon = couponUsageFilters.couponCode === 'all' || u.couponCode === couponUsageFilters.couponCode;
+            
+            // Filtro por nome do produto
+            const productName = (u.productName || u.productId || '').toLowerCase();
+            const productFilter = (couponUsageFilters.productName || '').toLowerCase().trim();
+            const matchesProduct = !productFilter || productName.includes(productFilter);
+            
+            return inPeriod && inContext && matchesCoupon && matchesProduct;
         });
         
         // Atualizar contador visível
@@ -6241,6 +6325,62 @@ function applyCouponUsageFilters() {
         // fallback
         filteredCouponUsageData = couponUsageData.slice();
         renderCouponUsageTable();
+    }
+}
+
+// Exportar dados de uso de cupons
+function exportCouponUsageData() {
+    try {
+        const data = filteredCouponUsageData.length > 0 ? filteredCouponUsageData : couponUsageData;
+        
+        if (data.length === 0) {
+            alert('Nenhum dado para exportar');
+            return;
+        }
+        
+        // Criar CSV
+        const headers = ['Data/Hora', 'Código Cupom', 'Cliente', 'Email', 'Produto', 'Valor Original', 'Desconto (%)', 'Valor Desconto', 'Valor Final'];
+        const rows = data.map(u => {
+            const orderValue = u.orderValue || 0;
+            const discountAmount = u.discountAmount || 0;
+            const finalValue = u.finalValue || (orderValue - discountAmount);
+            const discountPercentage = u.discountPercentage || (orderValue > 0 ? ((discountAmount / orderValue) * 100).toFixed(2) : '0.00');
+            const productName = u.productName || u.productId || 'N/A';
+            const date = u.usedAt ? formatDateTime(u.usedAt) : 'N/A';
+            
+            return [
+                date,
+                u.couponCode || 'N/A',
+                u.customerName || 'N/A',
+                u.customerEmail || 'N/A',
+                productName,
+                orderValue.toFixed(2),
+                discountPercentage,
+                discountAmount.toFixed(2),
+                finalValue.toFixed(2)
+            ];
+        });
+        
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n');
+        
+        // Download
+        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `cupons_uso_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log('✅ Dados exportados com sucesso');
+    } catch (error) {
+        console.error('❌ Erro ao exportar dados:', error);
+        alert('Erro ao exportar dados: ' + error.message);
     }
 }
 
@@ -6792,18 +6932,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   // Listeners de filtros do uso de cupons
-  const couponUsagePeriod = document.getElementById('couponUsagePeriod');
-  const couponUsageContext = document.getElementById('couponUsageContext');
-  const couponUsageApply = document.getElementById('couponUsageApply');
-  if (couponUsagePeriod) {
-    couponUsagePeriod.addEventListener('change', (e)=>{ couponUsageFilters.period = e.target.value; });
-  }
-  if (couponUsageContext) {
-    couponUsageContext.addEventListener('change', (e)=>{ couponUsageFilters.context = e.target.value; });
-  }
-  if (couponUsageApply) {
-    couponUsageApply.addEventListener('click', ()=> applyCouponUsageFilters());
-  }
+  // Event listeners já configurados acima na função initAdmin
 });
 
 // ===== Reset de Dados (Perigoso) =====

@@ -11,6 +11,10 @@ service cloud.firestore {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['vendedor','Vendedor','VENDEDOR'];
     }
     
+    function isAfiliado() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['afiliado','Afiliado','AFILIADO'];
+    }
+    
     function isGerente() {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['gerente','Gerente','GERENTE','admin','Admin','ADMIN','Ceo','CEO','ceo'];
     }
@@ -38,7 +42,7 @@ service cloud.firestore {
     }
 
     function canReadAll() {
-      return isAdmin() || isGerente() || isVendedor() || isDesign() || isSocio();
+      return isAdmin() || isGerente() || isVendedor() || isDesign() || isSocio() || isAfiliado();
     }
 
     // users: cada usuário lê/escreve o próprio documento; Staff pode ler todos
@@ -169,10 +173,24 @@ service cloud.firestore {
       allow create, update, delete: if isAuthorizedAdmin();
     }
 
-    // couponUsage: leitura para staff (admin/gerente/sócio); escrita para usuários logados
+    // couponUsage: leitura para staff (admin/gerente/sócio) e afiliados; escrita para usuários logados
     match /couponUsage/{usageId} {
-      allow read: if isAdmin() || isGerente() || isSocio();
+      allow read: if isAdmin() || isGerente() || isSocio() || isAfiliado();
       allow create: if isSignedIn();
+    }
+    
+    // affiliate_sales: leitura para o próprio afiliado e admins; escrita para sistema
+    match /affiliate_sales/{saleId} {
+      allow read: if isSignedIn() && (resource.data.affiliateId == request.auth.uid || isAdmin() || isGerente());
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || isGerente();
+    }
+    
+    // affiliate_commissions: leitura para o próprio afiliado e admins; escrita para sistema
+    match /affiliate_commissions/{commissionId} {
+      allow read: if isSignedIn() && (resource.data.affiliateId == request.auth.uid || isAdmin() || isGerente());
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || isGerente();
     }
 
     // whatsapp_links: leitura para usuários logados; escrita para admins, design e sócios

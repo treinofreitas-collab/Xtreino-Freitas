@@ -200,6 +200,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     await checkAuthState();
     setupEventListeners();
+    // Verificar se é afiliado
+    await checkAffiliateRole();
     // Se vier com ?tab=myTokens, abrir direto essa aba
     try{
         const sp = new URLSearchParams(location.search);
@@ -244,11 +246,13 @@ function setupEventListeners() {
     const productsTab = document.getElementById('productsTab');
     const tokensTab = document.getElementById('tokensTab');
     const profileTab = document.getElementById('profileTab');
+    const affiliateTab = document.getElementById('affiliateTab');
     if (dashTab) dashTab.addEventListener('click', async () => await switchTab('dashboard'));
     if (ordersTab) ordersTab.addEventListener('click', async () => await switchTab('orders'));
     if (productsTab) productsTab.addEventListener('click', async () => await switchTab('products'));
     if (tokensTab) tokensTab.addEventListener('click', async () => await switchTab('tokens'));
     if (profileTab) profileTab.addEventListener('click', async () => await switchTab('profile'));
+    if (affiliateTab) affiliateTab.addEventListener('click', async () => await switchTab('affiliate'));
 
     // Logout button
     const logoutBtn = document.getElementById('logoutBtn');
@@ -296,6 +300,9 @@ async function switchTab(tabName) {
             break;
         case 'profile':
             loadProfile();
+            break;
+        case 'affiliate':
+            await loadAffiliateData();
             break;
     }
 }
@@ -2418,6 +2425,256 @@ function showLoginPrompt() {
                 </div>
             </div>
         `;
+    }
+}
+
+// ==================== SISTEMA DE AFILIADOS ====================
+
+// Carregar dados do afiliado
+async function loadAffiliateData() {
+    try {
+        if (!currentUser || !currentUser.uid) {
+            console.warn('Usuário não autenticado');
+            return;
+        }
+
+        // Verificar se o usuário é afiliado
+        const userRole = await getUserRole(currentUser.uid);
+        if (userRole?.role?.toLowerCase() !== 'afiliado') {
+            // Esconder aba de afiliados se não for afiliado
+            const affiliateTab = document.getElementById('affiliateTab');
+            if (affiliateTab) affiliateTab.classList.add('hidden');
+            return;
+        }
+
+        // Mostrar aba de afiliados
+        const affiliateTab = document.getElementById('affiliateTab');
+        if (affiliateTab) affiliateTab.classList.remove('hidden');
+
+        // Gerar link de afiliado
+        const affiliateLink = `${window.location.origin}?ref=${currentUser.uid}`;
+        const linkInput = document.getElementById('affiliateLink');
+        if (linkInput) linkInput.value = affiliateLink;
+
+        // Carregar vendas e comissões
+        await Promise.all([
+            loadAffiliateSales(),
+            loadAffiliateCommissions()
+        ]);
+
+        // Atualizar estatísticas
+        updateAffiliateStats();
+    } catch (error) {
+        console.error('Erro ao carregar dados de afiliado:', error);
+    }
+}
+
+// Carregar vendas do afiliado
+async function loadAffiliateSales() {
+    try {
+        const { collection, query, where, getDocs, orderBy } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const salesRef = collection(db, 'affiliate_sales');
+        const q = query(
+            salesRef,
+            where('affiliateId', '==', currentUser.uid),
+            orderBy('createdAt', 'desc')
+        );
+        const snapshot = await getDocs(q);
+
+        const sales = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            sales.push({
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate() || new Date()
+            });
+        });
+
+        renderAffiliateSales(sales);
+        window.affiliateSales = sales;
+    } catch (error) {
+        console.error('Erro ao carregar vendas:', error);
+        const tbody = document.getElementById('affiliateSalesTableBody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">Erro ao carregar vendas</td></tr>';
+        }
+    }
+}
+
+// Renderizar vendas do afiliado
+function renderAffiliateSales(sales) {
+    const tbody = document.getElementById('affiliateSalesTableBody');
+    if (!tbody) return;
+
+    const filter = document.getElementById('affiliateSalesFilter')?.value || 'all';
+    const filteredSales = filter === 'all' ? sales : sales.filter(s => s.status === filter);
+
+    if (filteredSales.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhuma venda encontrada</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filteredSales.map(sale => {
+        const date = sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('pt-BR') : 'N/A';
+        const statusBadge = sale.status === 'paid' 
+            ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Paga</span>'
+            : '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Pendente</span>';
+        
+        return `
+            <tr class="border-b border-gray-100 hover:bg-gray-50">
+                <td class="px-4 py-3 text-sm">${date}</td>
+                <td class="px-4 py-3 text-sm">${sale.customerName || sale.customerEmail || 'N/A'}</td>
+                <td class="px-4 py-3 text-sm">${sale.productName || sale.productId || 'N/A'}</td>
+                <td class="px-4 py-3 text-sm font-medium">R$ ${(sale.saleValue || 0).toFixed(2)}</td>
+                <td class="px-4 py-3 text-sm">${(sale.commissionRate || 0).toFixed(1)}%</td>
+                <td class="px-4 py-3 text-sm font-medium text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2)}</td>
+                <td class="px-4 py-3 text-sm">${statusBadge}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Carregar comissões do afiliado
+async function loadAffiliateCommissions() {
+    try {
+        const { collection, query, where, getDocs, orderBy } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const commissionsRef = collection(db, 'affiliate_commissions');
+        const q = query(
+            commissionsRef,
+            where('affiliateId', '==', currentUser.uid),
+            orderBy('createdAt', 'desc')
+        );
+        const snapshot = await getDocs(q);
+
+        const commissions = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            commissions.push({
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate() || new Date()
+            });
+        });
+
+        renderAffiliateCommissions(commissions);
+        window.affiliateCommissions = commissions;
+    } catch (error) {
+        console.error('Erro ao carregar comissões:', error);
+        const tbody = document.getElementById('affiliateCommissionsTableBody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-red-500">Erro ao carregar comissões</td></tr>';
+        }
+    }
+}
+
+// Renderizar comissões do afiliado
+function renderAffiliateCommissions(commissions) {
+    const tbody = document.getElementById('affiliateCommissionsTableBody');
+    if (!tbody) return;
+
+    if (commissions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-500">Nenhuma comissão encontrada</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = commissions.map(comm => {
+        const date = comm.createdAt ? new Date(comm.createdAt).toLocaleDateString('pt-BR') : 'N/A';
+        const statusBadge = comm.status === 'paid' 
+            ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Paga</span>'
+            : '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Pendente</span>';
+        
+        return `
+            <tr class="border-b border-gray-100 hover:bg-gray-50">
+                <td class="px-4 py-3 text-sm">${date}</td>
+                <td class="px-4 py-3 text-sm font-medium">R$ ${(comm.amount || 0).toFixed(2)}</td>
+                <td class="px-4 py-3 text-sm">${statusBadge}</td>
+                <td class="px-4 py-3 text-sm">${comm.paymentMethod || 'N/A'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Atualizar estatísticas do afiliado
+function updateAffiliateStats() {
+    const sales = window.affiliateSales || [];
+    const commissions = window.affiliateCommissions || [];
+
+    const totalSales = sales.length;
+    const totalCommission = commissions.reduce((sum, c) => sum + (c.amount || 0), 0);
+    const pendingCommission = commissions
+        .filter(c => c.status === 'pending')
+        .reduce((sum, c) => sum + (c.amount || 0), 0);
+    const paidCommission = commissions
+        .filter(c => c.status === 'paid')
+        .reduce((sum, c) => sum + (c.amount || 0), 0);
+
+    const totalSalesEl = document.getElementById('affiliateTotalSales');
+    const totalCommissionEl = document.getElementById('affiliateTotalCommission');
+    const pendingCommissionEl = document.getElementById('affiliatePendingCommission');
+    const paidCommissionEl = document.getElementById('affiliatePaidCommission');
+
+    if (totalSalesEl) totalSalesEl.textContent = totalSales;
+    if (totalCommissionEl) totalCommissionEl.textContent = `R$ ${totalCommission.toFixed(2).replace('.', ',')}`;
+    if (pendingCommissionEl) pendingCommissionEl.textContent = `R$ ${pendingCommission.toFixed(2).replace('.', ',')}`;
+    if (paidCommissionEl) paidCommissionEl.textContent = `R$ ${paidCommission.toFixed(2).replace('.', ',')}`;
+}
+
+// Copiar link de afiliado
+function copyAffiliateLink() {
+    const linkInput = document.getElementById('affiliateLink');
+    if (!linkInput) return;
+
+    linkInput.select();
+    linkInput.setSelectionRange(0, 99999); // Para mobile
+
+    try {
+        document.execCommand('copy');
+        alert('Link copiado para a área de transferência!');
+    } catch (err) {
+        console.error('Erro ao copiar:', err);
+        alert('Erro ao copiar link. Tente selecionar e copiar manualmente.');
+    }
+}
+
+// Obter role do usuário
+async function getUserRole(uid) {
+    try {
+        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+            return userDoc.data();
+        }
+        return null;
+    } catch (error) {
+        console.error('Erro ao obter role:', error);
+        return null;
+    }
+}
+
+// Adicionar listener para filtro de vendas
+document.addEventListener('DOMContentLoaded', () => {
+    const salesFilter = document.getElementById('affiliateSalesFilter');
+    if (salesFilter) {
+        salesFilter.addEventListener('change', () => {
+            if (window.affiliateSales) {
+                renderAffiliateSales(window.affiliateSales);
+            }
+        });
+    }
+});
+
+// Verificar se é afiliado ao carregar perfil
+async function checkAffiliateRole() {
+    try {
+        if (!currentUser || !currentUser.uid) return;
+        const userRole = await getUserRole(currentUser.uid);
+        if (userRole?.role?.toLowerCase() === 'afiliado') {
+            const affiliateTab = document.getElementById('affiliateTab');
+            if (affiliateTab) affiliateTab.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Erro ao verificar role de afiliado:', error);
     }
 }
 
