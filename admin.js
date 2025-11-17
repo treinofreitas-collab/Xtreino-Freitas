@@ -5268,6 +5268,9 @@ let currentActiveFilter = 'all';
 // Funções para gerenciar usuários (NOVA - para tabelas separadas)
 let newTablesUsers = []; // Variável separada para as novas tabelas
 let permissionsUsers = []; // Variável separada para a tabela de permissões
+let filteredActiveUsers = []; // Usuários filtrados para a tabela de ativos
+let activeUsersCurrentPage = 1; // Página atual da tabela de usuários ativos
+const activeUsersPerPage = 10; // 10 usuários por página
 
 async function loadUsersForTables() {
   try {
@@ -5289,6 +5292,9 @@ async function loadUsersForTables() {
     // Armazenar usuários separadamente para cada tabela
     newTablesUsers = users; // Para Usuários Ativos
     permissionsUsers = users; // Para Usuários & Permissões (sempre todos os usuários)
+    
+    // Resetar paginação ao carregar
+    activeUsersCurrentPage = 1;
     
     // Renderizar apenas a tabela de usuários ativos
     // A tabela de permissões é gerenciada separadamente por loadPermissionsUsers()
@@ -5325,12 +5331,23 @@ function renderActiveUsersTable(users) {
   const tbody = document.getElementById('activeUsersTableBody');
   if (!tbody) return;
   
-  if (users.length === 0) {
+  // Salvar usuários filtrados
+  filteredActiveUsers = users;
+  
+  // Calcular paginação
+  const totalPages = Math.ceil(users.length / activeUsersPerPage);
+  const startIndex = (activeUsersCurrentPage - 1) * activeUsersPerPage;
+  const endIndex = startIndex + activeUsersPerPage;
+  const pageUsers = users.slice(startIndex, endIndex);
+  
+  if (pageUsers.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-gray-500">Nenhum usuário encontrado</td></tr>';
+    updateActiveUsersPagination(totalPages);
+    updateActiveUsersCount();
     return;
   }
   
-  tbody.innerHTML = users.map(user => {
+  tbody.innerHTML = pageUsers.map(user => {
     let lastLogin = 'Nunca';
     let isActive = false;
     
@@ -5379,6 +5396,120 @@ function renderActiveUsersTable(users) {
       </tr>
     `;
   }).join('');
+  
+  // Atualizar paginação e contadores
+  updateActiveUsersPagination(totalPages);
+  updateActiveUsersCount();
+}
+
+// Atualizar controles de paginação de usuários ativos
+function updateActiveUsersPagination(totalPages) {
+  const paginationDiv = document.getElementById('activeUsersPagination');
+  const pageInfo = document.getElementById('activeUsersPageInfo');
+  
+  if (!paginationDiv) return;
+  
+  // Atualizar info da página
+  if (pageInfo) {
+    pageInfo.textContent = `Página ${activeUsersCurrentPage} de ${totalPages || 1}`;
+  }
+  
+  // Limpar paginação anterior
+  paginationDiv.innerHTML = '';
+  
+  if (totalPages <= 1) {
+    return; // Não mostrar paginação se houver apenas 1 página
+  }
+  
+  // Botão Anterior
+  const prevBtn = document.createElement('button');
+  prevBtn.textContent = '« Anterior';
+  prevBtn.className = `px-3 py-1 text-xs rounded ${activeUsersCurrentPage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`;
+  prevBtn.disabled = activeUsersCurrentPage === 1;
+  prevBtn.onclick = () => {
+    if (activeUsersCurrentPage > 1) {
+      activeUsersCurrentPage--;
+      renderActiveUsersTable(filteredActiveUsers);
+    }
+  };
+  paginationDiv.appendChild(prevBtn);
+  
+  // Números das páginas
+  const maxVisiblePages = 5;
+  let startPage = Math.max(1, activeUsersCurrentPage - Math.floor(maxVisiblePages / 2));
+  let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+  
+  if (endPage - startPage < maxVisiblePages - 1) {
+    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+  }
+  
+  if (startPage > 1) {
+    const firstBtn = document.createElement('button');
+    firstBtn.textContent = '1';
+    firstBtn.className = 'px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300';
+    firstBtn.onclick = () => {
+      activeUsersCurrentPage = 1;
+      renderActiveUsersTable(filteredActiveUsers);
+    };
+    paginationDiv.appendChild(firstBtn);
+    
+    if (startPage > 2) {
+      const ellipsis = document.createElement('span');
+      ellipsis.textContent = '...';
+      ellipsis.className = 'px-2 py-1 text-xs text-gray-500';
+      paginationDiv.appendChild(ellipsis);
+    }
+  }
+  
+  for (let i = startPage; i <= endPage; i++) {
+    const pageBtn = document.createElement('button');
+    pageBtn.textContent = i.toString();
+    pageBtn.className = `px-2 py-1 text-xs rounded ${i === activeUsersCurrentPage ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`;
+    pageBtn.onclick = () => {
+      activeUsersCurrentPage = i;
+      renderActiveUsersTable(filteredActiveUsers);
+    };
+    paginationDiv.appendChild(pageBtn);
+  }
+  
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) {
+      const ellipsis = document.createElement('span');
+      ellipsis.textContent = '...';
+      ellipsis.className = 'px-2 py-1 text-xs text-gray-500';
+      paginationDiv.appendChild(ellipsis);
+    }
+    
+    const lastBtn = document.createElement('button');
+    lastBtn.textContent = totalPages.toString();
+    lastBtn.className = 'px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 hover:bg-gray-300';
+    lastBtn.onclick = () => {
+      activeUsersCurrentPage = totalPages;
+      renderActiveUsersTable(filteredActiveUsers);
+    };
+    paginationDiv.appendChild(lastBtn);
+  }
+  
+  // Botão Próximo
+  const nextBtn = document.createElement('button');
+  nextBtn.textContent = 'Próximo »';
+  nextBtn.className = `px-3 py-1 text-xs rounded ${activeUsersCurrentPage === totalPages ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`;
+  nextBtn.disabled = activeUsersCurrentPage === totalPages;
+  nextBtn.onclick = () => {
+    if (activeUsersCurrentPage < totalPages) {
+      activeUsersCurrentPage++;
+      renderActiveUsersTable(filteredActiveUsers);
+    }
+  };
+  paginationDiv.appendChild(nextBtn);
+}
+
+// Atualizar contador de usuários ativos
+function updateActiveUsersCount() {
+  const countEl = document.getElementById('activeUsersCount');
+  if (countEl) {
+    countEl.textContent = `${filteredActiveUsers.length} usuário${filteredActiveUsers.length !== 1 ? 's' : ''}`;
+  }
 }
 
 async function updateUserRole(userId, newRole) {
@@ -5417,6 +5548,9 @@ async function updateUserRole(userId, newRole) {
 
 function filterActiveUsers(filter) {
   currentActiveFilter = filter;
+  
+  // Resetar para primeira página ao filtrar
+  activeUsersCurrentPage = 1;
   
   // Atualizar botões de filtro
   const buttons = ['filterAllUsers', 'filterActive30Days', 'filterActive7Days', 'filterActive1Day'];
