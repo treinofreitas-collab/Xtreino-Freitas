@@ -4221,7 +4221,13 @@ async function renderScheduleTimes(){
         if (eventType) baseQ.push(where('eventType','==', eventType));
         window.__schedUnsub = onSnapshot(
             query(collection(window.firebaseDb,'registrations'), ...baseQ),
-            ()=> updateOccupiedAndRefreshButtons(day, date, eventType, timesWrap)
+            ()=> {
+                // Invalidar cache quando houver mudanças
+                const cacheKey = `${date}__${eventType||'all'}`;
+                delete scheduleCache[cacheKey];
+                // Forçar atualização com dados frescos
+                updateOccupiedAndRefreshButtons(day, date, eventType, timesWrap);
+            }
         );
     }catch(_){ }
 }
