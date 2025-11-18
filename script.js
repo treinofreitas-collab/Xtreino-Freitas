@@ -4491,7 +4491,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
                         if (shouldApply) {
                             if (ov.locked) {
                                 // Horário travado pelo admin: marcar como lotado
-                                occupiedSlots = getEventCapacity(eventType, `${wantedHour}h`);
+                                occupiedSlots = getEventCapacity(eventType, `${wantedHour}h`, date);
                                 console.log(`🔒 Horário ${wantedHour}h travado para ${date} (eventType: ${eventType})`);
                             }
                             if (ov.extraOccupied) {
@@ -4519,9 +4519,11 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
         
         // Gerar mensagem de erro apropriada
         if (unavailableSlots.length > 0) {
+            // Usar capacidade padrão para mensagem (sem horário específico)
+            const defaultCapacity = getEventCapacity(eventType, '20h', date);
             return {
                 available: false,
-                message: `❌ Horários sem vagas: ${unavailableSlots.join(', ')}\n\nLimite: ${getEventCapacity(eventType)} times por horário`
+                message: `❌ Horários sem vagas: ${unavailableSlots.join(', ')}\n\nLimite: ${defaultCapacity} times por horário`
             };
         }
         
@@ -4530,9 +4532,11 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
                 `${slot.schedule}: ${slot.available} vagas disponíveis (você quer ${slot.requested})`
             ).join('\n');
             
+            // Usar capacidade padrão para mensagem (sem horário específico)
+            const defaultCapacity = getEventCapacity(eventType, '20h', date);
             return {
                 available: false,
-                message: `⚠️ Vagas insuficientes:\n\n${details}\n\nLimite: ${getEventCapacity(eventType)} times por horário\n\nSugestão: Reduza o número de times ou escolha outros horários.`
+                message: `⚠️ Vagas insuficientes:\n\n${details}\n\nLimite: ${defaultCapacity} times por horário\n\nSugestão: Reduza o número de times ou escolha outros horários.`
             };
         }
         
