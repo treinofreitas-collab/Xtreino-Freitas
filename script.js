@@ -1696,6 +1696,12 @@ async function applyCoupon() {
         return;
     }
     
+    // Verificar se já existe um cupom aplicado
+    if (appliedCoupon) {
+        showCouponMessage('Já existe um cupom aplicado. Remova o cupom atual antes de aplicar outro.', 'error');
+        return;
+    }
+    
     try {
         console.log('🔄 Validando cupom:', couponCode);
         
@@ -2284,6 +2290,16 @@ function closeHeroTokensModal(){ const m = document.getElementById('heroTokensMo
 function heroSetTokensQty(qty){ heroSelectedQty = qty; updateHeroTokensSummary(); }
 async function heroApplyTokenCoupon(){
     try{
+        // Verificar se já existe um cupom aplicado
+        if (heroAppliedCoupon) {
+            const msg = document.getElementById('heroTokensCouponMsg');
+            if (msg) {
+                msg.textContent='Já existe um cupom aplicado. Remova o cupom atual antes de aplicar outro.';
+                msg.className='text-xs text-red-600';
+            }
+            return;
+        }
+        
         const code = (document.getElementById('heroTokensCoupon')?.value || '').trim().toUpperCase();
         const msg = document.getElementById('heroTokensCouponMsg');
         if (!code){ msg.textContent='Digite um código de cupom'; msg.className='text-xs text-red-600'; return; }
@@ -4432,7 +4448,9 @@ async function checkSlotAvailability(date, schedule, eventType){
         }catch(err){
             console.error('Erro ao verificar overrides:', err);
         }
-        return occupied < getEventCapacity(eventType, `${wantedHour}h`, date);
+        const capacity = getEventCapacity(eventType, `${wantedHour}h`, date);
+        // Não permitir compra se ocupado >= capacidade (não pode ultrapassar)
+        return occupied < capacity;
     }catch(_){ return true; }
 }
 
@@ -4503,7 +4521,8 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
             const capacity = getEventCapacity(eventType, `${wantedHour}h`, date);
             const availableSlots = capacity - occupiedSlots;
             
-            if (availableSlots === 0) {
+            // Não permitir compra se ocupado >= capacidade (não pode ultrapassar)
+            if (occupiedSlots >= capacity || availableSlots <= 0) {
                 unavailableSlots.push(schedule);
             } else if (availableSlots < numberOfTeams) {
                 partiallyAvailableSlots.push({
@@ -4593,7 +4612,9 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         // Se estiver travado, forçar como lotado (taken = capacity)
         // Isso faz aparecer como (15/15) ou (capacidade/capacidade)
         const taken = isLocked ? capacity : (occupied[schedule] || 0);
-        const available = Math.max(0, capacity - taken);
+        // Garantir que taken não ultrapasse a capacidade
+        const takenClamped = Math.min(taken, capacity);
+        const available = Math.max(0, capacity - takenClamped);
         
         // Verificar se o horário já está disponível (12 minutos antes do horário)
         let isTimeAvailable = true;
@@ -5288,6 +5309,68 @@ async function submitSchedule(e, useTokens=false){
                 }
                 if (submitBtn){ submitBtn.disabled=false; submitBtn.textContent=oldText; } 
                 return; 
+            }
+        }
+    }
+
+    // Verificação final de capacidade ANTES de criar reservas (evita race condition)
+    for (const d of datesToUse){
+        for (let schedule of selectedTimes) {
+            const timeStr = schedule.split(' - ')[1] || '';
+            const hour = parseInt(timeStr.replace('h', ''));
+            const capacity = getEventCapacity(eventType, timeStr, d);
+            
+            // Buscar ocupação atual incluindo 'pending'
+            const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const regsRef = collection(window.firebaseDb, 'registrations');
+            const clauses = [ 
+                where('date','==', d), 
+                where('status','in',['paid','confirmed','pending'])
+            ];
+            if (eventType) clauses.push(where('eventType','==', eventType));
+            const q = query(regsRef, ...clauses);
+            const snap = await getDocs(q);
+            
+            let occupied = 0;
+            snap.forEach(doc => {
+                const r = doc.data();
+                const rawSchedule = String(r.schedule || '');
+                const rawHour = String(r.hour || '');
+                let hh = rawSchedule.match(/(\d{1,2})\s*h/)?.[1] 
+                    || rawSchedule.match(/(\d{1,2})\s*:/)?.[1]
+                    || rawHour.match(/(\d{1,2})/)?.[1];
+                hh = parseInt(hh||'NaN', 10);
+                if (!Number.isNaN(hh) && hh === hour) occupied++;
+            });
+            
+            // Verificar overrides (horários travados)
+            try {
+                const ovRef = collection(window.firebaseDb, 'schedule_overrides');
+                const ovSnap = await getDocs(query(ovRef, where('date','==', d)));
+                ovSnap.forEach(doc => {
+                    const ov = doc.data();
+                    const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+                    if (ovHour === hour) {
+                        const ovEventType = ov.eventType || null;
+                        const shouldApply = !ovEventType || ovEventType === eventType || !eventType;
+                        if (shouldApply && ov.locked) {
+                            occupied = capacity; // Forçar lotado
+                        }
+                        if (shouldApply && ov.extraOccupied) {
+                            occupied += Number(ov.extraOccupied||0);
+                        }
+                    }
+                });
+            } catch(err) {
+                console.error('Erro ao verificar overrides na verificação final:', err);
+            }
+            
+            // Verificar se ainda há vagas disponíveis para o número de times solicitados
+            const availableSlots = capacity - occupied;
+            if (occupied >= capacity || availableSlots < teams.length) {
+                alert(`❌ O horário ${schedule} não possui vagas suficientes em ${d}. Vagas disponíveis: ${Math.max(0, availableSlots)}, Times solicitados: ${teams.length}.`);
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+                return;
             }
         }
     }
