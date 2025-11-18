@@ -5078,12 +5078,13 @@ window.saveProducts = saveProducts;
       
       console.log('✅ Cargo autorizado, continuando...');
       
-      // For admin/gerente/vendedor/ceo, check email whitelist
-      // For design/designer/socio/sócio, allow any email with the correct role
+      // For admin/vendedor/ceo, check email whitelist
+      // For gerente/design/designer/socio/sócio, allow any email with the correct role
       console.log('🔍 Verificando se precisa validar email...');
-      console.log('🔍 Cargo é admin/gerente/vendedor/ceo?', ['admin', 'gerente', 'vendedor', 'ceo'].includes(cleanRole));
+      console.log('🔍 Cargo é admin/vendedor/ceo?', ['admin', 'vendedor', 'ceo'].includes(cleanRole));
       
-      if (['admin', 'gerente', 'vendedor', 'ceo'].includes(cleanRole)) {
+      // Gerente não precisa estar na whitelist - apenas precisa ter o role correto
+      if (['admin', 'vendedor', 'ceo'].includes(cleanRole)) {
         console.log('🔍 Validando email para cargo:', role);
         const ADMIN_EMAILS = [
           'cleitondouglass@gmail.com',
@@ -5106,7 +5107,7 @@ window.saveProducts = saveProducts;
         
         console.log('✅ Email autorizado:', user.email);
       } else {
-        console.log('✅ Cargo é socio/design, não precisa validar email');
+        console.log('✅ Cargo é gerente/socio/design, não precisa validar email');
       }
 
       // Save session
