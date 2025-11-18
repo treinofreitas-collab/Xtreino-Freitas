@@ -196,10 +196,11 @@ body {
     .py-12 { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; }
     
     /* Grid com mais colunas */
-    .grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3 {
+    /* Removido seletor inválido que estava quebrando o CSS */
+    /* .grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3 {
         grid-template-columns: repeat(5, 1fr) !important;
         gap: 1.25rem !important;
-    }
+    } */
     
     /* Hero section mais baixa */
     .hero-section {
