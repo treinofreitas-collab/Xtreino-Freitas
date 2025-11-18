@@ -4147,8 +4147,15 @@ function isValidScheduleDate(dateStr, eventType){
     
     // Regras específicas por evento
     if (eventType === 'camp-freitas') {
-        // Camp de Fases: somente no dia atual
-        return date.getTime() === today.getTime();
+        // Camp de Fases: apenas datas da semifinal (22/11 e 23/11)
+        const semifinalDates = ['2024-11-22', '2024-11-23', '2025-11-22', '2025-11-23'];
+        const dateIso = dateStr || '';
+        if (semifinalDates.includes(dateIso)) {
+            // Semifinal: permitir mesmo que não seja hoje
+            return date >= today;
+        }
+        // Oitavas esgotadas - não permitir outras datas
+        return false;
     }
     
     // Não pode ser no passado (padrão)
@@ -4190,25 +4197,15 @@ async function renderScheduleTimes(){
         // XTreino Modo Liga: 14h às 23h
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'camp-freitas') {
-        // Camp Freitas: verificar datas especiais
-        const now = new Date();
-        const selectedDate = new Date(date + 'T00:00:00');
-        const isToday = selectedDate.toDateString() === now.toDateString();
-        const isNov17 = date === '2024-11-17' || date === '2025-11-17';
+        // Camp Freitas: Oitavas esgotadas - apenas Semifinal disponível
         const isSemifinal = date === '2024-11-22' || date === '2024-11-23' || date === '2025-11-22' || date === '2025-11-23';
         
         if (isSemifinal) {
             // Semifinal: 22/11 e 23/11 às 17h - apenas 3 vagas
             slots = ['17h'];
-        } else if (isNov17) {
-            // 17/11: apenas 21h e 22h
-            slots = ['21h','22h'];
-        } else if (isToday) {
-            // Hoje: apenas 20h disponível
-            slots = ['20h'];
         } else {
-            // Outros dias: 19h às 23h
-            slots = ['19h','20h','21h','22h','23h'];
+            // Oitavas esgotadas - não mostrar nenhum horário
+            slots = [];
         }
     } else if (eventType === 'semanal-freitas') {
         // Semanal Freitas: 19h, 20h, 21h, 22h
