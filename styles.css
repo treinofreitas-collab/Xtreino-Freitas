@@ -89,10 +89,11 @@ body {
     }
     
     /* Grid mais compacto para produtos */
-    .grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3 {
+    /* Removido seletor inválido que estava quebrando o CSS */
+    /* .grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3 {
         grid-template-columns: repeat(4, 1fr) !important;
         gap: 1.5rem !important;
-    }
+    } */
     
     /* Hero section mais compacta */
     .hero-section {
