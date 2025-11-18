@@ -438,19 +438,19 @@ body {
         margin: auto !important;
     }
     
-    /* Seletores com escape de dois-pontos corrigidos */
-    #scheduleModal [class*="lg:grid-cols-2"] {
+    /* Seletores simplificados para evitar conflitos */
+    #scheduleModal .grid.lg\\:grid-cols-2 {
         grid-template-columns: 1fr 1fr !important;
         gap: 1.5rem !important;
     }
     
     /* Quando a coluna esquerda está escondida (produtos), a direita ocupa toda a largura */
-    #scheduleModal [class*="lg:grid-cols-2"] > div:first-child[style*="display: none"] + div {
+    #scheduleModal .grid.lg\\:grid-cols-2 > div:first-child[style*="display: none"] + div {
         grid-column: 1 / -1 !important;
     }
     
     /* Quando a coluna esquerda está visível (eventos), manter grid normal */
-    #scheduleModal [class*="lg:grid-cols-2"] > div:first-child[style*="display: block"] + div {
+    #scheduleModal .grid.lg\\:grid-cols-2 > div:first-child[style*="display: block"] + div {
         grid-column: auto !important;
     }
     
@@ -499,7 +499,7 @@ body {
         -webkit-overflow-scrolling: touch !important;
     }
     
-    #scheduleModal [class*="lg:grid-cols-2"] {
+    #scheduleModal .grid.lg\\:grid-cols-2 {
         grid-template-columns: 1fr !important;
         gap: 0 !important;
     }
