@@ -1340,29 +1340,38 @@ window.showWarningToast = function(message, title = 'Atenção') {
     });
   } catch(_){}
 
-  // Unifica pedidos: orders + registrations
+  // Unifica pedidos: usa APENAS registrations (mais importante - eventos são o core do negócio)
+  // Isso evita duplicação entre orders e registrations que marcam a mesma coisa
   async function fetchUnifiedOrders() {
     const items = [];
     try {
       const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      // Orders
-      try{
-        const snap = await getDocs(collection(window.firebaseDb,'orders'));
-        snap.forEach(d => {
-          const o = d.data();
-          const ts = new Date(o.createdAt || o.timestamp || 0);
-          items.push({ ts, amount: Number(o.amount||o.total||0), item: (o.item||o.productName||'Pedido'), customer:(o.customer||o.buyerEmail||'-'), status:(o.status||''), paymentMethod: (o.paidWithTokens ? 'tokens' : (o.paymentMethod || 'mercado_pago')) });
-        });
-      }catch(_){}
-      // Registrations
+      
+      // Usar APENAS registrations (eventos são o core do negócio e mais importante)
+      // Orders e registrations estavam marcando a mesma coisa, causando duplicação
       try{
         const regs = await getDocs(collection(window.firebaseDb,'registrations'));
         regs.forEach(d => {
           const r = d.data();
           const ts = (r.createdAt?.toDate ? r.createdAt.toDate() : (r.timestamp? new Date(r.timestamp) : new Date()));
-          items.push({ ts, amount: Number(r.price||0), item:(r.title||r.eventType||'Reserva'), customer:(r.email||'-'), status:(r.status||''), paymentMethod: (r.paidWithTokens ? 'tokens' : 'mercado_pago') });
+          items.push({ 
+            ts, 
+            amount: Number(r.price||0), 
+            item:(r.title||r.eventType||'Reserva'), 
+            customer:(r.email||'-'), 
+            status:(r.status||''), 
+            paymentMethod: (r.paidWithTokens ? 'tokens' : 'mercado_pago'),
+            source: 'registrations',
+            docId: d.id,
+            externalRef: r.external_reference || r.externalRef || null,
+            schedule: r.schedule || null,
+            teamName: r.teamName || null
+          });
         });
       }catch(_){}
+      
+      // Orders removido - estava duplicando com registrations
+      // Registrations é a fonte única de verdade para eventos (core do negócio)
     } catch(_){}
     return items;
   }
@@ -1710,9 +1719,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
     while (cur <= endDay){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1); }
     const labels = days.map(d=>d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }));
     
-    // Mapear faturamento e quantidade por dia
-    const revenueMap = Object.fromEntries(labels.map(l=>[l,0]));
-    const quantityMap = Object.fromEntries(labels.map(l=>[l,0]));
+    // Agrupar por external_reference primeiro (transações únicas)
+    const transactionsByRef = new Map();
     
     all.forEach(o => {
       const ts = o.ts;
@@ -1720,11 +1728,32 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (period.to && ts > period.to) return;
       const status = (o.status||'').toLowerCase();
       if (status === 'paid' || status === 'confirmed') {
-        const label = ts.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-        if (revenueMap[label] !== undefined) {
-          revenueMap[label] += Number(o.amount||0);
-          quantityMap[label] += 1;
+        const externalRef = o.externalRef || o.docId || 'no-ref';
+        
+        if (transactionsByRef.has(externalRef)) {
+          const existing = transactionsByRef.get(externalRef);
+          existing.amount += Number(o.amount || 0);
+          existing.date = ts || existing.date; // Usar a primeira data encontrada
+        } else {
+          transactionsByRef.set(externalRef, {
+            amount: Number(o.amount || 0),
+            date: ts
+          });
         }
+      }
+    });
+    
+    // Mapear faturamento e quantidade por dia (a partir de transações únicas)
+    const revenueMap = Object.fromEntries(labels.map(l=>[l,0]));
+    const quantityMap = Object.fromEntries(labels.map(l=>[l,0]));
+    
+    transactionsByRef.forEach(transaction => {
+      const ts = transaction.date;
+      if (!ts) return;
+      const label = ts.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      if (revenueMap[label] !== undefined) {
+        revenueMap[label] += transaction.amount;
+        quantityMap[label] += 1; // Conta 1 transação, não múltiplos documentos
       }
     });
     
@@ -1879,18 +1908,44 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const canvas = document.getElementById('topProductsChart');
     if (!canvas) return;
     const all = await fetchUnifiedOrders();
-    const revenueMap = {}; // Faturamento por produto
-    const quantityMap = {}; // Quantidade por produto
+    
+    // Agrupar por external_reference primeiro (transações únicas)
+    const transactionsByRef = new Map();
     
     all.forEach(o => {
       if ((o.status||'').toLowerCase() !== 'paid' && (o.status||'').toLowerCase() !== 'confirmed') return;
       
+      const externalRef = o.externalRef || o.docId || 'no-ref';
       const rawName = o.item || 'Produto Diverso';
       const normalizedName = normalizeProductName(rawName);
       const amount = Number(o.amount || 0);
       
-      revenueMap[normalizedName] = (revenueMap[normalizedName] || 0) + amount;
-      quantityMap[normalizedName] = (quantityMap[normalizedName] || 0) + 1;
+      if (transactionsByRef.has(externalRef)) {
+        const existing = transactionsByRef.get(externalRef);
+        existing.amount += amount;
+        // Se o produto normalizado for diferente, manter o primeiro ou combinar
+        if (!existing.products.includes(normalizedName)) {
+          existing.products.push(normalizedName);
+        }
+      } else {
+        transactionsByRef.set(externalRef, {
+          amount: amount,
+          products: [normalizedName]
+        });
+      }
+    });
+    
+    // Agregar por produto a partir das transações únicas
+    const revenueMap = {}; // Faturamento por produto
+    const quantityMap = {}; // Quantidade de transações por produto
+    
+    transactionsByRef.forEach(transaction => {
+      // Se uma transação tem múltiplos produtos, distribuir o valor igualmente
+      const amountPerProduct = transaction.amount / transaction.products.length;
+      transaction.products.forEach(productName => {
+        revenueMap[productName] = (revenueMap[productName] || 0) + amountPerProduct;
+        quantityMap[productName] = (quantityMap[productName] || 0) + 1;
+      });
     });
     
     // Ordenar por faturamento e pegar top 5
@@ -1980,15 +2035,51 @@ window.showWarningToast = function(message, title = 'Atenção') {
       mercado_pago: { count: 0, revenue: 0, label: 'QR Code / Mercado Pago' }
     };
     
+    // Agrupar por external_reference para evitar contar múltiplas vezes a mesma transação
+    // Uma transação pode ter múltiplos documentos (ex: múltiplos horários/times)
+    const transactionsByRef = new Map();
+    
     all.forEach(o => {
       const status = (o.status||'').toLowerCase();
       if (status === 'paid' || status === 'confirmed') {
-        const method = o.paymentMethod || 'mercado_pago';
-        const key = method === 'tokens' ? 'tokens' : 'mercado_pago';
-        paymentMap[key].count += 1;
-        paymentMap[key].revenue += Number(o.amount || 0);
+        const externalRef = o.externalRef || o.docId || 'no-ref';
+        
+        // Se já existe uma transação com esse external_reference, agrupar
+        if (transactionsByRef.has(externalRef)) {
+          const existing = transactionsByRef.get(externalRef);
+          // Somar o valor (pode ter múltiplos itens na mesma transação)
+          existing.amount += Number(o.amount || 0);
+          existing.items.push({
+            item: o.item,
+            amount: Number(o.amount || 0),
+            source: o.source
+          });
+        } else {
+          // Nova transação
+          transactionsByRef.set(externalRef, {
+            method: o.paymentMethod || 'mercado_pago',
+            amount: Number(o.amount || 0),
+            items: [{
+              item: o.item,
+              amount: Number(o.amount || 0),
+              source: o.source
+            }]
+          });
+        }
       }
     });
+    
+    // Contar transações únicas (não documentos individuais)
+    transactionsByRef.forEach(transaction => {
+      const method = transaction.method;
+      const key = method === 'tokens' ? 'tokens' : 'mercado_pago';
+      paymentMap[key].count += 1; // Conta 1 transação, não múltiplos documentos
+      paymentMap[key].revenue += transaction.amount;
+    });
+    
+    console.log(`📊 Total de transações únicas: ${transactionsByRef.size}`);
+    console.log(`  - Tokens: ${paymentMap.tokens.count} transações | R$ ${paymentMap.tokens.revenue.toFixed(2)}`);
+    console.log(`  - QR Code/Mercado Pago: ${paymentMap.mercado_pago.count} transações | R$ ${paymentMap.mercado_pago.revenue.toFixed(2)}`);
     
     const labels = Object.values(paymentMap).map(p => p.label);
     const countData = Object.values(paymentMap).map(p => p.count);
@@ -7427,6 +7518,7 @@ function filterAdminHistory() {
 
 // Expor funções globalmente
 window.loadPermissionsUsers = loadPermissionsUsers;
+// window.listAllSalesItems removido
 window.updatePermissionsUserRole = updatePermissionsUserRole;
 window.changePermissionsPage = changePermissionsPage;
 window.loadTokensUsers = loadTokensUsers;

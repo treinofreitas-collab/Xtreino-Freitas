@@ -2472,7 +2472,7 @@ async function smartChatAnswer(message){
             try{
                 const scheduleStr = `${new Date(date+'T00:00:00').toLocaleDateString('pt-BR',{ weekday:'long' })} - ${hour}`;
                 const ok = await checkSlotAvailability(date, scheduleStr, ev);
-                const cap = getEventCapacity(ev, hour);
+                const cap = getEventCapacity(ev, hour, date);
                 return { answer: ok ? `✅ Há vagas no ${hour} (${cap} no total) para ${scheduleConfig[ev]?.label||'o evento'} em ${date.split('-').reverse().join('/')}.` : `❌ ${hour} está lotado para ${scheduleConfig[ev]?.label||'o evento'} em ${date.split('-').reverse().join('/')}.`, confidence: 0.85 };
             }catch(_){}
         }
@@ -4085,13 +4085,25 @@ function updateSelectedDate() {
 const scheduleCache = {};
 
 // Capacidade de vagas por tipo de evento e horário (casos especiais)
-function getEventCapacity(eventType, hourStr){
+function getEventCapacity(eventType, hourStr, dateStr){
     const type = String(eventType||'').toLowerCase();
     const hour = String(hourStr||'').toLowerCase().replace(/\s/g,'');
+    const dateIso = dateStr || (document.getElementById('schedDate')?.value || null);
+    
     // Modo liga: 15
     if (type === 'modo-liga') return 15;
+    
     // Semanal Freitas 22h: capacidade 4
     if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 4;
+    
+    // Camp Freitas SEMIFINAL: 22/11 e 23/11 às 17h - apenas 3 vagas
+    if (type === 'camp-freitas') {
+        const semifinalDates = ['2024-11-22', '2024-11-23', '2025-11-22', '2025-11-23'];
+        if (dateIso && semifinalDates.includes(dateIso) && (hour === '17h' || hour.includes('17'))) {
+            return 3; // Semifinal: apenas 3 vagas
+        }
+    }
+    
     // Demais: 12
     return 12;
 }
@@ -4103,10 +4115,15 @@ function getEventPrice(eventType, hourStr, dateStr){
     const dateIso = dateStr || (document.getElementById('schedDate')?.value || null);
     // Semanal Freitas 22h: R$ 7,00 (vaga direto na final)
     if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 7.00;
-    // Camp Freitas PROMO: dias específicos
+    // Camp Freitas SEMIFINAL: 22/11 e 23/11 às 17h - R$ 60,00
     try{
         if (type === 'camp-freitas' && dateIso){
-            // Datas em ISO (YYYY-MM-DD)
+            // Verificar se é semifinal primeiro (prioridade)
+            const semifinalDates = ['2024-11-22', '2024-11-23', '2025-11-22', '2025-11-23'];
+            if (semifinalDates.includes(dateIso) && (hour === '17h' || hour.includes('17'))) {
+                return 60.00; // Semifinal: R$ 60,00
+            }
+            // Camp Freitas PROMO: dias específicos (oitavas)
             const promos = {
                 '2024-11-17': { price: 25.00, hours: ['21h','22h'] }, // Dia 17/11: R$25,00 apenas 21h e 22h
                 '2025-11-17': { price: 25.00, hours: ['21h','22h'] }, // Dia 17/11/2025: R$25,00 apenas 21h e 22h
@@ -4173,14 +4190,17 @@ async function renderScheduleTimes(){
         // XTreino Modo Liga: 14h às 23h
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'camp-freitas') {
-        // Camp Freitas: verificar se é hoje - se for, apenas 20h
-        // Dia 17/11: apenas 21h e 22h
+        // Camp Freitas: verificar datas especiais
         const now = new Date();
         const selectedDate = new Date(date + 'T00:00:00');
         const isToday = selectedDate.toDateString() === now.toDateString();
         const isNov17 = date === '2024-11-17' || date === '2025-11-17';
+        const isSemifinal = date === '2024-11-22' || date === '2024-11-23' || date === '2025-11-22' || date === '2025-11-23';
         
-        if (isNov17) {
+        if (isSemifinal) {
+            // Semifinal: 22/11 e 23/11 às 17h - apenas 3 vagas
+            slots = ['17h'];
+        } else if (isNov17) {
             // 17/11: apenas 21h e 22h
             slots = ['21h','22h'];
         } else if (isToday) {
@@ -4244,7 +4264,8 @@ async function renderScheduleTimes(){
             btn.textContent = `${time} (Lotado)`;
             btn.onclick = null;
         } else {
-            btn.textContent = `${time} (.. /${String(getEventCapacity(eventType, time)).padStart(2,'0')})`;
+            const date = document.getElementById('schedDate')?.value || null;
+            btn.textContent = `${time} (.. /${String(getEventCapacity(eventType, time, date)).padStart(2,'0')})`;
             btn.onclick = ()=>{ 
                 document.getElementById('schedSelectedTime').value = schedule; 
                 document.getElementById('schedSelectedTimeDisplay').textContent = time;
@@ -4340,7 +4361,7 @@ async function fetchOccupiedForDate(day, date, eventType){
                     }
                     if (ov.locked) {
                         // Horário travado pelo admin: usar capacidade do tipo para forçar lotado
-                        const cap = getEventCapacity(eventType, `${hourNum}h`);
+                        const cap = getEventCapacity(eventType, `${hourNum}h`, date);
                         map[key] = cap;
                     }
                 }
@@ -4402,7 +4423,7 @@ async function checkSlotAvailability(date, schedule, eventType){
                     if (shouldApply) {
                         if (ov.locked) {
                             // Horário travado pelo admin: marcar como lotado (capacidade total)
-                            occupied = getEventCapacity(eventType, `${wantedHour}h`);
+                            occupied = getEventCapacity(eventType, `${wantedHour}h`, date);
                             console.log(`🔒 Horário ${wantedHour}h travado para ${date} (eventType: ${eventType})`);
                         }
                         if (ov.extraOccupied) {
@@ -4414,7 +4435,7 @@ async function checkSlotAvailability(date, schedule, eventType){
         }catch(err){
             console.error('Erro ao verificar overrides:', err);
         }
-        return occupied < getEventCapacity(eventType, `${wantedHour}h`);
+        return occupied < getEventCapacity(eventType, `${wantedHour}h`, date);
     }catch(_){ return true; }
 }
 
@@ -4482,7 +4503,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
             }catch(err){
                 console.error('Erro ao verificar overrides:', err);
             }
-            const capacity = getEventCapacity(eventType, `${wantedHour}h`);
+            const capacity = getEventCapacity(eventType, `${wantedHour}h`, date);
             const availableSlots = capacity - occupiedSlots;
             
             if (availableSlots === 0) {
