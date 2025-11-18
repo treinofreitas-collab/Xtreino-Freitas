@@ -5,72 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - X-TREINO FREITAS</title>
     <link rel="icon" type="image/png" href="assets/images/Logo - Xtreino Freitas.png">
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // Carregar Tailwind com retry automático em caso de falha do CloudFlare
-        (function() {
-            const maxRetries = 5;
-            const retryDelay = 1000; // 1 segundo entre tentativas
-            let retryCount = 0;
-            let loaded = false;
-            
-            function tryLoadTailwind() {
-                if (loaded) return;
-                
+        // Fallback rápido se o Tailwind não carregar em 2 segundos
+        setTimeout(function() {
+            if (typeof tailwind === 'undefined') {
+                console.warn('⚠️ Tailwind não carregou, tentando novamente...');
                 const script = document.createElement('script');
-                script.src = 'https://cdn.tailwindcss.com?v=' + Date.now(); // Cache busting
-                script.async = true;
-                
-                const timeout = setTimeout(() => {
-                    if (!loaded) {
-                        script.remove();
-                        retryCount++;
-                        if (retryCount < maxRetries) {
-                            console.warn(`⚠️ Timeout ao carregar Tailwind (tentativa ${retryCount}/${maxRetries}). Tentando novamente...`);
-                            setTimeout(tryLoadTailwind, retryDelay);
-                        } else {
-                            console.error('❌ Não foi possível carregar o Tailwind após', maxRetries, 'tentativas. O site pode não funcionar corretamente.');
-                            // Carregar estilos básicos como último recurso
-                            loadFallbackStyles();
-                        }
-                    }
-                }, 10000); // 10 segundos de timeout
-                
-                script.onload = function() {
-                    clearTimeout(timeout);
-                    loaded = true;
-                    console.log('✅ Tailwind carregado com sucesso!');
-                };
-                
-                script.onerror = function() {
-                    clearTimeout(timeout);
-                    script.remove();
-                    retryCount++;
-                    if (retryCount < maxRetries) {
-                        console.warn(`⚠️ Erro ao carregar Tailwind (tentativa ${retryCount}/${maxRetries}). Tentando novamente em ${retryDelay}ms...`);
-                        setTimeout(tryLoadTailwind, retryDelay);
-                    } else {
-                        console.error('❌ Não foi possível carregar o Tailwind após', maxRetries, 'tentativas.');
-                        loadFallbackStyles();
-                    }
-                };
-                
+                script.src = 'https://cdn.tailwindcss.com?v=' + Date.now();
                 document.head.appendChild(script);
             }
-            
-            function loadFallbackStyles() {
-                const style = document.createElement('style');
-                style.textContent = `
-                    * { box-sizing: border-box; }
-                    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
-                    .container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
-                    .btn { padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer; border: none; }
-                    .hidden { display: none !important; }
-                `;
-                document.head.appendChild(style);
-            }
-            
-            tryLoadTailwind();
-        })();
+        }, 2000);
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
