@@ -3885,11 +3885,21 @@ function openScheduleModal(eventType){
         const m = String(today.getMonth()+1).padStart(2,'0');
         const d = String(today.getDate()).padStart(2,'0');
         const todayStr = `${y}-${m}-${d}`;
-        // Para camp-freitas, travar compra apenas para HOJE
+        // Para camp-freitas, permitir apenas 22/11 e 23/11 (semifinal)
         if (eventType === 'camp-freitas') {
-            dateInput.min = todayStr;
-            dateInput.max = todayStr;
-            dateInput.value = todayStr;
+            const semifinalDates = ['2024-11-22', '2024-11-23', '2025-11-22', '2025-11-23'];
+            // Definir min como a primeira data disponível que ainda não passou
+            const availableDates = semifinalDates.filter(d => d >= todayStr);
+            if (availableDates.length > 0) {
+                dateInput.min = availableDates[0];
+                dateInput.max = availableDates[availableDates.length - 1];
+                dateInput.value = availableDates[0]; // Definir primeira data disponível
+            } else {
+                // Se todas as datas passaram, ainda permitir selecionar (pode ser para visualização)
+                dateInput.min = semifinalDates[0];
+                dateInput.max = semifinalDates[semifinalDates.length - 1];
+                dateInput.value = semifinalDates[0];
+            }
             updateSelectedDate();
         } else {
             // Para outros eventos, permitir de hoje em diante
@@ -4194,7 +4204,7 @@ async function renderScheduleTimes(){
     // Valida data antes de renderizar
     if (!isValidScheduleDate(date, eventType)){
         const msg = (eventType === 'camp-freitas')
-            ? 'Para o Campeonato de Fases, as vagas só podem ser compradas para HOJE.'
+            ? 'Para o Campeonato de Fases, apenas as datas 22/11 e 23/11 estão disponíveis para compra (Semifinal às 17h - R$ 60,00).'
             : 'Agendamentos apenas de segunda a sexta-feira e não em datas passadas.';
         timesWrap.innerHTML = `<p class="text-red-500 text-center py-4">${msg}</p>`;
         return;
@@ -5140,6 +5150,9 @@ async function submitSchedule(e, useTokens=false){
     const submitBtn = document.getElementById('schedSubmit');
     const oldText = submitBtn ? submitBtn.textContent : '';
     if (submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Processando...'; }
+    
+    // Try-catch global para garantir que o botão sempre seja reabilitado
+    try {
     const modal = document.getElementById('scheduleModal');
     const eventType = modal?.dataset?.eventType || 'modo-liga';
     const cfg = scheduleConfig[eventType];
@@ -5611,8 +5624,18 @@ async function submitSchedule(e, useTokens=false){
         
         const url = data.init_point || data.sandbox_init_point; // prioriza produção
         if (url) { try{ sessionStorage.setItem('lastCheckoutUrl', url);}catch(_){} window.location.href = url; } else { alert('Não foi possível iniciar o pagamento.'); }
-    }).catch((err)=> { alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : '')); })
-    .finally(()=>{ if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }});
+    }).catch((err)=> { 
+        console.error('❌ Erro no checkout:', err);
+        alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : 'Por favor, tente novamente.'));
+        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+    });
+    
+    } catch (error) {
+        // Captura qualquer erro não tratado na função
+        console.error('❌ Erro crítico em submitSchedule:', error);
+        alert('Ocorreu um erro ao processar sua solicitação. Por favor, tente novamente ou entre em contato com o suporte.');
+        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+    }
 }
 
 // XTreino Gratuito: abrir WhatsApp com mensagem
