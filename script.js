@@ -4498,6 +4498,13 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
     try {
         if (!window.firebaseReady) return { available: true };
         
+        // CRÍTICO: Garantir que a data está normalizada (YYYY-MM-DD)
+        const normalizedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+        if (!normalizedDate) {
+            console.warn('⚠️ Data inválida em checkMultipleSlotAvailability:', date);
+            return { available: true }; // Em caso de data inválida, permitir (evitar bloqueio indevido)
+        }
+        
         const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const regsRef = collection(window.firebaseDb, 'registrations');
         
@@ -4507,7 +4514,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
         // Verificar cada horário selecionado
         for (let schedule of selectedTimes) {
             const clauses = [ 
-                where('date','==', date), 
+                where('date','==', normalizedDate), 
                 // Incluir 'pending' para evitar que múltiplas reservas sejam criadas simultaneamente
                 where('status','in',['paid','confirmed','pending']) 
             ];
@@ -4531,11 +4538,19 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
                 const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
                 const ovRef = c2(window.firebaseDb, 'schedule_overrides');
                 
-                // Buscar TODOS os overrides da data
-                const ovSnap = await g2(q2(ovRef, w2('date','==', date)));
+                // Buscar APENAS overrides da data específica (normalizada)
+                const ovSnap = await g2(q2(ovRef, w2('date','==', normalizedDate)));
                 
                 ovSnap.forEach(doc => {
                     const ov = doc.data();
+                    
+                    // VALIDAÇÃO CRÍTICA: Garantir que o override é realmente para esta data
+                    const ovDate = ov.date || '';
+                    if (ovDate !== normalizedDate) {
+                        console.warn(`⚠️ Override com data inconsistente em checkMultipleSlotAvailability: esperado ${normalizedDate}, encontrado ${ovDate}. Ignorando.`);
+                        return; // Ignorar override de data diferente
+                    }
+                    
                     const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
                     
                     if (ovHour === wantedHour) {
@@ -4545,8 +4560,8 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
                         if (shouldApply) {
                             if (ov.locked) {
                                 // Horário travado pelo admin: marcar como lotado
-                                occupiedSlots = getEventCapacity(eventType, `${wantedHour}h`, date);
-                                console.log(`🔒 Horário ${wantedHour}h travado para ${date} (eventType: ${eventType})`);
+                                occupiedSlots = getEventCapacity(eventType, `${wantedHour}h`, normalizedDate);
+                                console.log(`🔒 Horário ${wantedHour}h travado para ${normalizedDate} (eventType: ${eventType || 'todos'})`);
                             }
                             if (ov.extraOccupied) {
                                 occupiedSlots += Number(ov.extraOccupied||0);
@@ -4575,7 +4590,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
         // Gerar mensagem de erro apropriada
         if (unavailableSlots.length > 0) {
             // Usar capacidade padrão para mensagem (sem horário específico)
-            const defaultCapacity = getEventCapacity(eventType, '20h', date);
+            const defaultCapacity = getEventCapacity(eventType, '20h', normalizedDate);
             return {
                 available: false,
                 message: `❌ Horários sem vagas: ${unavailableSlots.join(', ')}\n\nLimite: ${defaultCapacity} times por horário`
@@ -4588,7 +4603,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
             ).join('\n');
             
             // Usar capacidade padrão para mensagem (sem horário específico)
-            const defaultCapacity = getEventCapacity(eventType, '20h', date);
+            const defaultCapacity = getEventCapacity(eventType, '20h', normalizedDate);
             return {
                 available: false,
                 message: `⚠️ Vagas insuficientes:\n\n${details}\n\nLimite: ${defaultCapacity} times por horário\n\nSugestão: Reduza o número de times ou escolha outros horários.`
