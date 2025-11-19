@@ -5474,32 +5474,83 @@ async function submitSchedule(e, useTokens=false){
     try {
         const isLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
         
-        if (window.firebaseReady && !isLocal){
+        // Validar se Firebase está pronto
+        if (!window.firebaseReady || !window.firebaseDb) {
+            throw new Error('Firebase não está pronto. Por favor, recarregue a página e tente novamente.');
+        }
+        
+        if (!isLocal){
             const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            
+            // Validar dados antes de criar reservas
+            if (!datesToUse || datesToUse.length === 0) {
+                throw new Error('Nenhuma data selecionada.');
+            }
+            if (!teams || teams.length === 0) {
+                throw new Error('Nenhum time adicionado.');
+            }
+            if (!selectedTimes || selectedTimes.length === 0) {
+                throw new Error('Nenhum horário selecionado.');
+            }
             
             // Criar uma reserva para cada combinação de data × time × horário
             for (const d of datesToUse){
+                // Validar formato da data
+                if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+                    console.warn(`⚠️ Data inválida ignorada: ${d}`);
+                    continue;
+                }
+                
                 for (let team of teams) {
+                    // Validar dados do time
+                    if (!team || !team.name || !team.email || !team.phone) {
+                        console.warn(`⚠️ Time com dados incompletos ignorado:`, team);
+                        continue;
+                    }
+                    
                     for (let schedule of selectedTimes) {
-                        const docRef = await addDoc(collection(window.firebaseDb,'registrations'),{
-                            userId: (window.firebaseAuth && window.firebaseAuth.currentUser ? window.firebaseAuth.currentUser.uid : null),
-                            teamName: team.name,
-                            email: team.email,
-                            phone: team.phone,
-                            schedule,
-                            date: d,
-                            eventType,
-                        title: `${cfg.label} - ${schedule} - ${d} - ${team.name}`,
-                        price: Number(getEventPrice(eventType, (schedule.split(' - ')[1]||'').trim()) || 0),
-                            status:'pending',
-                            createdAt: serverTimestamp(),
-                            external_reference: externalRef,
-                            // Incluir affiliateId do cupom se houver
-                            affiliateCode: appliedScheduleCoupon?.affiliateId || null
-                        });
-                        regIds.push(docRef.id);
+                        if (!schedule) {
+                            console.warn(`⚠️ Horário vazio ignorado`);
+                            continue;
+                        }
+                        
+                        try {
+                            const hour = (schedule.split(' - ')[1]||'').trim();
+                            const price = Number(getEventPrice(eventType, hour, d) || 0);
+                            
+                            // Validar preço
+                            if (isNaN(price) || price <= 0) {
+                                console.warn(`⚠️ Preço inválido para ${schedule} em ${d}: ${price}`);
+                            }
+                            
+                            const docRef = await addDoc(collection(window.firebaseDb,'registrations'),{
+                                userId: (window.firebaseAuth && window.firebaseAuth.currentUser ? window.firebaseAuth.currentUser.uid : null),
+                                teamName: String(team.name || '').trim(),
+                                email: String(team.email || '').trim(),
+                                phone: String(team.phone || '').trim(),
+                                schedule: String(schedule || '').trim(),
+                                date: d,
+                                eventType: eventType || null,
+                                title: `${cfg?.label || 'Reserva'} - ${schedule} - ${d} - ${team.name}`,
+                                price: price,
+                                status:'pending',
+                                createdAt: serverTimestamp(),
+                                external_reference: externalRef,
+                                // Incluir affiliateId do cupom se houver
+                                affiliateCode: appliedScheduleCoupon?.affiliateId || null
+                            });
+                            regIds.push(docRef.id);
+                        } catch (docError) {
+                            console.error(`❌ Erro ao criar reserva para ${schedule} - ${d} - ${team.name}:`, docError);
+                            // Continuar criando outras reservas mesmo se uma falhar
+                        }
                     }
                 }
+            }
+            
+            // Verificar se pelo menos uma reserva foi criada
+            if (regIds.length === 0) {
+                throw new Error('Não foi possível criar nenhuma reserva. Verifique os dados e tente novamente.');
             }
             
             // Salvar informações da última reserva para compatibilidade
@@ -5509,18 +5560,52 @@ async function submitSchedule(e, useTokens=false){
                     schedule: selectedTimes[0], 
                     date: datesToUse[0], 
                     eventType: modal.dataset.eventType, 
-                    price: cfg.price, 
-                    title: `${cfg.label} - ${selectedTimes[0]} - ${datesToUse[0]}`,
+                    price: cfg?.price || 0, 
+                    title: `${cfg?.label || 'Reserva'} - ${selectedTimes[0]} - ${datesToUse[0]}`,
                     totalReservations: regIds.length
                 })); }catch(_){ }
             }
         }
     } catch(error) {
-        console.error('Erro ao criar reservas:', error);
+        console.error('❌ Erro ao criar reservas:', error);
+        const errorMessage = error?.message || 'Erro desconhecido ao criar reservas';
+        alert(`Erro ao processar sua solicitação: ${errorMessage}\n\nPor favor, tente novamente ou entre em contato com o suporte.`);
+        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+        return; // IMPORTANTE: retornar para não continuar o fluxo
     }
     if (useTokens || (cfg && cfg.payWithToken)){
         // Validar saldo de tokens antes de confirmar
-        const totalCost = teams.length * selectedTimes.length * cfg.price;
+        // IMPORTANTE: Calcular custo total corretamente considerando preços variáveis por data/horário
+        let totalCost = 0;
+        for (const d of datesToUse){
+            for (const t of selectedTimes){
+                const hour = (t.split(' - ')[1] || '').trim();
+                const pricePerReservation = Number(getEventPrice(eventType, hour, d) || 0);
+                if (isNaN(pricePerReservation) || pricePerReservation <= 0) {
+                    console.warn(`⚠️ Preço inválido para ${t} em ${d}: ${pricePerReservation}`);
+                }
+                totalCost += pricePerReservation * teams.length;
+            }
+        }
+        totalCost = Number(totalCost.toFixed(2));
+        
+        // Validar se o cálculo resultou em um valor válido
+        if (isNaN(totalCost) || totalCost <= 0) {
+            alert('Erro ao calcular o valor total. Por favor, tente novamente.');
+            // Remover reservas criadas
+            if (regIds.length > 0 && window.firebaseDb) {
+                try {
+                    const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                    for (let regId of regIds) {
+                        await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                    }
+                } catch (delError) {
+                    console.error('Erro ao remover reservas:', delError);
+                }
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
         
         // Verificar se tem tokens suficientes
         const profile = window.currentUserProfile || {};
@@ -5613,15 +5698,64 @@ async function submitSchedule(e, useTokens=false){
     }
     // Fluxo normal: Checkout via Netlify Function
     const datesToUse2 = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [document.getElementById('schedDate')?.value];
+    
+    // Validar datas
+    if (!datesToUse2 || datesToUse2.length === 0 || !datesToUse2[0]) {
+        alert('Erro: Nenhuma data selecionada. Por favor, selecione uma data e tente novamente.');
+        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+        return;
+    }
+    
     const datesCount = datesToUse2.length;
     let originalTotal = 0;
     for (const d of datesToUse2){
+        // Validar formato da data
+        if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+            console.warn(`⚠️ Data inválida ignorada no cálculo: ${d}`);
+            continue;
+        }
+        
         for (const t of selectedTimes){
+            if (!t) continue;
             const hour = (t.split(' - ')[1] || '').trim();
-            originalTotal += getEventPrice(eventType, hour, d) * teams.length;
+            const pricePerReservation = Number(getEventPrice(eventType, hour, d) || 0);
+            
+            // Validar preço
+            if (isNaN(pricePerReservation) || pricePerReservation <= 0) {
+                console.warn(`⚠️ Preço inválido para ${t} em ${d}: ${pricePerReservation}`);
+                // Usar preço padrão do evento como fallback
+                const fallbackPrice = Number(cfg?.price || 0);
+                if (!isNaN(fallbackPrice) && fallbackPrice > 0) {
+                    originalTotal += fallbackPrice * teams.length;
+                } else {
+                    alert(`Erro ao calcular preço para ${t} em ${d}. Por favor, tente novamente.`);
+                    if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+                    return;
+                }
+            } else {
+                originalTotal += pricePerReservation * teams.length;
+            }
         }
     }
     originalTotal = Number(originalTotal.toFixed(2));
+    
+    // Validar se o total é válido
+    if (isNaN(originalTotal) || originalTotal <= 0) {
+        alert('Erro ao calcular o valor total da compra. Por favor, tente novamente.');
+        // Remover reservas criadas
+        if (regIds.length > 0 && window.firebaseDb) {
+            try {
+                const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                for (let regId of regIds) {
+                    await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                }
+            } catch (delError) {
+                console.error('Erro ao remover reservas:', delError);
+            }
+        }
+        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+        return;
+    }
     
     // Calcular preço final com cupom aplicado
     let finalPrice = originalTotal;
