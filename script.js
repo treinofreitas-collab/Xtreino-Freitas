@@ -5783,24 +5783,55 @@ async function submitSchedule(e, useTokens=false){
     // Calcular número total de reservas
     const totalReservations = teams.length * selectedTimes.length * datesCount;
     
+    // Validar dados antes de enviar para o checkout
+    if (!cfg || !cfg.label) {
+        alert('Erro: Configuração do evento inválida. Por favor, tente novamente.');
+        // Remover reservas criadas
+        if (regIds.length > 0 && window.firebaseDb) {
+            try {
+                const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                for (let regId of regIds) {
+                    await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                }
+            } catch (delError) {
+                console.error('Erro ao remover reservas:', delError);
+            }
+        }
+        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+        return;
+    }
+    
+    // Validar se há reservas criadas
+    if (regIds.length === 0) {
+        alert('Erro: Nenhuma reserva foi criada. Por favor, tente novamente.');
+        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+        return;
+    }
+    
     fetch('/.netlify/functions/create-preference',{
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ 
-            title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : date}`, 
+            title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`, 
             unit_price: finalPrice, 
             currency_id:'BRL', 
             quantity: 1, // Mudamos para 1 pois já calculamos o preço total
             back_url: window.location.origin,
             coupon_info: couponInfo,
             multiple_reservations: {
-                teams: teams.map(t => t.name),
+                teams: teams.map(t => t.name || 'Time sem nome'),
                 schedules: selectedTimes,
                 dates: datesToUse2,
                 eventType: eventType
             },
             external_reference: externalRef
         })
-    }).then(async res=>{ if(!res.ok){ const t = await res.text(); throw new Error(t || 'Erro na função de pagamento'); } return res.json(); })
+    }).then(async res=>{ 
+        if(!res.ok){ 
+            const t = await res.text(); 
+            throw new Error(t || 'Erro na função de pagamento'); 
+        } 
+        return res.json(); 
+    })
     .then(async data=>{
         closeScheduleModal();
         // Salvar external_reference para verificação posterior
