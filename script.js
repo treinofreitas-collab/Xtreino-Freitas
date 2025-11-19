@@ -125,6 +125,90 @@ window.showWarningToast = function(message, title = 'Atenção') {
     showToast('warning', message, title);
 };
 
+// Função especializada para exibir erros de pagamento com tokens de forma elegante
+function showTokenPaymentError(errorCode, errorMessage, details = null) {
+    // Mapeamento de mensagens amigáveis para cada código de erro
+    const friendlyMessages = {
+        'ERR_TKN_001': 'Erro ao processar dados da reserva',
+        'ERR_TKN_002': 'Saldo de tokens insuficiente',
+        'ERR_TKN_003': 'Erro ao criar reservas',
+        'ERR_TKN_004': 'Erro ao calcular valores',
+        'ERR_TKN_005': 'Erro ao validar saldo',
+        'ERR_TKN_006': 'Validação de pagamento falhou',
+        'ERR_TKN_007': 'Erro ao processar pagamento',
+        'ERR_TKN_008': 'Erro ao processar reservas',
+        'ERR_TKN_009': 'Erro ao confirmar pagamento',
+        'ERR_TKN_010': 'Erro crítico - contate o suporte',
+        'ERR_TKN_011': 'Erro inesperado',
+        'ERR_SPEND_001': 'Valor inválido',
+        'ERR_SPEND_002': 'Saldo insuficiente',
+        'ERR_SPEND_003': 'Erro ao acessar sua conta',
+        'ERR_SPEND_004': 'Erro no cálculo',
+        'ERR_SPEND_005': 'Erro ao salvar alterações'
+    };
+    
+    const friendlyTitle = friendlyMessages[errorCode] || 'Erro no Pagamento';
+    
+    // Mensagem formatada de forma elegante
+    let formattedMessage = errorMessage;
+    if (details) {
+        formattedMessage += `\n\n${details}`;
+    }
+    
+    // Criar toast customizado com código de erro destacado
+    const container = document.getElementById('toastContainer');
+    if (!container) {
+        // Fallback para alert se o container não existir
+        alert(`${friendlyTitle}\n\n${formattedMessage}\n\nCódigo: ${errorCode}`);
+        return;
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-error';
+    
+    toast.innerHTML = `
+        <div class="toast-icon" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+            <svg style="width: 20px; height: 20px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            </svg>
+        </div>
+        <div class="toast-content" style="flex: 1;">
+            <div class="toast-title" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                <span>${friendlyTitle}</span>
+                <span style="background: rgba(239, 68, 68, 0.1); color: #dc2626; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; font-family: monospace;">
+                    ${errorCode}
+                </span>
+            </div>
+            <div class="toast-message" style="white-space: pre-line; line-height: 1.6;">
+                ${formattedMessage}
+            </div>
+            ${details ? `
+            <div style="margin-top: 8px; padding: 8px; background: rgba(239, 68, 68, 0.05); border-left: 3px solid #ef4444; border-radius: 4px; font-size: 12px; color: #7f1d1d;">
+                ${details}
+            </div>
+            ` : ''}
+        </div>
+        <button class="toast-close" onclick="removeToast(this.parentElement)">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Auto remove após 8 segundos (mais tempo para erros)
+    setTimeout(() => {
+        removeToast(toast);
+    }, 8000);
+    
+    // Também logar no console para debug
+    console.error(`❌ ${errorCode}: ${errorMessage}`);
+    if (details) {
+        console.error(`   Detalhes: ${details}`);
+    }
+    
+    return toast;
+}
+
 // --- Auth (novo) ---
 function validateEmail(email) {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1031,36 +1115,92 @@ function canSpendTokens(amountBRL) {
     return canSpend;
 }
 async function spendTokens(amountBRL) {
-    const amt = Number(amountBRL || 0);
-    if (!canSpendTokens(amt)) return false;
-    
-    const newBalance = Number((getTokenBalance() - amt).toFixed(2));
-    window.currentUserProfile.tokens = newBalance;
-    
-    console.log(`🔍 Spending ${amt} tokens. New balance: ${newBalance}`);
-    
-    // Persistir no Firestore (sem localStorage)
-    await persistUserProfile(window.currentUserProfile);
-    
-    // Atualizar interface se estiver na área do cliente
-    if (window.location.pathname.includes('client.html')) {
-        // Recarregar dados do cliente
-        if (typeof loadMyTokens === 'function') {
-            await loadMyTokens();
+    try {
+        const amt = Number(amountBRL || 0);
+        
+        // ERR_SPEND_001: Validar valor
+        if (isNaN(amt) || amt <= 0) {
+            console.error(`ERR_SPEND_001: Valor inválido para débito de tokens. amountBRL=${amountBRL}, amt=${amt}`);
+            throw new Error(`ERR_SPEND_001: Valor inválido para débito de tokens (${amountBRL})`);
         }
-        if (typeof loadTokenUsageHistory === 'function') {
-            await loadTokenUsageHistory();
+        
+        // ERR_SPEND_002: Validar se pode gastar
+        if (!canSpendTokens(amt)) {
+            const balance = getTokenBalance();
+            console.error(`ERR_SPEND_002: Saldo insuficiente. Disponível: ${balance}, Necessário: ${amt}`);
+            throw new Error(`ERR_SPEND_002: Saldo insuficiente. Disponível: R$ ${balance.toFixed(2)}, Necessário: R$ ${amt.toFixed(2)}`);
         }
+        
+        // ERR_SPEND_003: Validar perfil
+        if (!window.currentUserProfile) {
+            console.error('ERR_SPEND_003: Perfil do usuário não encontrado');
+            throw new Error('ERR_SPEND_003: Perfil do usuário não encontrado');
+        }
+        
+        const currentBalance = getTokenBalance();
+        const newBalance = Number((currentBalance - amt).toFixed(2));
+        
+        // ERR_SPEND_004: Validar novo saldo
+        if (isNaN(newBalance) || newBalance < 0) {
+            console.error(`ERR_SPEND_004: Cálculo de saldo inválido. currentBalance=${currentBalance}, amt=${amt}, newBalance=${newBalance}`);
+            throw new Error(`ERR_SPEND_004: Erro ao calcular novo saldo (${newBalance})`);
+        }
+        
+        window.currentUserProfile.tokens = newBalance;
+        
+        console.log(`🔍 Spending ${amt} tokens. Balance: ${currentBalance} → ${newBalance}`);
+        
+        // ERR_SPEND_005: Persistir no Firestore
+        try {
+            await persistUserProfile(window.currentUserProfile);
+            console.log('✅ Perfil persistido no Firestore');
+        } catch (persistError) {
+            console.error('ERR_SPEND_005: Erro ao persistir perfil:', persistError);
+            // Tentar reverter mudança local
+            window.currentUserProfile.tokens = currentBalance;
+            throw new Error(`ERR_SPEND_005: Erro ao salvar alterações no banco de dados: ${persistError.message || persistError}`);
+        }
+        
+        // Atualizar interface se estiver na área do cliente
+        if (window.location.pathname.includes('client.html')) {
+            try {
+                // Recarregar dados do cliente
+                if (typeof loadMyTokens === 'function') {
+                    await loadMyTokens();
+                }
+                if (typeof loadTokenUsageHistory === 'function') {
+                    await loadTokenUsageHistory();
+                }
+            } catch (uiError) {
+                console.warn('⚠️ Erro ao atualizar interface do cliente (não crítico):', uiError);
+                // Não falhar por causa disso, é apenas atualização de UI
+            }
+        }
+        
+        // Atualizar interface na página principal
+        try {
+            renderClientArea();
+            updateHeaderTokenBadges();
+        } catch (uiError) {
+            console.warn('⚠️ Erro ao atualizar interface (não crítico):', uiError);
+        }
+        
+        // Re-sync do Firestore para refletir saldo final
+        try {
+            await syncUserTokens();
+        } catch (syncError) {
+            console.warn('⚠️ Erro ao sincronizar tokens (não crítico):', syncError);
+            // Não falhar por causa disso, o débito já foi feito
+        }
+        
+        console.log(`✅ Débito de tokens concluído: R$ ${amt.toFixed(2)}`);
+        return true;
+    } catch (error) {
+        console.error('❌ Erro na função spendTokens:', error);
+        // Re-lançar erro com código para tratamento no chamador
+        const errorCode = error?.message?.includes('ERR_') ? error.message.split(':')[0] : 'ERR_SPEND_UNKNOWN';
+        throw new Error(`${errorCode}: ${error.message || 'Erro desconhecido ao debitar tokens'}`);
     }
-    
-    // Atualizar interface na página principal
-    renderClientArea();
-    updateHeaderTokenBadges();
-    
-    // Re-sync do Firestore para refletir saldo final
-    await syncUserTokens();
-    
-    return true;
 }
 function grantTokens(amountBRL) {
     const amt = Number(amountBRL || 0);
@@ -5353,19 +5493,61 @@ async function submitSchedule(e, useTokens=false){
 
     // Se pagar com token: validar saldo total
     if (useTokens || (cfg && cfg.payWithToken)){
-        const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [document.getElementById('schedDate')?.value];
-        let totalCost = 0;
-        for (const d of datesToUse){
-            for (const t of selectedTimes){
-                const hour = (t.split(' - ')[1] || '').trim();
-                totalCost += getEventPrice(eventType, hour, d) * teams.length;
+        try {
+            const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [document.getElementById('schedDate')?.value];
+            let totalCost = 0;
+            
+            // ERR_TKN_001: Erro ao calcular custo total
+            if (!datesToUse || datesToUse.length === 0) {
+                throw new Error('ERR_TKN_001: Nenhuma data selecionada para cálculo do custo');
             }
-        }
-        const profile = window.currentUserProfile || {};
-        if (!profile || !profile.tokens || profile.tokens < totalCost){ 
-            alert(`Saldo de tokens insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`); 
+            if (!selectedTimes || selectedTimes.length === 0) {
+                throw new Error('ERR_TKN_001: Nenhum horário selecionado para cálculo do custo');
+            }
+            if (!teams || teams.length === 0) {
+                throw new Error('ERR_TKN_001: Nenhum time adicionado para cálculo do custo');
+            }
+            
+            for (const d of datesToUse){
+                for (const t of selectedTimes){
+                    const hour = (t.split(' - ')[1] || '').trim();
+                    const price = getEventPrice(eventType, hour, d);
+                    if (isNaN(price) || price <= 0) {
+                        throw new Error(`ERR_TKN_001: Preço inválido para horário ${t} na data ${d}`);
+                    }
+                    totalCost += price * teams.length;
+                }
+            }
+            
+            // ERR_TKN_002: Erro ao validar saldo de tokens
+            const profile = window.currentUserProfile || {};
+            if (!profile) {
+                throw new Error('ERR_TKN_002: Perfil do usuário não encontrado');
+            }
+            if (profile.tokens === undefined || profile.tokens === null) {
+                throw new Error('ERR_TKN_002: Saldo de tokens não disponível no perfil');
+            }
+            if (Number(profile.tokens) < Number(totalCost)){ 
+                const errorMsg = `ERR_TKN_002: Saldo insuficiente. Disponível: R$ ${Number(profile.tokens).toFixed(2)}, Necessário: R$ ${totalCost.toFixed(2)}`;
+                console.error(errorMsg);
+                showTokenPaymentError(
+                    'ERR_TKN_002',
+                    `Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens para realizar esta reserva.`,
+                    `Saldo disponível: ${Number(profile.tokens).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`
+                );
+                if(submitBtn){submitBtn.disabled=false; submitBtn.textContent=oldText;} 
+                return; 
+            }
+        } catch (validationError) {
+            console.error('❌ Erro na validação de tokens:', validationError);
+            const errorCode = validationError.message?.includes('ERR_TKN_') ? validationError.message.split(':')[0] : 'ERR_TKN_UNKNOWN';
+            showTokenPaymentError(
+                errorCode,
+                'Erro ao validar pagamento com tokens. Por favor, verifique seus dados e tente novamente.',
+                validationError.message || 'Erro desconhecido'
+            );
             if(submitBtn){submitBtn.disabled=false; submitBtn.textContent=oldText;} 
-            return; 
+            return;
         }
     }
     
@@ -5568,8 +5750,23 @@ async function submitSchedule(e, useTokens=false){
         }
     } catch(error) {
         console.error('❌ Erro ao criar reservas:', error);
+        const errorCode = error?.message?.includes('ERR_') ? error.message.split(':')[0] : 'ERR_TKN_003';
         const errorMessage = error?.message || 'Erro desconhecido ao criar reservas';
-        alert(`Erro ao processar sua solicitação: ${errorMessage}\n\nPor favor, tente novamente ou entre em contato com o suporte.`);
+        
+        // ERR_TKN_003: Erro ao criar reservas no Firestore
+        if (error.message?.includes('Firebase não está pronto')) {
+            showTokenPaymentError(
+                'ERR_TKN_003',
+                'Não foi possível conectar ao servidor. Por favor, recarregue a página e tente novamente.',
+                'Detalhes: Firebase não está pronto'
+            );
+        } else {
+            showTokenPaymentError(
+                'ERR_TKN_003',
+                'Não foi possível criar suas reservas. Por favor, tente novamente.',
+                errorMessage
+            );
+        }
         if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
         return; // IMPORTANTE: retornar para não continuar o fluxo
     }
@@ -5589,9 +5786,39 @@ async function submitSchedule(e, useTokens=false){
         }
         totalCost = Number(totalCost.toFixed(2));
         
-        // Validar se o cálculo resultou em um valor válido
+        // ERR_TKN_004: Validar se o cálculo resultou em um valor válido
         if (isNaN(totalCost) || totalCost <= 0) {
-            alert('Erro ao calcular o valor total. Por favor, tente novamente.');
+            console.error(`ERR_TKN_004: Cálculo de total inválido. totalCost=${totalCost}`);
+            showTokenPaymentError(
+                'ERR_TKN_004',
+                'Erro ao calcular o valor total da reserva. Por favor, tente novamente.',
+                `Valor calculado: ${totalCost}`
+            );
+            // Remover reservas criadas
+            if (regIds.length > 0 && window.firebaseDb) {
+                try {
+                    const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                    for (let regId of regIds) {
+                        await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                    }
+                    console.log('🔄 Reservas removidas devido a erro no cálculo (ERR_TKN_004)');
+                } catch (delError) {
+                    console.error('ERR_TKN_004: Erro ao remover reservas:', delError);
+                }
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+        
+        // ERR_TKN_005: Verificar se tem tokens suficientes (validação dupla após criar reservas)
+        const profile = window.currentUserProfile || {};
+        if (!profile) {
+            console.error('ERR_TKN_005: Perfil do usuário não encontrado após criar reservas');
+            showTokenPaymentError(
+                'ERR_TKN_005',
+                'Sua sessão expirou. Por favor, faça login novamente.',
+                'Perfil do usuário não encontrado'
+            );
             // Remover reservas criadas
             if (regIds.length > 0 && window.firebaseDb) {
                 try {
@@ -5600,17 +5827,20 @@ async function submitSchedule(e, useTokens=false){
                         await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
                     }
                 } catch (delError) {
-                    console.error('Erro ao remover reservas:', delError);
+                    console.error('ERR_TKN_005: Erro ao remover reservas:', delError);
                 }
             }
             if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
         
-        // Verificar se tem tokens suficientes
-        const profile = window.currentUserProfile || {};
-        if (!profile || profile.tokens === undefined || profile.tokens === null || Number(profile.tokens) < Number(totalCost)) {
-            alert(`Saldo insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+        if (profile.tokens === undefined || profile.tokens === null) {
+            console.error(`ERR_TKN_005: Saldo de tokens não disponível. profile.tokens=${profile.tokens}`);
+            showTokenPaymentError(
+                'ERR_TKN_005',
+                'Não foi possível verificar seu saldo de tokens. Por favor, recarregue a página e tente novamente.',
+                'Saldo de tokens não disponível'
+            );
             // Remover reservas criadas se não tiver saldo
             if (regIds.length > 0 && window.firebaseDb) {
                 try {
@@ -5619,7 +5849,30 @@ async function submitSchedule(e, useTokens=false){
                         await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
                     }
                 } catch (delError) {
-                    console.error('Erro ao remover reservas:', delError);
+                    console.error('ERR_TKN_005: Erro ao remover reservas:', delError);
+                }
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+        
+        if (Number(profile.tokens) < Number(totalCost)) {
+            console.error(`ERR_TKN_005: Saldo insuficiente. Disponível: ${profile.tokens}, Necessário: ${totalCost}`);
+            showTokenPaymentError(
+                'ERR_TKN_005',
+                `Saldo insuficiente para confirmar as reservas. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`,
+                `Saldo disponível: ${Number(profile.tokens).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\nValor necessário: ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`
+            );
+            // Remover reservas criadas se não tiver saldo
+            if (regIds.length > 0 && window.firebaseDb) {
+                try {
+                    const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                    for (let regId of regIds) {
+                        await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                    }
+                    console.log('🔄 Reservas removidas devido a saldo insuficiente (ERR_TKN_005)');
+                } catch (delError) {
+                    console.error('ERR_TKN_005: Erro ao remover reservas:', delError);
                 }
             }
             if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
@@ -5627,7 +5880,12 @@ async function submitSchedule(e, useTokens=false){
         }
         
         if (!canSpendTokens(totalCost)) {
-            alert(`Saldo insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+            console.error(`ERR_TKN_006: canSpendTokens retornou false. totalCost=${totalCost}`);
+            showTokenPaymentError(
+                'ERR_TKN_006',
+                `Validação de saldo falhou. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`,
+                'Por favor, verifique seu saldo e tente novamente.'
+            );
             // Remover reservas criadas se não tiver saldo
             if (regIds.length > 0 && window.firebaseDb) {
                 try {
@@ -5635,38 +5893,200 @@ async function submitSchedule(e, useTokens=false){
                     for (let regId of regIds) {
                         await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
                     }
+                    console.log('🔄 Reservas removidas devido a falha na validação (ERR_TKN_006)');
                 } catch (delError) {
-                    console.error('Erro ao remover reservas:', delError);
+                    console.error('ERR_TKN_006: Erro ao remover reservas:', delError);
                 }
             }
             if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
         
-        // Debita tokens totais
-        spendTokens(totalCost);
+        // ERR_TKN_007: Debita tokens totais - IMPORTANTE: aguardar conclusão antes de continuar
+        try {
+            console.log(`🔄 Iniciando débito de tokens. Valor: ${totalCost}, Saldo atual: ${profile.tokens}`);
+            const debitResult = await spendTokens(totalCost);
+            if (!debitResult) {
+                throw new Error('ERR_TKN_007: spendTokens retornou false. Não foi possível debitar os tokens.');
+            }
+            console.log(`✅ Débito de tokens concluído. Resultado: ${debitResult}`);
+        } catch (spendError) {
+            console.error('❌ ERR_TKN_007: Erro ao debitar tokens:', spendError);
+            const errorCode = spendError?.message?.includes('ERR_TKN_') ? spendError.message.split(':')[0] : 'ERR_TKN_007';
+            const errorMessage = spendError?.message || 'Erro desconhecido ao debitar tokens';
+            
+            // Remover reservas criadas se o débito falhar
+            if (regIds.length > 0 && window.firebaseDb) {
+                try {
+                    const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                    for (let regId of regIds) {
+                        await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                    }
+                    console.log(`🔄 Reservas removidas devido a falha no débito (${errorCode})`);
+                } catch (delError) {
+                    console.error(`${errorCode}: Erro ao remover reservas após falha no débito:`, delError);
+                }
+            }
+            showTokenPaymentError(
+                errorCode,
+                'Não foi possível processar o pagamento com tokens. Por favor, tente novamente.',
+                errorMessage
+            );
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
         
-        // Atualizar todas as reservas para 'confirmed' e adicionar campos de pagamento com tokens
-        if (regIds.length > 0 && window.firebaseDb && window.firebaseReady) {
+        // ERR_TKN_008: Calcular valor por reserva (proporcional ao total)
+        if (regIds.length === 0) {
+            console.error('ERR_TKN_008: Nenhuma reserva criada para calcular valor por reserva');
+            showTokenPaymentError(
+                'ERR_TKN_008',
+                'Erro ao processar suas reservas. Por favor, tente novamente.',
+                'Nenhuma reserva foi criada'
+            );
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+        
+        const pricePerReservation = totalCost / regIds.length;
+        if (isNaN(pricePerReservation) || pricePerReservation <= 0) {
+            console.error(`ERR_TKN_008: Valor por reserva inválido. totalCost=${totalCost}, regIds.length=${regIds.length}, pricePerReservation=${pricePerReservation}`);
+            showTokenPaymentError(
+                'ERR_TKN_008',
+                'Erro ao calcular valor por reserva. Por favor, tente novamente.',
+                'Cálculo inválido detectado'
+            );
+            // Tentar reverter débito
             try {
-                const { doc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                
-                for (let regId of regIds) {
+                if (window.currentUserProfile) {
+                    const currentBalance = Number(window.currentUserProfile.tokens || 0);
+                    window.currentUserProfile.tokens = Number((currentBalance + totalCost).toFixed(2));
+                    await persistUserProfile(window.currentUserProfile);
+                    console.log('✅ Tokens reembolsados devido a ERR_TKN_008');
+                }
+            } catch (revertError) {
+                console.error('ERR_TKN_008: Erro ao reverter débito:', revertError);
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+        
+        // ERR_TKN_009: Atualizar todas as reservas para 'confirmed' e adicionar campos de pagamento com tokens
+        if (!window.firebaseDb) {
+            console.error('ERR_TKN_009: Firebase DB não disponível para atualizar reservas');
+            showTokenPaymentError(
+                'ERR_TKN_009',
+                'Não foi possível conectar ao servidor. Por favor, recarregue a página e tente novamente.',
+                'Firebase não está disponível'
+            );
+            // Tentar reverter débito
+            try {
+                if (window.currentUserProfile) {
+                    const currentBalance = Number(window.currentUserProfile.tokens || 0);
+                    window.currentUserProfile.tokens = Number((currentBalance + totalCost).toFixed(2));
+                    await persistUserProfile(window.currentUserProfile);
+                    console.log('✅ Tokens reembolsados devido a ERR_TKN_009');
+                }
+            } catch (revertError) {
+                console.error('ERR_TKN_009: Erro ao reverter débito:', revertError);
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+        
+        if (!window.firebaseReady) {
+            console.error('ERR_TKN_009: Firebase não está pronto para atualizar reservas');
+            showTokenPaymentError(
+                'ERR_TKN_009',
+                'Servidor ainda está inicializando. Por favor, aguarde alguns segundos e tente novamente.',
+                'Firebase não está pronto'
+            );
+            // Tentar reverter débito
+            try {
+                if (window.currentUserProfile) {
+                    const currentBalance = Number(window.currentUserProfile.tokens || 0);
+                    window.currentUserProfile.tokens = Number((currentBalance + totalCost).toFixed(2));
+                    await persistUserProfile(window.currentUserProfile);
+                    console.log('✅ Tokens reembolsados devido a ERR_TKN_009');
+                }
+            } catch (revertError) {
+                console.error('ERR_TKN_009: Erro ao reverter débito:', revertError);
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+        
+        try {
+            console.log(`🔄 Atualizando ${regIds.length} reservas para status 'confirmed' com pagamento via tokens`);
+            const { doc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            
+            let updatedCount = 0;
+            for (let regId of regIds) {
+                try {
                     await updateDoc(doc(collection(window.firebaseDb, 'registrations'), regId), {
                         status: 'confirmed',
                         paidWithTokens: true,
-                        tokenCost: cfg.price,
-                        tokensUsed: cfg.price,
+                        tokenCost: Number(pricePerReservation.toFixed(2)),
+                        tokensUsed: Number(pricePerReservation.toFixed(2)),
                         confirmedAt: new Date(),
                         updatedAt: new Date()
                     });
+                    updatedCount++;
+                } catch (docUpdateError) {
+                    console.error(`ERR_TKN_009: Erro ao atualizar reserva ${regId}:`, docUpdateError);
                 }
-                
-                console.log(`✅ ${regIds.length} reservas confirmadas e atualizadas com pagamento via tokens`);
-            } catch (updateError) {
-                console.error('Erro ao atualizar reservas:', updateError);
-                alert('Reservas criadas mas houve erro ao confirmar. Contate o suporte.');
             }
+            
+            if (updatedCount === 0) {
+                throw new Error('ERR_TKN_009: Nenhuma reserva foi atualizada com sucesso');
+            }
+            
+            if (updatedCount < regIds.length) {
+                console.warn(`⚠️ Apenas ${updatedCount} de ${regIds.length} reservas foram atualizadas`);
+            }
+            
+            console.log(`✅ ${updatedCount} reservas confirmadas e atualizadas com pagamento via tokens`);
+        } catch (updateError) {
+            console.error('❌ ERR_TKN_009: Erro ao atualizar reservas:', updateError);
+            const errorCode = updateError?.message?.includes('ERR_TKN_') ? updateError.message.split(':')[0] : 'ERR_TKN_009';
+            const errorMessage = updateError?.message || 'Erro desconhecido ao atualizar reservas';
+            
+            // Se falhar ao atualizar, tentar reverter o débito de tokens
+            try {
+                console.log(`🔄 Tentando reverter débito de tokens devido a ${errorCode}`);
+                const revertAmount = totalCost;
+                // Reverter tokens manualmente
+                if (window.currentUserProfile) {
+                    const currentBalance = Number(window.currentUserProfile.tokens || 0);
+                    window.currentUserProfile.tokens = Number((currentBalance + revertAmount).toFixed(2));
+                    await persistUserProfile(window.currentUserProfile);
+                    console.log(`✅ Tokens reembolsados: R$ ${revertAmount.toFixed(2)}`);
+                }
+                // Remover reservas criadas
+                const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                for (let regId of regIds) {
+                    try {
+                        await deleteDoc(doc(collection(window.firebaseDb, 'registrations'), regId));
+                    } catch (delError) {
+                        console.error(`ERR_TKN_009: Erro ao remover reserva ${regId}:`, delError);
+                    }
+                }
+                console.log('🔄 Reservas removidas e tokens reembolsados');
+                showTokenPaymentError(
+                    errorCode,
+                    'Erro ao confirmar suas reservas. Os tokens foram reembolsados automaticamente.',
+                    `${errorMessage}\n\nAs reservas foram removidas e seu saldo foi restaurado.`
+                );
+            } catch (revertError) {
+                console.error(`❌ ERR_TKN_010: Erro ao reverter débito e remover reservas:`, revertError);
+                showTokenPaymentError(
+                    'ERR_TKN_010',
+                    'Erro crítico: Falha ao processar sua solicitação. Por favor, contate o suporte imediatamente.',
+                    `Erro ao confirmar: ${errorMessage}\n\n⚠️ IMPORTANTE: Informe os códigos ${errorCode} e ERR_TKN_010 ao suporte.\n\nTokens debitados: R$ ${totalCost.toFixed(2)}\nReservas criadas: ${regIds.length}`
+                );
+            }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
         }
         
         closeScheduleModal();
@@ -5875,9 +6295,25 @@ async function submitSchedule(e, useTokens=false){
     });
     
     } catch (error) {
-        // Captura qualquer erro não tratado na função
-        console.error('❌ Erro crítico em submitSchedule:', error);
-        alert('Ocorreu um erro ao processar sua solicitação. Por favor, tente novamente ou entre em contato com o suporte.');
+        // ERR_TKN_011: Captura qualquer erro não tratado na função
+        console.error('❌ ERR_TKN_011: Erro crítico não tratado em submitSchedule:', error);
+        const errorCode = error?.message?.includes('ERR_') ? error.message.split(':')[0] : 'ERR_TKN_011';
+        const errorMessage = error?.message || 'Erro desconhecido';
+        const errorStack = error?.stack ? `\n\nStack trace:\n${error.stack.substring(0, 500)}` : '';
+        
+        console.error(`${errorCode}: Detalhes completos:`, {
+            message: errorMessage,
+            stack: error.stack,
+            useTokens: useTokens,
+            eventType: eventType,
+            regIds: regIds || []
+        });
+        
+        showTokenPaymentError(
+            errorCode,
+            'Erro inesperado ao processar sua solicitação. Por favor, tente novamente ou entre em contato com o suporte.',
+            `Detalhes: ${errorMessage.substring(0, 200)}${errorStack ? '\n\nStack trace disponível no console' : ''}`
+        );
         if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
     }
 }
