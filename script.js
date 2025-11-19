@@ -4365,12 +4365,26 @@ async function fetchOccupiedForDate(day, date, eventType){
             const { collection: col2, query: q2, where: w2, getDocs: get2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const overridesRef = col2(window.firebaseDb, 'schedule_overrides');
             
-            // Buscar TODOS os overrides da data (independente de eventType)
-            // Isso garante que pega tanto overrides específicos quanto genéricos
-            const allOverrides = await get2(q2(overridesRef, w2('date','==', date)));
+            // CRÍTICO: Garantir que a data está normalizada (YYYY-MM-DD)
+            const normalizedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+            if (!normalizedDate) {
+                console.warn('⚠️ Data inválida em fetchOccupiedForDate:', date);
+                return map;
+            }
+            
+            // Buscar APENAS overrides da data específica (normalizada)
+            const allOverrides = await get2(q2(overridesRef, w2('date','==', normalizedDate)));
             
             allOverrides.forEach(doc => {
                 const ov = doc.data();
+                
+                // VALIDAÇÃO CRÍTICA: Garantir que o override é realmente para esta data
+                const ovDate = ov.date || '';
+                if (ovDate !== normalizedDate) {
+                    console.warn(`⚠️ Override com data inconsistente em fetchOccupiedForDate: esperado ${normalizedDate}, encontrado ${ovDate}. Ignorando.`);
+                    return; // Ignorar override de data diferente
+                }
+                
                 const hourNum = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
                 if (Number.isNaN(hourNum)) return;
                 
@@ -4384,8 +4398,9 @@ async function fetchOccupiedForDate(day, date, eventType){
                     }
                     if (ov.locked) {
                         // Horário travado pelo admin: usar capacidade do tipo para forçar lotado
-                        const cap = getEventCapacity(eventType, `${hourNum}h`, date);
+                        const cap = getEventCapacity(eventType, `${hourNum}h`, normalizedDate);
                         map[key] = cap;
+                        console.log(`🔒 Horário ${hourNum}h travado para ${normalizedDate} (eventType: ${eventType || 'todos'})`);
                     }
                 }
             });
@@ -4425,12 +4440,26 @@ async function checkSlotAvailability(date, schedule, eventType){
             const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = c2(window.firebaseDb, 'schedule_overrides');
             
-            // Buscar TODOS os overrides da data (independente de eventType)
-            // Isso garante que pega tanto overrides específicos quanto genéricos
-            const ovSnap = await g2(q2(ovRef, w2('date','==', date)));
+            // CRÍTICO: Garantir que a data está normalizada (YYYY-MM-DD)
+            const normalizedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+            if (!normalizedDate) {
+                console.warn('⚠️ Data inválida em checkSlotAvailability:', date);
+                return occupied < getEventCapacity(eventType, `${wantedHour}h`, date);
+            }
+            
+            // Buscar APENAS overrides da data específica (normalizada)
+            const ovSnap = await g2(q2(ovRef, w2('date','==', normalizedDate)));
             
             ovSnap.forEach(doc => {
                 const ov = doc.data();
+                
+                // VALIDAÇÃO CRÍTICA: Garantir que o override é realmente para esta data
+                const ovDate = ov.date || '';
+                if (ovDate !== normalizedDate) {
+                    console.warn(`⚠️ Override com data inconsistente em checkSlotAvailability: esperado ${normalizedDate}, encontrado ${ovDate}. Ignorando.`);
+                    return; // Ignorar override de data diferente
+                }
+                
                 const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
                 
                 // Verificar se é o horário que queremos
@@ -4446,8 +4475,8 @@ async function checkSlotAvailability(date, schedule, eventType){
                     if (shouldApply) {
                         if (ov.locked) {
                             // Horário travado pelo admin: marcar como lotado (capacidade total)
-                            occupied = getEventCapacity(eventType, `${wantedHour}h`, date);
-                            console.log(`🔒 Horário ${wantedHour}h travado para ${date} (eventType: ${eventType})`);
+                            occupied = getEventCapacity(eventType, `${wantedHour}h`, normalizedDate);
+                            console.log(`🔒 Horário ${wantedHour}h travado para ${normalizedDate} (eventType: ${eventType || 'todos'})`);
                         }
                         if (ov.extraOccupied) {
                             occupied += Number(ov.extraOccupied||0);
@@ -4528,7 +4557,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
             }catch(err){
                 console.error('Erro ao verificar overrides:', err);
             }
-            const capacity = getEventCapacity(eventType, `${wantedHour}h`, date);
+            const capacity = getEventCapacity(eventType, `${wantedHour}h`, normalizedDate);
             const availableSlots = capacity - occupiedSlots;
             
             // Não permitir compra se ocupado >= capacidade (não pode ultrapassar)
@@ -4574,23 +4603,57 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
     }
 }
 async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
-    // cache por data
-    const cacheKey = `${date}__${eventType||'all'}`;
+    // IMPORTANTE: Sempre invalidar cache ao mudar de data para evitar dados antigos
+    // Garantir que a data está no formato correto (YYYY-MM-DD)
+    const normalizedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+    if (!normalizedDate) {
+        console.warn('⚠️ Data inválida em updateOccupiedAndRefreshButtons:', date);
+        return;
+    }
+    
+    // cache por data - sempre buscar dados frescos para evitar cache de outra data
+    const cacheKey = `${normalizedDate}__${eventType||'all'}`;
+    
+    // Invalidar cache se a data mudou (garantir dados frescos)
+    const lastDate = window.__lastScheduleDate || null;
+    if (lastDate !== normalizedDate) {
+        // Limpar cache de outras datas para evitar confusão
+        Object.keys(scheduleCache).forEach(key => {
+            if (!key.startsWith(`${normalizedDate}__`)) {
+                delete scheduleCache[key];
+            }
+        });
+        window.__lastScheduleDate = normalizedDate;
+    }
+    
     let occupied = scheduleCache[cacheKey];
     if (!occupied) {
-        try { occupied = await fetchOccupiedForDate(day, date, eventType); } catch(_) { occupied = {}; }
+        try { 
+            occupied = await fetchOccupiedForDate(day, normalizedDate, eventType); 
+        } catch(_) { 
+            occupied = {}; 
+        }
         scheduleCache[cacheKey] = occupied;
     }
     
-    // Verificar horários travados diretamente do Firestore
+    // Verificar horários travados diretamente do Firestore - SEMPRE para a data específica
     let lockedHours = new Set();
     try {
         const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const ovRef = collection(window.firebaseDb, 'schedule_overrides');
-        const ovSnap = await getDocs(query(ovRef, where('date','==', date)));
+        
+        // CRÍTICO: Buscar APENAS overrides da data específica (normalizada)
+        const ovSnap = await getDocs(query(ovRef, where('date','==', normalizedDate)));
         
         ovSnap.forEach(doc => {
             const ov = doc.data();
+            // VALIDAÇÃO: Garantir que o override é realmente para esta data
+            const ovDate = ov.date || '';
+            if (ovDate !== normalizedDate) {
+                console.warn(`⚠️ Override com data inconsistente: esperado ${normalizedDate}, encontrado ${ovDate}`);
+                return; // Ignorar override de data diferente
+            }
+            
             if (ov.locked) {
                 const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
                 if (!isNaN(ovHour)) {
@@ -4598,6 +4661,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
                     // Aplicar se for genérico ou corresponder ao eventType
                     if (!ovEventType || ovEventType === eventType || !eventType) {
                         lockedHours.add(ovHour);
+                        console.log(`🔒 Horário ${ovHour}h travado para ${normalizedDate} (eventType: ${eventType || 'todos'})`);
                     }
                 }
             }
