@@ -1,129 +1,121 @@
 # 💡 Sugestões de Melhorias - X-TREINO FREITAS
 
-## 🔧 Sistema de Códigos de Erro - Pagamento com Tokens
+## 🔧 Sistema de Códigos de Erro - Implementado ✅
 
-Para facilitar a identificação de problemas no fluxo de pagamento com tokens, foi implementado um sistema de códigos de erro específicos:
+Foi implementado um sistema completo de códigos de erro padronizado para todas as partes críticas do sistema:
 
-### Códigos de Erro Implementados
+### 📁 Arquivos Criados
+- `js/error-codes.js` - Define todos os códigos de erro padronizados
+- `js/error-handler.js` - Funções utilitárias para tratamento de erros
 
-#### ERR_TKN_001 - Erro no Cálculo/Validação Inicial
-- **Ocorre quando**: Falha ao calcular o custo total ou validar dados iniciais
-- **Possíveis causas**: 
-  - Nenhuma data selecionada
-  - Nenhum horário selecionado
-  - Nenhum time adicionado
-  - Preço inválido para algum horário/data
-- **Ação**: Verificar seleções do usuário
+### 🎯 Categorias de Erros
 
-#### ERR_TKN_002 - Erro na Validação de Saldo
-- **Ocorre quando**: Problemas ao verificar saldo de tokens disponível
-- **Possíveis causas**:
-  - Perfil do usuário não encontrado
-  - Saldo de tokens não disponível no perfil
-  - Saldo insuficiente
-- **Ação**: Verificar perfil do usuário e saldo de tokens
+#### Autenticação (AUTH_xxx)
+- AUTH_001: Usuário não autenticado
+- AUTH_002: Token expirado
+- AUTH_003: Usuário não autorizado
+- AUTH_004: Erro ao criar perfil
+- AUTH_005: Erro ao carregar perfil
+- AUTH_006: Email ou senha inválidos
+- AUTH_007: Erro ao fazer login
 
-#### ERR_TKN_003 - Erro ao Criar Reservas
-- **Ocorre quando**: Falha ao criar reservas no Firestore
-- **Possíveis causas**:
-  - Firebase não está pronto
-  - Dados inválidos (data, time, horário)
-  - Erro de conexão com Firestore
-- **Ação**: Verificar conectividade e estado do Firebase
+#### Tokens (TOKEN_xxx)
+- TOKEN_001: Saldo insuficiente
+- TOKEN_002: Erro ao debitar tokens
+- TOKEN_003: Erro ao carregar saldo
+- TOKEN_004: Erro ao atualizar saldo
+- TOKEN_005: Valor inválido
+- TOKEN_006: Transação já processada
 
-#### ERR_TKN_004 - Erro no Cálculo Final
-- **Ocorre quando**: Valor total calculado é inválido após criar reservas
-- **Possíveis causas**: 
-  - Erro matemático no cálculo
-  - Preços inconsistentes
-- **Ação**: Verificar lógica de cálculo de preços
+#### Pagamento Mercado Pago (PAYMENT_xxx)
+- PAYMENT_001: Erro ao criar preferência
+- PAYMENT_002: Preço inválido
+- PAYMENT_003: Erro ao salvar pedido
+- PAYMENT_004: Link de pagamento não disponível
+- PAYMENT_005: Produto não encontrado
+- PAYMENT_006: Erro ao processar webhook
+- PAYMENT_007: Pagamento não autorizado
 
-#### ERR_TKN_005 - Erro na Validação de Saldo (Pós-Criação)
-- **Ocorre quando**: Saldo insuficiente após criar reservas
-- **Possíveis causas**:
-  - Saldo mudou entre validação inicial e débito
-  - Perfil não encontrado após criar reservas
-- **Ação**: Verificar saldo e remover reservas criadas
+#### Eventos/Reservas (EVENT_xxx)
+- EVENT_001: Evento não encontrado
+- EVENT_002: Vagas esgotadas
+- EVENT_003: Vagas insuficientes
+- EVENT_004: Erro ao verificar disponibilidade
+- EVENT_005: Erro ao criar reserva
+- EVENT_006: Data inválida
+- EVENT_007: Horário inválido
+- EVENT_008: Nenhum horário selecionado
+- EVENT_009: Nenhum time adicionado
+- EVENT_010: Erro ao atualizar disponibilidade
 
-#### ERR_TKN_006 - Falha na Função canSpendTokens
-- **Ocorre quando**: Função de validação retorna false
-- **Possíveis causas**:
-  - Saldo insuficiente detectado pela função
-  - Erro interno na função de validação
-- **Ação**: Verificar implementação da função canSpendTokens
+#### Produtos (PRODUCT_xxx)
+- PRODUCT_001: Produto não encontrado
+- PRODUCT_002: Produto indisponível
+- PRODUCT_003: Opções inválidas
+- PRODUCT_004: Erro ao processar compra
+- PRODUCT_005: Erro ao gerar download
+- PRODUCT_006: CPF inválido
+- PRODUCT_007: Quantidade de mapas incorreta
+- PRODUCT_008: Plataforma não selecionada
+- PRODUCT_009: Marca não selecionada
 
-#### ERR_TKN_007 - Erro ao Debitar Tokens
-- **Ocorre quando**: Falha ao executar o débito de tokens
-- **Possíveis causas**:
-  - Erro na função spendTokens
-  - Erro ao persistir perfil no Firestore
-  - Falha de conexão
-- **Ação**: Verificar logs da função spendTokens e conexão
+#### Cupons (COUPON_xxx)
+- COUPON_001: Cupom não encontrado
+- COUPON_002: Cupom expirado
+- COUPON_003: Cupom inativo
+- COUPON_004: Cupom não válido para este tipo
+- COUPON_005: Cupom no limite de uso
+- COUPON_006: Erro ao validar cupom
+- COUPON_007: Erro ao aplicar cupom
+- COUPON_008: Erro ao registrar uso
 
-#### ERR_TKN_008 - Erro no Cálculo por Reserva
-- **Ocorre quando**: Não foi possível calcular valor por reserva
-- **Possíveis causas**:
-  - Nenhuma reserva foi criada
-  - Divisão por zero ou valor inválido
-- **Ação**: Verificar se reservas foram criadas corretamente
+#### Sistema/Firebase (SYS_xxx)
+- SYS_001: Erro interno do servidor
+- SYS_002: Serviço indisponível
+- SYS_003: Erro de conexão Firebase
+- SYS_004: Permissões insuficientes
+- SYS_005: Erro ao salvar dados
+- SYS_006: Erro ao carregar dados
+- SYS_007: Timeout na requisição
+- SYS_008: Dados inválidos
 
-#### ERR_TKN_009 - Erro ao Atualizar Reservas
-- **Ocorre quando**: Falha ao atualizar status das reservas para 'confirmed'
-- **Possíveis causas**:
-  - Firebase DB não disponível
-  - Firebase não está pronto
-  - Erro ao atualizar documento no Firestore
-  - Nenhuma reserva foi atualizada com sucesso
-- **Ação**: Verificar estado do Firebase e IDs das reservas
-- **Nota**: Sistema tenta reverter débito automaticamente
+### 🔧 Funções Utilitárias
 
-#### ERR_TKN_010 - Erro ao Reverter Débito
-- **Ocorre quando**: Falha ao reverter débito após erro na atualização
-- **Possíveis causas**:
-  - Erro ao atualizar perfil
-  - Erro ao remover reservas
-  - Falha de conexão durante reversão
-- **Ação**: **CRÍTICO** - Intervenção manual necessária, verificar:
-  - Tokens debitados sem reservas confirmadas
-  - Reservas criadas sem pagamento
-  - Estado inconsistente do banco
+```javascript
+// Obter erro por código
+const error = getErrorByCode('TOKEN_001');
 
-#### ERR_TKN_011 - Erro Crítico Não Tratado
-- **Ocorre quando**: Erro não capturado por nenhum tratamento específico
-- **Possíveis causas**: Qualquer erro inesperado no fluxo
-- **Ação**: Verificar stack trace completo no console
+// Tratar e exibir erro
+showError('TOKEN_001'); // Exibe toast com mensagem amigável
 
-### Códigos da Função spendTokens
+// Tratar erro silenciosamente (apenas log)
+logError(error, 'SYS_001');
 
-#### ERR_SPEND_001 - Valor Inválido
-- Valor de débito inválido (NaN ou <= 0)
+// Lançar erro tratado
+throwError('TOKEN_001');
 
-#### ERR_SPEND_002 - Saldo Insuficiente
-- Não há tokens suficientes para o débito
+// Wrapper para funções assíncronas
+await safeAsync(async () => {
+    // código que pode falhar
+}, 'TOKEN_001', true);
+```
 
-#### ERR_SPEND_003 - Perfil Não Encontrado
-- Perfil do usuário não disponível
+### ✅ Implementado em:
+- ✅ Funções de autenticação (ensureUserProfile, persistUserProfile)
+- ✅ Funções de tokens (spendTokens, canSpendTokens)
+- ✅ Funções de pagamento Mercado Pago (handlePurchase)
+- ✅ Funções de eventos/reservas (submitSchedule, checkSlotAvailability)
+- ✅ Funções de cupons (applyCoupon, validateCoupon)
+- ✅ Funções de produtos (handleProductPurchaseWithTokens)
 
-#### ERR_SPEND_004 - Erro no Cálculo de Saldo
-- Erro matemático ao calcular novo saldo
+### 📝 Benefícios
+- Debug mais rápido e preciso
+- Mensagens de erro claras para usuários
+- Logs organizados e rastreáveis
+- Facilita suporte técnico
+- Melhora experiência do usuário
 
-#### ERR_SPEND_005 - Erro ao Persistir Perfil
-- Falha ao salvar alterações no Firestore
-
-### Como Usar os Códigos de Erro
-
-1. **Para o Usuário Final**: O código aparece na mensagem de erro para facilitar suporte
-2. **Para Desenvolvimento**: Verificar console do navegador para logs detalhados
-3. **Para Suporte**: Solicitar código de erro do usuário para identificar problema rapidamente
-
-### Logs e Debugging
-
-Todos os erros são registrados no console com:
-- ✅ Emoji indicando sucesso
-- ❌ Emoji indicando erro
-- 🔄 Emoji indicando operação de reversão
-- ⚠️ Emoji indicando aviso não crítico
-- Detalhes completos incluindo valores, IDs e stack traces
+ 
 
 ---
 

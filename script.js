@@ -1118,47 +1118,42 @@ async function spendTokens(amountBRL) {
     try {
         const amt = Number(amountBRL || 0);
         
-        // ERR_SPEND_001: Validar valor
+        // TOKEN_005: Validar valor
         if (isNaN(amt) || amt <= 0) {
-            console.error(`ERR_SPEND_001: Valor inválido para débito de tokens. amountBRL=${amountBRL}, amt=${amt}`);
-            throw new Error(`ERR_SPEND_001: Valor inválido para débito de tokens (${amountBRL})`);
+            throwError('TOKEN_005', 'TOKEN_005');
         }
         
-        // ERR_SPEND_002: Validar se pode gastar
+        // TOKEN_001: Validar se pode gastar
         if (!canSpendTokens(amt)) {
             const balance = getTokenBalance();
-            console.error(`ERR_SPEND_002: Saldo insuficiente. Disponível: ${balance}, Necessário: ${amt}`);
-            throw new Error(`ERR_SPEND_002: Saldo insuficiente. Disponível: R$ ${balance.toFixed(2)}, Necessário: R$ ${amt.toFixed(2)}`);
+            throwError('TOKEN_001', 'TOKEN_001');
         }
         
-        // ERR_SPEND_003: Validar perfil
+        // AUTH_001: Validar perfil
         if (!window.currentUserProfile) {
-            console.error('ERR_SPEND_003: Perfil do usuário não encontrado');
-            throw new Error('ERR_SPEND_003: Perfil do usuário não encontrado');
+            throwError('AUTH_001', 'AUTH_001');
         }
         
         const currentBalance = getTokenBalance();
         const newBalance = Number((currentBalance - amt).toFixed(2));
         
-        // ERR_SPEND_004: Validar novo saldo
+        // TOKEN_005: Validar novo saldo
         if (isNaN(newBalance) || newBalance < 0) {
-            console.error(`ERR_SPEND_004: Cálculo de saldo inválido. currentBalance=${currentBalance}, amt=${amt}, newBalance=${newBalance}`);
-            throw new Error(`ERR_SPEND_004: Erro ao calcular novo saldo (${newBalance})`);
+            throwError('TOKEN_005', 'TOKEN_005');
         }
         
         window.currentUserProfile.tokens = newBalance;
         
         console.log(`🔍 Spending ${amt} tokens. Balance: ${currentBalance} → ${newBalance}`);
         
-        // ERR_SPEND_005: Persistir no Firestore
+        // TOKEN_004: Persistir no Firestore
         try {
             await persistUserProfile(window.currentUserProfile);
             console.log('✅ Perfil persistido no Firestore');
         } catch (persistError) {
-            console.error('ERR_SPEND_005: Erro ao persistir perfil:', persistError);
             // Tentar reverter mudança local
             window.currentUserProfile.tokens = currentBalance;
-            throw new Error(`ERR_SPEND_005: Erro ao salvar alterações no banco de dados: ${persistError.message || persistError}`);
+            throwError(persistError, 'TOKEN_004');
         }
         
         // Atualizar interface se estiver na área do cliente
@@ -1198,8 +1193,12 @@ async function spendTokens(amountBRL) {
     } catch (error) {
         console.error('❌ Erro na função spendTokens:', error);
         // Re-lançar erro com código para tratamento no chamador
-        const errorCode = error?.message?.includes('ERR_') ? error.message.split(':')[0] : 'ERR_SPEND_UNKNOWN';
-        throw new Error(`${errorCode}: ${error.message || 'Erro desconhecido ao debitar tokens'}`);
+        // Se já foi tratado com código de erro, relançar
+        if (error && typeof error === 'object' && error.code) {
+            throw error;
+        }
+        // Caso contrário, tratar como erro genérico
+        throwError(error, 'TOKEN_002');
     }
 }
 function grantTokens(amountBRL) {
@@ -1298,6 +1297,14 @@ async function ensureUserProfile(user) {
         //     await syncUserTokens();
         // }
     } catch (err) {
+        // Tratamento de erro com código padronizado
+        if (err.message && err.message.includes('permission')) {
+            logError('AUTH_005', 'AUTH_005');
+        } else if (err.message && err.message.includes('network') || err.message && err.message.includes('fetch')) {
+            logError('SYS_003', 'SYS_003');
+        } else {
+            logError(err, 'AUTH_005');
+        }
         console.warn('Perfil: erro ao carregar, usando perfil em memória.', err);
         window.currentUserProfile = baseProfile;
     }
@@ -1325,6 +1332,12 @@ async function persistUserProfile(profile){
             console.warn('⚠️ Firebase unavailable when persisting profile; keeping in memory only');
         }
     } catch(error) {
+        // Tratamento de erro com código padronizado
+        if (error.message && error.message.includes('permission')) {
+            logError('SYS_004', 'SYS_004');
+        } else {
+            logError(error, 'SYS_005');
+        }
         console.error('❌ Error persisting profile:', error);
     }
 }
@@ -1868,6 +1881,7 @@ async function applyCoupon() {
         const snapshot = await getDocs(q);
         
         if (snapshot.empty) {
+            showError('COUPON_001', 'COUPON_001');
             showCouponMessage('Cupom não encontrado', 'error');
             return;
         }
@@ -1878,6 +1892,8 @@ async function applyCoupon() {
         // Validar cupom
         const validation = validateCoupon(coupon);
         if (!validation.valid) {
+            const errorCode = validation.code || 'COUPON_006';
+            showError(errorCode, errorCode);
             showCouponMessage(validation.message, 'error');
             return;
         }
@@ -1908,6 +1924,7 @@ async function applyCoupon() {
         
     } catch (error) {
         console.error('❌ Erro ao validar cupom:', error);
+        showError(error, 'COUPON_006');
         showCouponMessage('Erro ao validar cupom. Tente novamente.', 'error');
     }
 }
@@ -1916,21 +1933,21 @@ async function applyCoupon() {
 function validateCoupon(coupon) {
     // Verificar se está ativo
     if (!coupon.isActive) {
-        return { valid: false, message: 'Cupom inativo' };
+        return { valid: false, message: 'Cupom inativo', code: 'COUPON_003' };
     }
     
     // Verificar data de expiração
     if (coupon.expirationDate) {
         const expirationDate = coupon.expirationDate.toDate ? coupon.expirationDate.toDate() : new Date(coupon.expirationDate);
         if (expirationDate < new Date()) {
-            return { valid: false, message: 'Cupom expirado' };
+            return { valid: false, message: 'Cupom expirado', code: 'COUPON_002' };
         }
     }
     
     // Verificar tipo de uso do cupom
     const currentContext = getCurrentPurchaseContext();
     if (!isCouponValidForContext(coupon, currentContext)) {
-        return { valid: false, message: 'Cupom não válido para este tipo de compra' };
+        return { valid: false, message: 'Cupom não válido para este tipo de compra', code: 'COUPON_004' };
     }
     
     return { valid: true };
@@ -2173,7 +2190,7 @@ async function handlePurchase(event) {
     event.preventDefault();
     const product = products[currentProduct];
     if (!product) {
-        alert('Produto inválido.');
+        showError('PRODUCT_001', 'PRODUCT_001');
         return;
     }
     
@@ -2196,7 +2213,7 @@ async function handlePurchase(event) {
         const names = (document.getElementById('mapsNames')?.value || '')
             .split(',').map(s=>s.trim()).filter(Boolean);
         if (names.length && names.length !== qty){
-            alert('Quantidade de mapas deve corresponder ao número de mapas escritos.');
+            showError('PRODUCT_007', 'PRODUCT_007');
             return;
         }
     }
@@ -2228,7 +2245,7 @@ async function handlePurchase(event) {
     try {
         // Validar preço final
         if (!totalNum || totalNum <= 0 || isNaN(totalNum)) {
-            alert('Preço inválido. Por favor, verifique os dados do produto.');
+            showError('PAYMENT_002', 'PAYMENT_002');
             console.error('❌ Preço inválido:', totalNum);
             return;
         }
@@ -2247,7 +2264,7 @@ async function handlePurchase(event) {
                     const cpfVal = (document.getElementById('customerCPF')?.value || '').trim();
                     const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
                     if (!cpfVal || !cpfRegex.test(cpfVal)) {
-                        alert('CPF inválido. Use o formato 000.000.000-00.');
+                        showError('PRODUCT_006', 'PRODUCT_006');
                         return;
                     }
                 }
@@ -2356,8 +2373,16 @@ async function handlePurchase(event) {
         window.location.href = checkoutUrl;
     } catch (error) {
         console.error('❌ Erro no checkout:', error);
-        const errorMessage = error.message || 'Falha ao iniciar checkout.';
-        alert(`Falha ao processar compra.\n\n${errorMessage}\n\nPor favor, tente novamente ou entre em contato com o suporte.`);
+        // Tratar erros específicos
+        if (error.message && error.message.includes('preço') || error.message && error.message.includes('Preço')) {
+            showError('PAYMENT_002', 'PAYMENT_002');
+        } else if (error.message && error.message.includes('produto') || error.message && error.message.includes('Produto')) {
+            showError('PAYMENT_005', 'PAYMENT_005');
+        } else if (error.message && error.message.includes('link') || error.message && error.message.includes('Link')) {
+            showError('PAYMENT_004', 'PAYMENT_004');
+        } else {
+            showError(error, 'PAYMENT_001');
+        }
     }
 }
 
@@ -4929,6 +4954,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
         
     } catch (error) {
         console.error('Erro ao verificar disponibilidade:', error);
+        logError(error, 'EVENT_004');
         return { available: true }; // Em caso de erro, permite continuar
     }
 }
@@ -5443,11 +5469,11 @@ async function handleProductPurchaseWithTokens(productId, cfg){
         let finalPrice = cfg.price;
         if (productId === 'sensibilidades'){
             const platform = document.getElementById('platformSelect')?.value;
-            if (!platform){ alert('Selecione a plataforma.'); return; }
+            if (!platform){ showError('PRODUCT_008', 'PRODUCT_008'); return; }
             productOptions.platform = platform;
             if (platform === 'android'){
                 const brand = document.getElementById('androidBrandSelect')?.value;
-                if (!brand){ alert('Selecione a marca do Android.'); return; }
+                if (!brand){ showError('PRODUCT_009', 'PRODUCT_009'); return; }
                 productOptions.brand = brand;
             }
         } else if (productId === 'imagens'){
@@ -5490,11 +5516,14 @@ async function handleProductPurchaseWithTokens(productId, cfg){
 
         // Validar saldo
         if (!canSpendTokens(finalPrice)){
-            alert(`Saldo insuficiente. Você precisa de ${finalPrice.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+            showError('TOKEN_001', 'TOKEN_001');
             return;
         }
         const ok = await spendTokens(finalPrice);
-        if (!ok){ alert('Não foi possível debitar tokens.'); return; }
+        if (!ok){ 
+            showError('TOKEN_002', 'TOKEN_002');
+            return; 
+        }
 
         // Criar pedido pago
         const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -5535,7 +5564,7 @@ async function handleProductPurchaseWithTokens(productId, cfg){
         }
     }catch(e){
         console.error('Erro ao comprar com tokens (produto loja):', e);
-        alert('Erro ao pagar com tokens.');
+        showError(e, 'TOKEN_002');
     }
 }
 
