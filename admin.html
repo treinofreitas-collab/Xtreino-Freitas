@@ -858,6 +858,119 @@
                 </div>
             </div>
 
+            <!-- Seção: Painel do Afiliado (Acesso Restrito) -->
+            <div id="sectionAffiliatePanel" class="hidden bg-white border border-gray-200 rounded-xl p-6 mb-8">
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Painel do Afiliado</h2>
+                    <p class="text-gray-600">Acompanhe suas conversões e solicite pagamentos</p>
+                </div>
+
+                <!-- Cards de Estatísticas -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-xl p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-sm font-medium text-blue-700">Total de Vendas</div>
+                            <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-shopping-cart text-white"></i>
+                            </div>
+                        </div>
+                        <div id="affiliatePanelTotalSales" class="text-2xl font-bold text-blue-800">0</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-xl p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-sm font-medium text-green-700">Comissão Total</div>
+                            <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-dollar-sign text-white"></i>
+                            </div>
+                        </div>
+                        <div id="affiliatePanelTotalCommission" class="text-2xl font-bold text-green-800">R$ 0,00</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-xl p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-sm font-medium text-yellow-700">Pendente</div>
+                            <div class="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-clock text-white"></i>
+                            </div>
+                        </div>
+                        <div id="affiliatePanelPendingCommission" class="text-2xl font-bold text-yellow-800">R$ 0,00</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500 rounded-xl p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-sm font-medium text-purple-700">Pago</div>
+                            <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-check-circle text-white"></i>
+                            </div>
+                        </div>
+                        <div id="affiliatePanelPaidCommission" class="text-2xl font-bold text-purple-800">R$ 0,00</div>
+                    </div>
+                </div>
+
+                <!-- Card de Solicitação de Pagamento -->
+                <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 border-2 border-emerald-300 rounded-xl p-6 mb-6 shadow-md">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold text-emerald-800 mb-1">Solicitar Pagamento</h3>
+                            <p class="text-sm text-emerald-700">Valor mínimo para solicitação: <strong>R$ 25,00</strong></p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm text-emerald-700 mb-1">Saldo Disponível</div>
+                            <div id="affiliatePanelAvailableBalance" class="text-3xl font-bold text-emerald-800">R$ 0,00</div>
+                        </div>
+                    </div>
+                    <div id="affiliatePaymentRequestSection" class="space-y-4">
+                        <div id="affiliatePaymentRequestForm" class="hidden">
+                            <div class="bg-white rounded-lg p-4 mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Valor a Solicitar</label>
+                                <input type="number" id="affiliateRequestAmount" step="0.01" min="25" max="0" 
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" 
+                                    placeholder="Digite o valor (mín. R$ 25,00)">
+                                <p class="text-xs text-gray-500 mt-1">Valor mínimo: R$ 25,00</p>
+                            </div>
+                            <button id="btnSubmitPaymentRequest" 
+                                class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2">
+                                <i class="fas fa-paper-plane"></i>
+                                Solicitar Pagamento
+                            </button>
+                        </div>
+                        <div id="affiliatePaymentRequestMessage" class="text-center">
+                            <p id="affiliatePaymentRequestText" class="text-sm text-emerald-700"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabela de Conversões -->
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-lg text-gray-800">Minhas Conversões</h3>
+                        <select id="affiliatePanelSalesFilter" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            <option value="all">Todas as vendas</option>
+                            <option value="pending">Pendentes</option>
+                            <option value="paid">Pagas</option>
+                        </select>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-200 bg-gray-50">
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Data</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Cliente</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Produto</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Valor Venda</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Comissão %</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Comissão</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="affiliatePanelSalesTableBody">
+                                <tr>
+                                    <td colspan="7" class="py-6 text-center text-gray-500">Carregando conversões...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Seção: Controle Passe Booyah -->
             <div id="sectionPasseBooyah" class="bg-white border border-gray-200 rounded-xl p-4 mb-8">
                 <div class="flex items-center justify-between mb-4">
@@ -1071,7 +1184,7 @@
                         <thead>
                             <tr class="text-left text-gray-500">
                                 <th class="py-2">Hora</th>
-                                <th class="py-2">Ocupadas</th>
+                                <th class="py-2">Vagas</th>
                                 <th class="py-2">Ações</th>
                             </tr>
                         </thead>

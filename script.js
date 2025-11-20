@@ -419,13 +419,13 @@ function onAuthLogged(user){
                 if (uid) {
                     await loadUserProfile(uid);
                     const role = (window.currentUserProfile?.role || '').toLowerCase();
-                    if (['ceo','gerente','vendedor','design','socio'].includes(role)) {
+                    if (['ceo','gerente','vendedor','design','socio','afiliado','staff'].includes(role)) {
                         window.postLoginRedirect = null;
                         window.location.href = 'admin.html';
                         return;
                     }
                 }
-                showErrorToast('Acesso ao painel restrito (CEO, Gerente, Vendedor, Design ou Sócio).', 'Acesso Negado');
+                showErrorToast('Acesso ao painel restrito (CEO, Gerente, Vendedor, Design, Sócio, Afiliado ou Staff).', 'Acesso Negado');
                 window.postLoginRedirect = null;
             } catch (_) { window.postLoginRedirect = null; }
         }, 100);
@@ -1716,10 +1716,19 @@ function closePurchaseModal() {
     // Limpar campos de cupom
     const couponInput = document.getElementById('couponCodeInput');
     const couponMessage = document.getElementById('couponMessage');
-    if (couponInput) couponInput.value = '';
+    if (couponInput) {
+        couponInput.value = '';
+        couponInput.disabled = false;
+    }
     if (couponMessage) {
         couponMessage.classList.add('hidden');
         couponMessage.textContent = '';
+    }
+    
+    // Remover botão de remover cupom
+    const removeBtn = document.getElementById('removeCouponBtn');
+    if (removeBtn) {
+        removeBtn.remove();
     }
     if (window.innerWidth <= 767) maybeClearMobileModalState();
 }
@@ -1838,8 +1847,13 @@ async function applyCoupon() {
     
     // Verificar se já existe um cupom aplicado
     if (appliedCoupon) {
-        showCouponMessage('Já existe um cupom aplicado. Remova o cupom atual antes de aplicar outro.', 'error');
-        return;
+        // Se é o mesmo cupom, não fazer nada
+        if (appliedCoupon.code === couponCode) {
+            showCouponMessage('Este cupom já está aplicado.', 'error');
+            return;
+        }
+        // Se é um cupom diferente, substituir o anterior
+        console.log(`🔄 Substituindo cupom ${appliedCoupon.code} por ${couponCode}`);
     }
     
     try {
@@ -1868,10 +1882,27 @@ async function applyCoupon() {
             return;
         }
         
+        // Garantir que originalPrice está atualizado antes de aplicar o cupom
+        // Recalcular o preço original para evitar desconto sobre desconto
+        if (currentProduct) {
+            // Recalcular o preço base sem desconto
+            updatePurchaseTotal(currentProduct);
+        }
+        
         // Aplicar cupom
         appliedCoupon = coupon;
         updatePriceWithCoupon();
-        showCouponMessage(`Cupom aplicado! Desconto: ${getDiscountText(coupon)}`, 'success');
+        showCouponMessage(`Cupom "${coupon.code}" aplicado! Desconto: ${getDiscountText(coupon)}`, 'success');
+        
+        // Limpar e desabilitar o campo de input após aplicar com sucesso
+        const couponInput = document.getElementById('couponCodeInput');
+        if (couponInput) {
+            couponInput.value = coupon.code;
+            couponInput.disabled = true;
+        }
+        
+        // Mostrar botão para remover cupom
+        updateCouponUI();
         
         console.log('✅ Cupom aplicado:', coupon);
         
@@ -1940,6 +1971,19 @@ function isCouponValidForContext(coupon, context) {
 function updatePriceWithCoupon() {
     if (!appliedCoupon) return;
     
+    // Garantir que originalPrice está atualizado e representa o preço SEM desconto
+    // Se originalPrice for 0 ou inválido, recalcular
+    if (!originalPrice || originalPrice <= 0) {
+        if (currentProduct) {
+            updatePurchaseTotal(currentProduct);
+        }
+        // Se ainda assim não tiver preço, não pode aplicar desconto
+        if (!originalPrice || originalPrice <= 0) {
+            console.warn('⚠️ Não é possível aplicar cupom: preço original inválido');
+            return;
+        }
+    }
+    
     const subtotalEl = document.getElementById('purchaseSubtotal');
     const discountRowEl = document.getElementById('discountRow');
     const discountAmountEl = document.getElementById('discountAmount');
@@ -1947,7 +1991,7 @@ function updatePriceWithCoupon() {
     
     if (!subtotalEl || !discountRowEl || !discountAmountEl || !totalEl) return;
     
-    // Calcular desconto
+    // Calcular desconto baseado SEMPRE no originalPrice (nunca no preço já descontado)
     let discountAmount = 0;
     if (appliedCoupon.discountType === 'percentage') {
         discountAmount = originalPrice * (appliedCoupon.discountValue / 100);
@@ -1958,7 +2002,8 @@ function updatePriceWithCoupon() {
     // Garantir que o desconto não seja maior que o preço
     discountAmount = Math.min(discountAmount, originalPrice);
     
-    const finalPrice = originalPrice - discountAmount;
+    // Calcular preço final (sempre do originalPrice)
+    const finalPrice = Math.max(0, originalPrice - discountAmount);
     
     // Atualizar elementos
     subtotalEl.textContent = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -1981,6 +2026,136 @@ function showCouponMessage(message, type) {
         couponMessage.classList.add('text-green-600');
     } else if (type === 'error') {
         couponMessage.classList.add('text-red-600');
+    }
+}
+
+// Remover cupom aplicado
+function removeCoupon() {
+    if (!appliedCoupon) return;
+    
+    const couponCode = appliedCoupon.code;
+    appliedCoupon = null;
+    
+    // Recalcular preço sem desconto
+    if (currentProduct) {
+        updatePurchaseTotal(currentProduct);
+    }
+    
+    // Limpar campo de input e reabilitar
+    const couponInput = document.getElementById('couponCodeInput');
+    if (couponInput) {
+        couponInput.value = '';
+        couponInput.disabled = false;
+        couponInput.focus();
+    }
+    
+    // Atualizar UI
+    updateCouponUI();
+    
+    // Mostrar mensagem
+    showCouponMessage(`Cupom "${couponCode}" removido`, 'success');
+    
+    console.log('✅ Cupom removido:', couponCode);
+}
+
+// Atualizar UI do cupom (mostrar/ocultar botão de remover)
+function updateCouponUI() {
+    const couponInput = document.getElementById('couponCodeInput');
+    const couponContainer = couponInput?.parentElement;
+    
+    if (!couponContainer) return;
+    
+    // Verificar se já existe botão de remover
+    let removeBtn = document.getElementById('removeCouponBtn');
+    
+    if (appliedCoupon) {
+        // Se não existe, criar o botão
+        if (!removeBtn) {
+            removeBtn = document.createElement('button');
+            removeBtn.id = 'removeCouponBtn';
+            removeBtn.type = 'button';
+            removeBtn.onclick = removeCoupon;
+            removeBtn.className = 'px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors';
+            removeBtn.innerHTML = '<i class="fas fa-times mr-2"></i>Remover';
+            // Adicionar na mesma div flex que contém o botão Aplicar
+            const applyBtn = couponContainer.querySelector('button[onclick="applyCoupon()"]');
+            if (applyBtn && applyBtn.parentElement) {
+                applyBtn.parentElement.appendChild(removeBtn);
+            } else {
+                couponContainer.appendChild(removeBtn);
+            }
+        }
+        removeBtn.style.display = '';
+    } else {
+        // Ocultar botão se não há cupom
+        if (removeBtn) {
+            removeBtn.style.display = 'none';
+        }
+    }
+}
+
+// Remover cupom aplicado
+function removeCoupon() {
+    if (!appliedCoupon) return;
+    
+    const couponCode = appliedCoupon.code;
+    appliedCoupon = null;
+    
+    // Recalcular preço sem desconto
+    if (currentProduct) {
+        updatePurchaseTotal(currentProduct);
+    }
+    
+    // Limpar campo de input e reabilitar
+    const couponInput = document.getElementById('couponCodeInput');
+    if (couponInput) {
+        couponInput.value = '';
+        couponInput.disabled = false;
+        couponInput.focus();
+    }
+    
+    // Atualizar UI
+    updateCouponUI();
+    
+    // Mostrar mensagem
+    showCouponMessage(`Cupom "${couponCode}" removido`, 'success');
+    
+    console.log('✅ Cupom removido:', couponCode);
+}
+
+// Atualizar UI do cupom (mostrar/ocultar botão de remover)
+function updateCouponUI() {
+    const couponInput = document.getElementById('couponCodeInput');
+    const couponContainer = couponInput?.parentElement;
+    
+    if (!couponContainer) return;
+    
+    // Verificar se já existe botão de remover
+    let removeBtn = document.getElementById('removeCouponBtn');
+    
+    if (appliedCoupon) {
+        // Se não existe, criar o botão
+        if (!removeBtn) {
+            removeBtn = document.createElement('button');
+            removeBtn.id = 'removeCouponBtn';
+            removeBtn.type = 'button';
+            removeBtn.onclick = removeCoupon;
+            removeBtn.className = 'px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors';
+            removeBtn.innerHTML = '<i class="fas fa-times mr-2"></i>Remover';
+            // Adicionar após o botão Aplicar ou campo de input
+            const applyBtn = couponContainer.querySelector('button[onclick="applyCoupon()"]');
+            if (applyBtn) {
+                applyBtn.parentElement.appendChild(removeBtn);
+            } else {
+                couponContainer.appendChild(removeBtn);
+            }
+        }
+        removeBtn.style.display = '';
+    } else {
+        // Ocultar botão se não há cupom
+        if (removeBtn) {
+            removeBtn.style.display = 'none';
+        }
     }
 }
 
@@ -4428,7 +4603,7 @@ async function renderScheduleTimes(){
             btn.onclick = null;
         } else {
             const date = document.getElementById('schedDate')?.value || null;
-            btn.textContent = `${time} (.. /${String(getEventCapacity(eventType, time, date)).padStart(2,'0')})`;
+            btn.textContent = `${time} (Carregando...)`;
             btn.onclick = ()=>{ 
                 document.getElementById('schedSelectedTime').value = schedule; 
                 document.getElementById('schedSelectedTimeDisplay').textContent = time;
@@ -4868,10 +5043,10 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
         
         // Verificar travamento primeiro (prioridade máxima)
         if (isLocked) {
-            // Horário travado pelo admin - mostrar como LOTADO (ex: 15/15)
+            // Horário travado pelo admin - mostrar como LOTADO
             btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
             btn.disabled = true;
-            btn.textContent = `${time} (${String(capacity).padStart(2,'0')}/${String(capacity).padStart(2,'0')})`;
+            btn.textContent = `${time} (Lotado)`;
             btn.onclick = null;
         } else if (eventType === 'semanal-freitas' && time === '19h'){
             // Semanal Freitas: 19h sempre esgotado
@@ -4892,10 +5067,10 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
             btn.textContent = `${time} (${timeMessage})`;
             btn.onclick = null;
         } else {
-            // Horário disponível
+            // Horário disponível - mostrar "Restam X"
             btn.className = 'slot-btn';
             btn.disabled = false;
-            btn.textContent = `${time} (${String(available).padStart(2,'0')}/${String(capacity).padStart(2,'0')})`;
+            btn.textContent = `${time} (Restam ${available})`;
             btn.onclick = ()=>{ 
                 selectTime(schedule, btn);
             };

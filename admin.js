@@ -328,6 +328,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const sectionProducts = document.getElementById('sectionProducts');
     const sectionSchedules = document.getElementById('sectionSchedules');
     const sectionAdminHistory = document.getElementById('sectionAdminHistory');
+    const sectionAffiliatePanel = document.getElementById('sectionAffiliatePanel');
     
     // Ocultar todas as seções por padrão
     if (sectionKPIs) sectionKPIs.style.display = 'none';
@@ -347,6 +348,69 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (sectionHighlights) sectionHighlights.style.display = 'none';
     if (sectionNews) sectionNews.style.display = 'none';
     if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
+    if (sectionAffiliatePanel) sectionAffiliatePanel.style.display = 'none';
+    
+    // Staff: Apenas seção de agendamentos (14h às 18h, xtreino-tokens)
+    if (role === 'staff') {
+      // Mostrar apenas seção de agendamentos
+      if (sectionSchedules) {
+        sectionSchedules.style.display = 'block';
+        sectionSchedules.classList.remove('hidden');
+      }
+      
+      // Ocultar todas as outras seções
+      if (sectionKPIs) sectionKPIs.style.display = 'none';
+      if (sectionFilters) sectionFilters.style.display = 'none';
+      if (sectionCharts) sectionCharts.style.display = 'none';
+      if (sectionUsers) sectionUsers.style.display = 'none';
+      if (sectionTokenStats) sectionTokenStats.style.display = 'none';
+      if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
+      if (sectionTokens) sectionTokens.style.display = 'none';
+      if (sectionCoupons) sectionCoupons.style.display = 'none';
+      if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
+      if (sectionAffiliates) sectionAffiliates.style.display = 'none';
+      if (sectionAffiliateSales) sectionAffiliateSales.style.display = 'none';
+      if (sectionAffiliatePanel) sectionAffiliatePanel.style.display = 'none';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
+      if (sectionProducts) sectionProducts.style.display = 'none';
+      if (sectionHighlights) sectionHighlights.style.display = 'none';
+      if (sectionNews) sectionNews.style.display = 'none';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
+      
+      console.log('✅ Permissões de Staff aplicadas - apenas agendamentos (14h-18h, xtreino-tokens)');
+      return; // Sair da função para não aplicar outras regras
+    }
+    
+    // Afiliado: Apenas painel de afiliado
+    if (role === 'afiliado') {
+      // Mostrar apenas painel do afiliado
+      if (sectionAffiliatePanel) {
+        sectionAffiliatePanel.style.display = 'block';
+        sectionAffiliatePanel.classList.remove('hidden');
+      }
+      
+      // Ocultar todas as outras seções
+      if (sectionKPIs) sectionKPIs.style.display = 'none';
+      if (sectionFilters) sectionFilters.style.display = 'none';
+      if (sectionCharts) sectionCharts.style.display = 'none';
+      if (sectionUsers) sectionUsers.style.display = 'none';
+      if (sectionTokenStats) sectionTokenStats.style.display = 'none';
+      if (sectionUsersManagement) sectionUsersManagement.style.display = 'none';
+      if (sectionTokens) sectionTokens.style.display = 'none';
+      if (sectionCoupons) sectionCoupons.style.display = 'none';
+      if (sectionCouponUsage) sectionCouponUsage.style.display = 'none';
+      if (sectionAffiliates) sectionAffiliates.style.display = 'none';
+      if (sectionAffiliateSales) sectionAffiliateSales.style.display = 'none';
+      if (sectionPasseBooyah) sectionPasseBooyah.style.display = 'none';
+      if (sectionProducts) sectionProducts.style.display = 'none';
+      if (sectionSchedules) sectionSchedules.style.display = 'none';
+      if (sectionHighlights) sectionHighlights.style.display = 'none';
+      if (sectionNews) sectionNews.style.display = 'none';
+      if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
+      
+      console.log('✅ Permissões de Afiliado aplicadas - apenas painel de afiliado');
+      return; // Sair da função para não aplicar outras regras
+    }
     
     // Design: Apenas destaques e notícias
     if (role === 'design' || role === 'desgin' || role === 'designer') {
@@ -1205,7 +1269,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }catch(e){}
 
     // console.log('ADMIN UID:', uid, 'ROLE:', role);
-    if (!['ceo','gerente','vendedor','design','designer','desgin','socio','sócio'].includes((role||'').toLowerCase())){
+    if (!['ceo','gerente','vendedor','design','designer','desgin','socio','sócio','afiliado','staff'].includes((role||'').toLowerCase())){
       authGate.classList.remove('hidden');
       dashboard.classList.add('hidden');
       return;
@@ -1217,6 +1281,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const isManager = ['ceo','gerente'].includes(roleLower);
     const isCeo = roleLower==='ceo';
     const isSocio = roleLower==='socio' || roleLower==='ceo';
+    const isAffiliate = roleLower==='afiliado';
+    const isStaff = roleLower==='staff';
     const canViewAll = ['ceo','gerente','socio'].includes(roleLower);
     window.adminRoleLower = roleLower;
     // Garantir que a sessão conheça o papel atual (corrige bloqueio de CEO)
@@ -1264,6 +1330,37 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (window.loadAffiliates) {
       window.loadAffiliates();
     }
+    
+    // Se for afiliado, carregar dados do painel de afiliado
+    if (isAffiliate) {
+      await loadAffiliatePanelData(user.uid);
+    }
+    
+    // Se for staff, configurar interface restrita
+    if (isStaff) {
+      // Forçar evento para xtreino-tokens e desabilitar seleção
+      const typeEl = document.getElementById('boardEventType');
+      if (typeEl) {
+        typeEl.value = 'xtreino-tokens';
+        typeEl.disabled = true;
+        typeEl.style.opacity = '0.6';
+        typeEl.style.cursor = 'not-allowed';
+      }
+      
+      // Ocultar botão "Destravar tudo do dia"
+      const btnClearLocks = document.getElementById('btnClearLocks');
+      if (btnClearLocks) {
+        btnClearLocks.style.display = 'none';
+      }
+      
+      // Carregar board automaticamente com evento correto
+      setTimeout(() => {
+        if (window.loadBoard) {
+          loadBoard();
+        }
+      }, 500);
+    }
+    
   // Carregar pedidos de camisa (envios)
   if (window.loadShirtOrders) {
     window.loadShirtOrders();
@@ -2736,8 +2833,19 @@ window.showWarningToast = function(message, title = 'Atenção') {
       tbody.innerHTML = '';
       if (!date) return;
       
+      // Staff: Ocultar botão "Destravar tudo do dia"
+      if (window.adminRoleLower === 'staff' && btnClearLocks) {
+        btnClearLocks.style.display = 'none';
+      }
+      
+      // Staff: Forçar evento para xtreino-tokens
+      if (window.adminRoleLower === 'staff' && typeEl) {
+        typeEl.value = 'xtreino-tokens';
+        typeEl.disabled = true; // Desabilitar seleção de evento
+      }
+      
       // Handler: destravar tudo do dia
-      if (btnClearLocks && !btnClearLocks._bound){
+      if (btnClearLocks && !btnClearLocks._bound && window.adminRoleLower !== 'staff'){
         btnClearLocks.addEventListener('click', async ()=>{
           try{
             if (!confirm(`Destravar todas as travas e zerar ocupações extras de ${date} (${ovEventType})?`)) return;
@@ -2830,11 +2938,19 @@ window.showWarningToast = function(message, title = 'Atenção') {
       });
       
       // Entradas restritas SOMENTE aos horários permitidos para o evento
-      const entries = defaultHours.slice().sort((a,b)=>{
+      let entries = defaultHours.slice().sort((a,b)=>{
         const na = parseInt(String(a).replace(/\D/g,''))||0;
         const nb = parseInt(String(b).replace(/\D/g,''))||0;
         return na-nb;
       });
+      
+      // Staff: Filtrar apenas horários de 14h às 18h
+      if (window.adminRoleLower === 'staff') {
+        entries = entries.filter(hour => {
+          const hourNum = parseInt(String(hour).replace(/\D/g,'')) || 0;
+          return hourNum >= 14 && hourNum <= 18;
+        });
+      }
       
       // Buscar overrides (travas e extra ocupadas) para refletir na UI
       let overrides = {};
@@ -2910,11 +3026,20 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const locked = isFixedLock ? true : !!(ov.lockedAny === undefined ? ov.locked : ov.lockedAny);
         const tr = document.createElement('tr');
         const cap = capFor(hour);
-        tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${cnt}/${cap}</td><td class="py-2 space-x-2">
+        const isStaff = window.adminRoleLower === 'staff';
+        
+        // Calcular vagas restantes
+        const remaining = Math.max(0, cap - cnt);
+        const occupiedText = remaining === 0 ? 'Lotado' : `Restam ${remaining}`;
+        
+        // Staff: Sem botão Travar
+        const lockButton = isStaff ? '' : `<button class="px-2 py-1 ${locked?'bg-red-600 text-white':'bg-yellow-400 text-black'} rounded text-xs" data-toggle-lock="${hour}" ${isFixedLock ? 'title="Horário fixo - confirmação necessária para destravar"' : ''}>${locked?'Destravar':'Travar'}</button>`;
+        
+        tr.innerHTML = `<td class="py-2">${hour}</td><td class="py-2">${occupiedText}</td><td class="py-2 space-x-2">
           <button class="px-2 py-1 bg-blue-600 text-white rounded text-xs" data-add-hour="${hour}">Adicionar</button>
           <button class="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs" data-manage-hour="${hour}">Gerenciar</button>
           <button class="px-2 py-1 bg-emerald-600 text-white rounded text-xs" data-export-hour="${hour}">Exportar</button>
-          <button class="px-2 py-1 ${locked?'bg-red-600 text-white':'bg-yellow-400 text-black'} rounded text-xs" data-toggle-lock="${hour}" ${isFixedLock ? 'title="Horário fixo - confirmação necessária para destravar"' : ''}>${locked?'Destravar':'Travar'}</button>
+          ${lockButton}
         </td>`;
         tbody.appendChild(tr);
       });
@@ -9051,3 +9176,218 @@ window.deleteWhatsAppLink = deleteWhatsAppLink;
 window.getWhatsAppLink = getWhatsAppLink;
 window.createAllWhatsAppLinks = createAllWhatsAppLinks;
 window.filterWhatsAppLinks = filterWhatsAppLinks;
+
+// ==================== PAINEL DO AFILIADO ====================
+
+// Carregar dados do painel de afiliado
+async function loadAffiliatePanelData(affiliateId) {
+  try {
+    console.log('🔄 Carregando dados do painel de afiliado:', affiliateId);
+    
+    // Carregar vendas do afiliado
+    const { collection, query, where, getDocs, orderBy } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const salesRef = collection(window.firebaseDb, 'affiliate_sales');
+    const salesQuery = query(
+      salesRef,
+      where('affiliateId', '==', affiliateId),
+      orderBy('createdAt', 'desc')
+    );
+    const salesSnap = await getDocs(salesQuery);
+    
+    const sales = [];
+    salesSnap.forEach(doc => {
+      const data = doc.data();
+      sales.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date()
+      });
+    });
+    
+    // Atualizar estatísticas
+    updateAffiliatePanelStats(sales);
+    
+    // Renderizar tabela de conversões
+    renderAffiliatePanelSales(sales);
+    
+    // Configurar botão de solicitar pagamento
+    setupPaymentRequestButton(affiliateId, sales);
+    
+    // Configurar filtro
+    const filter = document.getElementById('affiliatePanelSalesFilter');
+    if (filter) {
+      filter.addEventListener('change', () => {
+        renderAffiliatePanelSales(sales);
+      });
+    }
+    
+    console.log('✅ Dados do painel de afiliado carregados:', sales.length, 'vendas');
+  } catch (error) {
+    console.error('❌ Erro ao carregar dados do painel de afiliado:', error);
+    const tbody = document.getElementById('affiliatePanelSalesTableBody');
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-red-500">Erro ao carregar conversões</td></tr>';
+    }
+  }
+}
+
+// Atualizar estatísticas do painel
+function updateAffiliatePanelStats(sales) {
+  const totalSales = sales.length;
+  const totalCommission = sales.reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+  const pendingCommission = sales
+    .filter(s => s.status === 'pending')
+    .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+  const paidCommission = sales
+    .filter(s => s.status === 'paid')
+    .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+  
+  const totalSalesEl = document.getElementById('affiliatePanelTotalSales');
+  const totalCommissionEl = document.getElementById('affiliatePanelTotalCommission');
+  const pendingCommissionEl = document.getElementById('affiliatePanelPendingCommission');
+  const paidCommissionEl = document.getElementById('affiliatePanelPaidCommission');
+  const availableBalanceEl = document.getElementById('affiliatePanelAvailableBalance');
+  
+  if (totalSalesEl) totalSalesEl.textContent = totalSales;
+  if (totalCommissionEl) totalCommissionEl.textContent = `R$ ${totalCommission.toFixed(2).replace('.', ',')}`;
+  if (pendingCommissionEl) pendingCommissionEl.textContent = `R$ ${pendingCommission.toFixed(2).replace('.', ',')}`;
+  if (paidCommissionEl) paidCommissionEl.textContent = `R$ ${paidCommission.toFixed(2).replace('.', ',')}`;
+  if (availableBalanceEl) availableBalanceEl.textContent = `R$ ${pendingCommission.toFixed(2).replace('.', ',')}`;
+}
+
+// Renderizar vendas do afiliado
+function renderAffiliatePanelSales(sales) {
+  const tbody = document.getElementById('affiliatePanelSalesTableBody');
+  if (!tbody) return;
+  
+  const filter = document.getElementById('affiliatePanelSalesFilter')?.value || 'all';
+  const filteredSales = filter === 'all' ? sales : sales.filter(s => s.status === filter);
+  
+  if (filteredSales.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-gray-500">Nenhuma conversão encontrada</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = filteredSales.map(sale => {
+    const date = sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('pt-BR') : 'N/A';
+    const statusBadge = sale.status === 'paid' 
+      ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Paga</span>'
+      : '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Pendente</span>';
+    
+    const saleTypeIcon = sale.saleType === 'event' ? '📅' : sale.saleType === 'product' ? '🛒' : '📦';
+    const saleTypeText = sale.saleType === 'event' ? 'Evento' : sale.saleType === 'product' ? 'Produto' : 'N/A';
+    
+    return `
+      <tr class="border-b border-gray-100 hover:bg-gray-50">
+        <td class="py-3 px-4 text-sm">${date}</td>
+        <td class="py-3 px-4 text-sm">${sale.customerName || sale.customerEmail || 'N/A'}</td>
+        <td class="py-3 px-4 text-sm">
+          <div>${sale.productName || sale.productId || 'N/A'}</div>
+          <div class="text-xs text-gray-500">${saleTypeIcon} ${saleTypeText}</div>
+        </td>
+        <td class="py-3 px-4 text-sm font-medium">R$ ${(sale.saleValue || 0).toFixed(2).replace('.', ',')}</td>
+        <td class="py-3 px-4 text-sm">${(sale.commissionRate || 0).toFixed(1)}%</td>
+        <td class="py-3 px-4 text-sm font-medium text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2).replace('.', ',')}</td>
+        <td class="py-3 px-4 text-sm">${statusBadge}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Configurar botão de solicitar pagamento
+function setupPaymentRequestButton(affiliateId, sales) {
+  const pendingCommission = sales
+    .filter(s => s.status === 'pending')
+    .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+  
+  const minAmount = 25.00;
+  const canRequest = pendingCommission >= minAmount;
+  
+  const form = document.getElementById('affiliatePaymentRequestForm');
+  const message = document.getElementById('affiliatePaymentRequestMessage');
+  const messageText = document.getElementById('affiliatePaymentRequestText');
+  const amountInput = document.getElementById('affiliateRequestAmount');
+  const submitBtn = document.getElementById('btnSubmitPaymentRequest');
+  
+  if (canRequest) {
+    if (form) form.classList.remove('hidden');
+    if (message) message.classList.add('hidden');
+    if (amountInput) {
+      amountInput.max = pendingCommission;
+      amountInput.value = pendingCommission.toFixed(2);
+    }
+    
+    if (submitBtn) {
+      submitBtn.onclick = async () => {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processando...';
+        try {
+          await submitPaymentRequest(affiliateId, pendingCommission);
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Solicitar Pagamento';
+        }
+      };
+    }
+  } else {
+    if (form) form.classList.add('hidden');
+    if (message) {
+      message.classList.remove('hidden');
+      if (messageText) {
+        const missing = (minAmount - pendingCommission).toFixed(2);
+        messageText.textContent = `Você precisa de mais R$ ${missing.replace('.', ',')} para solicitar pagamento. Valor mínimo: R$ 25,00`;
+      }
+    }
+  }
+}
+
+// Solicitar pagamento
+async function submitPaymentRequest(affiliateId, maxAmount) {
+  try {
+    const amountInput = document.getElementById('affiliateRequestAmount');
+    const amount = parseFloat(amountInput?.value || 0);
+    
+    if (!amount || amount < 25.00) {
+      alert('O valor mínimo para solicitação é R$ 25,00');
+      return;
+    }
+    
+    if (amount > maxAmount) {
+      alert(`O valor solicitado não pode ser maior que o saldo disponível (R$ ${maxAmount.toFixed(2)})`);
+      return;
+    }
+    
+    if (!confirm(`Confirmar solicitação de pagamento no valor de R$ ${amount.toFixed(2).replace('.', ',')}?`)) {
+      return;
+    }
+    
+    // Criar solicitação de pagamento
+    const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const paymentRequestsRef = collection(window.firebaseDb, 'affiliate_payment_requests');
+    
+    await addDoc(paymentRequestsRef, {
+      affiliateId: affiliateId,
+      amount: amount,
+      status: 'pending',
+      requestedAt: serverTimestamp(),
+      createdAt: new Date()
+    });
+    
+    // Usar toast se disponível, senão alert
+    if (typeof showSuccessToast === 'function') {
+      showSuccessToast('Solicitação de pagamento enviada com sucesso! Aguarde a aprovação.', 'Sucesso');
+    } else {
+      alert('Solicitação de pagamento enviada com sucesso! Aguarde a aprovação.');
+    }
+    
+    // Recarregar dados
+    await loadAffiliatePanelData(affiliateId);
+  } catch (error) {
+    console.error('❌ Erro ao solicitar pagamento:', error);
+    alert('Erro ao solicitar pagamento. Por favor, tente novamente.');
+  }
+}
+
+// Expor funções globalmente
+window.loadAffiliatePanelData = loadAffiliatePanelData;
+window.submitPaymentRequest = submitPaymentRequest;
