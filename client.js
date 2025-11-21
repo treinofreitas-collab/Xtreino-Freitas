@@ -2510,14 +2510,19 @@ async function loadAffiliateData() {
             return;
         }
 
-        // Verificar se o usuário é afiliado
-        const userRole = await getUserRole(currentUser.uid);
-        if (userRole?.role?.toLowerCase() !== 'afiliado') {
-            // Esconder aba de afiliados se não for afiliado
-            const affiliateTab = document.getElementById('affiliateTab');
-            if (affiliateTab) affiliateTab.classList.add('hidden');
-            return;
-        }
+            // Verificar se o usuário é afiliado (pode ser role, flag boolean ou legacy affiliateStatus)
+            const userRole = await getUserRole(currentUser.uid);
+            const isAffiliate = (userRole && (
+                (typeof userRole.role === 'string' && userRole.role.toLowerCase() === 'afiliado') ||
+                userRole.affiliate === true ||
+                (typeof userRole.affiliateStatus === 'string' && ['active','pending','inactive'].includes(userRole.affiliateStatus))
+            ));
+            if (!isAffiliate) {
+                // Esconder aba de afiliados se não for afiliado
+                const affiliateTab = document.getElementById('affiliateTab');
+                if (affiliateTab) affiliateTab.classList.add('hidden');
+                return;
+            }
 
         // Mostrar aba de afiliados
         const affiliateTab = document.getElementById('affiliateTab');
@@ -2828,16 +2833,19 @@ async function checkAffiliateRole() {
         
         const userRole = await getUserRole(currentUser.uid);
         console.log('🔍 Role obtido:', userRole);
-        
-        const roleLower = userRole?.role?.toLowerCase();
-        console.log('🔍 Role em lowercase:', roleLower);
-        
-        if (roleLower === 'afiliado') {
+
+        const roleLower = (typeof userRole?.role === 'string') ? userRole.role.toLowerCase() : null;
+        const isAffiliate = (
+            roleLower === 'afiliado' ||
+            userRole?.affiliate === true ||
+            (typeof userRole?.affiliateStatus === 'string' && ['active','pending','inactive'].includes(userRole.affiliateStatus))
+        );
+
+        if (isAffiliate) {
             console.log('✅ Usuário é afiliado, mostrando aba');
             affiliateTab.classList.remove('hidden');
             console.log('✅ Aba de afiliado mostrada - classe hidden removida');
-            
-            // Verificar se realmente foi removido
+            // Forçar remoção se necessário
             if (affiliateTab.classList.contains('hidden')) {
                 console.warn('⚠️ Aba ainda tem classe hidden, forçando remoção');
                 affiliateTab.classList.remove('hidden');
