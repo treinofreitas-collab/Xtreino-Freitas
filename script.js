@@ -2705,10 +2705,38 @@ async function heroPurchaseTokens(){
             console.warn('Não foi possível criar ordem local para tokens:', e);
         }
 
-        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined, external_reference: externalRef }) });
-        if (!response.ok) throw new Error('Erro');
-        const data = await response.json();
-        if (data.init_point){ try{ sessionStorage.setItem('lastCheckoutUrl', data.init_point); }catch(_){} closeHeroTokensModal(); window.location.href = data.init_point; } else { alert('Erro ao iniciar pagamento'); }
+        // Prepare payload with explicit couponCode/user info so backend can validate
+        const payload = {
+            title: `${qty} Token${qty>1?'s':''} XTreino`,
+            unit_price: price,
+            currency_id: 'BRL',
+            quantity: 1,
+            back_url: window.location.origin,
+            external_reference: externalRef,
+            couponCode: heroAppliedCoupon ? heroAppliedCoupon.code : undefined,
+            userId: window.firebaseAuth.currentUser?.uid || undefined,
+            customerEmail: window.firebaseAuth.currentUser?.email || undefined
+        };
+
+        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+
+        // Read response text for better diagnostics
+        const respText = await response.text();
+        let respBody = null;
+        try { respBody = respText ? JSON.parse(respText) : null; } catch(e) { respBody = respText; }
+
+        if (!response.ok) {
+            console.error('create-preference error', response.status, response.statusText, respBody);
+            const msgEl = document.getElementById('heroTokensCouponMsg') || document.getElementById('heroTokensError');
+            const serverMessage = (respBody && (respBody.message || respBody.error)) ? (respBody.message || respBody.error) : (typeof respBody === 'string' ? respBody : JSON.stringify(respBody));
+            const display = `Erro ao criar preferência (${response.status}): ${serverMessage}`;
+            if (msgEl) { msgEl.textContent = display; msgEl.className = 'text-xs text-red-600'; }
+            else alert(display);
+            return;
+        }
+
+        const data = respBody || {};
+        if (data.init_point){ try{ sessionStorage.setItem('lastCheckoutUrl', data.init_point); }catch(_){} closeHeroTokensModal(); window.location.href = data.init_point; } else { const msg = document.getElementById('heroTokensCouponMsg') || document.getElementById('heroTokensError'); const bodyText = JSON.stringify(data); if (msg) { msg.textContent = `Erro ao iniciar pagamento: ${bodyText}`; msg.className='text-xs text-red-600'; } else alert('Erro ao iniciar pagamento'); }
     }catch(_){ alert('Erro ao comprar tokens'); }
 }
 window.openHeroTokensModal = openHeroTokensModal;
