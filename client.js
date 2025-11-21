@@ -2533,10 +2533,11 @@ async function loadAffiliateData() {
         const linkInput = document.getElementById('affiliateLink');
         if (linkInput) linkInput.value = affiliateLink;
 
-        // Carregar vendas e comissões
+        // Carregar vendas, comissões e dados extras (PIX)
         await Promise.all([
             loadAffiliateSales(),
-            loadAffiliateCommissions()
+            loadAffiliateCommissions(),
+            loadAffiliateExtras()
         ]);
 
         // Atualizar estatísticas
@@ -2557,6 +2558,117 @@ async function loadAffiliateData() {
         }
     } catch (error) {
         console.error('Erro ao carregar dados de afiliado:', error);
+    }
+}
+
+// Carregar dados extras do painel de afiliado (ex: chave PIX)
+async function loadAffiliateExtras() {
+    try {
+        if (!currentUser || !currentUser.uid) return;
+        const profile = await getUserRole(currentUser.uid);
+        // Preencher campo PIX se houver
+        const pixInput = document.getElementById('affiliatePixKey');
+        const pixStatus = document.getElementById('affiliatePixStatus');
+        if (pixInput) {
+            pixInput.value = profile?.affiliatePix || '';
+            if (pixStatus) {
+                if (profile?.affiliatePix) {
+                    pixStatus.classList.remove('hidden');
+                    pixStatus.textContent = 'Chave PIX salva';
+                } else {
+                    pixStatus.classList.add('hidden');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao carregar dados extras do afiliado:', error);
+    }
+}
+
+// Salvar chave PIX no documento do usuário
+async function saveAffiliatePix() {
+    try {
+        const btn = document.getElementById('saveAffiliatePixBtn');
+        const pixInput = document.getElementById('affiliatePixKey');
+        const pixStatus = document.getElementById('affiliatePixStatus');
+        if (btn) btn.disabled = true;
+        const pix = (pixInput?.value || '').trim();
+        if (!pix) {
+            if (pixStatus) { pixStatus.classList.remove('hidden'); pixStatus.textContent = 'Digite uma chave PIX válida'; pixStatus.classList.add('text-red-600'); }
+            if (btn) btn.disabled = false;
+            return;
+        }
+
+        const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const ref = doc(db, 'users', currentUser.uid);
+        await setDoc(ref, { affiliatePix: pix }, { merge: true });
+        if (pixStatus) { pixStatus.classList.remove('hidden'); pixStatus.textContent = 'Chave PIX salva'; pixStatus.classList.remove('text-red-600'); pixStatus.classList.add('text-green-600'); }
+        console.log('Chave PIX salva para usuário', currentUser.uid);
+    } catch (error) {
+        console.error('Erro ao salvar chave PIX:', error);
+        const pixStatus = document.getElementById('affiliatePixStatus');
+        if (pixStatus) { pixStatus.classList.remove('hidden'); pixStatus.textContent = 'Erro ao salvar chave PIX'; pixStatus.classList.remove('text-green-600'); pixStatus.classList.add('text-red-600'); }
+    } finally {
+        const btn = document.getElementById('saveAffiliatePixBtn');
+        if (btn) btn.disabled = false;
+    }
+}
+
+// Solicitar pagamento de afiliado (cria documento em affiliate_payout_requests)
+async function requestAffiliatePayout() {
+    try {
+        const amountEl = document.getElementById('affiliatePayoutAmount');
+        const methodEl = document.getElementById('affiliatePayoutMethod');
+        const msgEl = document.getElementById('affiliatePayoutMsg');
+        const btn = document.getElementById('affiliateRequestPayoutBtn');
+        if (btn) btn.disabled = true;
+
+        const amount = Number((amountEl?.value || '').toString().replace(',', '.')) || 0;
+        if (!amount || amount < 25) {
+            if (msgEl) { msgEl.textContent = 'Valor inválido. O mínimo para saque é R$ 25,00.'; msgEl.className = 'text-sm text-red-600'; }
+            if (btn) btn.disabled = false;
+            return;
+        }
+
+        if (!currentUser || !currentUser.uid) {
+            if (msgEl) { msgEl.textContent = 'Você precisa estar autenticado para solicitar saque.'; msgEl.className = 'text-sm text-red-600'; }
+            if (btn) btn.disabled = false;
+            return;
+        }
+
+        // Verificar chave PIX existente
+        const pixInput = document.getElementById('affiliatePixKey');
+        const pix = (pixInput?.value || '').trim();
+        if (!pix) {
+            if (msgEl) { msgEl.textContent = 'Cadastre sua chave PIX antes de solicitar pagamento.'; msgEl.className = 'text-sm text-red-600'; }
+            if (btn) btn.disabled = false;
+            return;
+        }
+
+        const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const req = {
+            affiliateId: currentUser.uid,
+            affiliateEmail: currentUser.email || null,
+            amount: Number(amount),
+            status: 'requested',
+            paymentMethod: methodEl?.value || 'PIX',
+            pixKey: pix,
+            createdAt: new Date(),
+            requestedAt: Date.now()
+        };
+
+        const docRef = await addDoc(collection(db, 'affiliate_payout_requests'), req);
+        console.log('Solicitação de pagamento criada:', docRef.id);
+        if (msgEl) { msgEl.textContent = 'Solicitação enviada com sucesso. Aguarde processamento.'; msgEl.className = 'text-sm text-green-600'; }
+        // opcional: limpar valor
+        if (amountEl) amountEl.value = '';
+    } catch (error) {
+        console.error('Erro ao solicitar pagamento:', error);
+        const msgEl = document.getElementById('affiliatePayoutMsg');
+        if (msgEl) { msgEl.textContent = 'Erro ao enviar solicitação. Tente novamente mais tarde.'; msgEl.className = 'text-sm text-red-600'; }
+    } finally {
+        const btn = document.getElementById('affiliateRequestPayoutBtn');
+        if (btn) btn.disabled = false;
     }
 }
 
@@ -3156,7 +3268,10 @@ window.purchaseTokens = async function(quantity) {
             price = Math.max(0, basePrice - discount);
         }
         
-        // Criar preferência no Mercado Pago
+        // Criar preferência no Mercado Pago com timeout
+        const controller = new AbortController();
+        const timeoutMs = 20000; // 20s
+        const to = setTimeout(()=> controller.abort(), timeoutMs);
         const response = await fetch('/.netlify/functions/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3173,11 +3288,11 @@ window.purchaseTokens = async function(quantity) {
                     discountValue: appliedTokenCoupon.discountValue,
                     context: 'tokens'
                 } : undefined
-            })
-        });
-        
-        if (!response.ok) throw new Error('Erro ao criar preferência');
-        
+            }),
+            signal: controller.signal
+        }).finally(()=> clearTimeout(to));
+
+        if (!response || !response.ok) throw new Error('Erro ao criar preferência');
         const data = await response.json();
         
         if (data.init_point) {
@@ -3291,7 +3406,10 @@ window.purchaseTokensQuick = async function(quantity) {
             return;
         }
 
-        // Criar preferência de pagamento
+        // Criar preferência de pagamento com timeout
+        const controller = new AbortController();
+        const timeoutMs = 20000;
+        const to = setTimeout(()=> controller.abort(), timeoutMs);
         const response = await fetch('/.netlify/functions/create-preference', {
             method: 'POST',
             headers: {
@@ -3304,8 +3422,9 @@ window.purchaseTokensQuick = async function(quantity) {
                     unit_price: 1.00
                 }],
                 external_reference: `tokens_${currentUser.uid}_${Date.now()}`
-            })
-        });
+            }),
+            signal: controller.signal
+        }).finally(()=> clearTimeout(to));
 
         const data = await response.json();
         

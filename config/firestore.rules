@@ -54,7 +54,9 @@ service cloud.firestore {
     }
 
     function canReadAll() {
-      return isAdmin() || isGerente() || isVendedor() || isDesign() || isSocio() || isAfiliado();
+      // Afiliados should NOT get blanket read access to all collections.
+      // Use isStaff (staff/gerente/admin/design/sócio) for broader read permission.
+      return isAdmin() || isGerente() || isVendedor() || isDesign() || isSocio() || isStaff();
     }
 
     // users: cada usuário lê/escreve o próprio documento; Staff pode ler todos
@@ -202,18 +204,39 @@ service cloud.firestore {
       allow create: if isSignedIn();
     }
     
-    // affiliate_sales: leitura para o próprio afiliado e admins; escrita para sistema
+    // affiliate_sales: leitura para o próprio afiliado e admins/staff; escrita apenas por staff/admin/gerente
     match /affiliate_sales/{saleId} {
-      allow read: if isSignedIn() && (resource.data.affiliateId == request.auth.uid || isAdmin() || isGerente());
-      allow create: if isSignedIn();
-      allow update: if isAdmin() || isGerente();
+      allow read: if isSignedIn() && (
+        // Admins/managers/staff can read all
+        isAdmin() || isGerente() || isStaff() ||
+        // Afiliados can read their own sales. Support multiple possible identifier fields
+        (
+          isAfiliado() && (
+            resource.data.affiliateId == request.auth.uid ||
+            resource.data.affiliateUid == request.auth.uid ||
+            resource.data.affiliateEmail == request.auth.token.email
+          )
+        )
+      );
+      // Creation should normally be performed by backend (Admin SDK). Restrict client-side creation
+      allow create: if isSignedIn() && (isAdmin() || isGerente() || isStaff());
+      allow update: if isAdmin() || isGerente() || isStaff();
     }
     
-    // affiliate_commissions: leitura para o próprio afiliado e admins; escrita para sistema
+    // affiliate_commissions: leitura para o próprio afiliado e admins/staff; escrita apenas por staff/admin/gerente
     match /affiliate_commissions/{commissionId} {
-      allow read: if isSignedIn() && (resource.data.affiliateId == request.auth.uid || isAdmin() || isGerente());
-      allow create: if isSignedIn();
-      allow update: if isAdmin() || isGerente();
+      allow read: if isSignedIn() && (
+        isAdmin() || isGerente() || isStaff() ||
+        (
+          isAfiliado() && (
+            resource.data.affiliateId == request.auth.uid ||
+            resource.data.affiliateUid == request.auth.uid ||
+            resource.data.affiliateEmail == request.auth.token.email
+          )
+        )
+      );
+      allow create: if isSignedIn() && (isAdmin() || isGerente() || isStaff());
+      allow update: if isAdmin() || isGerente() || isStaff();
     }
 
     // affiliate_payout_requests: affiliates can create payout requests for themselves (min R$25.00),

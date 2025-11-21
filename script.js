@@ -6467,31 +6467,39 @@ async function submitSchedule(e, useTokens=false){
         return;
     }
     
-    fetch('/.netlify/functions/create-preference',{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ 
-            title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`, 
-            unit_price: finalPrice, 
-            currency_id:'BRL', 
-            quantity: 1, // Mudamos para 1 pois já calculamos o preço total
-            back_url: window.location.origin,
-            coupon_info: couponInfo,
-            multiple_reservations: {
-                teams: teams.map(t => t.name || 'Time sem nome'),
-                schedules: selectedTimes,
-                dates: datesToUse2,
-                eventType: eventType
-            },
-            external_reference: externalRef
-        })
-    }).then(async res=>{ 
-        if(!res.ok){ 
-            const t = await res.text(); 
-            throw new Error(t || 'Erro na função de pagamento'); 
-        } 
-        return res.json(); 
-    })
-    .then(async data=>{
+    // Use AbortController to avoid hanging indefinitely on slow/failed network or function
+    try {
+        const controller = new AbortController();
+        const timeoutMs = 25000; // 25s timeout
+        const timeout = setTimeout(()=> controller.abort(), timeoutMs);
+
+        const response = await fetch('/.netlify/functions/create-preference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`,
+                unit_price: finalPrice,
+                currency_id: 'BRL',
+                quantity: 1,
+                back_url: window.location.origin,
+                coupon_info: couponInfo,
+                multiple_reservations: {
+                    teams: teams.map(t => t.name || 'Time sem nome'),
+                    schedules: selectedTimes,
+                    dates: datesToUse2,
+                    eventType: eventType
+                },
+                external_reference: externalRef
+            }),
+            signal: controller.signal
+        });
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            const text = await response.text().catch(()=>null);
+            throw new Error(text || `Erro na função de pagamento (status ${response.status})`);
+        }
+        const data = await response.json();
         closeScheduleModal();
         // Salvar external_reference para verificação posterior
         if (data.external_reference) {
@@ -6527,11 +6535,16 @@ async function submitSchedule(e, useTokens=false){
         
         const url = data.init_point || data.sandbox_init_point; // prioriza produção
         if (url) { try{ sessionStorage.setItem('lastCheckoutUrl', url);}catch(_){} window.location.href = url; } else { alert('Não foi possível iniciar o pagamento.'); }
-    }).catch((err)=> { 
-        console.error('❌ Erro no checkout:', err);
-        alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : 'Por favor, tente novamente.'));
+    } catch (err) {
+        console.error('❌ Erro no checkout (create-preference):', err);
+        // Diferenciar timeout de abort
+        if (err && err.name === 'AbortError') {
+            alert('Tempo de resposta do servidor esgotado. Por favor, verifique sua conexão e tente novamente.');
+        } else {
+            alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : 'Por favor, tente novamente.'));
+        }
         if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
-    });
+    }
     
     } catch (error) {
         // ERR_TKN_011: Captura qualquer erro não tratado na função
