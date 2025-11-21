@@ -1498,6 +1498,7 @@ let currentProduct = null;
 let appliedCoupon = null;
 let appliedScheduleCoupon = null;
 let originalPrice = 0;
+let scheduleOriginalTotal = 0;
 const products = {
     'passe-booyah': { name: 'Passe de Elite', price: 'R$ 11,00', description: 'Passe de Elite para desbloqueio de recompensas, trajes e itens no jogo' },
     'aim-training': { name: 'XTreino - Aim Training', price: 'R$ 49,90', description: 'Sessão de 2 horas de treinamento' },
@@ -4124,6 +4125,7 @@ function openScheduleModal(eventType){
             if (input){ input.value = ''; }
         }
     })();
+    updateScheduleCouponUI();
     
     // Initialize with one team
     addTeam();
@@ -4332,6 +4334,9 @@ function closeScheduleModal(){
         teamCounter = 0;
         selectedTimes = [];
         selectedDates = [];
+        appliedScheduleCoupon = null;
+        scheduleOriginalTotal = 0;
+        updateScheduleCouponUI();
         
         // Limpar resumo de reservas
         const summaryContainer = document.getElementById('reservationsSummary');
@@ -5161,6 +5166,9 @@ async function updateReservationsSummary() {
     if (selectedTimes.length === 0 || teams.length === 0) {
         summaryContainer.innerHTML = '<p class="text-gray-600">Nenhuma reserva selecionada</p>';
         totalPriceElement.textContent = 'R$ 0,00';
+        scheduleOriginalTotal = 0;
+        appliedScheduleCoupon = null;
+        updateScheduleCouponUI();
         return;
     }
     
@@ -5228,8 +5236,12 @@ async function updateReservationsSummary() {
     
     summaryContainer.innerHTML = availabilityWarning + summaryHTML;
     
-    const totalPrice = computedTotal;
-    totalPriceElement.textContent = `R$ ${Number(totalPrice||0).toFixed(2)}`;
+    scheduleOriginalTotal = Number(computedTotal || 0);
+    totalPriceElement.textContent = `R$ ${scheduleOriginalTotal.toFixed(2)}`;
+    
+    if (appliedScheduleCoupon) {
+        updateSchedulePriceWithCoupon();
+    }
 }
 
 // Function to handle time selection (multiple)
@@ -7247,6 +7259,16 @@ async function applyScheduleCoupon() {
         showScheduleCouponMessage('Digite um código de cupom', 'error');
         return;
     }
+
+    if (appliedScheduleCoupon) {
+        showScheduleCouponMessage('Já existe um cupom aplicado. Remova-o antes de aplicar outro.', 'error');
+        return;
+    }
+
+    if (!scheduleOriginalTotal || scheduleOriginalTotal <= 0) {
+        showScheduleCouponMessage('Selecione ao menos um horário antes de aplicar o cupom.', 'error');
+        return;
+    }
     
     try {
         console.log('🔄 Validando cupom para eventos:', couponCode);
@@ -7278,6 +7300,7 @@ async function applyScheduleCoupon() {
         appliedScheduleCoupon = coupon;
         updateSchedulePriceWithCoupon();
         showScheduleCouponMessage(`Cupom aplicado! Desconto: ${getDiscountText(coupon)}`, 'success');
+        updateScheduleCouponUI();
         
         console.log('✅ Cupom aplicado para eventos:', coupon);
         
@@ -7326,17 +7349,55 @@ function updateSchedulePriceWithCoupon() {
     const totalElement = document.getElementById('totalPrice');
     if (!totalElement) return;
     
-    const currentTotal = getCurrentScheduleTotal();
-    let discountAmount = 0;
+    const baseTotal = Number(scheduleOriginalTotal || 0);
+    if (!baseTotal || baseTotal <= 0) return;
     
+    let discountAmount = 0;
     if (appliedScheduleCoupon.discountType === 'percentage') {
-        discountAmount = currentTotal * (appliedScheduleCoupon.discountValue / 100);
+        discountAmount = baseTotal * (appliedScheduleCoupon.discountValue / 100);
     } else {
         discountAmount = appliedScheduleCoupon.discountValue;
     }
     
-    const finalTotal = Math.max(0, currentTotal - discountAmount);
+    discountAmount = Math.min(discountAmount, baseTotal);
+    const finalTotal = Math.max(0, baseTotal - discountAmount);
     totalElement.textContent = `R$ ${finalTotal.toFixed(2).replace('.', ',')}`;
+}
+
+function removeScheduleCoupon() {
+    if (!appliedScheduleCoupon) return;
+    const removedCode = appliedScheduleCoupon.code;
+    appliedScheduleCoupon = null;
+    const totalElement = document.getElementById('totalPrice');
+    if (totalElement) {
+        const base = Number(scheduleOriginalTotal || 0);
+        totalElement.textContent = `R$ ${base.toFixed(2).replace('.', ',')}`;
+    }
+    updateScheduleCouponUI();
+    showScheduleCouponMessage(`Cupom "${removedCode}" removido`, 'success');
+}
+
+function updateScheduleCouponUI() {
+    const input = document.getElementById('schedCouponCodeInput');
+    const applyBtn = document.getElementById('applyScheduleCouponBtn');
+    const removeBtn = document.getElementById('removeScheduleCouponBtn');
+    if (!input || !applyBtn || !removeBtn) return;
+    
+    if (appliedScheduleCoupon) {
+        input.value = appliedScheduleCoupon.code;
+        input.disabled = true;
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Aplicado';
+        applyBtn.classList.add('opacity-60', 'cursor-not-allowed');
+        removeBtn.classList.remove('hidden');
+    } else {
+        input.disabled = false;
+        applyBtn.disabled = false;
+        applyBtn.textContent = 'Aplicar';
+        applyBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+        removeBtn.classList.add('hidden');
+        input.value = '';
+    }
 }
 
 // Mostrar mensagem de cupom no agendamento
@@ -7403,6 +7464,7 @@ async function updateCouponUsageCount(couponId) {
 
 window.applyCoupon = applyCoupon;
 window.applyScheduleCoupon = applyScheduleCoupon;
+window.removeScheduleCoupon = removeScheduleCoupon;
 window.recordCouponUsage = recordCouponUsage;
 window.openScheduleModal = openScheduleModal;
 window.openLoginModal = openLoginModal;
