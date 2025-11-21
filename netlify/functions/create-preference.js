@@ -52,7 +52,21 @@ exports.handler = async function(event) {
     }
 
     const body = JSON.parse(event.body || '{}');
-    const { title, quantity = 1, currency_id = 'BRL', unit_price, back_url, couponCode, userId, customerEmail } = body;
+    const { title, quantity = 1, currency_id = 'BRL', unit_price, back_url } = body;
+
+    // Normalize coupon payloads: accept either `couponCode` (string) or `coupon_info` (object or string)
+    let couponCode = body.couponCode || null;
+    if (!couponCode && body.coupon_info) {
+      if (typeof body.coupon_info === 'string') {
+        couponCode = body.coupon_info;
+      } else if (typeof body.coupon_info === 'object') {
+        couponCode = body.coupon_info.code || body.coupon_info.id || body.coupon_info.couponCode || null;
+      }
+    }
+
+    // Normalize user identification - accept from root or from coupon_info
+    const userId = body.userId || (body.coupon_info && body.coupon_info.userId) || null;
+    const customerEmail = body.customerEmail || (body.coupon_info && (body.coupon_info.email || body.coupon_info.customerEmail)) || null;
 
     if (!title || typeof unit_price === 'undefined') {
       return { statusCode: 400, headers: corsHeaders, body: 'Invalid payload' };
