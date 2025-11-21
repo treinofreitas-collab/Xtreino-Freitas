@@ -2590,6 +2590,39 @@ async function loadAffiliateSales() {
     } catch (error) {
         console.error('Erro ao carregar vendas:', error);
         const tbody = document.getElementById('affiliateSalesTableBody');
+        // If Firestore requires a composite index, offer a link and fallback to an unordered query
+        try {
+            const msg = String(error && error.message || '');
+            const needsIndex = msg.toLowerCase().includes('requires an index') || msg.toLowerCase().includes('create it here');
+            if (needsIndex) {
+                // Try fallback: query without orderBy and sort locally
+                console.warn('Firestore requires index for affiliate_sales query — using fallback without orderBy');
+                const qFallback = query(salesRef, where('affiliateId', '==', currentUser.uid));
+                const snapFallback = await getDocs(qFallback);
+                const sales = [];
+                snapFallback.forEach(doc => {
+                    const data = doc.data();
+                    sales.push({ id: doc.id, ...data, createdAt: data.createdAt?.toDate?.() || new Date() });
+                });
+                // sort locally desc
+                sales.sort((a,b)=> (b.createdAt?.getTime?.()||0) - (a.createdAt?.getTime?.()||0));
+                renderAffiliateSales(sales);
+                window.affiliateSales = sales;
+                updateAffiliateStats();
+                if (tbody && msg.match(/https?:\/\/.+/)) {
+                    const urlMatch = msg.match(/https?:\/\/[^\s)']+/);
+                    const idxUrl = urlMatch ? urlMatch[0] : null;
+                    if (idxUrl) {
+                        const info = `<tr><td colspan="7" class="px-4 py-4 text-center text-sm text-yellow-700">Firestore index necessário para otimizar esta consulta. Crie-o aqui: <a href="${idxUrl}" target="_blank" class="underline text-blue-700">Abrir índice</a></td></tr>`;
+                        tbody.insertAdjacentHTML('afterbegin', info);
+                    }
+                }
+                return;
+            }
+        } catch (e) {
+            console.error('Erro ao tentar fallback por índice:', e);
+        }
+
         if (tbody) {
             tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">Erro ao carregar vendas</td></tr>';
         }
@@ -2663,6 +2696,35 @@ async function loadAffiliateCommissions() {
     } catch (error) {
         console.error('Erro ao carregar comissões:', error);
         const tbody = document.getElementById('affiliateCommissionsTableBody');
+        try {
+            const msg = String(error && error.message || '');
+            const needsIndex = msg.toLowerCase().includes('requires an index') || msg.toLowerCase().includes('create it here');
+            if (needsIndex) {
+                console.warn('Firestore requires index for affiliate_commissions query — using fallback without orderBy');
+                const qFallback = query(commissionsRef, where('affiliateId', '==', currentUser.uid));
+                const snapFallback = await getDocs(qFallback);
+                const commissions = [];
+                snapFallback.forEach(doc => {
+                    const data = doc.data();
+                    commissions.push({ id: doc.id, ...data, createdAt: data.createdAt?.toDate?.() || new Date() });
+                });
+                commissions.sort((a,b)=> (b.createdAt?.getTime?.()||0) - (a.createdAt?.getTime?.()||0));
+                renderAffiliateCommissions(commissions);
+                window.affiliateCommissions = commissions;
+                if (tbody && msg.match(/https?:\/\/.+/)) {
+                    const urlMatch = msg.match(/https?:\/\/[^\s)']+/);
+                    const idxUrl = urlMatch ? urlMatch[0] : null;
+                    if (idxUrl) {
+                        const info = `<tr><td colspan="4" class="px-4 py-4 text-center text-sm text-yellow-700">Firestore index necessário para otimizar esta consulta. Crie-o aqui: <a href="${idxUrl}" target="_blank" class="underline text-blue-700">Abrir índice</a></td></tr>`;
+                        tbody.insertAdjacentHTML('afterbegin', info);
+                    }
+                }
+                return;
+            }
+        } catch (e) {
+            console.error('Erro ao tentar fallback por índice (comissões):', e);
+        }
+
         if (tbody) {
             tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-red-500">Erro ao carregar comissões</td></tr>';
         }
