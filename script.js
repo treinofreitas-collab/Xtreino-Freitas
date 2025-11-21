@@ -2912,14 +2912,32 @@ function initChat() {
         chatSend.disabled = true;
         chatInput.placeholder = 'Fora do horário de atendimento';
     }
+
+    // Inicializar toggle "Mostrar histórico" (persistido em localStorage)
+    try{
+        const histToggle = document.getElementById('chatShowHistoryToggle');
+        if (histToggle) {
+            const stored = localStorage.getItem('chat.showHistory');
+            histToggle.checked = stored === '1' ? true : false;
+            histToggle.addEventListener('change', (e) => {
+                try{ localStorage.setItem('chat.showHistory', e.target.checked ? '1' : '0'); }catch(_){ }
+            });
+        }
+    }catch(_){ }
     
     // Toggle chat window
     chatToggle.addEventListener('click', () => {
         chatWindow.classList.toggle('hidden');
         if (!chatWindow.classList.contains('hidden')) {
             chatInput.focus();
-            // Start a fresh conversation view each time the chat is opened
-            startNewConversation();
+            // Decide whether to show stored history or start a fresh conversation
+            let showHistory = false;
+            try{ showHistory = localStorage.getItem('chat.showHistory') === '1'; }catch(_){ showHistory = false; }
+            if (showHistory) {
+                loadChatHistory();
+            } else {
+                startNewConversation();
+            }
         }
     });
     
@@ -3393,8 +3411,8 @@ function startNewConversation(){
         if (!chatMessages) return;
         // Limpa visual
         chatMessages.innerHTML = '';
-        // Mensagem inicial fixa conforme solicitado
-        const greeting = 'Prazer eu me chamo sexta-feria me conta como eu posso te ajudar!';
+        // Mensagem inicial fixa (polished)
+        const greeting = 'Prazer! Eu me chamo Sexta‑Féria. Como posso ajudar você hoje? Conte rapidamente o que você precisa.';
         // Mostrar imediatamente (com o mesmo fluxo que suporte usa)
         addMessage(greeting, 'support');
         // Garantir scroll
@@ -3405,8 +3423,8 @@ function startNewConversation(){
 // Obter histórico do localStorage
 function getChatHistory() {
     try {
-        const stored = localStorage.getItem('chatHistory');
-        return stored ? JSON.parse(stored) : [];
+        // Mensagem inicial fixa (polished)
+        const greeting = 'Prazer! Eu me chamo Agente F. Como posso ajudar você hoje? Conte rapidamente o que você precisa.';
     } catch (e) {
         return [];
     }
@@ -3414,6 +3432,84 @@ function getChatHistory() {
 
 // Limpar histórico do chat
 function clearChatHistory() {
+// Agente identity constants
+const AGENT_NAME = 'Agente F';
+const AGENT_NAME_EXPLANATION = "O 'F' é de Freitas. Sou o Agente oficial da Organização, programado para garantir que seu atendimento tenha o mesmo padrão de qualidade dos nossos serviços.";
+
+// Melhor versão de smartChatAnswer: regras mais completas para tipos comuns de perguntas
+async function smartChatAnswer(userText){
+    try{
+        if(!userText || !userText.trim()) return null;
+        const text = userText.toLowerCase();
+
+        // Resposta direta se perguntarem o nome
+        if(/\b(nome|como se chama|quem é você|quem é voce|qual seu nome|qual é seu nome)\b/.test(text)){
+            return AGENT_NAME_EXPLANATION;
+        }
+
+        // Saudações
+        if(/\b(oi|olá|ola|bom dia|boa tarde|boa noite|e aí|ei)\b/.test(text)){
+            return `${AGENT_NAME} aqui — prazer! Em que posso ajudar você agora? Se preferir, diga o número do pedido ou descreva o produto.`;
+        }
+
+        // Perguntas sobre frete/entrega
+        if(/\b(entrega|frete|prazo|rastreio|rastrear|envio|encomenda)\b/.test(text)){
+            return 'Posso checar o status do envio se você me informar o número do pedido. Quer que eu verifique agora?';
+        }
+
+        // Pagamento
+        if(/\b(pagamento|pagar|cartão|cartao|pix|boleto|parcelas|fatura)\b/.test(text)){
+            return 'Aceitamos PIX, cartão e boleto. Se tiver um erro no pagamento, me diga qual o problema (ex: cartão recusado, erro 3DS) que eu orientarei o próximo passo.';
+        }
+
+        // Troca/Devolução/Reembolso
+        if(/\b(troca|devolução|devolucao|reembolso|trocar|devolver)\b/.test(text)){
+            return 'Para trocas e devoluções, precisamos do número do pedido e do motivo. Quer que eu inicie o processo ou eu te explico as etapas?';
+        }
+
+        // Disponibilidade / estoque
+        if(/\b(estoque|disponível|disponivel|tem em estoque|tem stock|quantidade)\b/.test(text)){
+            return 'Me diga o nome ou código do produto que eu confirmo a disponibilidade pra você. Se estiver sem estoque, eu posso avisar quando chegar.';
+        }
+
+        // Status de pedido
+        if(/\b(pedido|minha ordem|minha compra|rastreio|status do pedido|status pedido)\b/.test(text)){
+            return 'Informe o número do pedido (ex: `#12345`) que eu verifico o status e te retorno o rastreamento.';
+        }
+
+        // Conta / senha / login
+        if(/\b(senha|login|entrar|acessar|conta|cadastro)\b/.test(text)){
+            return 'Se estiver com problema no acesso, verifique se está usando o e-mail correto e se precisa redefinir a senha. Deseja que eu envie instruções para redefinir a senha?';
+        }
+
+        // Horário / contato humano
+        if(/\b(horário|horario|atendimento|contato|telefone|email)\b/.test(text)){
+            return 'Nosso atendimento funciona de segunda a sexta, das 9h às 18h. Quer que eu passe seu contato para um atendente humano?';
+        }
+
+        // Promoções / cupom
+        if(/\b(cupom|promoção|promocao|desconto|promo)\b/.test(text)){
+            return 'Se você tem um cupom, me informe o código e eu verifico se ele é válido e aplicável ao seu carrinho.';
+        }
+
+        // Cancelamento
+        if(/\b(cancelar|cancelamento|cancelada|cancelado)\b/.test(text)){
+            return 'Posso tentar cancelar seu pedido se ele ainda não tiver sido faturado/expedido. Me informe o número do pedido para eu checar.';
+        }
+
+        // Ajuda técnica / erro no site
+        if(/\b(erro|bug|problema|falha|não abre|nao abre)\b/.test(text)){
+            return 'Sinto muito pelo inconveniente. Pode descrever o que aconteceu (mensagem de erro, passo a passo)? Vou orientar com soluções rápidas.';
+        }
+
+        // Small talk / fallback — tente ser útil e ofereça opções
+        // Pergunte se o usuário quer: checar pedido, falar com humano, ver produtos, ou instruções de pagamento
+        return 'Posso ajudar com pedidos, pagamentos, entregas, trocas e informações sobre produtos. O que você prefere: 1) Ver status do pedido 2) Informação sobre produto 3) Ajuda com pagamento 4) Falar com atendente humano? Responda com o número ou descreva seu pedido.';
+    }catch(err){
+        console.error('smartChatAnswer erro:', err);
+        return null;
+    }
+}
     showConfirm('Limpar Histórico', 'Deseja limpar todo o histórico de conversas? Esta ação não pode ser desfeita.', 'Limpar', 'Cancelar').then((confirmed) => {
         if (confirmed) {
             localStorage.removeItem('chatHistory');
