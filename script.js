@@ -2319,27 +2319,42 @@ async function handlePurchase(event) {
         };
         
         console.log('🔍 Enviando requisição para create-preference:', preferencePayload);
-        
-        const response = await fetch('/.netlify/functions/create-preference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(preferencePayload)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Erro na resposta do create-preference:', errorText);
-            throw new Error(errorText || 'Erro ao criar preferência de pagamento');
+        // Timeout seguro para evitar travamento (especialmente iOS)
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 25000); // 25s
+        let data;
+        try {
+            const response = await fetch('/.netlify/functions/create-preference', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(preferencePayload),
+                signal: controller.signal
+            });
+            clearTimeout(timeout);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Erro na resposta do create-preference:', errorText);
+                throw new Error(errorText || 'Erro ao criar preferência de pagamento');
+            }
+            data = await response.json();
+            console.log('✅ Preference criada:', data);
+        } catch (error) {
+            clearTimeout(timeout);
+            if (error.name === 'AbortError') {
+                showError('A operação demorou demais. Tente novamente em instantes.', 'TIMEOUT');
+            } else {
+                showError(error, 'PAYMENT_001');
+            }
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
         }
-        
-        const data = await response.json();
-        console.log('✅ Preference criada:', data);
-        
         // Verificar se tem init_point ou sandbox_init_point
         const checkoutUrl = data.init_point || data.sandbox_init_point;
         if (!checkoutUrl) {
             console.error('❌ Resposta inválida do create-preference:', data);
-            throw new Error('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.');
+            showError('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.', 'PAYMENT_004');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
         }
         
         // Registrar uso do cupom se aplicado
