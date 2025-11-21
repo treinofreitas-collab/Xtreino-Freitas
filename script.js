@@ -3237,6 +3237,14 @@ function hideTypingIndicator() {
 }
 
 // Adicionar mensagem ao chat
+// Simple sanitizer to prevent HTML injection (allows limited markdown links)
+function sanitizeForChat(text){
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+}
+
 function addMessage(text, sender) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
@@ -3250,8 +3258,9 @@ function addMessage(text, sender) {
     });
     
     messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
-    // Converter links markdown para HTML clicável
-    const textWithLinks = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
+    // Sanitize then convert markdown links [text](url) to clickable anchors
+    const safe = sanitizeForChat(text);
+    const textWithLinks = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
     
     messageDiv.innerHTML = `
         <div class="${isUser ? 'bg-blue-matte text-white' : 'bg-gray-100'} rounded-lg p-3 max-w-xs">
@@ -3320,7 +3329,8 @@ function loadChatHistory() {
             });
             
             messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
-            const textWithLinks = msg.text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
+            const safeMsg = sanitizeForChat(msg.text);
+            const textWithLinks = safeMsg.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
             
             messageDiv.innerHTML = `
                 <div class="${isUser ? 'bg-blue-matte text-white' : 'bg-gray-100'} rounded-lg p-3 max-w-xs">
