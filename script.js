@@ -1,3 +1,7 @@
+// Utilitário: retorna true se o produto é camisa
+function isShirtProduct(productId) {
+    return productId === 'camisa';
+}
 // ==================== TOAST NOTIFICATION SYSTEM ====================
 let confirmResolve = null;
 
@@ -1650,16 +1654,12 @@ function showProductModal(productId){
         optContainer.appendChild(qtyWrap);
     }
 
-    // Campo de cupom apenas para eventos (ids iniciando com evt-), exceto Xtreino Tokens
-    console.log('🔍 Debug cupom - productId:', productId, 'startsWith evt-:', productId.startsWith('evt-'), 'is not xtreino-gratuito:', productId !== 'evt-xtreino-gratuito');
-    if (productId.startsWith('evt-') && productId !== 'evt-xtreino-gratuito'){
-        console.log('✅ Adicionando campo de cupom para:', productId);
+    // Campo de cupom apenas para eventos (ids iniciando com evt-), exceto Xtreino Tokens, e nunca para camisa
+    if (productId.startsWith('evt-') && productId !== 'evt-xtreino-gratuito' && !isShirtProduct(productId)){
         const cupomWrap = document.createElement('div');
         cupomWrap.className = 'mt-3';
         cupomWrap.innerHTML = '<label class="block text-sm font-medium mb-2">Cupom de desconto</label><input id="couponCode" type="text" placeholder="ADMFALL" class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none">\n<p class="text-xs text-gray-500 mt-1">Use <strong>ADMFALL</strong> para 5% de desconto.</p>';
         optContainer.appendChild(cupomWrap);
-    } else {
-        console.log('❌ NÃO adicionando campo de cupom para:', productId);
     }
 
     // Preço inicial e atualização dinâmica
@@ -2314,7 +2314,7 @@ async function handlePurchase(event) {
             currency_id: 'BRL',
             quantity: 1,
             back_url: window.location.origin,
-            coupon_info: couponInfo,
+            coupon_info: isShirtProduct(currentProduct) ? null : couponInfo,
             external_reference: externalRef
         };
         
