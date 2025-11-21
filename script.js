@@ -2918,8 +2918,8 @@ function initChat() {
         chatWindow.classList.toggle('hidden');
         if (!chatWindow.classList.contains('hidden')) {
             chatInput.focus();
-            // Carregar histórico quando abrir o chat
-            loadChatHistory();
+            // Start a fresh conversation view each time the chat is opened
+            startNewConversation();
         }
     });
     
@@ -3384,6 +3384,22 @@ function loadChatHistory() {
     } catch (e) {
         console.error('Erro ao carregar histórico:', e);
     }
+}
+
+// Inicia uma conversa nova na interface do chat (não renderiza o histórico salvo)
+function startNewConversation(){
+    try{
+        const chatMessages = document.getElementById('chatMessages');
+        if (!chatMessages) return;
+        // Limpa visual
+        chatMessages.innerHTML = '';
+        // Mensagem inicial fixa conforme solicitado
+        const greeting = 'Prazer eu me chamo sexta-feria me conta como eu posso te ajudar!';
+        // Mostrar imediatamente (com o mesmo fluxo que suporte usa)
+        addMessage(greeting, 'support');
+        // Garantir scroll
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }catch(e){ console.error('Erro ao iniciar nova conversa:', e); }
 }
 
 // Obter histórico do localStorage
