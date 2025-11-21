@@ -823,6 +823,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
           <select class="role-select border border-gray-300 rounded px-2 py-1 text-xs" data-uid="${user.id}">
             <option value="Vendedor" ${user.role === 'Vendedor' ? 'selected' : ''}>Vendedor</option>
             <option value="Gerente" ${user.role === 'Gerente' ? 'selected' : ''}>Gerente</option>
+            <option value="Staff" ${user.role === 'Staff' ? 'selected' : ''}>Staff</option>
+            <option value="Afiliado" ${user.role === 'Afiliado' ? 'selected' : ''}>Afiliado</option>
             <option value="Ceo" ${user.role === 'Ceo' ? 'selected' : ''}>Ceo</option>
           </select>
         </td>

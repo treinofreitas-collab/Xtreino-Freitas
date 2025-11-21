@@ -14,6 +14,10 @@ service cloud.firestore {
     function isAfiliado() {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['afiliado','Afiliado','AFILIADO'];
     }
+
+    function isStaff() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['staff','Staff','STAFF'];
+    }
     
     function isGerente() {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['gerente','Gerente','GERENTE','admin','Admin','ADMIN','Ceo','CEO','ceo'];
@@ -65,7 +69,18 @@ service cloud.firestore {
 
     // registrations: leitura para staff (admin/gerente/vendedor/sócio) e para o próprio usuário; escrita para logados
     match /registrations/{registrationId} {
-      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || canReadAll());
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        canReadAll() ||
+        (
+          isStaff() && (
+            // Allow staff to read registrations for schedules between 14h and 18h.
+            // Try numeric hour first, otherwise fallback to matching common schedule strings ("14h", "14:00", "14").
+            ((resource.data.hour is number) && resource.data.hour >= 14 && resource.data.hour <= 18) ||
+            ((resource.data.schedule is string) && resource.data.schedule.matches('.*(\\b14\\b|\\b15\\b|\\b16\\b|\\b17\\b|\\b18\\b|14h|15h|16h|17h|18h|14:00|15:00|16:00|17:00|18:00).*'))
+          )
+        )
+      );
       allow write: if isSignedIn();
     }
 
@@ -191,6 +206,16 @@ service cloud.firestore {
       allow read: if isSignedIn() && (resource.data.affiliateId == request.auth.uid || isAdmin() || isGerente());
       allow create: if isSignedIn();
       allow update: if isAdmin() || isGerente();
+    }
+
+    // affiliate_payout_requests: affiliates can create payout requests for themselves (min R$25.00),
+    // affiliates can read their own requests; admins/managers can read and update (approve/mark paid).
+    match /affiliate_payout_requests/{requestId} {
+      allow create: if isAfiliado() && request.auth.uid == request.resource.data.affiliateId
+                    && (request.resource.data.amount is number) && request.resource.data.amount >= 25
+                    && (request.resource.data.status == 'pending' || request.resource.data.status == 'requested');
+      allow read: if isSignedIn() && (resource.data.affiliateId == request.auth.uid || isAdmin() || isGerente());
+      allow update, delete: if isAdmin() || isGerente();
     }
 
     // whatsapp_links: leitura para usuários logados; escrita para admins, design e sócios
