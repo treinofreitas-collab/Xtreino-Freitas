@@ -2942,7 +2942,12 @@ function initChat() {
             const smart = await smartChatAnswer(message);
             if (smart && smart.answer){
                 showTypingIndicator();
-                setTimeout(() => { hideTypingIndicator(); addMessage(smart.answer, 'support'); }, 1200);
+                (async () => {
+                    await new Promise(r => setTimeout(r, 1200));
+                    hideTypingIndicator();
+                    const personalized = await personalizeReply(smart.answer);
+                    addMessage(personalized, 'support');
+                })();
                 return;
             }
         }catch(_){}
@@ -3162,12 +3167,14 @@ function initChat() {
             }
         }
         
-        // Mostrar indicador de "digitando..." e simular digitação com atraso de 4 segundos
+        // Mostrar indicador de "digitando..." e simular digitação com atraso de 3 segundos
         showTypingIndicator();
-        setTimeout(() => {
+        (async () => {
+            await new Promise(r => setTimeout(r, 3000));
             hideTypingIndicator();
-            addMessage(matchedReply, 'support');
-        }, 3000);
+            const personalized = await personalizeReply(matchedReply);
+            addMessage(personalized, 'support');
+        })();
     }
     
     // Event listeners
@@ -3243,6 +3250,37 @@ function sanitizeForChat(text){
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
+}
+
+// Personaliza respostas substituindo placeholders simples.
+// Suporta: {name}, {firstName}, {tokens}, {balance}, {lastOrder}, {ordersCount}
+async function personalizeReply(template){
+    try{
+        if (!template) return template;
+        const profile = window.currentUserProfile || (localStorage.getItem('assoc_profile') ? JSON.parse(localStorage.getItem('assoc_profile')) : null);
+        const firstName = profile && profile.name ? String(profile.name).split(' ')[0] : '';
+        const tokens = profile && (profile.tokens !== undefined && profile.tokens !== null) ? profile.tokens : (localStorage.getItem('localTokens') ? Number(localStorage.getItem('localTokens')) : null);
+
+        // Tentativa rápida de obter último pedido local (fallback)
+        let lastOrder = null;
+        try{
+            const localOrders = localStorage.getItem('localOrders') ? JSON.parse(localStorage.getItem('localOrders')) : [];
+            if (localOrders && localOrders.length) lastOrder = localOrders[0];
+        }catch(_){ lastOrder = null; }
+
+        let result = String(template || '');
+        result = result.replace(/\{name\}/gi, firstName || 'amigo');
+        result = result.replace(/\{firstName\}/gi, firstName || 'amigo');
+        result = result.replace(/\{tokens\}/gi, (tokens !== null && tokens !== undefined) ? String(tokens) : '0');
+        result = result.replace(/\{balance\}/gi, (tokens !== null && tokens !== undefined) ? String(tokens) : '0');
+        result = result.replace(/\{lastOrder\}/gi, (lastOrder && lastOrder.title) ? lastOrder.title : 'nenhum pedido recente');
+        const localOrdersCount = (localStorage.getItem('localOrders') ? JSON.parse(localStorage.getItem('localOrders')).length : 0) || 0;
+        result = result.replace(/\{ordersCount\}/gi, String(localOrdersCount));
+
+        return result;
+    }catch(_){
+        return template;
+    }
 }
 
 function addMessage(text, sender) {
