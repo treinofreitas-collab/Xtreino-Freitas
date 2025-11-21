@@ -624,7 +624,6 @@ exports.handler = async (event, context) => {
                                 console.log('✅ Digital delivery created for product:', orderData.productId);
                             }
                         }
-                    }
                     } else {
                         // Se não encontrou em orders, tentar em registrations (para agendamentos)
                         const registrationsRef = db.collection('registrations');
