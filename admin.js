@@ -6320,6 +6320,7 @@ window.filterActiveUsers = filterActiveUsers;
 let permissionsUsersData = [];
 let permissionsCurrentPage = 1;
 const permissionsPerPage = 10;
+let permissionsFilteredData = [];
 
 // Carregar usuários especificamente para o card de permissões
 async function loadPermissionsUsers() {
@@ -6342,6 +6343,8 @@ async function loadPermissionsUsers() {
       });
     });
     
+    // Inicializar dados filtrados (filtro vazio = todos)
+    permissionsFilteredData = [...permissionsUsersData];
     console.log(`✅ ${permissionsUsersData.length} usuários carregados para permissões`);
     renderPermissionsTable();
     updatePermissionsPagination();
@@ -6358,7 +6361,8 @@ function renderPermissionsTable() {
     return;
   }
   
-  if (permissionsUsersData.length === 0) {
+  // Usar dados filtrados quando existir (apoiar busca)
+  if (!Array.isArray(permissionsFilteredData) || permissionsFilteredData.length === 0) {
     tbody.innerHTML = `
       <tr>
         <td colspan="5" class="py-6 text-center text-gray-500">Nenhum usuário encontrado</td>
@@ -6366,10 +6370,10 @@ function renderPermissionsTable() {
     `;
     return;
   }
-  
+
   const startIndex = (permissionsCurrentPage - 1) * permissionsPerPage;
   const endIndex = startIndex + permissionsPerPage;
-  const usersPage = permissionsUsersData.slice(startIndex, endIndex);
+  const usersPage = permissionsFilteredData.slice(startIndex, endIndex);
   
   // Verificar se o usuário atual pode editar e quais cargos pode atribuir
   const roleFromWindow = (window.adminRoleLower || '').toLowerCase();
@@ -6383,6 +6387,8 @@ function renderPermissionsTable() {
     const allRoles = [
       { value: 'user', label: 'Usuário' },
       { value: 'vendedor', label: 'Vendedor' },
+      { value: 'staff', label: 'Staff' },
+      { value: 'afiliado', label: 'Afiliado' },
       { value: 'gerente', label: 'Gerente' },
       { value: 'design', label: 'Design' },
       { value: 'admin', label: 'Admin' },
@@ -6455,6 +6461,8 @@ function getRoleDisplayName(role) {
   const roleNames = {
     'user': 'Usuário',
     'vendedor': 'Vendedor',
+    'staff': 'Staff',
+    'afiliado': 'Afiliado',
     'gerente': 'Gerente',
     'design': 'Design',
     'admin': 'Admin',
@@ -6462,6 +6470,29 @@ function getRoleDisplayName(role) {
     'ceo': 'Ceo'
   };
   return roleNames[role] || role;
+}
+
+// Filtrar usuários na tabela de permissões
+function filterPermissionsUsers() {
+  const input = document.getElementById('permissionsSearchInput');
+  if (!input) return;
+  const term = input.value.toLowerCase().trim();
+
+  if (!term) {
+    permissionsFilteredData = [...permissionsUsersData];
+  } else {
+    permissionsFilteredData = permissionsUsersData.filter(u => {
+      return (u.email || '').toLowerCase().includes(term) ||
+             (u.displayName || '').toLowerCase().includes(term) ||
+             (String(u.id || '')).toLowerCase().includes(term) ||
+             (String(u.role || '')).toLowerCase().includes(term) ||
+             getRoleDisplayName(u.role).toLowerCase().includes(term);
+    });
+  }
+
+  permissionsCurrentPage = 1;
+  renderPermissionsTable();
+  updatePermissionsPagination();
 }
 
 // Atualizar função do usuário (específico para permissões)
@@ -6531,13 +6562,15 @@ async function updatePermissionsUserRole(userId) {
 
 // Atualizar paginação do card de permissões
 function updatePermissionsPagination() {
-  const totalPages = Math.ceil(permissionsUsersData.length / permissionsPerPage);
+  const totalPages = Math.ceil((permissionsFilteredData?.length || 0) / permissionsPerPage);
   const paginationContainer = document.getElementById('permissionsPagination');
   const countElement = document.getElementById('permissionsUsersCount');
   const pageInfoElement = document.getElementById('permissionsUsersPageInfo');
   
   if (countElement) {
-    countElement.textContent = `${permissionsUsersData.length} usuários`;
+    const total = permissionsUsersData.length || 0;
+    const filtered = permissionsFilteredData?.length || 0;
+    countElement.textContent = filtered === total ? `${total} usuários` : `${filtered} de ${total} usuários`;
   }
   
   if (pageInfoElement) {
@@ -7785,6 +7818,7 @@ function filterAdminHistory() {
 window.loadPermissionsUsers = loadPermissionsUsers;
 // window.listAllSalesItems removido
 window.updatePermissionsUserRole = updatePermissionsUserRole;
+window.filterPermissionsUsers = filterPermissionsUsers;
 window.changePermissionsPage = changePermissionsPage;
 window.loadTokensUsers = loadTokensUsers;
 window.addTokens = addTokens;
