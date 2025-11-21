@@ -45,6 +45,7 @@ exports.handler = async function(event) {
     return { statusCode: 405, headers: corsHeaders, body: 'Method Not Allowed' };
   }
 
+
   try {
     const accessToken = process.env.MP_ACCESS_TOKEN;
     if (!accessToken) {
@@ -62,6 +63,12 @@ exports.handler = async function(event) {
       } else if (typeof body.coupon_info === 'object') {
         couponCode = body.coupon_info.code || body.coupon_info.id || body.coupon_info.couponCode || null;
       }
+    }
+
+    // Se for camisa, ignorar cupom
+    const isShirt = (title && title.toLowerCase().includes('camisa')) || (body.item && String(body.item).toLowerCase().includes('camisa'));
+    if (isShirt) {
+      couponCode = null;
     }
 
     // Normalize user identification - accept from root or from coupon_info
