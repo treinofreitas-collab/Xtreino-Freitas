@@ -8,6 +8,35 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
+// Firebase Admin will be used to validate and reserve coupons atomically
+const admin = require('firebase-admin');
+try {
+  if (!admin.apps.length) {
+    const svc = process.env.FIREBASE_SERVICE_ACCOUNT;
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (privateKey && privateKey.includes('\\n')) privateKey = privateKey.replace(/\\n/g, '\n');
+
+    if (projectId && clientEmail && privateKey) {
+      admin.initializeApp({ credential: admin.credential.cert({ projectId, clientEmail, privateKey }) });
+    } else if (svc) {
+      const parsed = JSON.parse(svc);
+      admin.initializeApp({ credential: admin.credential.cert(parsed) });
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      admin.initializeApp({ credential: admin.credential.applicationDefault() });
+    } else if (process.env.FIREBASE_PROJECT_ID) {
+      admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID, credential: admin.credential.applicationDefault() });
+    } else {
+      admin.initializeApp();
+    }
+  }
+} catch (e) {
+  // ignore, will fail later if DB is required and not available
+}
+
+const MIN_FINAL_PAYMENT = 0.01; // minimal allowed final amount after discount
+
 exports.handler = async function(event) {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: corsHeaders, body: 'OK' };
@@ -23,7 +52,7 @@ exports.handler = async function(event) {
     }
 
     const body = JSON.parse(event.body || '{}');
-    const { title, quantity = 1, currency_id = 'BRL', unit_price, back_url } = body;
+    const { title, quantity = 1, currency_id = 'BRL', unit_price, back_url, couponCode, userId, customerEmail } = body;
 
     if (!title || typeof unit_price === 'undefined') {
       return { statusCode: 400, headers: corsHeaders, body: 'Invalid payload' };
@@ -41,13 +70,111 @@ exports.handler = async function(event) {
     // Usar external_reference do body se fornecido, senão gerar um único
     const externalRef = body.external_reference || `xtreino_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
+    let finalUnitPrice = Number(unit_price);
+
+    // If couponCode is present, validate and reserve it atomically
+    if (couponCode && admin && admin.firestore) {
+      const db = admin.firestore();
+      const couponQuery = await db.collection('coupons').where('code', '==', String(couponCode)).limit(1).get();
+      if (couponQuery.empty) {
+        return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'COUPON_001', message: 'Cupom não encontrado' }) };
+      }
+
+      const couponDoc = couponQuery.docs[0];
+      const couponRef = couponDoc.ref;
+      // Run transaction to check limits and reserve one usage
+      try {
+        await db.runTransaction(async (tx) => {
+          const c = await tx.get(couponRef);
+          if (!c.exists) throw new Error('COUPON_001');
+          const cd = c.data() || {};
+
+          if (cd.active === false) throw new Error('COUPON_003');
+          if (cd.expiresAt) {
+            const exp = cd.expiresAt.toDate ? cd.expiresAt.toDate() : new Date(cd.expiresAt);
+            if (new Date() > exp) throw new Error('COUPON_002');
+          }
+
+          const maxUses = cd.maxUses || cd.usesLimit || null;
+          const used = cd.used || 0;
+          if (maxUses !== null && used >= maxUses) throw new Error('COUPON_005');
+
+          // Per-user limit check (if userId or email provided)
+          const perUserLimit = cd.perUserLimit || 1;
+          if ((userId || customerEmail) && perUserLimit) {
+            const usageQuery = db.collection('couponUsage')
+              .where('couponId', '==', couponRef.id)
+              .where('userId', '==', userId || null)
+              .where('email', '==', customerEmail || null)
+              .limit(1);
+            // Note: compound where with null won't match; we'll do two checks if needed
+            let usedByUser = false;
+            if (userId) {
+              const uq = await tx.get(db.collection('couponUsage').where('couponId', '==', couponRef.id).where('userId', '==', userId).limit(1));
+              if (!uq.empty) usedByUser = true;
+            }
+            if (customerEmail && !usedByUser) {
+              const uq2 = await tx.get(db.collection('couponUsage').where('couponId', '==', couponRef.id).where('email', '==', customerEmail).limit(1));
+              if (!uq2.empty) usedByUser = true;
+            }
+            if (usedByUser && perUserLimit <= 0) {
+              throw new Error('COUPON_005');
+            }
+            if (usedByUser && perUserLimit === 1) {
+              throw new Error('COUPON_005');
+            }
+          }
+
+          // Compute discount safely
+          const subtotal = Number(unit_price) * Number(quantity || 1);
+          let discount = 0;
+          if (cd.discountType === 'percentage') {
+            discount = subtotal * (Number(cd.value || 0) / 100);
+          } else {
+            discount = Number(cd.value || 0);
+          }
+
+          // Clamp discount so final amount is at least MIN_FINAL_PAYMENT
+          const maxAllowedDiscount = Math.max(0, subtotal - MIN_FINAL_PAYMENT);
+          if (discount > maxAllowedDiscount) discount = maxAllowedDiscount;
+
+          const finalAmount = Math.max(MIN_FINAL_PAYMENT, subtotal - discount);
+          finalUnitPrice = finalAmount / Number(quantity || 1);
+
+          // Reserve usage: increment coupon.used and create couponUsage doc
+          tx.update(couponRef, { used: (cd.used || 0) + 1 });
+          const usageRef = db.collection('couponUsage').doc();
+          const usageDoc = {
+            couponId: couponRef.id,
+            code: cd.code || couponCode,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            userId: userId || null,
+            email: customerEmail || null,
+            externalReference: externalRef || null
+          };
+          tx.set(usageRef, usageDoc);
+        });
+      } catch (txErr) {
+        console.error('Coupon transaction error:', txErr && txErr.message ? txErr.message : txErr);
+        const code = (txErr && txErr.message) ? txErr.message : 'COUPON_ERR';
+        let status = 400;
+        let bodyErr = { error: code, message: 'Coupon validation failed' };
+        if (code === 'COUPON_001') bodyErr = { error: 'COUPON_001', message: 'Cupom não encontrado' };
+        else if (code === 'COUPON_002') bodyErr = { error: 'COUPON_002', message: 'Cupom expirado' };
+        else if (code === 'COUPON_003') bodyErr = { error: 'COUPON_003', message: 'Cupom inativo' };
+        else if (code === 'COUPON_005') bodyErr = { error: 'COUPON_005', message: 'Cupom já utilizado no limite' };
+
+        return { statusCode: status, headers: corsHeaders, body: JSON.stringify(bodyErr) };
+      }
+    }
+
     const preferencePayload = {
       items: [
         {
           title,
           quantity,
           currency_id,
-          unit_price: Number(unit_price)
+          unit_price: Number(finalUnitPrice)
         }
       ],
       back_urls: { success: successUrl, failure: failureUrl, pending: pendingUrl },

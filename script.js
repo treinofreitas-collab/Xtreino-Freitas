@@ -1499,6 +1499,8 @@ let appliedCoupon = null;
 let appliedScheduleCoupon = null;
 let originalPrice = 0;
 let scheduleOriginalTotal = 0;
+// Valor mínimo aceitável para pagamento final (evita zerar completamente via cupom)
+const MIN_FINAL_PAYMENT = 0.01;
 const products = {
     'passe-booyah': { name: 'Passe de Elite', price: 'R$ 11,00', description: 'Passe de Elite para desbloqueio de recompensas, trajes e itens no jogo' },
     'aim-training': { name: 'XTreino - Aim Training', price: 'R$ 49,90', description: 'Sessão de 2 horas de treinamento' },
@@ -1863,15 +1865,10 @@ async function applyCoupon() {
         return;
     }
     
-    // Verificar se já existe um cupom aplicado
+    // Verificar se já existe um cupom aplicado — exigir remoção explícita antes de aplicar outro
     if (appliedCoupon) {
-        // Se é o mesmo cupom, não fazer nada
-        if (appliedCoupon.code === couponCode) {
-            showCouponMessage('Este cupom já está aplicado.', 'error');
-            return;
-        }
-        // Se é um cupom diferente, substituir o anterior
-        console.log(`🔄 Substituindo cupom ${appliedCoupon.code} por ${couponCode}`);
+        showCouponMessage('Já existe um cupom aplicado. Remova-o antes de aplicar outro.', 'error');
+        return;
     }
     
     try {
@@ -2021,11 +2018,11 @@ function updatePriceWithCoupon() {
         discountAmount = appliedCoupon.discountValue;
     }
     
-    // Garantir que o desconto não seja maior que o preço
-    discountAmount = Math.min(discountAmount, originalPrice);
-    
-    // Calcular preço final (sempre do originalPrice)
-    const finalPrice = Math.max(0, originalPrice - discountAmount);
+    // Garantir que o desconto não seja maior que o preço menos o mínimo permitido
+    discountAmount = Math.min(discountAmount, Math.max(0, originalPrice - MIN_FINAL_PAYMENT));
+
+    // Calcular preço final (sempre do originalPrice) e garantir mínimo
+    const finalPrice = Math.max(MIN_FINAL_PAYMENT, originalPrice - discountAmount);
     
     // Atualizar elementos
     subtotalEl.textContent = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -2667,8 +2664,10 @@ function updateHeroTokensSummary(){
     const summary = document.getElementById('heroTokensSummary');
     const btn = document.getElementById('heroTokensBuyBtn');
     const base = heroSelectedQty || 0;
-    const discount = heroAppliedCoupon ? (heroAppliedCoupon.discountType==='percentage' ? base*(heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue) : 0;
-    const total = Math.max(0, base - discount);
+    let discount = heroAppliedCoupon ? (heroAppliedCoupon.discountType === 'percentage' ? base * (heroAppliedCoupon.discountValue / 100) : heroAppliedCoupon.discountValue) : 0;
+    // Garantir que desconto não zere totalmente o valor (aplicar mínimo)
+    discount = Math.min(discount, Math.max(0, base - MIN_FINAL_PAYMENT));
+    const total = Math.max(MIN_FINAL_PAYMENT, base - discount);
     if (subtotalEl) subtotalEl.textContent = base.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
     if (discountRow) discountRow.style.display = heroAppliedCoupon ? '' : 'none';
     if (discountEl) discountEl.textContent = `- ${discount.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`;
@@ -2681,7 +2680,7 @@ async function heroPurchaseTokens(){
         if (!window.firebaseAuth?.currentUser){ openLoginModal(); return; }
         const qty = heroSelectedQty || 0; if (!qty){ alert('Selecione a quantidade'); return; }
         const basePrice = qty; let price = basePrice;
-        if (heroAppliedCoupon){ const d = heroAppliedCoupon.discountType==='percentage' ? basePrice*(heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue; price = Math.max(0, basePrice - d); }
+        if (heroAppliedCoupon){ const d = heroAppliedCoupon.discountType === 'percentage' ? basePrice * (heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue; const safeD = Math.min(d, Math.max(0, basePrice - MIN_FINAL_PAYMENT)); price = Math.max(MIN_FINAL_PAYMENT, basePrice - safeD); }
         // Criar ordem no Firestore para associar external_reference e permitir confirmação automática
         let externalRef;
         try {
@@ -7358,9 +7357,10 @@ function updateSchedulePriceWithCoupon() {
     } else {
         discountAmount = appliedScheduleCoupon.discountValue;
     }
-    
-    discountAmount = Math.min(discountAmount, baseTotal);
-    const finalTotal = Math.max(0, baseTotal - discountAmount);
+
+    // Nunca permitir desconto que zere o pagamento: respeitar MIN_FINAL_PAYMENT
+    discountAmount = Math.min(discountAmount, Math.max(0, baseTotal - MIN_FINAL_PAYMENT));
+    const finalTotal = Math.max(MIN_FINAL_PAYMENT, baseTotal - discountAmount);
     totalElement.textContent = `R$ ${finalTotal.toFixed(2).replace('.', ',')}`;
 }
 
