@@ -125,6 +125,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
     showToast('warning', message, title);
 };
 
+const CAMP_SEMIFINAL_DATES = ['2024-11-22','2024-11-23','2025-11-22','2025-11-23'];
+const CAMP_SEMIFINAL_LINK_CACHE_TTL = 60000;
+let campSemifinalLinksCache = { data: null, timestamp: 0 };
+
 // Função especializada para exibir erros de pagamento com tokens de forma elegante
 function showTokenPaymentError(errorCode, errorMessage, details = null) {
     // Mapeamento de mensagens amigáveis para cada código de erro
@@ -4227,18 +4231,17 @@ function openScheduleModal(eventType){
         const todayStr = `${y}-${m}-${d}`;
         // Para camp-freitas, permitir apenas 22/11 e 23/11 (semifinal)
         if (eventType === 'camp-freitas') {
-            const semifinalDates = ['2024-11-22', '2024-11-23', '2025-11-22', '2025-11-23'];
             // Definir min como a primeira data disponível que ainda não passou
-            const availableDates = semifinalDates.filter(d => d >= todayStr);
+            const availableDates = CAMP_SEMIFINAL_DATES.filter(d => d >= todayStr);
             if (availableDates.length > 0) {
                 dateInput.min = availableDates[0];
                 dateInput.max = availableDates[availableDates.length - 1];
                 dateInput.value = availableDates[0]; // Definir primeira data disponível
             } else {
                 // Se todas as datas passaram, ainda permitir selecionar (pode ser para visualização)
-                dateInput.min = semifinalDates[0];
-                dateInput.max = semifinalDates[semifinalDates.length - 1];
-                dateInput.value = semifinalDates[0];
+                dateInput.min = CAMP_SEMIFINAL_DATES[0];
+                dateInput.max = CAMP_SEMIFINAL_DATES[CAMP_SEMIFINAL_DATES.length - 1];
+                dateInput.value = CAMP_SEMIFINAL_DATES[0];
             }
             updateSelectedDate();
         } else {
@@ -4464,8 +4467,7 @@ function getEventCapacity(eventType, hourStr, dateStr){
     
     // Camp Freitas SEMIFINAL: 22/11 e 23/11 às 17h - apenas 3 vagas
     if (type === 'camp-freitas') {
-        const semifinalDates = ['2024-11-22', '2024-11-23', '2025-11-22', '2025-11-23'];
-        if (dateIso && semifinalDates.includes(dateIso) && (hour === '17h' || hour.includes('17'))) {
+        if (dateIso && CAMP_SEMIFINAL_DATES.includes(dateIso) && (hour === '17h' || hour.includes('17'))) {
             return 3; // Semifinal: apenas 3 vagas
         }
     }
@@ -4485,8 +4487,7 @@ function getEventPrice(eventType, hourStr, dateStr){
     try{
         if (type === 'camp-freitas' && dateIso){
             // Verificar se é semifinal primeiro (prioridade)
-            const semifinalDates = ['2024-11-22', '2024-11-23', '2025-11-22', '2025-11-23'];
-            if (semifinalDates.includes(dateIso) && (hour === '17h' || hour.includes('17'))) {
+            if (CAMP_SEMIFINAL_DATES.includes(dateIso) && (hour === '17h' || hour.includes('17'))) {
                 return 60.00; // Semifinal: R$ 60,00
             }
             // Camp Freitas PROMO: dias específicos (oitavas)
@@ -4514,9 +4515,8 @@ function isValidScheduleDate(dateStr, eventType){
     // Regras específicas por evento
     if (eventType === 'camp-freitas') {
         // Camp de Fases: apenas datas da semifinal (22/11 e 23/11)
-        const semifinalDates = ['2024-11-22', '2024-11-23', '2025-11-22', '2025-11-23'];
         const dateIso = dateStr || '';
-        if (semifinalDates.includes(dateIso)) {
+        if (CAMP_SEMIFINAL_DATES.includes(dateIso)) {
             // Semifinal: permitir mesmo que não seja hoje
             return date >= today;
         }
@@ -4564,15 +4564,8 @@ async function renderScheduleTimes(){
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'camp-freitas') {
         // Camp Freitas: Oitavas esgotadas - apenas Semifinal disponível
-        const isSemifinal = date === '2024-11-22' || date === '2024-11-23' || date === '2025-11-22' || date === '2025-11-23';
-        
-        if (isSemifinal) {
-            // Semifinal: 22/11 e 23/11 às 17h - apenas 3 vagas
-            slots = ['17h'];
-        } else {
-            // Oitavas esgotadas - não mostrar nenhum horário
-            slots = [];
-        }
+        const isSemifinal = CAMP_SEMIFINAL_DATES.includes(date);
+        slots = isSemifinal ? ['17h'] : [];
     } else if (eventType === 'semanal-freitas') {
         // Semanal Freitas: 19h, 20h, 21h, 22h
         slots = ['19h','20h','21h','22h'];
@@ -5903,6 +5896,7 @@ async function submitSchedule(e, useTokens=false){
                         try {
                             const hour = (schedule.split(' - ')[1]||'').trim();
                             const price = Number(getEventPrice(eventType, hour, d) || 0);
+                            const whatsappLink = await getWhatsAppLink(eventType, hour, d);
                             
                             // Validar preço
                             if (isNaN(price) || price <= 0) {
@@ -5922,6 +5916,8 @@ async function submitSchedule(e, useTokens=false){
                                 status:'pending',
                                 createdAt: serverTimestamp(),
                                 external_reference: externalRef,
+                                whatsappLink: whatsappLink || null,
+                                groupLink: whatsappLink || null,
                                 // Incluir affiliateId do cupom se houver
                                 affiliateCode: appliedScheduleCoupon?.affiliateId || null
                             });
@@ -6820,8 +6816,35 @@ async function useTokensForEvent(eventType){
     }
 }
 
+async function loadCampSemifinalLinksFromFirestore() {
+  if (!window.firebaseDb) return {};
+  if (campSemifinalLinksCache.data && (Date.now() - campSemifinalLinksCache.timestamp) < CAMP_SEMIFINAL_LINK_CACHE_TTL) {
+    return campSemifinalLinksCache.data;
+  }
+  try{
+    const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const snap = await getDocs(collection(window.firebaseDb, 'camp_semifinal_links'));
+    const data = {};
+    snap.forEach(doc => { data[doc.id] = doc.data(); });
+    campSemifinalLinksCache = { data, timestamp: Date.now() };
+    return data;
+  } catch (error) {
+    console.error('❌ Erro ao carregar links das semifinais do Camp:', error);
+    return campSemifinalLinksCache.data || {};
+  }
+}
+
+async function getCampSemifinalLinkByDate(date) {
+  if (!date) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  if (!normalized || !CAMP_SEMIFINAL_DATES.includes(normalized)) return null;
+  const map = await loadCampSemifinalLinksFromFirestore();
+  const entry = map[normalized];
+  return entry?.link || entry?.url || null;
+}
+
 // Função para obter link do WhatsApp dinamicamente
-async function getWhatsAppLink(eventType, schedule = null) {
+async function getWhatsAppLink(eventType, schedule = null, date = null) {
   try {
     const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     
@@ -6850,6 +6873,14 @@ async function getWhatsAppLink(eventType, schedule = null) {
       type.replace('camp-freitas', 'camp freitas'),
     ])).filter(Boolean);
     const generalScheduleAliases = [null, '', 'geral', 'general', 'todos', 'all'];
+
+    const normalizedDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : null;
+    if (type === 'camp-freitas' && normalizedDate && CAMP_SEMIFINAL_DATES.includes(normalizedDate)) {
+      const semifinalLink = await getCampSemifinalLinkByDate(normalizedDate);
+      if (semifinalLink) {
+        return semifinalLink;
+      }
+    }
     
     // Primeiro, tentar encontrar link específico para o horário (testando aliases)
     if (hour) {
@@ -6975,7 +7006,7 @@ async function createTokenSchedule(eventType, cost) {
         }catch(_){}
         
         // Obter link do WhatsApp dinamicamente do Firestore
-        const whatsappLink = await getWhatsAppLink(eventType, schedule);
+        const whatsappLink = await getWhatsAppLink(eventType, schedule, date);
         
         const scheduleData = {
             teamName: team,
@@ -6992,6 +7023,7 @@ async function createTokenSchedule(eventType, cost) {
             eventName: eventNames[eventType],
             title: eventNames[eventType], // Campo para compatibilidade
             whatsappLink: whatsappLink,
+            groupLink: whatsappLink || null,
             userId: window.firebaseAuth.currentUser?.uid,
             uid: window.firebaseAuth.currentUser?.uid,
             createdAt: new Date(),

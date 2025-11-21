@@ -25,8 +25,25 @@ try {
   }
 } catch (_) {}
 
+const CAMP_SEMIFINAL_DATES = ['2024-11-22','2024-11-23','2025-11-22','2025-11-23'];
+
+async function getCampSemifinalLinkByDate(date) {
+    if (!date || !CAMP_SEMIFINAL_DATES.includes(date)) return null;
+    try {
+        const db = admin.firestore();
+        const snap = await db.collection('camp_semifinal_links').doc(date).get();
+        if (snap.exists) {
+            const data = snap.data() || {};
+            return data.link || data.url || null;
+        }
+    } catch (error) {
+        console.error('Erro ao buscar link da semifinal do Camp:', error);
+    }
+    return null;
+}
+
 // Função para obter link do WhatsApp do Firestore
-async function getWhatsAppLinkForRegistration(eventType, schedule) {
+async function getWhatsAppLinkForRegistration(eventType, schedule, date = null) {
     try {
         const db = admin.firestore();
         const whatsappLinksRef = db.collection('whatsapp_links');
@@ -51,6 +68,14 @@ async function getWhatsAppLinkForRegistration(eventType, schedule) {
         
         const type = normalizeType(eventType);
         const hour = normalizeHour(schedule);
+        const normalizedDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : null;
+        
+        if (type === 'camp-freitas' && normalizedDate && CAMP_SEMIFINAL_DATES.includes(normalizedDate)) {
+            const semifinalLink = await getCampSemifinalLinkByDate(normalizedDate);
+            if (semifinalLink) {
+                return semifinalLink;
+            }
+        }
         
         // Buscar link específico para o horário
         if (hour) {
@@ -634,7 +659,8 @@ exports.handler = async (event, context) => {
                                     try {
                                         const whatsappLink = await getWhatsAppLinkForRegistration(
                                             regData.eventType || regData.event_type,
-                                            regData.schedule || regData.hour
+                                            regData.schedule || regData.hour,
+                                            regData.date || null
                                         );
                                         if (whatsappLink) {
                                             updateData.groupLink = whatsappLink;

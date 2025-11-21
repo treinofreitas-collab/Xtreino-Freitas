@@ -1,5 +1,8 @@
 // ==================== TOAST NOTIFICATION SYSTEM ====================
 let confirmResolve = null;
+const CAMP_SEMIFINAL_DATES = ['2024-11-22','2024-11-23','2025-11-22','2025-11-23'];
+let campSemifinalLinks = {};
+let campSemifinalLinksLoaded = false;
 
 function showToast(type, message, title = null, duration = 5000) {
     const container = document.getElementById('toastContainer');
@@ -2800,6 +2803,120 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Carrega quadro de horários por data/evento
+  async function loadCampSemifinalLinks(force = false) {
+    try{
+      if (!window.firebaseDb) return {};
+      if (campSemifinalLinksLoaded && !force) return campSemifinalLinks;
+      const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      const ref = collection(window.firebaseDb, 'camp_semifinal_links');
+      const snap = await getDocs(ref);
+      campSemifinalLinks = {};
+      snap.forEach(doc => {
+        const data = doc.data() || {};
+        campSemifinalLinks[doc.id] = data;
+      });
+      campSemifinalLinksLoaded = true;
+      return campSemifinalLinks;
+    }catch(error){
+      console.error('❌ Erro ao carregar links das semifinais do Camp:', error);
+      return campSemifinalLinks;
+    }
+  }
+
+  function renderCampSemifinalLinksPanel(selectedDate = null) {
+    const panel = document.getElementById('campSemifinalLinksPanel');
+    const list = document.getElementById('campSemifinalLinksList');
+    if (!panel || !list) return;
+    const normalizedDate = (selectedDate && /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) ? selectedDate : null;
+    const year = normalizedDate ? normalizedDate.slice(0,4) : null;
+    const relevantDates = year ? CAMP_SEMIFINAL_DATES.filter(d => d.startsWith(year)) : [];
+
+    if (!normalizedDate || !relevantDates.includes(normalizedDate)) {
+      panel.classList.add('hidden');
+      list.innerHTML = '';
+      return;
+    }
+
+    panel.classList.remove('hidden');
+    list.innerHTML = '';
+
+    relevantDates.forEach((dateValue, index) => {
+      const linkData = campSemifinalLinks[dateValue] || {};
+      const linkValue = linkData.link || '';
+      const fmt = new Date(`${dateValue}T00:00:00`);
+      const dateLabel = fmt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' });
+      const suffix = index === 0 ? '(Link 1)' : '(Link 2)';
+      const card = document.createElement('div');
+      card.className = 'bg-white border border-red-200 rounded-lg p-4 shadow-sm';
+      const escapedValue = linkValue ? linkValue.replace(/"/g,'&quot;') : '';
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold text-red-700">${dateLabel} • 17h ${suffix}</p>
+            <p class="text-xs text-gray-500">Cole o link do grupo onde enviará ID e senha da sala.</p>
+          </div>
+        </div>
+        <div class="mt-3 space-y-2">
+          <input data-camp-link-input="${dateValue}" type="url" value="${escapedValue}" placeholder="https://chat.whatsapp.com/..." class="w-full border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300" />
+          <div class="flex items-center gap-2">
+            <button data-save-camp-link="${dateValue}" class="px-3 py-2 bg-red-600 text-white rounded text-xs font-semibold hover:bg-red-700">Salvar link</button>
+            <span id="campSemifinalStatus-${dateValue}" class="text-xs ${linkValue ? 'text-green-700' : 'text-gray-500'}">
+              ${linkValue ? 'Link ativo' : 'Nenhum link cadastrado'}
+            </span>
+          </div>
+        </div>
+      `;
+      list.appendChild(card);
+    });
+  }
+
+  async function saveCampSemifinalLink(dateValue) {
+    try{
+      if (!window.firebaseDb) {
+        showNotification('Firebase não inicializado ainda', 'error');
+        return;
+      }
+      const input = document.querySelector(`[data-camp-link-input="${dateValue}"]`);
+      if (!input) return;
+      const link = input.value.trim();
+      const { doc, setDoc, collection, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      const ref = doc(collection(window.firebaseDb, 'camp_semifinal_links'), dateValue);
+      await setDoc(ref, {
+        date: dateValue,
+        hour: '17h',
+        link,
+        status: link ? 'active' : 'inactive',
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      showNotification('Link atualizado com sucesso!', 'success');
+      await loadCampSemifinalLinks(true);
+      renderCampSemifinalLinksPanel(dateValue);
+    }catch(error){
+      console.error('❌ Erro ao salvar link da semifinal do Camp:', error);
+      showNotification('Erro ao salvar link da semifinal', 'error');
+    }
+  }
+
+  (function(){
+    const panel = document.getElementById('campSemifinalLinksPanel');
+    if (panel) {
+      panel.addEventListener('click', async (event)=>{
+        const btn = event.target.closest('[data-save-camp-link]');
+        if (!btn) return;
+        const dateValue = btn.getAttribute('data-save-camp-link');
+        await saveCampSemifinalLink(dateValue);
+      });
+    }
+    const refreshBtn = document.getElementById('campSemifinalLinksRefresh');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async ()=>{
+        await loadCampSemifinalLinks(true);
+        const dateValue = document.getElementById('boardDate')?.value || null;
+        renderCampSemifinalLinksPanel(dateValue);
+      });
+    }
+  })();
+
   async function loadBoard(){
     try{
       const dateEl = document.getElementById('boardDate');
@@ -2830,8 +2947,19 @@ window.showWarningToast = function(message, title = 'Atenção') {
         return Array.from(new Set(base.filter(v=>v!==undefined)));
       };
       const ovEventType = canonicalType(eventType);
+      const isCampSemifinalDate = CAMP_SEMIFINAL_DATES.includes(date);
       tbody.innerHTML = '';
-      if (!date) return;
+      if (!date) {
+        renderCampSemifinalLinksPanel(null);
+        return;
+      }
+      
+      if (ovEventType === 'camp-freitas') {
+        await loadCampSemifinalLinks();
+        renderCampSemifinalLinksPanel(date);
+      } else {
+        renderCampSemifinalLinksPanel(null);
+      }
       
       // Staff: Ocultar botão "Destravar tudo do dia"
       if (window.adminRoleLower === 'staff' && btnClearLocks) {
@@ -2896,6 +3024,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
         if (ev === 'liga' || ev.includes('modo-liga') || ev.includes('modo liga')) return 15;
         // Semanal Freitas 22:00 = 4 vagas
         if (ev.includes('semanal') && String(hourStr||'').startsWith('22')) return 4;
+        if (ev.includes('camp') && isCampSemifinalDate) {
+          const hourOnly = String(hourStr||'').match(/(\d{1,2})/);
+          const hourNum = hourOnly ? parseInt(hourOnly[1], 10) : null;
+          if (hourNum === 17) return 3;
+        }
         // Demais: 12
         return 12;
       };
@@ -2905,8 +3038,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
         defaultHours = ['14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'];
         capacity = 15; // Modo Liga: 15 vagas
       } else if (ev.includes('camp')) {
-        // Camp Freitas: incluir 19:00 também
-        defaultHours = ['19:00','20:00','21:00','22:00','23:00'];
+        if (isCampSemifinalDate) {
+          defaultHours = ['17:00'];
+        } else {
+          // Oitavas esgotadas - ocultar horários não disponíveis
+          defaultHours = [];
+        }
       } else if (ev.includes('semanal')) {
         // 1ª fase 20h e 21h; final às 22h
         defaultHours = ['20:00','21:00','22:00'];

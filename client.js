@@ -1006,7 +1006,7 @@ async function getWhatsAppLinkForOrder(order) {
         if (window.getWhatsAppLink) {
             console.log('🔍 Buscando link no admin...');
             try {
-                const adminLink = await window.getWhatsAppLink(order.eventType, order.schedule);
+                const adminLink = await window.getWhatsAppLink(order.eventType, order.schedule, order.date || null);
                 console.log('🔍 Link encontrado no admin:', adminLink);
                 
                 if (adminLink && adminLink !== 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO' && adminLink !== 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS') {
