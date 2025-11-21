@@ -6338,7 +6338,9 @@ async function loadPermissionsUsers() {
         id: doc.id,
         email: userData.email || 'N/A',
         displayName: userData.displayName || userData.name || 'N/A',
-        role: userData.role || 'user',
+          role: userData.role || 'user',
+          // secondary affiliate flag/profile support
+          affiliate: !!(userData.affiliate) || !!(userData.affiliateStatus),
         lastLogin: userData.lastLoginAt ? userData.lastLoginAt.toDate() : null
       });
     });
@@ -6431,6 +6433,12 @@ function renderPermissionsTable() {
         <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">${getRoleDisplayName(user.role)}</span>
       </td>
       <td class="py-3 px-2">
+        <label class="inline-flex items-center gap-2">
+          <input type="checkbox" class="affiliate-checkbox" data-user-id="${user.id}" ${user.affiliate ? 'checked' : ''} ${!(['ceo','gerente','admin'].includes(currentUserRole)) ? 'disabled' : ''} onchange="updatePermissionsAffiliate('${user.id}')">
+          <span class="text-xs text-gray-700">Afiliado</span>
+        </label>
+      </td>
+      <td class="py-3 px-2">
         <select class="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
                 data-user-id="${user.id}" data-current-role="${user.role}" ${!canEdit ? 'disabled' : ''}>
           ${getRoleOptions(user.role)}
@@ -6454,6 +6462,47 @@ function renderPermissionsTable() {
       </td>
     </tr>
   `).join('');
+}
+
+// Update affiliate flag for a user
+async function updatePermissionsAffiliate(userId) {
+  try {
+    const checkbox = document.querySelector(`input.affiliate-checkbox[data-user-id="${userId}"]`);
+    if (!checkbox) return;
+    const newVal = !!checkbox.checked;
+
+    // Disable checkbox while updating
+    checkbox.disabled = true;
+
+    const { updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const userRef = doc(window.firebaseDb, 'users', userId);
+
+    // If marking as affiliate, set affiliateStatus active if not present
+    const updatePayload = { affiliate: newVal };
+    if (newVal) updatePayload.affiliateStatus = 'active';
+    else updatePayload.affiliateStatus = null;
+
+    await updateDoc(userRef, updatePayload);
+
+    await logAdminAction('toggle_affiliate', `${newVal ? 'Marcou' : 'Desmarcou'} afiliado para ${userId}`);
+
+    // Reflect in local cache
+    const idx = permissionsUsersData.findIndex(u => u.id === userId);
+    if (idx !== -1) permissionsUsersData[idx].affiliate = newVal;
+    // Also update filtered data if present
+    if (Array.isArray(permissionsFilteredData)) {
+      const fidx = permissionsFilteredData.findIndex(u => u.id === userId);
+      if (fidx !== -1) permissionsFilteredData[fidx].affiliate = newVal;
+    }
+
+    // Re-render current page
+    renderPermissionsTable();
+  } catch (error) {
+    console.error('Erro ao atualizar afiliado:', error);
+    alert('Erro ao atualizar afiliado');
+    // reload to recover
+    loadPermissionsUsers();
+  }
 }
 
 // Função para obter nome de exibição da função

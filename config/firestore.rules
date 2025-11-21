@@ -12,7 +12,15 @@ service cloud.firestore {
     }
     
     function isAfiliado() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['afiliado','Afiliado','AFILIADO'];
+      // Afiliado can be represented as a primary role OR as a secondary flag/profile on the user document.
+      // This allows users to be e.g. 'gerente' and also an affiliate at the same time.
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['afiliado','Afiliado','AFILIADO'] ||
+        // secondary boolean flag
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.affiliate == true) ||
+        // or legacy / detailed affiliate profile field present
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.affiliateStatus in ['active','pending','inactive'])
+      );
     }
 
     function isStaff() {
