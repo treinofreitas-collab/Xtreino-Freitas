@@ -1,6 +1,7 @@
 // ==================== TOAST NOTIFICATION SYSTEM ====================
 let confirmResolve = null;
 const CAMP_SEMIFINAL_DATES = ['2024-11-22','2024-11-23','2025-11-22','2025-11-23'];
+const CAMP_FINAL_DATES = ['2024-11-28','2025-11-28'];
 let campSemifinalLinks = {};
 let campSemifinalLinksLoaded = false;
 
@@ -823,8 +824,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
           <select class="role-select border border-gray-300 rounded px-2 py-1 text-xs" data-uid="${user.id}">
             <option value="Vendedor" ${user.role === 'Vendedor' ? 'selected' : ''}>Vendedor</option>
             <option value="Gerente" ${user.role === 'Gerente' ? 'selected' : ''}>Gerente</option>
-            <option value="Staff" ${user.role === 'Staff' ? 'selected' : ''}>Staff</option>
-            <option value="Afiliado" ${user.role === 'Afiliado' ? 'selected' : ''}>Afiliado</option>
             <option value="Ceo" ${user.role === 'Ceo' ? 'selected' : ''}>Ceo</option>
           </select>
         </td>
@@ -2931,6 +2930,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const canonicalType = (t)=>{
         const s = String(t||'').toLowerCase();
         if (s==='liga' || s.includes('modo liga')) return 'modo-liga';
+        if (s==='camp-final' || s.includes('camp final') || s.includes('vaga direto')) return 'camp-final';
         if (s==='camp' || s.includes('camp freitas')) return 'camp-freitas';
         if (s==='semanal' || s.includes('semanal freitas')) return 'semanal-freitas';
         if (s.includes('xtreino')) return 'xtreino-tokens';
@@ -2939,6 +2939,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const aliasMap = {
         'modo-liga': ['modo-liga','liga','modo liga'],
         'camp-freitas': ['camp-freitas','camp','camp freitas'],
+        'camp-final': ['camp-final','camp final','final','vaga direto','vaga final'],
         'semanal-freitas': ['semanal-freitas','semanal','semanal freitas'],
         'xtreino-tokens': ['xtreino-tokens','xtreino','xtreino tokens']
       };
@@ -2950,6 +2951,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       };
       const ovEventType = canonicalType(eventType);
       const isCampSemifinalDate = CAMP_SEMIFINAL_DATES.includes(date);
+      const isCampFinalDate = CAMP_FINAL_DATES.includes(date);
       tbody.innerHTML = '';
       if (!date) {
         renderCampSemifinalLinksPanel(null);
@@ -3024,6 +3026,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const capFor = (hourStr)=>{
         // Modo Liga sempre 15
         if (ev === 'liga' || ev.includes('modo-liga') || ev.includes('modo liga')) return 15;
+        if (ovEventType === 'camp-final' || ev.includes('camp-final')) {
+          const hourOnly = String(hourStr||'').match(/(\d{1,2})/);
+          const hourNum = hourOnly ? parseInt(hourOnly[1], 10) : null;
+          if (isCampFinalDate && hourNum === 18) return 2;
+          return 2;
+        }
         // Semanal Freitas 22:00 = 4 vagas
         if (ev.includes('semanal') && String(hourStr||'').startsWith('22')) return 4;
         if (ev.includes('camp') && isCampSemifinalDate) {
@@ -3039,6 +3047,13 @@ window.showWarningToast = function(message, title = 'Atenção') {
         // Modo Liga: 14:00 às 23:00
         defaultHours = ['14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'];
         capacity = 15; // Modo Liga: 15 vagas
+      } else if (ovEventType === 'camp-final' || ev.includes('camp-final')) {
+        if (isCampFinalDate) {
+          defaultHours = ['18:00'];
+          capacity = 2;
+        } else {
+          defaultHours = [];
+        }
       } else if (ev.includes('camp')) {
         if (isCampSemifinalDate) {
           defaultHours = ['17:00'];
@@ -6320,7 +6335,6 @@ window.filterActiveUsers = filterActiveUsers;
 let permissionsUsersData = [];
 let permissionsCurrentPage = 1;
 const permissionsPerPage = 10;
-let permissionsFilteredData = [];
 
 // Carregar usuários especificamente para o card de permissões
 async function loadPermissionsUsers() {
@@ -6338,15 +6352,11 @@ async function loadPermissionsUsers() {
         id: doc.id,
         email: userData.email || 'N/A',
         displayName: userData.displayName || userData.name || 'N/A',
-          role: userData.role || 'user',
-          // secondary affiliate flag/profile support
-          affiliate: !!(userData.affiliate) || !!(userData.affiliateStatus),
+        role: userData.role || 'user',
         lastLogin: userData.lastLoginAt ? userData.lastLoginAt.toDate() : null
       });
     });
     
-    // Inicializar dados filtrados (filtro vazio = todos)
-    permissionsFilteredData = [...permissionsUsersData];
     console.log(`✅ ${permissionsUsersData.length} usuários carregados para permissões`);
     renderPermissionsTable();
     updatePermissionsPagination();
@@ -6363,8 +6373,7 @@ function renderPermissionsTable() {
     return;
   }
   
-  // Usar dados filtrados quando existir (apoiar busca)
-  if (!Array.isArray(permissionsFilteredData) || permissionsFilteredData.length === 0) {
+  if (permissionsUsersData.length === 0) {
     tbody.innerHTML = `
       <tr>
         <td colspan="5" class="py-6 text-center text-gray-500">Nenhum usuário encontrado</td>
@@ -6372,10 +6381,10 @@ function renderPermissionsTable() {
     `;
     return;
   }
-
+  
   const startIndex = (permissionsCurrentPage - 1) * permissionsPerPage;
   const endIndex = startIndex + permissionsPerPage;
-  const usersPage = permissionsFilteredData.slice(startIndex, endIndex);
+  const usersPage = permissionsUsersData.slice(startIndex, endIndex);
   
   // Verificar se o usuário atual pode editar e quais cargos pode atribuir
   const roleFromWindow = (window.adminRoleLower || '').toLowerCase();
@@ -6389,8 +6398,6 @@ function renderPermissionsTable() {
     const allRoles = [
       { value: 'user', label: 'Usuário' },
       { value: 'vendedor', label: 'Vendedor' },
-      { value: 'staff', label: 'Staff' },
-      { value: 'afiliado', label: 'Afiliado' },
       { value: 'gerente', label: 'Gerente' },
       { value: 'design', label: 'Design' },
       { value: 'admin', label: 'Admin' },
@@ -6433,12 +6440,6 @@ function renderPermissionsTable() {
         <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">${getRoleDisplayName(user.role)}</span>
       </td>
       <td class="py-3 px-2">
-        <label class="inline-flex items-center gap-2">
-          <input type="checkbox" class="affiliate-checkbox" data-user-id="${user.id}" ${user.affiliate ? 'checked' : ''} ${!(['ceo','gerente','admin'].includes(currentUserRole)) ? 'disabled' : ''} onchange="updatePermissionsAffiliate('${user.id}')">
-          <span class="text-xs text-gray-700">Afiliado</span>
-        </label>
-      </td>
-      <td class="py-3 px-2">
         <select class="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
                 data-user-id="${user.id}" data-current-role="${user.role}" ${!canEdit ? 'disabled' : ''}>
           ${getRoleOptions(user.role)}
@@ -6464,54 +6465,11 @@ function renderPermissionsTable() {
   `).join('');
 }
 
-// Update affiliate flag for a user
-async function updatePermissionsAffiliate(userId) {
-  try {
-    const checkbox = document.querySelector(`input.affiliate-checkbox[data-user-id="${userId}"]`);
-    if (!checkbox) return;
-    const newVal = !!checkbox.checked;
-
-    // Disable checkbox while updating
-    checkbox.disabled = true;
-
-    const { updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-    const userRef = doc(window.firebaseDb, 'users', userId);
-
-    // If marking as affiliate, set affiliateStatus active if not present
-    const updatePayload = { affiliate: newVal };
-    if (newVal) updatePayload.affiliateStatus = 'active';
-    else updatePayload.affiliateStatus = null;
-
-    await updateDoc(userRef, updatePayload);
-
-    await logAdminAction('toggle_affiliate', `${newVal ? 'Marcou' : 'Desmarcou'} afiliado para ${userId}`);
-
-    // Reflect in local cache
-    const idx = permissionsUsersData.findIndex(u => u.id === userId);
-    if (idx !== -1) permissionsUsersData[idx].affiliate = newVal;
-    // Also update filtered data if present
-    if (Array.isArray(permissionsFilteredData)) {
-      const fidx = permissionsFilteredData.findIndex(u => u.id === userId);
-      if (fidx !== -1) permissionsFilteredData[fidx].affiliate = newVal;
-    }
-
-    // Re-render current page
-    renderPermissionsTable();
-  } catch (error) {
-    console.error('Erro ao atualizar afiliado:', error);
-    alert('Erro ao atualizar afiliado');
-    // reload to recover
-    loadPermissionsUsers();
-  }
-}
-
 // Função para obter nome de exibição da função
 function getRoleDisplayName(role) {
   const roleNames = {
     'user': 'Usuário',
     'vendedor': 'Vendedor',
-    'staff': 'Staff',
-    'afiliado': 'Afiliado',
     'gerente': 'Gerente',
     'design': 'Design',
     'admin': 'Admin',
@@ -6519,29 +6477,6 @@ function getRoleDisplayName(role) {
     'ceo': 'Ceo'
   };
   return roleNames[role] || role;
-}
-
-// Filtrar usuários na tabela de permissões
-function filterPermissionsUsers() {
-  const input = document.getElementById('permissionsSearchInput');
-  if (!input) return;
-  const term = input.value.toLowerCase().trim();
-
-  if (!term) {
-    permissionsFilteredData = [...permissionsUsersData];
-  } else {
-    permissionsFilteredData = permissionsUsersData.filter(u => {
-      return (u.email || '').toLowerCase().includes(term) ||
-             (u.displayName || '').toLowerCase().includes(term) ||
-             (String(u.id || '')).toLowerCase().includes(term) ||
-             (String(u.role || '')).toLowerCase().includes(term) ||
-             getRoleDisplayName(u.role).toLowerCase().includes(term);
-    });
-  }
-
-  permissionsCurrentPage = 1;
-  renderPermissionsTable();
-  updatePermissionsPagination();
 }
 
 // Atualizar função do usuário (específico para permissões)
@@ -6611,15 +6546,13 @@ async function updatePermissionsUserRole(userId) {
 
 // Atualizar paginação do card de permissões
 function updatePermissionsPagination() {
-  const totalPages = Math.ceil((permissionsFilteredData?.length || 0) / permissionsPerPage);
+  const totalPages = Math.ceil(permissionsUsersData.length / permissionsPerPage);
   const paginationContainer = document.getElementById('permissionsPagination');
   const countElement = document.getElementById('permissionsUsersCount');
   const pageInfoElement = document.getElementById('permissionsUsersPageInfo');
   
   if (countElement) {
-    const total = permissionsUsersData.length || 0;
-    const filtered = permissionsFilteredData?.length || 0;
-    countElement.textContent = filtered === total ? `${total} usuários` : `${filtered} de ${total} usuários`;
+    countElement.textContent = `${permissionsUsersData.length} usuários`;
   }
   
   if (pageInfoElement) {
@@ -7867,7 +7800,6 @@ function filterAdminHistory() {
 window.loadPermissionsUsers = loadPermissionsUsers;
 // window.listAllSalesItems removido
 window.updatePermissionsUserRole = updatePermissionsUserRole;
-window.filterPermissionsUsers = filterPermissionsUsers;
 window.changePermissionsPage = changePermissionsPage;
 window.loadTokensUsers = loadTokensUsers;
 window.addTokens = addTokens;

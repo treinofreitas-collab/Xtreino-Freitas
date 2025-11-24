@@ -1,7 +1,3 @@
-// Utilitário: retorna true se o produto é camisa
-function isShirtProduct(productId) {
-    return productId === 'camisa';
-}
 // ==================== TOAST NOTIFICATION SYSTEM ====================
 let confirmResolve = null;
 
@@ -130,8 +126,73 @@ window.showWarningToast = function(message, title = 'Atenção') {
 };
 
 const CAMP_SEMIFINAL_DATES = ['2024-11-22','2024-11-23','2025-11-22','2025-11-23'];
+const CAMP_FINAL_DATES = ['2024-11-28','2025-11-28'];
 const CAMP_SEMIFINAL_LINK_CACHE_TTL = 60000;
 let campSemifinalLinksCache = { data: null, timestamp: 0 };
+
+const AFFILIATE_REF_KEY = 'xf_affiliate_ref';
+const AFFILIATE_REF_TS_KEY = 'xf_affiliate_ref_ts';
+const AFFILIATE_REF_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+
+function captureAffiliateRefFromUrl() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const ref = params.get('ref');
+        if (ref && typeof ref === 'string' && ref.trim().length >= 6) {
+            storeAffiliateRef(ref.trim());
+            console.log('🔗 Referência de afiliado capturada:', ref);
+        }
+    } catch (error) {
+        console.warn('⚠️ Não foi possível capturar referência de afiliado:', error);
+    }
+}
+
+function storeAffiliateRef(ref) {
+    try {
+        localStorage.setItem(AFFILIATE_REF_KEY, ref);
+        localStorage.setItem(AFFILIATE_REF_TS_KEY, Date.now().toString());
+    } catch (_){}
+    try {
+        sessionStorage.setItem(AFFILIATE_REF_KEY, ref);
+        sessionStorage.setItem(AFFILIATE_REF_TS_KEY, Date.now().toString());
+    } catch (_){}
+}
+
+function clearStoredAffiliateRef() {
+    try {
+        localStorage.removeItem(AFFILIATE_REF_KEY);
+        localStorage.removeItem(AFFILIATE_REF_TS_KEY);
+    } catch (_){}
+    try {
+        sessionStorage.removeItem(AFFILIATE_REF_KEY);
+        sessionStorage.removeItem(AFFILIATE_REF_TS_KEY);
+    } catch (_){}
+}
+
+function getStoredAffiliateRef() {
+    try {
+        const ref = sessionStorage.getItem(AFFILIATE_REF_KEY) || localStorage.getItem(AFFILIATE_REF_KEY);
+        if (!ref) return null;
+        const tsStr = sessionStorage.getItem(AFFILIATE_REF_TS_KEY) || localStorage.getItem(AFFILIATE_REF_TS_KEY);
+        const ts = tsStr ? parseInt(tsStr, 10) : null;
+        if (ts && (Date.now() - ts) > AFFILIATE_REF_TTL_MS) {
+            clearStoredAffiliateRef();
+            return null;
+        }
+        return ref;
+    } catch (_){
+        return null;
+    }
+}
+
+function getActiveAffiliateCode(preferredAffiliateId = null) {
+    if (preferredAffiliateId) return preferredAffiliateId;
+    const storedRef = getStoredAffiliateRef();
+    if (!storedRef) return null;
+    const currentUid = window.currentUserProfile?.uid || window.firebaseAuth?.currentUser?.uid || null;
+    if (currentUid && storedRef === currentUid) return null; // evita auto-comissão
+    return storedRef;
+}
 
 // Função especializada para exibir erros de pagamento com tokens de forma elegante
 function showTokenPaymentError(errorCode, errorMessage, details = null) {
@@ -770,6 +831,7 @@ window.isLoggedIn = false;
 
 // Verifica se há usuário logado ao carregar a página
 document.addEventListener('DOMContentLoaded', function() {
+    captureAffiliateRefFromUrl();
     // Aguarda o Firebase estar pronto
     const checkFirebaseReady = () => {
         if (window.firebaseReady) {
@@ -1503,8 +1565,6 @@ let appliedCoupon = null;
 let appliedScheduleCoupon = null;
 let originalPrice = 0;
 let scheduleOriginalTotal = 0;
-// Valor mínimo aceitável para pagamento final (evita zerar completamente via cupom)
-const MIN_FINAL_PAYMENT = 0.01;
 const products = {
     'passe-booyah': { name: 'Passe de Elite', price: 'R$ 11,00', description: 'Passe de Elite para desbloqueio de recompensas, trajes e itens no jogo' },
     'aim-training': { name: 'XTreino - Aim Training', price: 'R$ 49,90', description: 'Sessão de 2 horas de treinamento' },
@@ -1654,12 +1714,16 @@ function showProductModal(productId){
         optContainer.appendChild(qtyWrap);
     }
 
-    // Campo de cupom apenas para eventos (ids iniciando com evt-), exceto Xtreino Tokens, e nunca para camisa
-    if (productId.startsWith('evt-') && productId !== 'evt-xtreino-gratuito' && !isShirtProduct(productId)){
+    // Campo de cupom apenas para eventos (ids iniciando com evt-), exceto Xtreino Tokens
+    console.log('🔍 Debug cupom - productId:', productId, 'startsWith evt-:', productId.startsWith('evt-'), 'is not xtreino-gratuito:', productId !== 'evt-xtreino-gratuito');
+    if (productId.startsWith('evt-') && productId !== 'evt-xtreino-gratuito'){
+        console.log('✅ Adicionando campo de cupom para:', productId);
         const cupomWrap = document.createElement('div');
         cupomWrap.className = 'mt-3';
         cupomWrap.innerHTML = '<label class="block text-sm font-medium mb-2">Cupom de desconto</label><input id="couponCode" type="text" placeholder="ADMFALL" class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none">\n<p class="text-xs text-gray-500 mt-1">Use <strong>ADMFALL</strong> para 5% de desconto.</p>';
         optContainer.appendChild(cupomWrap);
+    } else {
+        console.log('❌ NÃO adicionando campo de cupom para:', productId);
     }
 
     // Preço inicial e atualização dinâmica
@@ -1865,10 +1929,15 @@ async function applyCoupon() {
         return;
     }
     
-    // Verificar se já existe um cupom aplicado — exigir remoção explícita antes de aplicar outro
+    // Verificar se já existe um cupom aplicado
     if (appliedCoupon) {
-        showCouponMessage('Já existe um cupom aplicado. Remova-o antes de aplicar outro.', 'error');
-        return;
+        // Se é o mesmo cupom, não fazer nada
+        if (appliedCoupon.code === couponCode) {
+            showCouponMessage('Este cupom já está aplicado.', 'error');
+            return;
+        }
+        // Se é um cupom diferente, substituir o anterior
+        console.log(`🔄 Substituindo cupom ${appliedCoupon.code} por ${couponCode}`);
     }
     
     try {
@@ -2018,11 +2087,11 @@ function updatePriceWithCoupon() {
         discountAmount = appliedCoupon.discountValue;
     }
     
-    // Garantir que o desconto não seja maior que o preço menos o mínimo permitido
-    discountAmount = Math.min(discountAmount, Math.max(0, originalPrice - MIN_FINAL_PAYMENT));
-
-    // Calcular preço final (sempre do originalPrice) e garantir mínimo
-    const finalPrice = Math.max(MIN_FINAL_PAYMENT, originalPrice - discountAmount);
+    // Garantir que o desconto não seja maior que o preço
+    discountAmount = Math.min(discountAmount, originalPrice);
+    
+    // Calcular preço final (sempre do originalPrice)
+    const finalPrice = Math.max(0, originalPrice - discountAmount);
     
     // Atualizar elementos
     subtotalEl.textContent = originalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -2201,7 +2270,8 @@ async function handlePurchase(event) {
     const totalNum = Number(totalText.replace(/[^0-9,]/g,'').replace(',','.')) || 0;
     
     // Informações do cupom aplicado
-    const couponInfo = appliedCoupon ? {
+        const activeAffiliateCode = getActiveAffiliateCode(appliedCoupon?.affiliateId || null);
+        const couponInfo = appliedCoupon ? {
         code: appliedCoupon.code,
         discountType: appliedCoupon.discountType,
         discountValue: appliedCoupon.discountValue,
@@ -2291,7 +2361,7 @@ async function handlePurchase(event) {
                     timestamp: Date.now(),
                     type: 'digital_product', // Marcar como produto digital
                     // Incluir affiliateId do cupom se houver
-                    affiliateCode: appliedCoupon?.affiliateId || null
+                    affiliateCode: activeAffiliateCode || null
                 };
                 
                 console.log('🔍 Attempting to save digital product order:', orderData);
@@ -2314,47 +2384,32 @@ async function handlePurchase(event) {
             currency_id: 'BRL',
             quantity: 1,
             back_url: window.location.origin,
-            coupon_info: isShirtProduct(currentProduct) ? null : couponInfo,
+            coupon_info: couponInfo,
             external_reference: externalRef
         };
         
         console.log('🔍 Enviando requisição para create-preference:', preferencePayload);
-        // Timeout seguro para evitar travamento (especialmente iOS)
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 25000); // 25s
-        let data;
-        try {
-            const response = await fetch('/.netlify/functions/create-preference', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(preferencePayload),
-                signal: controller.signal
-            });
-            clearTimeout(timeout);
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('❌ Erro na resposta do create-preference:', errorText);
-                throw new Error(errorText || 'Erro ao criar preferência de pagamento');
-            }
-            data = await response.json();
-            console.log('✅ Preference criada:', data);
-        } catch (error) {
-            clearTimeout(timeout);
-            if (error.name === 'AbortError') {
-                showError('A operação demorou demais. Tente novamente em instantes.', 'TIMEOUT');
-            } else {
-                showError(error, 'PAYMENT_001');
-            }
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-            return;
+        
+        const response = await fetch('/.netlify/functions/create-preference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(preferencePayload)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Erro na resposta do create-preference:', errorText);
+            throw new Error(errorText || 'Erro ao criar preferência de pagamento');
         }
+        
+        const data = await response.json();
+        console.log('✅ Preference criada:', data);
+        
         // Verificar se tem init_point ou sandbox_init_point
         const checkoutUrl = data.init_point || data.sandbox_init_point;
         if (!checkoutUrl) {
             console.error('❌ Resposta inválida do create-preference:', data);
-            showError('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.', 'PAYMENT_004');
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-            return;
+            throw new Error('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.');
         }
         
         // Registrar uso do cupom se aplicado
@@ -2679,10 +2734,8 @@ function updateHeroTokensSummary(){
     const summary = document.getElementById('heroTokensSummary');
     const btn = document.getElementById('heroTokensBuyBtn');
     const base = heroSelectedQty || 0;
-    let discount = heroAppliedCoupon ? (heroAppliedCoupon.discountType === 'percentage' ? base * (heroAppliedCoupon.discountValue / 100) : heroAppliedCoupon.discountValue) : 0;
-    // Garantir que desconto não zere totalmente o valor (aplicar mínimo)
-    discount = Math.min(discount, Math.max(0, base - MIN_FINAL_PAYMENT));
-    const total = Math.max(MIN_FINAL_PAYMENT, base - discount);
+    const discount = heroAppliedCoupon ? (heroAppliedCoupon.discountType==='percentage' ? base*(heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue) : 0;
+    const total = Math.max(0, base - discount);
     if (subtotalEl) subtotalEl.textContent = base.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
     if (discountRow) discountRow.style.display = heroAppliedCoupon ? '' : 'none';
     if (discountEl) discountEl.textContent = `- ${discount.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`;
@@ -2695,7 +2748,7 @@ async function heroPurchaseTokens(){
         if (!window.firebaseAuth?.currentUser){ openLoginModal(); return; }
         const qty = heroSelectedQty || 0; if (!qty){ alert('Selecione a quantidade'); return; }
         const basePrice = qty; let price = basePrice;
-        if (heroAppliedCoupon){ const d = heroAppliedCoupon.discountType === 'percentage' ? basePrice * (heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue; const safeD = Math.min(d, Math.max(0, basePrice - MIN_FINAL_PAYMENT)); price = Math.max(MIN_FINAL_PAYMENT, basePrice - safeD); }
+        if (heroAppliedCoupon){ const d = heroAppliedCoupon.discountType==='percentage' ? basePrice*(heroAppliedCoupon.discountValue/100) : heroAppliedCoupon.discountValue; price = Math.max(0, basePrice - d); }
         // Criar ordem no Firestore para associar external_reference e permitir confirmação automática
         let externalRef;
         try {
@@ -2720,38 +2773,10 @@ async function heroPurchaseTokens(){
             console.warn('Não foi possível criar ordem local para tokens:', e);
         }
 
-        // Prepare payload with explicit couponCode/user info so backend can validate
-        const payload = {
-            title: `${qty} Token${qty>1?'s':''} XTreino`,
-            unit_price: price,
-            currency_id: 'BRL',
-            quantity: 1,
-            back_url: window.location.origin,
-            external_reference: externalRef,
-            couponCode: heroAppliedCoupon ? heroAppliedCoupon.code : undefined,
-            userId: window.firebaseAuth.currentUser?.uid || undefined,
-            customerEmail: window.firebaseAuth.currentUser?.email || undefined
-        };
-
-        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-
-        // Read response text for better diagnostics
-        const respText = await response.text();
-        let respBody = null;
-        try { respBody = respText ? JSON.parse(respText) : null; } catch(e) { respBody = respText; }
-
-        if (!response.ok) {
-            console.error('create-preference error', response.status, response.statusText, respBody);
-            const msgEl = document.getElementById('heroTokensCouponMsg') || document.getElementById('heroTokensError');
-            const serverMessage = (respBody && (respBody.message || respBody.error)) ? (respBody.message || respBody.error) : (typeof respBody === 'string' ? respBody : JSON.stringify(respBody));
-            const display = `Erro ao criar preferência (${response.status}): ${serverMessage}`;
-            if (msgEl) { msgEl.textContent = display; msgEl.className = 'text-xs text-red-600'; }
-            else alert(display);
-            return;
-        }
-
-        const data = respBody || {};
-        if (data.init_point){ try{ sessionStorage.setItem('lastCheckoutUrl', data.init_point); }catch(_){} closeHeroTokensModal(); window.location.href = data.init_point; } else { const msg = document.getElementById('heroTokensCouponMsg') || document.getElementById('heroTokensError'); const bodyText = JSON.stringify(data); if (msg) { msg.textContent = `Erro ao iniciar pagamento: ${bodyText}`; msg.className='text-xs text-red-600'; } else alert('Erro ao iniciar pagamento'); }
+        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined, external_reference: externalRef }) });
+        if (!response.ok) throw new Error('Erro');
+        const data = await response.json();
+        if (data.init_point){ try{ sessionStorage.setItem('lastCheckoutUrl', data.init_point); }catch(_){} closeHeroTokensModal(); window.location.href = data.init_point; } else { alert('Erro ao iniciar pagamento'); }
     }catch(_){ alert('Erro ao comprar tokens'); }
 }
 window.openHeroTokensModal = openHeroTokensModal;
@@ -2912,32 +2937,14 @@ function initChat() {
         chatSend.disabled = true;
         chatInput.placeholder = 'Fora do horário de atendimento';
     }
-
-    // Inicializar toggle "Mostrar histórico" (persistido em localStorage)
-    try{
-        const histToggle = document.getElementById('chatShowHistoryToggle');
-        if (histToggle) {
-            const stored = localStorage.getItem('chat.showHistory');
-            histToggle.checked = stored === '1' ? true : false;
-            histToggle.addEventListener('change', (e) => {
-                try{ localStorage.setItem('chat.showHistory', e.target.checked ? '1' : '0'); }catch(_){ }
-            });
-        }
-    }catch(_){ }
     
     // Toggle chat window
     chatToggle.addEventListener('click', () => {
         chatWindow.classList.toggle('hidden');
         if (!chatWindow.classList.contains('hidden')) {
             chatInput.focus();
-            // Decide whether to show stored history or start a fresh conversation
-            let showHistory = false;
-            try{ showHistory = localStorage.getItem('chat.showHistory') === '1'; }catch(_){ showHistory = false; }
-            if (showHistory) {
-                loadChatHistory();
-            } else {
-                startNewConversation();
-            }
+            // Carregar histórico quando abrir o chat
+            loadChatHistory();
         }
     });
     
@@ -2960,12 +2967,7 @@ function initChat() {
             const smart = await smartChatAnswer(message);
             if (smart && smart.answer){
                 showTypingIndicator();
-                (async () => {
-                    await new Promise(r => setTimeout(r, 1200));
-                    hideTypingIndicator();
-                    const personalized = await personalizeReply(smart.answer);
-                    addMessage(personalized, 'support');
-                })();
+                setTimeout(() => { hideTypingIndicator(); addMessage(smart.answer, 'support'); }, 1200);
                 return;
             }
         }catch(_){}
@@ -3185,14 +3187,12 @@ function initChat() {
             }
         }
         
-        // Mostrar indicador de "digitando..." e simular digitação com atraso de 3 segundos
+        // Mostrar indicador de "digitando..." e simular digitação com atraso de 4 segundos
         showTypingIndicator();
-        (async () => {
-            await new Promise(r => setTimeout(r, 3000));
+        setTimeout(() => {
             hideTypingIndicator();
-            const personalized = await personalizeReply(matchedReply);
-            addMessage(personalized, 'support');
-        })();
+            addMessage(matchedReply, 'support');
+        }, 3000);
     }
     
     // Event listeners
@@ -3262,45 +3262,6 @@ function hideTypingIndicator() {
 }
 
 // Adicionar mensagem ao chat
-// Simple sanitizer to prevent HTML injection (allows limited markdown links)
-function sanitizeForChat(text){
-        return String(text || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-}
-
-// Personaliza respostas substituindo placeholders simples.
-// Suporta: {name}, {firstName}, {tokens}, {balance}, {lastOrder}, {ordersCount}
-async function personalizeReply(template){
-    try{
-        if (!template) return template;
-        const profile = window.currentUserProfile || (localStorage.getItem('assoc_profile') ? JSON.parse(localStorage.getItem('assoc_profile')) : null);
-        const firstName = profile && profile.name ? String(profile.name).split(' ')[0] : '';
-        const tokens = profile && (profile.tokens !== undefined && profile.tokens !== null) ? profile.tokens : (localStorage.getItem('localTokens') ? Number(localStorage.getItem('localTokens')) : null);
-
-        // Tentativa rápida de obter último pedido local (fallback)
-        let lastOrder = null;
-        try{
-            const localOrders = localStorage.getItem('localOrders') ? JSON.parse(localStorage.getItem('localOrders')) : [];
-            if (localOrders && localOrders.length) lastOrder = localOrders[0];
-        }catch(_){ lastOrder = null; }
-
-        let result = String(template || '');
-        result = result.replace(/\{name\}/gi, firstName || 'amigo');
-        result = result.replace(/\{firstName\}/gi, firstName || 'amigo');
-        result = result.replace(/\{tokens\}/gi, (tokens !== null && tokens !== undefined) ? String(tokens) : '0');
-        result = result.replace(/\{balance\}/gi, (tokens !== null && tokens !== undefined) ? String(tokens) : '0');
-        result = result.replace(/\{lastOrder\}/gi, (lastOrder && lastOrder.title) ? lastOrder.title : 'nenhum pedido recente');
-        const localOrdersCount = (localStorage.getItem('localOrders') ? JSON.parse(localStorage.getItem('localOrders')).length : 0) || 0;
-        result = result.replace(/\{ordersCount\}/gi, String(localOrdersCount));
-
-        return result;
-    }catch(_){
-        return template;
-    }
-}
-
 function addMessage(text, sender) {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
@@ -3314,9 +3275,8 @@ function addMessage(text, sender) {
     });
     
     messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
-    // Sanitize then convert markdown links [text](url) to clickable anchors
-    const safe = sanitizeForChat(text);
-    const textWithLinks = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
+    // Converter links markdown para HTML clicável
+    const textWithLinks = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
     
     messageDiv.innerHTML = `
         <div class="${isUser ? 'bg-blue-matte text-white' : 'bg-gray-100'} rounded-lg p-3 max-w-xs">
@@ -3385,8 +3345,7 @@ function loadChatHistory() {
             });
             
             messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
-            const safeMsg = sanitizeForChat(msg.text);
-            const textWithLinks = safeMsg.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
+            const textWithLinks = msg.text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
             
             messageDiv.innerHTML = `
                 <div class="${isUser ? 'bg-blue-matte text-white' : 'bg-gray-100'} rounded-lg p-3 max-w-xs">
@@ -3404,27 +3363,11 @@ function loadChatHistory() {
     }
 }
 
-// Inicia uma conversa nova na interface do chat (não renderiza o histórico salvo)
-function startNewConversation(){
-    try{
-        const chatMessages = document.getElementById('chatMessages');
-        if (!chatMessages) return;
-        // Limpa visual
-        chatMessages.innerHTML = '';
-        // Mensagem inicial fixa (polished)
-        const greeting = 'Prazer! Eu me chamo Sexta‑Féria. Como posso ajudar você hoje? Conte rapidamente o que você precisa.';
-        // Mostrar imediatamente (com o mesmo fluxo que suporte usa)
-        addMessage(greeting, 'support');
-        // Garantir scroll
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }catch(e){ console.error('Erro ao iniciar nova conversa:', e); }
-}
-
 // Obter histórico do localStorage
 function getChatHistory() {
     try {
-        // Mensagem inicial fixa (polished)
-        const greeting = 'Prazer! Eu me chamo Agente F. Como posso ajudar você hoje? Conte rapidamente o que você precisa.';
+        const stored = localStorage.getItem('chatHistory');
+        return stored ? JSON.parse(stored) : [];
     } catch (e) {
         return [];
     }
@@ -3432,84 +3375,6 @@ function getChatHistory() {
 
 // Limpar histórico do chat
 function clearChatHistory() {
-// Agente identity constants
-const AGENT_NAME = 'Agente F';
-const AGENT_NAME_EXPLANATION = "O 'F' é de Freitas. Sou o Agente oficial da Organização, programado para garantir que seu atendimento tenha o mesmo padrão de qualidade dos nossos serviços.";
-
-// Melhor versão de smartChatAnswer: regras mais completas para tipos comuns de perguntas
-async function smartChatAnswer(userText){
-    try{
-        if(!userText || !userText.trim()) return null;
-        const text = userText.toLowerCase();
-
-        // Resposta direta se perguntarem o nome
-        if(/\b(nome|como se chama|quem é você|quem é voce|qual seu nome|qual é seu nome)\b/.test(text)){
-            return AGENT_NAME_EXPLANATION;
-        }
-
-        // Saudações
-        if(/\b(oi|olá|ola|bom dia|boa tarde|boa noite|e aí|ei)\b/.test(text)){
-            return `${AGENT_NAME} aqui — prazer! Em que posso ajudar você agora? Se preferir, diga o número do pedido ou descreva o produto.`;
-        }
-
-        // Perguntas sobre frete/entrega
-        if(/\b(entrega|frete|prazo|rastreio|rastrear|envio|encomenda)\b/.test(text)){
-            return 'Posso checar o status do envio se você me informar o número do pedido. Quer que eu verifique agora?';
-        }
-
-        // Pagamento
-        if(/\b(pagamento|pagar|cartão|cartao|pix|boleto|parcelas|fatura)\b/.test(text)){
-            return 'Aceitamos PIX, cartão e boleto. Se tiver um erro no pagamento, me diga qual o problema (ex: cartão recusado, erro 3DS) que eu orientarei o próximo passo.';
-        }
-
-        // Troca/Devolução/Reembolso
-        if(/\b(troca|devolução|devolucao|reembolso|trocar|devolver)\b/.test(text)){
-            return 'Para trocas e devoluções, precisamos do número do pedido e do motivo. Quer que eu inicie o processo ou eu te explico as etapas?';
-        }
-
-        // Disponibilidade / estoque
-        if(/\b(estoque|disponível|disponivel|tem em estoque|tem stock|quantidade)\b/.test(text)){
-            return 'Me diga o nome ou código do produto que eu confirmo a disponibilidade pra você. Se estiver sem estoque, eu posso avisar quando chegar.';
-        }
-
-        // Status de pedido
-        if(/\b(pedido|minha ordem|minha compra|rastreio|status do pedido|status pedido)\b/.test(text)){
-            return 'Informe o número do pedido (ex: `#12345`) que eu verifico o status e te retorno o rastreamento.';
-        }
-
-        // Conta / senha / login
-        if(/\b(senha|login|entrar|acessar|conta|cadastro)\b/.test(text)){
-            return 'Se estiver com problema no acesso, verifique se está usando o e-mail correto e se precisa redefinir a senha. Deseja que eu envie instruções para redefinir a senha?';
-        }
-
-        // Horário / contato humano
-        if(/\b(horário|horario|atendimento|contato|telefone|email)\b/.test(text)){
-            return 'Nosso atendimento funciona de segunda a sexta, das 9h às 18h. Quer que eu passe seu contato para um atendente humano?';
-        }
-
-        // Promoções / cupom
-        if(/\b(cupom|promoção|promocao|desconto|promo)\b/.test(text)){
-            return 'Se você tem um cupom, me informe o código e eu verifico se ele é válido e aplicável ao seu carrinho.';
-        }
-
-        // Cancelamento
-        if(/\b(cancelar|cancelamento|cancelada|cancelado)\b/.test(text)){
-            return 'Posso tentar cancelar seu pedido se ele ainda não tiver sido faturado/expedido. Me informe o número do pedido para eu checar.';
-        }
-
-        // Ajuda técnica / erro no site
-        if(/\b(erro|bug|problema|falha|não abre|nao abre)\b/.test(text)){
-            return 'Sinto muito pelo inconveniente. Pode descrever o que aconteceu (mensagem de erro, passo a passo)? Vou orientar com soluções rápidas.';
-        }
-
-        // Small talk / fallback — tente ser útil e ofereça opções
-        // Pergunte se o usuário quer: checar pedido, falar com humano, ver produtos, ou instruções de pagamento
-        return 'Posso ajudar com pedidos, pagamentos, entregas, trocas e informações sobre produtos. O que você prefere: 1) Ver status do pedido 2) Informação sobre produto 3) Ajuda com pagamento 4) Falar com atendente humano? Responda com o número ou descreva seu pedido.';
-    }catch(err){
-        console.error('smartChatAnswer erro:', err);
-        return null;
-    }
-}
     showConfirm('Limpar Histórico', 'Deseja limpar todo o histórico de conversas? Esta ação não pode ser desfeita.', 'Limpar', 'Cancelar').then((confirmed) => {
         if (confirmed) {
             localStorage.removeItem('chatHistory');
@@ -3969,7 +3834,8 @@ window.initSmoothAnimations = initSmoothAnimations;
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 60.00 },
+    'camp-freitas': { label: 'Camp Freitas', price: 25.00 },
+    'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
     // Produtos da loja virtual
@@ -4448,6 +4314,18 @@ function openScheduleModal(eventType){
                 dateInput.value = CAMP_SEMIFINAL_DATES[0];
             }
             updateSelectedDate();
+        } else if (eventType === 'camp-final') {
+            const availableDates = CAMP_FINAL_DATES.filter(d => d >= todayStr);
+            if (availableDates.length > 0) {
+                dateInput.min = availableDates[0];
+                dateInput.max = availableDates[availableDates.length - 1];
+                dateInput.value = availableDates[0];
+            } else {
+                dateInput.min = CAMP_FINAL_DATES[0];
+                dateInput.max = CAMP_FINAL_DATES[CAMP_FINAL_DATES.length - 1];
+                dateInput.value = CAMP_FINAL_DATES[0];
+            }
+            updateSelectedDate();
         } else {
             // Para outros eventos, permitir de hoje em diante
             dateInput.min = todayStr;
@@ -4669,6 +4547,9 @@ function getEventCapacity(eventType, hourStr, dateStr){
     // Modo liga: 15
     if (type === 'modo-liga') return 15;
     
+    // Camp Final: apenas 2 vagas fixas
+    if (type === 'camp-final') return 2;
+    
     // Semanal Freitas 22h: capacidade 4
     if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 4;
     
@@ -4690,6 +4571,7 @@ function getEventPrice(eventType, hourStr, dateStr){
     const dateIso = dateStr || (document.getElementById('schedDate')?.value || null);
     // Semanal Freitas 22h: R$ 7,00 (vaga direto na final)
     if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 7.00;
+    if (type === 'camp-final') return 100.00;
     // Camp Freitas SEMIFINAL: 22/11 e 23/11 às 17h - R$ 60,00
     try{
         if (type === 'camp-freitas' && dateIso){
@@ -4729,6 +4611,12 @@ function isValidScheduleDate(dateStr, eventType){
         }
         // Oitavas esgotadas - não permitir outras datas
         return false;
+    } else if (eventType === 'camp-final') {
+        const dateIso = dateStr || '';
+        if (CAMP_FINAL_DATES.includes(dateIso)) {
+            return date >= today;
+        }
+        return false;
     }
     
     // Não pode ser no passado (padrão)
@@ -4750,9 +4638,12 @@ async function renderScheduleTimes(){
     
     // Valida data antes de renderizar
     if (!isValidScheduleDate(date, eventType)){
-        const msg = (eventType === 'camp-freitas')
-            ? 'Para o Campeonato de Fases, apenas as datas 22/11 e 23/11 estão disponíveis para compra (Semifinal às 17h - R$ 60,00).'
-            : 'Agendamentos apenas de segunda a sexta-feira e não em datas passadas.';
+        let msg = 'Agendamentos apenas de segunda a sexta-feira e não em datas passadas.';
+        if (eventType === 'camp-freitas') {
+            msg = 'Camp Freitas (Semifinal) disponível somente em 22/11 e 23/11 às 17h.';
+        } else if (eventType === 'camp-final') {
+            msg = 'Vaga Direto na Final disponível apenas em 28/11 às 18h.';
+        }
         timesWrap.innerHTML = `<p class="text-red-500 text-center py-4">${msg}</p>`;
         return;
     }
@@ -4773,6 +4664,9 @@ async function renderScheduleTimes(){
         // Camp Freitas: Oitavas esgotadas - apenas Semifinal disponível
         const isSemifinal = CAMP_SEMIFINAL_DATES.includes(date);
         slots = isSemifinal ? ['17h'] : [];
+    } else if (eventType === 'camp-final') {
+        const isFinal = CAMP_FINAL_DATES.includes(date);
+        slots = isFinal ? ['18h'] : [];
     } else if (eventType === 'semanal-freitas') {
         // Semanal Freitas: 19h, 20h, 21h, 22h
         slots = ['19h','20h','21h','22h'];
@@ -5756,7 +5650,7 @@ async function handleProductPurchaseWithTokens(productId, cfg){
             timestamp: Date.now(),
             type: 'digital_product',
             // Incluir affiliateId do cupom se houver
-            affiliateCode: appliedScheduleCoupon?.affiliateId || null
+            affiliateCode: getActiveAffiliateCode(appliedScheduleCoupon?.affiliateId || null)
         };
         // Firestore não aceita campos undefined. Adicionar shippingStatus apenas quando aplicável
         if (productId === 'camisa') {
@@ -6133,7 +6027,7 @@ async function submitSchedule(e, useTokens=false){
                                 whatsappLink: whatsappLink || null,
                                 groupLink: whatsappLink || null,
                                 // Incluir affiliateId do cupom se houver
-                                affiliateCode: appliedScheduleCoupon?.affiliateId || null
+                                affiliateCode: getActiveAffiliateCode(appliedScheduleCoupon?.affiliateId || null)
                             });
                             regIds.push(docRef.id);
                         } catch (docError) {
@@ -6642,39 +6536,31 @@ async function submitSchedule(e, useTokens=false){
         return;
     }
     
-    // Use AbortController to avoid hanging indefinitely on slow/failed network or function
-    try {
-        const controller = new AbortController();
-        const timeoutMs = 25000; // 25s timeout
-        const timeout = setTimeout(()=> controller.abort(), timeoutMs);
-
-        const response = await fetch('/.netlify/functions/create-preference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`,
-                unit_price: finalPrice,
-                currency_id: 'BRL',
-                quantity: 1,
-                back_url: window.location.origin,
-                coupon_info: couponInfo,
-                multiple_reservations: {
-                    teams: teams.map(t => t.name || 'Time sem nome'),
-                    schedules: selectedTimes,
-                    dates: datesToUse2,
-                    eventType: eventType
-                },
-                external_reference: externalRef
-            }),
-            signal: controller.signal
-        });
-        clearTimeout(timeout);
-
-        if (!response.ok) {
-            const text = await response.text().catch(()=>null);
-            throw new Error(text || `Erro na função de pagamento (status ${response.status})`);
-        }
-        const data = await response.json();
+    fetch('/.netlify/functions/create-preference',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ 
+            title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`, 
+            unit_price: finalPrice, 
+            currency_id:'BRL', 
+            quantity: 1, // Mudamos para 1 pois já calculamos o preço total
+            back_url: window.location.origin,
+            coupon_info: couponInfo,
+            multiple_reservations: {
+                teams: teams.map(t => t.name || 'Time sem nome'),
+                schedules: selectedTimes,
+                dates: datesToUse2,
+                eventType: eventType
+            },
+            external_reference: externalRef
+        })
+    }).then(async res=>{ 
+        if(!res.ok){ 
+            const t = await res.text(); 
+            throw new Error(t || 'Erro na função de pagamento'); 
+        } 
+        return res.json(); 
+    })
+    .then(async data=>{
         closeScheduleModal();
         // Salvar external_reference para verificação posterior
         if (data.external_reference) {
@@ -6710,16 +6596,11 @@ async function submitSchedule(e, useTokens=false){
         
         const url = data.init_point || data.sandbox_init_point; // prioriza produção
         if (url) { try{ sessionStorage.setItem('lastCheckoutUrl', url);}catch(_){} window.location.href = url; } else { alert('Não foi possível iniciar o pagamento.'); }
-    } catch (err) {
-        console.error('❌ Erro no checkout (create-preference):', err);
-        // Diferenciar timeout de abort
-        if (err && err.name === 'AbortError') {
-            alert('Tempo de resposta do servidor esgotado. Por favor, verifique sua conexão e tente novamente.');
-        } else {
-            alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : 'Por favor, tente novamente.'));
-        }
+    }).catch((err)=> { 
+        console.error('❌ Erro no checkout:', err);
+        alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : 'Por favor, tente novamente.'));
         if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
-    }
+    });
     
     } catch (error) {
         // ERR_TKN_011: Captura qualquer erro não tratado na função
@@ -7573,10 +7454,9 @@ function updateSchedulePriceWithCoupon() {
     } else {
         discountAmount = appliedScheduleCoupon.discountValue;
     }
-
-    // Nunca permitir desconto que zere o pagamento: respeitar MIN_FINAL_PAYMENT
-    discountAmount = Math.min(discountAmount, Math.max(0, baseTotal - MIN_FINAL_PAYMENT));
-    const finalTotal = Math.max(MIN_FINAL_PAYMENT, baseTotal - discountAmount);
+    
+    discountAmount = Math.min(discountAmount, baseTotal);
+    const finalTotal = Math.max(0, baseTotal - discountAmount);
     totalElement.textContent = `R$ ${finalTotal.toFixed(2).replace('.', ',')}`;
 }
 
