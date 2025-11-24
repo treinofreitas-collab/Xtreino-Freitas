@@ -346,6 +346,11 @@ async function generateDownloadLinks(productId, productOptions = {}) {
                         name: 'Planilhas de Análise',
                         url: `${siteBase}/${enc}`,
                         description: 'Planilhas para coachs e analistas'
+                    },
+                    {
+                        name: 'Aula explicativa (vídeo)',
+                        url: 'https://drive.google.com/file/d/19TC8j7NSlpvpV3KtkEH9Q5Gr-ZH9RU_a/view',
+                        description: 'Passo a passo completo para usar a planilha'
                     }
                 ];
             }
@@ -537,92 +542,104 @@ exports.handler = async (event, context) => {
                     if (!ordersSnapshot.empty) {
                         const orderDoc = ordersSnapshot.docs[0];
                         const orderData = orderDoc.data();
-
-                        // If already processed, skip to avoid double-processing
-                        if (orderData && orderData.status === 'paid') {
-                            console.log('Order already marked as paid, skipping processing for:', orderDoc.id);
-                        } else {
-                            // Atualizar status para 'paid'
-                            await orderDoc.ref.update({
-                                status: 'paid',
-                                paymentId: payment.id,
-                                paymentStatus: 'approved',
-                                paidAt: admin.firestore.FieldValue.serverTimestamp()
-                            });
-
-                            console.log('Order updated to paid:', orderDoc.id);
-
-                            // Criar venda de afiliado se houver código de afiliado
-                            const orderDataWithId = { ...orderData, id: orderDoc.id };
-                            await createAffiliateSale(db, orderDataWithId, orderData.type === 'digital_product' ? 'product' : 'event');
-
-                            // Detect token purchases more robustly: by order type OR by description
-                            const isTokensPurchase = (orderData && (orderData.type === 'tokens_purchase' || orderData.type === 'tokens'))
-                                || (payment.description && String(payment.description).toLowerCase().includes('token'));
-
-                            if (isTokensPurchase) {
-                                console.log('This is a token purchase! Processing...');
-                                const userId = orderData.userId || orderData.uid;
-                                const customerEmail = orderData.customer || orderData.buyerEmail;
-
-                                // Determine tokens to add: prefer explicit field, fallback to quantity or description
-                                let tokensToAdd = orderData.tokens || orderData.tokensQty || orderData.quantity || null;
-                                if (!tokensToAdd) tokensToAdd = parseInt(String(payment.description || '').match(/\d+/)?.[0] || '1');
-                                tokensToAdd = Number(tokensToAdd) || 1;
-
-                                // First try by email
-                                if (customerEmail) {
-                                    console.log('Looking up user by email:', customerEmail);
-                                    const usersSnapshot = await db.collection('users').where('email', '==', customerEmail).get();
-                                    if (!usersSnapshot.empty) {
-                                        const userDoc = usersSnapshot.docs[0];
-                                        const currentTokens = Number(userDoc.data().tokens || 0);
-                                        await userDoc.ref.update({ tokens: currentTokens + tokensToAdd });
-                                        console.log(`✅ Added ${tokensToAdd} tokens to user ${customerEmail}. New balance: ${currentTokens + tokensToAdd}`);
-                                    } else {
-                                        console.log('❌ No user found with email:', customerEmail);
-                                    }
-                                } else if (userId) {
-                                    console.log('Looking up user by ID:', userId);
-                                    const userRef = db.collection('users').doc(userId);
-                                    const userDoc = await userRef.get();
-                                    if (userDoc.exists) {
-                                        const currentTokens = Number(userDoc.data().tokens || 0);
-                                        await userRef.update({ tokens: currentTokens + tokensToAdd });
-                                        console.log(`✅ Added ${tokensToAdd} tokens to user ${userId}. New balance: ${currentTokens + tokensToAdd}`);
-                                    } else {
-                                        console.log('❌ User document not found for ID:', userId);
-                                    }
+                        
+                        // Atualizar status para 'paid'
+                        await orderDoc.ref.update({
+                            status: 'paid',
+                            paymentId: payment.id,
+                            paymentStatus: 'approved',
+                            paidAt: admin.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        console.log('Order updated to paid:', orderDoc.id);
+                        
+                        // Criar venda de afiliado se houver código de afiliado
+                        const orderDataWithId = { ...orderData, id: orderDoc.id };
+                        await createAffiliateSale(db, orderDataWithId, orderData.type === 'digital_product' ? 'product' : 'event');
+                        
+                        // Verificar tipo de compra
+                        console.log('Checking purchase type...');
+                        console.log('Payment description:', payment.description);
+                        console.log('Order data:', orderData);
+                        
+                        // Se for compra de tokens, atualizar saldo do usuário
+                        if (payment.description && payment.description.includes('Token')) {
+                            console.log('This is a token purchase! Processing...');
+                            const userId = orderData.userId || orderData.uid;
+                            const customerEmail = orderData.customer || orderData.buyerEmail;
+                            
+                            console.log('User ID:', userId);
+                            console.log('Customer Email:', customerEmail);
+                            
+                            // Primeiro tentar por email (mais confiável)
+                            if (customerEmail) {
+                                console.log('Looking up user by email:', customerEmail);
+                                const usersSnapshot = await db.collection('users').where('email', '==', customerEmail).get();
+                                
+                                if (!usersSnapshot.empty) {
+                                    const userDoc = usersSnapshot.docs[0];
+                                    const currentTokens = userDoc.data().tokens || 0;
+                                    const tokensToAdd = parseInt(payment.description.match(/\d+/)?.[0] || '1');
+                                    
+                                    console.log(`Current tokens: ${currentTokens}, Adding: ${tokensToAdd}`);
+                                    
+                                    await userDoc.ref.update({
+                                        tokens: currentTokens + tokensToAdd
+                                    });
+                                    
+                                    console.log(`✅ Added ${tokensToAdd} tokens to user ${customerEmail}. New balance: ${currentTokens + tokensToAdd}`);
                                 } else {
-                                    console.log('❌ No user ID or email found in order data');
+                                    console.log('❌ No user found with email:', customerEmail);
                                 }
+                            } else if (userId) {
+                                // Fallback: buscar usuário por ID
+                                console.log('Looking up user by ID:', userId);
+                                const userRef = db.collection('users').doc(userId);
+                                const userDoc = await userRef.get();
+                                
+                                if (userDoc.exists) {
+                                    const currentTokens = userDoc.data().tokens || 0;
+                                    const tokensToAdd = parseInt(payment.description.match(/\d+/)?.[0] || '1');
+                                    
+                                    console.log(`Current tokens: ${currentTokens}, Adding: ${tokensToAdd}`);
+                                    
+                                    await userRef.update({
+                                        tokens: currentTokens + tokensToAdd
+                                    });
+                                    
+                                    console.log(`✅ Added ${tokensToAdd} tokens to user ${userId}. New balance: ${currentTokens + tokensToAdd}`);
+                                } else {
+                                    console.log('❌ User document not found for ID:', userId);
+                                }
+                            } else {
+                                console.log('❌ No user ID or email found in order data');
                             }
-
-                            // Se for produto digital, criar entrega digital
-                            else if (orderData.type === 'digital_product') {
-                                console.log('This is a digital product purchase! Processing delivery...');
-
-                                // Criar entrega digital
-                                const deliveryData = {
-                                    orderId: orderDoc.id,
-                                    customerEmail: orderData.customer || orderData.buyerEmail,
-                                    customerName: orderData.customerName,
-                                    productId: orderData.productId,
-                                    productName: orderData.title,
-                                    productOptions: orderData.productOptions || {},
-                                    status: 'delivered',
-                                    deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
-                                    downloadLinks: await generateDownloadLinks(orderData.productId, orderData.productOptions),
-                                    paymentId: payment.id
-                                };
-
-                                console.log('Creating digital delivery:', deliveryData);
-
-                                // Salvar entrega digital
-                                await db.collection('digital_deliveries').add(deliveryData);
-
-                                console.log('✅ Digital delivery created for product:', orderData.productId);
-                            }
+                        }
+                        
+                        // Se for produto digital, criar entrega digital
+                        else if (orderData.type === 'digital_product') {
+                            console.log('This is a digital product purchase! Processing delivery...');
+                            
+                            // Criar entrega digital
+                            const deliveryData = {
+                                orderId: orderDoc.id,
+                                customerEmail: orderData.customer || orderData.buyerEmail,
+                                customerName: orderData.customerName,
+                                productId: orderData.productId,
+                                productName: orderData.title,
+                                productOptions: orderData.productOptions || {},
+                                status: 'delivered',
+                                deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+                                downloadLinks: await generateDownloadLinks(orderData.productId, orderData.productOptions),
+                                paymentId: payment.id
+                            };
+                            
+                            console.log('Creating digital delivery:', deliveryData);
+                            
+                            // Salvar entrega digital
+                            await db.collection('digital_deliveries').add(deliveryData);
+                            
+                            console.log('✅ Digital delivery created for product:', orderData.productId);
                         }
                     } else {
                         // Se não encontrou em orders, tentar em registrations (para agendamentos)
