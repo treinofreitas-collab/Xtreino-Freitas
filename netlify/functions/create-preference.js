@@ -121,27 +121,36 @@ exports.handler = async function(event) {
           if (maxUses !== null && used >= maxUses) throw new Error('COUPON_005');
 
           // Per-user limit check (if userId or email provided)
-          const perUserLimit = cd.perUserLimit || 1;
-          if ((userId || customerEmail) && perUserLimit) {
-            const usageQuery = db.collection('couponUsage')
-              .where('couponId', '==', couponRef.id)
-              .where('userId', '==', userId || null)
-              .where('email', '==', customerEmail || null)
-              .limit(1);
-            // Note: compound where with null won't match; we'll do two checks if needed
+          const perUserLimit = typeof cd.perUserLimit === 'number' ? cd.perUserLimit : 0;
+          if (perUserLimit > 0 && (userId || customerEmail)) {
             let usedByUser = false;
-            if (userId) {
-              const uq = await tx.get(db.collection('couponUsage').where('couponId', '==', couponRef.id).where('userId', '==', userId).limit(1));
-              if (!uq.empty) usedByUser = true;
+            try {
+              if (userId) {
+                const uq = await tx.get(
+                  db.collection('couponUsage')
+                    .where('couponId', '==', couponRef.id)
+                    .where('userId', '==', userId)
+                    .limit(1)
+                );
+                if (!uq.empty) usedByUser = true;
+              }
+              if (!usedByUser && customerEmail) {
+                const uq2 = await tx.get(
+                  db.collection('couponUsage')
+                    .where('couponId', '==', couponRef.id)
+                    .where('email', '==', customerEmail)
+                    .limit(1)
+                );
+                if (!uq2.empty) usedByUser = true;
+              }
+            } catch (perUserErr) {
+              console.warn('⚠️ Falha ao verificar limite por usuário do cupom. Prosseguindo sem bloquear.', perUserErr?.message || perUserErr);
             }
-            if (customerEmail && !usedByUser) {
-              const uq2 = await tx.get(db.collection('couponUsage').where('couponId', '==', couponRef.id).where('email', '==', customerEmail).limit(1));
-              if (!uq2.empty) usedByUser = true;
-            }
-            if (usedByUser && perUserLimit <= 0) {
+            if (usedByUser && perUserLimit <= 1) {
               throw new Error('COUPON_005');
             }
-            if (usedByUser && perUserLimit === 1) {
+            if (usedByUser && perUserLimit > 1) {
+              // Ainda não controlamos múltiplos usos por usuário; bloquear para evitar abuso
               throw new Error('COUPON_005');
             }
           }
