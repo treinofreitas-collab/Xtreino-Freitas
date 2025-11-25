@@ -2981,19 +2981,19 @@ window.showWarningToast = function(message, title = 'Atenção') {
         btnClearLocks.addEventListener('click', async ()=>{
           try{
             if (!confirm(`Destravar todas as travas e zerar ocupações extras de ${date} (${ovEventType})?`)) return;
-            const { collection, query, where, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const { collection, query, where, getDocs, doc, writeBatch } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ovRef = collection(window.firebaseDb, 'schedule_overrides');
             const variants = resolveAliases(ovEventType);
-            const ops = [];
-            // Por variações de eventType
+            const updates = [];
+            // Por variações de eventType: coletar documentos a atualizar
             for (const v of variants){
               try{
                 const snap = await getDocs(query(ovRef, where('date','==', date), where('eventType','==', v)));
                 snap.forEach(d=>{
                   const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
-                  ops.push(updateDoc(ref, { locked:false, extraOccupied:0, eventType: ovEventType }));
+                  updates.push({ ref, data: { locked:false, extraOccupied:0, eventType: ovEventType } });
                 });
-              }catch(_){}
+              }catch(_){ }
             }
             // fallback: documentos sem eventType definido
             try{
@@ -3004,10 +3004,17 @@ window.showWarningToast = function(message, title = 'Atenção') {
                 if (docFamily && docFamily !== ovEventType) return;
                 if (!docFamily && !variants.includes(null) && !variants.includes('')) return;
                 const ref = doc(window.firebaseDb, 'schedule_overrides', d.id);
-                ops.push(updateDoc(ref, { locked:false, extraOccupied:0, eventType: ovEventType }));
+                updates.push({ ref, data: { locked:false, extraOccupied:0, eventType: ovEventType } });
               });
-            }catch(_){}
-            await Promise.allSettled(ops);
+            }catch(_){ }
+            // Commit em batches (limite 500 por batch) para maior atomicidade e evitar muitas requisições paralelas
+            const CHUNK = 400;
+            for (let i=0;i<updates.length;i+=CHUNK){
+              const chunk = updates.slice(i, i+CHUNK);
+              const batch = writeBatch(window.firebaseDb);
+              chunk.forEach(u => batch.update(u.ref, u.data));
+              await batch.commit();
+            }
             alert('Travas removidas e ocupações extras zeradas para o dia.');
             await loadBoard();
           }catch(e){
@@ -3118,9 +3125,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
             const ovSnap = await g2(q2(ovRef, w2('date','==', date), w2('eventType','==', v)));
             ovSnap.forEach(d=>{
               const raw = d.data();
-              const hh = String(raw.hour||raw.hh||'').padStart(2,'0').replace(/\D/g,'');
-              if (!hh) return;
-              const k = `${hh}:00`;
+                // Normalizar hora: aceitar '16', '16:00', '16h' e extrair apenas a hora (2 dígitos)
+                const hhMatch = String(raw.hour || raw.hh || '').match(/(\d{1,2})/);
+                const hh = hhMatch ? String(parseInt(hhMatch[1], 10)).padStart(2, '0') : null;
+                if (!hh) return;
+                const k = `${hh}:00`;
               const agg = overrides[k] || { lockedAny:false, extraOccupied:0 };
               agg.lockedAny = agg.lockedAny || (raw.locked === true);
               if (raw.extraOccupied) agg.extraOccupied += Number(raw.extraOccupied||0);
@@ -3138,7 +3147,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
           const allSnap = await g2(q2(ovRef, w2('date','==', date)));
           allSnap.forEach(d=>{
             const raw = d.data() || {};
-            const hh = String(raw.hour||raw.hh||'').padStart(2,'0').replace(/\D/g,'');
+            // Normalizar hora da mesma forma que acima
+            const hhMatch = String(raw.hour || raw.hh || '').match(/(\d{1,2})/);
+            const hh = hhMatch ? String(parseInt(hhMatch[1], 10)).padStart(2, '0') : null;
             if (!hh) return;
             const docFamily = canonicalType(raw.eventType || raw.event_type || '');
             if (docFamily && docFamily !== ovEventType) return;
@@ -3266,7 +3277,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
               const snapAll = await g3(q3(ovRef, w3('date','==', date)));
               snapAll.forEach(d=>{
                 const raw = d.data() || {};
-                const hhDoc = String(raw.hour||raw.hh||'').padStart(2,'0').replace(/\D/g,'');
+                const hhMatchDoc = String(raw.hour || raw.hh || '').match(/(\d{1,2})/);
+                const hhDoc = hhMatchDoc ? String(parseInt(hhMatchDoc[1], 10)).padStart(2, '0') : null;
                 if (!hhDoc || hhDoc !== hh) return;
                 const docFamily = canonicalType(raw.eventType || raw.event_type || '');
                 if (docFamily && docFamily !== ovEventType) return;

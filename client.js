@@ -2510,9 +2510,14 @@ async function loadAffiliateData() {
             return;
         }
 
-        // Verificar se o usuário é afiliado
+        // Verificar se o usuário é afiliado — pode ser cargo principal ou flag/estado secundário
         const userRole = await getUserRole(currentUser.uid);
-        if (userRole?.role?.toLowerCase() !== 'afiliado') {
+        const isAffiliate = (userRole && (
+            (userRole.role && String(userRole.role).toLowerCase().includes('afiliado')) ||
+            userRole.affiliate === true ||
+            ['active','pending','inactive'].includes(String(userRole.affiliateStatus || '').toLowerCase())
+        ));
+        if (!isAffiliate) {
             // Esconder aba de afiliados se não for afiliado
             const affiliateTab = document.getElementById('affiliateTab');
             if (affiliateTab) affiliateTab.classList.add('hidden');
@@ -2609,22 +2614,35 @@ function renderAffiliateSales(sales) {
         const statusBadge = sale.status === 'paid' 
             ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Paga</span>'
             : '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Pendente</span>';
-        
+
         // Identificar tipo de venda
         const saleTypeIcon = sale.saleType === 'event' ? '📅' : sale.saleType === 'product' ? '🛒' : '📦';
         const saleTypeText = sale.saleType === 'event' ? 'Evento' : sale.saleType === 'product' ? 'Produto' : 'N/A';
-        
+
+        // Link para detalhes do pedido/registro na área do cliente
+        const orderLink = sale.orderId ? `client.html?tab=orders&highlightOrder=${encodeURIComponent(sale.orderId)}` : '';
+
+        // Customer display (mailto se houver email)
+        const customerDisplay = sale.customerEmail ? `<a href="mailto:${sale.customerEmail}" class="text-blue-600 underline">${sale.customerName || sale.customerEmail}</a>` : (sale.customerName || 'N/A');
+
+        // Product display (link para pedido se houver orderId)
+        const productDisplay = orderLink ? `<a href="${orderLink}" class="text-blue-700 font-medium underline" target="_blank" rel="noopener">${sale.productName || sale.productId || 'N/A'}</a>` : (sale.productName || sale.productId || 'N/A');
+
+        // Valores clicáveis levam ao pedido (se houver)
+        const saleValueDisplay = orderLink ? `<a href="${orderLink}" target="_blank" rel="noopener" class="text-gray-900">R$ ${(sale.saleValue || 0).toFixed(2)}</a>` : `R$ ${(sale.saleValue || 0).toFixed(2)}`;
+        const commissionDisplay = orderLink ? `<a href="${orderLink}" target="_blank" rel="noopener" class="text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2)}</a>` : `<span class="text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2)}</span>`;
+
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="px-4 py-3 text-sm">${date}</td>
-                <td class="px-4 py-3 text-sm">${sale.customerName || sale.customerEmail || 'N/A'}</td>
+                <td class="px-4 py-3 text-sm">${customerDisplay}</td>
                 <td class="px-4 py-3 text-sm">
-                    <div>${sale.productName || sale.productId || 'N/A'}</div>
+                    <div>${productDisplay}</div>
                     <div class="text-xs text-gray-500">${saleTypeIcon} ${saleTypeText}</div>
                 </td>
-                <td class="px-4 py-3 text-sm font-medium">R$ ${(sale.saleValue || 0).toFixed(2)}</td>
+                <td class="px-4 py-3 text-sm font-medium">${saleValueDisplay}</td>
                 <td class="px-4 py-3 text-sm">${(sale.commissionRate || 0).toFixed(1)}%</td>
-                <td class="px-4 py-3 text-sm font-medium text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2)}</td>
+                <td class="px-4 py-3 text-sm font-medium">${commissionDisplay}</td>
                 <td class="px-4 py-3 text-sm">${statusBadge}</td>
             </tr>
         `;
@@ -2829,22 +2847,22 @@ async function checkAffiliateRole() {
         const userRole = await getUserRole(currentUser.uid);
         console.log('🔍 Role obtido:', userRole);
         
-        const roleLower = userRole?.role?.toLowerCase();
+        const roleLower = userRole?.role ? String(userRole.role).toLowerCase() : '';
         console.log('🔍 Role em lowercase:', roleLower);
-        
-        if (roleLower === 'afiliado') {
-            console.log('✅ Usuário é afiliado, mostrando aba');
+        const isAff = (
+            (roleLower && roleLower.includes('afiliado')) ||
+            userRole?.affiliate === true ||
+            ['active','pending','inactive'].includes(String(userRole?.affiliateStatus || '').toLowerCase())
+        );
+        if (isAff) {
+            console.log('✅ Usuário é afiliado (role ou flag), mostrando aba');
             affiliateTab.classList.remove('hidden');
-            console.log('✅ Aba de afiliado mostrada - classe hidden removida');
-            
-            // Verificar se realmente foi removido
             if (affiliateTab.classList.contains('hidden')) {
-                console.warn('⚠️ Aba ainda tem classe hidden, forçando remoção');
                 affiliateTab.classList.remove('hidden');
                 affiliateTab.style.display = '';
             }
         } else {
-            console.log('ℹ️ Usuário não é afiliado, role:', roleLower);
+            console.log('ℹ️ Usuário não é afiliado, role:', roleLower, 'affiliate flag:', userRole?.affiliate, 'affiliateStatus:', userRole?.affiliateStatus);
             affiliateTab.classList.add('hidden');
         }
     } catch (error) {
