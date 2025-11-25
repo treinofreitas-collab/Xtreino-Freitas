@@ -3804,6 +3804,14 @@ function initLazyImageAnimations() {
             }
         }
     });
+    // Garantir que imagens não fiquem invisíveis por muito tempo (fallback geral)
+    setTimeout(() => {
+        images.forEach(img => {
+            if (!img.classList.contains('loaded')) {
+                img.classList.add('loaded');
+            }
+        });
+    }, 2000);
     
     // Também verificar todas as imagens sem loading="lazy" para garantir que apareçam
     const allImages = document.querySelectorAll('img:not([loading="lazy"])');
@@ -3881,6 +3889,13 @@ function reinitAnimations(container) {
             img.style.opacity = '1';
         }
     });
+    // Fallback: forçar mostrar imagens no container após curto timeout
+    setTimeout(() => {
+        images.forEach(img => {
+            if (!img.classList.contains('loaded')) img.classList.add('loaded');
+            img.style.opacity = '1';
+        });
+    }, 1500);
 }
 
 // Make functions globally available
