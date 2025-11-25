@@ -2333,9 +2333,21 @@ async function handlePurchase(event) {
         productOptions.notes = document.getElementById('shirtNotes')?.value || '';
     }
 
+    // Pegar botão de submit para mostrar loading
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalBtnText = submitBtn?.textContent || 'Finalizar (Mercado Pago)';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '⏳ Processando...';
+    }
+    
     try {
         // Validar preço final
         if (!totalNum || totalNum <= 0 || isNaN(totalNum)) {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
             showError('PAYMENT_002', 'PAYMENT_002');
             console.error('❌ Preço inválido:', totalNum);
             return;
@@ -2355,6 +2367,10 @@ async function handlePurchase(event) {
                     const cpfVal = (document.getElementById('customerCPF')?.value || '').trim();
                     const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
                     if (!cpfVal || !cpfRegex.test(cpfVal)) {
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = originalBtnText;
+                        }
                         showError('PRODUCT_006', 'PRODUCT_006');
                         return;
                     }
@@ -2409,16 +2425,26 @@ async function handlePurchase(event) {
         
         console.log('🔍 Enviando requisição para create-preference:', preferencePayload);
         
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
+        
         const response = await fetch('/.netlify/functions/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(preferencePayload)
+            body: JSON.stringify(preferencePayload),
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('❌ Erro na resposta do create-preference:', errorText);
-            throw new Error(errorText || 'Erro ao criar preferência de pagamento');
+            console.error('❌ Erro na resposta do create-preference:', response.status, errorText);
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
+            throw new Error(errorText || `Erro ao criar preferência (${response.status})`);
         }
         
         const data = await response.json();
@@ -2428,51 +2454,29 @@ async function handlePurchase(event) {
         const checkoutUrl = data.init_point || data.sandbox_init_point;
         if (!checkoutUrl) {
             console.error('❌ Resposta inválida do create-preference:', data);
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
             throw new Error('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.');
         }
-        
-        // Registrar uso do cupom se aplicado
-        if (appliedCoupon) {
-            try {
-                const discountAmount = originalPrice - totalNum;
-                await recordCouponUsage(
-                    appliedCoupon.id,
-                    appliedCoupon.code,
-                    originalPrice,
-                    discountAmount,
-                    'store',
-                    data.external_reference || externalRef,
-                    {
-                        productId: currentProduct,
-                        name: product.name,
-                        title: product.name,
-                        item: product.name
-                    }
-                );
-            } catch (couponError) {
-                console.error('⚠️ Erro ao registrar uso do cupom:', couponError);
-                // Não falhar a compra por causa de erro no cupom
-            }
-        }
-        
-        closePurchaseModal();
-        
-        // Redireciona para o checkout do Mercado Pago
-        try { 
-            sessionStorage.setItem('lastCheckoutUrl', checkoutUrl); 
-        } catch(_) {}
-        window.location.href = checkoutUrl;
     } catch (error) {
         console.error('❌ Erro no checkout:', error);
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalBtnText;
+        }
         // Tratar erros específicos
-        if (error.message && error.message.includes('preço') || error.message && error.message.includes('Preço')) {
-            showError('PAYMENT_002', 'PAYMENT_002');
-        } else if (error.message && error.message.includes('produto') || error.message && error.message.includes('Produto')) {
-            showError('PAYMENT_005', 'PAYMENT_005');
-        } else if (error.message && error.message.includes('link') || error.message && error.message.includes('Link')) {
-            showError('PAYMENT_004', 'PAYMENT_004');
+        if (error.message && error.message.includes('timeout')) {
+            showToast('error', 'Conexão expirou. Verifique sua internet e tente novamente.', 'Timeout');
+        } else if (error.message && (error.message.includes('preço') || error.message.includes('Preço'))) {
+            showToast('error', 'Preço inválido. Tente novamente.', 'Erro no Pagamento');
+        } else if (error.message && (error.message.includes('produto') || error.message.includes('Produto'))) {
+            showToast('error', 'Produto inválido. Tente novamente.', 'Erro no Pagamento');
+        } else if (error.message && (error.message.includes('link') || error.message.includes('Link'))) {
+            showToast('error', 'Não foi possível obter o link de pagamento. Verifique sua conexão e tente novamente.', 'Erro no Pagamento');
         } else {
-            showError(error, 'PAYMENT_001');
+            showToast('error', error.message || 'Erro ao processar pagamento. Tente novamente.', 'Erro');
         }
     }
 }
