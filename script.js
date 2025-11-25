@@ -1829,9 +1829,19 @@ async function payCurrentProductWithTokens(){
         const productId = currentProduct;
         const product = products[productId];
         if (!product) { alert('Produto inválido'); return; }
-        // preço final exibido
-        const totalText = document.getElementById('purchasePrice')?.textContent || '0';
-        const total = Number(totalText.replace(/[^0-9,]/g,'').replace(',','.')) || 0;
+        
+        // Calcular preço final (recalcular para imagens ao invés de confiar na UI)
+        let total = 0;
+        if (productId === 'imagens') {
+            const qty = Math.max(1, Math.min(5, Number(document.getElementById('mapsQty')?.value || 1)));
+            const pricing = {1:2, 2:4, 3:5, 4:6, 5:7};
+            total = pricing[qty] || 2;
+            console.log(`💰 Imagens token payment: qty=${qty}, price=${total}`);
+        } else {
+            // Para outros produtos, ler do display
+            const totalText = document.getElementById('purchasePrice')?.textContent || '0';
+            total = Number(totalText.replace(/[^0-9,]/g,'').replace(',','.')) || 0;
+        }
         // saldo suficiente?
         if (!canSpendTokens(total)){
             alert(`Saldo insuficiente. Você precisa de ${total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
@@ -2265,9 +2275,18 @@ async function handlePurchase(event) {
         return;
     }
     
-    // total atual do modal
-    const totalText = document.getElementById('purchasePrice')?.textContent || '0';
-    const totalNum = Number(totalText.replace(/[^0-9,]/g,'').replace(',','.')) || 0;
+    // Calcular preço final (recalcular para imagens ao invés de confiar no UI)
+    let totalNum = 0;
+    if (currentProduct === 'imagens') {
+        const qty = Math.max(1, Math.min(5, Number(document.getElementById('mapsQty')?.value || 1)));
+        const pricing = {1:2, 2:4, 3:5, 4:6, 5:7};
+        totalNum = pricing[qty] || 2;
+        console.log(`💰 Imagens checkout: qty=${qty}, totalNum=${totalNum}`);
+    } else {
+        // Para outros produtos, ler do modal
+        const totalText = document.getElementById('purchasePrice')?.textContent || '0';
+        totalNum = Number(totalText.replace(/[^0-9,]/g,'').replace(',','.')) || 0;
+    }
     
     // Informações do cupom aplicado
         const activeAffiliateCode = getActiveAffiliateCode(appliedCoupon?.affiliateId || null);
@@ -5087,6 +5106,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
     }
     
     // Verificar horários travados diretamente do Firestore - SEMPRE para a data específica
+    // CRÍTICO: SEMPRE buscar dados FRESCOS (não usar cache de travas) para detectar removals
     let lockedHours = new Set();
     try {
         const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -5104,16 +5124,18 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container){
                 return; // Ignorar override de data diferente
             }
             
-            if (ov.locked) {
-                const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
-                if (!isNaN(ovHour)) {
-                    const ovEventType = ov.eventType || null;
-                    // Aplicar se for genérico ou corresponder ao eventType
-                    if (!ovEventType || ovEventType === eventType || !eventType) {
-                        lockedHours.add(ovHour);
-                        console.log(`🔒 Horário ${ovHour}h travado para ${normalizedDate} (eventType: ${eventType || 'todos'})`);
-                    }
-                }
+            const ovHour = parseInt(String(ov.hour||ov.hh||'').replace(/\D/g,''),10);
+            if (isNaN(ovHour)) return;
+            
+            const ovEventType = ov.eventType || null;
+            const shouldApply = !ovEventType || ovEventType === eventType || !eventType;
+            
+            if (!shouldApply) return; // Skip if eventType doesn't match
+            
+            // IMPORTANTE: Se locked=true, adicionar à lista de travados
+            if (ov.locked === true) {
+                lockedHours.add(ovHour);
+                console.log(`🔒 Horário ${ovHour}h TRAVADO para ${normalizedDate} (eventType: ${eventType || 'todos'})`);
             }
         });
     } catch (err) {
