@@ -1577,7 +1577,7 @@ const products = {
     // Eventos e Reservas (cupom ADMFALL = 5% off)
     'evt-xtreino-tokens': { name: 'XTreino Freitas', price: 'R$ 1,00', description: '1 token — 10 horários diários (14h-23h) — Misto | Squad | 2 quedas' },
     'evt-modo-liga': { name: 'XTreino Modo Liga', price: 'R$ 3,00', description: '4 horários (14h, 15h, 17h, 18h) — 15 slots — Transmissão ao vivo' },
-    'evt-camp-freitas': { name: 'Campeonato Freitas Season⁴', price: 'R$ 5,00', description: '4 horários (20h-23h) — Premiação R$ 2.000,00 + Troféu + MVP' },
+    'evt-camp-freitas': { name: 'Campeonato Freitas Season¹', price: 'R$ 5,00', description: 'Final (20h-23h) — Premiação R$ 2.000,00 + Troféu + MVP' },
     'evt-semanal-freitas': { name: 'Semanal Freitas', price: 'R$ 3,50', description: '3 fases (20h, 21h, 22h) — Premiação R$ 65,00 — Termina no mesmo dia' }
 };
 
@@ -3095,7 +3095,7 @@ function initChat() {
             },
             {
                 match: ['camp freitas','camp','campeonato'],
-                reply: '🏆 **CAMPEONATO FREITAS SEASON⁴:**\n\n💰 **Valor:** R$ 14,00\n⏰ **Horários:** 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas nas fases | 5 quedas nas Semifinais | 8 quedas na final\n🏅 **Premiação:** R$ 2.000,00 + Troféu + MVP\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Narrador e comentarista. Transmissão Ao vivo modo liga com logo na mochila e gelo a partir das semifinais + Sorteio de uma camisa Oficial da Org para os Patrocinadores.'
+                reply: '🏆 **CAMPEONATO FREITAS FINAL:**\n\n💰 **Valor:** R$ 5,00\n⏰ **Horário:** 23h\n🎮 **Modalidade:** Misto | Squad | 8 quedas na final\n🏅 **Premiação:** R$ 2.000,00 + Troféu + MVP\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Narrador e comentarista. Transmissão Ao vivo com logo na mochila + Sorteio de uma camisa Oficial da Org para os Patrocinadores.'
             },
             {
                 match: ['semanal','semanal freitas'],
