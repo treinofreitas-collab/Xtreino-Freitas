@@ -6595,48 +6595,56 @@ async function submitSchedule(e, useTokens=false){
         return;
     }
     
-    fetch('/.netlify/functions/create-preference',{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ 
-            title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`, 
-            unit_price: finalPrice, 
-            currency_id:'BRL', 
-            quantity: 1, // Mudamos para 1 pois já calculamos o preço total
-            back_url: window.location.origin,
-            coupon_info: couponInfo,
-            multiple_reservations: {
-                teams: teams.map(t => t.name || 'Time sem nome'),
-                schedules: selectedTimes,
-                dates: datesToUse2,
-                eventType: eventType
-            },
-            external_reference: externalRef
-        })
-    }).then(async res=>{ 
-        if(!res.ok){ 
-            const t = await res.text(); 
-            throw new Error(t || 'Erro na função de pagamento'); 
-        } 
-        return res.json(); 
-    })
-    .then(async data=>{
+    // Usar AbortController e timeout para evitar que o botão fique travado indefinidamente
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const resp = await fetch('/.netlify/functions/create-preference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`,
+                unit_price: finalPrice,
+                currency_id: 'BRL',
+                quantity: 1,
+                back_url: window.location.origin,
+                coupon_info: couponInfo,
+                multiple_reservations: {
+                    teams: teams.map(t => t.name || 'Time sem nome'),
+                    schedules: selectedTimes,
+                    dates: datesToUse2,
+                    eventType: eventType
+                },
+                external_reference: externalRef
+            }),
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!resp.ok) {
+            const txt = await resp.text().catch(() => '');
+            throw new Error(txt || `Erro na função de pagamento (${resp.status})`);
+        }
+
+        const data = await resp.json();
         closeScheduleModal();
-        // Salvar external_reference para verificação posterior
+
         if (data.external_reference) {
-            sessionStorage.setItem('lastExternalRef', data.external_reference);
-            // Persistir no registro (se existir) para rastrear via painel
-            try{
+            try { sessionStorage.setItem('lastExternalRef', data.external_reference); } catch(_) {}
+            try {
                 const regId = sessionStorage.getItem('lastRegId');
-                if (regId && window.firebaseDb){
+                if (regId && window.firebaseDb) {
                     import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js')
                       .then(({ doc, setDoc, collection }) => {
                           const ref = doc(collection(window.firebaseDb,'registrations'), regId);
                           return setDoc(ref, { external_reference: data.external_reference }, { merge:true });
                       }).catch(()=>{});
                 }
-            }catch(_){ }
+            } catch(_) {}
         }
-        // Registrar uso do cupom se aplicado
+
         if (appliedScheduleCoupon && couponInfo) {
             try {
                 await recordCouponUsage(
@@ -6649,17 +6657,26 @@ async function submitSchedule(e, useTokens=false){
                 );
             } catch (error) {
                 console.error('❌ Erro ao registrar uso do cupom:', error);
-                // Não bloquear o pagamento se houver erro no registro
             }
         }
-        
-        const url = data.init_point || data.sandbox_init_point; // prioriza produção
-        if (url) { try{ sessionStorage.setItem('lastCheckoutUrl', url);}catch(_){} window.location.href = url; } else { alert('Não foi possível iniciar o pagamento.'); }
-    }).catch((err)=> { 
-        console.error('❌ Erro no checkout:', err);
-        alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : 'Por favor, tente novamente.'));
-        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
-    });
+
+        const url = data.init_point || data.sandbox_init_point;
+        if (url) {
+            try { sessionStorage.setItem('lastCheckoutUrl', url); } catch(_) {}
+            window.location.href = url;
+        } else {
+            alert('Não foi possível iniciar o pagamento.');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+        }
+    } catch (err) {
+        console.error('❌ Erro no checkout (submitSchedule):', err);
+        if (err && err.name === 'AbortError') {
+            alert('Conexão lenta ou instável. Tente novamente (tempo esgotado).');
+        } else {
+            alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : 'Por favor, tente novamente.'));
+        }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+    }
     
     } catch (error) {
         // ERR_TKN_011: Captura qualquer erro não tratado na função
