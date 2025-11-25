@@ -2460,6 +2460,39 @@ async function handlePurchase(event) {
             }
             throw new Error('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.');
         }
+        
+        // Registrar uso do cupom se aplicado
+        if (appliedCoupon) {
+            try {
+                const discountAmount = originalPrice - totalNum;
+                await recordCouponUsage(
+                    appliedCoupon.id,
+                    appliedCoupon.code,
+                    originalPrice,
+                    discountAmount,
+                    'store',
+                    data.external_reference || externalRef,
+                    {
+                        productId: currentProduct,
+                        name: product.name,
+                        title: product.name,
+                        item: product.name
+                    }
+                );
+            } catch (couponError) {
+                console.error('⚠️ Erro ao registrar uso do cupom:', couponError);
+                // Não falhar a compra por causa de erro no cupom
+            }
+        }
+        
+        closePurchaseModal();
+        
+        // Redireciona para o checkout do Mercado Pago
+        try { 
+            sessionStorage.setItem('lastCheckoutUrl', checkoutUrl); 
+        } catch(_) {}
+        console.log('🔄 Redirecionando para Mercado Pago:', checkoutUrl);
+        window.location.href = checkoutUrl;
     } catch (error) {
         console.error('❌ Erro no checkout:', error);
         if (submitBtn) {
