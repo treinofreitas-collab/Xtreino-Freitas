@@ -745,10 +745,17 @@ async function displayAllOrdersPaginated() {
         });
         
         // Excluir compras de tokens (orders com descrição/item contendo token)
-        // mas manter registros de consumo (eventType === 'xtreino-tokens')
+        // mas manter registros de consumo (eventType === 'xtreino-tokens').
+        // Exception: mostrar compras de tokens quando estiverem com status 'pending'
+        // para que o usuário/admin veja a data/hora da compra pendente.
         if ((title.includes('token') || item.includes('token')) && eventType !== 'xtreino-tokens') {
-            console.log('❌ Pedido excluído - compra de token');
-            return false;
+            if (order.status === 'pending') {
+                console.log('⚠️ Pedido de compra de token PENDENTE incluído para exibir data/hora');
+                // permitir exibição (retornar true implicitamente)
+            } else {
+                console.log('❌ Pedido excluído - compra de token (não-pendente)');
+                return false;
+            }
         }
         
         // Incluir somente eventos + xtreino-tokens

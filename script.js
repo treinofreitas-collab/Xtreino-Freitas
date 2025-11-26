@@ -1559,7 +1559,7 @@ const products = {
     // Eventos e Reservas (cupom ADMFALL = 5% off)
     'evt-xtreino-tokens': { name: 'XTreino Freitas', price: 'R$ 1,00', description: '1 token — 10 horários diários (14h-23h) — Misto | Squad | 2 quedas' },
     'evt-modo-liga': { name: 'XTreino Modo Liga', price: 'R$ 3,00', description: '4 horários (14h, 15h, 17h, 18h) — 15 slots — Transmissão ao vivo' },
-    'evt-camp-freitas': { name: 'Campeonato Freitas Season¹', price: 'R$ 5,00', description: 'Final (20h-23h) — Premiação R$ 2.000,00 + Troféu + MVP' },
+    'evt-camp-freitas': { name: 'Campeonato Freitas Season¹', price: 'R$ 10,00', description: 'Horários: 19h - 20h - 21h - 22h - 23h — Modalidade: Misto | Squad | 2 quedas por fase — Premiação R$ 4.000,00 + Troféu. Funcionamento: Segunda a Sexta-feira. Promoção no site: R$ 8,00 (valor normal R$ 10,00).' },
     'evt-semanal-freitas': { name: 'Semanal Freitas', price: 'R$ 3,50', description: '3 fases (20h, 21h, 22h) — Premiação R$ 65,00 — Termina no mesmo dia' }
 };
 
@@ -2925,7 +2925,7 @@ async function smartChatAnswer(message){
             let slots = [];
             if (ev==='modo-liga' || ev==='xtreino-tokens') slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
             else if (ev==='semanal-freitas') slots = ['20h','21h','22h'];
-            else if (ev==='camp-freitas') slots = ['20h','21h','22h','23h'];
+            else if (ev==='camp-freitas') slots = ['19h','20h','21h','22h','23h'];
             return { answer: `⏰ Horários de ${scheduleConfig[ev]?.label||'evento'}: ${slots.join(', ')}`, confidence: 0.9 };
         }
         // Preço: considerar preço por horário (ex.: 22h semanal = 7)
@@ -3019,7 +3019,7 @@ function initChat() {
             // Valores e preços (prioridade alta)
             {
                 match: ['valor','valores','preço','preços','quanto','custa','custo','precificar','orçamento','tabela','tabela de preços','preço dos','valor dos','quanto custa','quanto é','quanto sai','quanto fica','preço do','valor do','custo do','preço da','valor da','custo da','preço das','valor das','custo das','preço dos','valor dos','custo dos'],
-                reply: '💰 **VALORES DOS PRODUTOS:**\n\n📱 **Sensibilidade no Free Fire:** R$ 8,00\n🗺️ **Imagens Aéreas:** A partir de R$ 2,00\n📊 **Planilha de Análise:** R$ 19,00\n🎮 **Passe de Elite:** R$ 11,00\n👕 **Camisa Oficial:** R$ 89,90\n\n🎯 **EVENTOS:**\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 5,00 - 20h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\n💡 Precisa de mais detalhes sobre algum evento específico?'
+                reply: '💰 **VALORES DOS PRODUTOS:**\n\n📱 **Sensibilidade no Free Fire:** R$ 8,00\n🗺️ **Imagens Aéreas:** A partir de R$ 2,00\n📊 **Planilha de Análise:** R$ 19,00\n🎮 **Passe de Elite:** R$ 11,00\n👕 **Camisa Oficial:** R$ 89,90\n\n🎯 **EVENTOS:**\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 10,00 (promo R$ 8,00 no site) - 19h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\n💡 Precisa de mais detalhes sobre algum evento específico?'
             },
             
             // Horários e funcionamento (prioridade alta)
@@ -3069,7 +3069,7 @@ function initChat() {
             // Eventos e treinos
             {
                 match: ['evento','eventos','treino','treinos','xtreino'],
-                reply: '🎯 **EVENTOS DISPONÍVEIS:**\n\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 5,00 - 20h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\nVeja na seção Eventos para mais detalhes!'
+                reply: '🎯 **EVENTOS DISPONÍVEIS:**\n\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 10,00 (promo R$ 8,00 no site) - 19h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\nVeja na seção Eventos para mais detalhes!'
             },
             {
                 match: ['modo liga','liga','competitivo'],
@@ -3077,7 +3077,7 @@ function initChat() {
             },
             {
                 match: ['camp freitas','camp','campeonato'],
-                reply: '🏆 **CAMPEONATO FREITAS FINAL:**\n\n💰 **Valor:** R$ 5,00\n⏰ **Horário:** 23h\n🎮 **Modalidade:** Misto | Squad | 8 quedas na final\n🏅 **Premiação:** R$ 2.000,00 + Troféu + MVP\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Narrador e comentarista. Transmissão Ao vivo com logo na mochila + Sorteio de uma camisa Oficial da Org para os Patrocinadores.'
+                reply: '🏆 **CAMPEONATO FREITAS:**\n\n💰 **Valor:** R$ 10,00 (promo R$ 8,00 no site)\n⏰ **Horários:** 19h, 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas por fase\n🏅 **Premiação:** R$ 4.000,00 + Troféu\n📅 **Funcionamento:** Segunda a Sexta-feira\n\n🎯 **Diferencial:** Transmissão modo liga ao vivo a partir das Semifinais + Troféu.'
             },
             {
                 match: ['semanal','semanal freitas'],
@@ -3887,7 +3887,7 @@ window.initSmoothAnimations = initSmoothAnimations;
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 25.00 },
+    'camp-freitas': { label: 'Camp Freitas', price: 10.00 },
     'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },

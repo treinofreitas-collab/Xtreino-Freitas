@@ -58,14 +58,14 @@ async function importHighlights() {
       order: 4
     },
     {
-      title: "Inscrições abertas — vagas limitadas!",
-      subtitle: "CAMPEONATO FREITAS - R$2.000 + TROFÉU",
-      description: "O torneio mais insano da temporada chegou com R$2.000 em premiações, troféu personalizado e Transmissão Ao Vivo nas fases decisivas. Cada partida é uma chance de provar que sua equipe nasceu pra vencer!",
+      title: "Inscrições abertas — Camp Freitas",
+      subtitle: "CAMPEONATO FREITAS - R$4.000 + TROFÉU",
+      description: "Novo Campeonato Freitas: Horários 19h-23h (19h,20h,21h,22h,23h). Modalidade Misto | Squad — 2 quedas por fase. Premiação total R$ 4.000,00 + Troféu. Funcionamento: Segunda a Sexta-feira. Diferencial: Transmissão modo liga ao vivo a partir das Semifinais. Promoção no site: R$8,00 (valor normal R$10,00).",
       imageUrl: "https://i.postimg.cc/hGMvNDFC/CAPA-DESTAQUE-SITE-CAMP-DE-FASES-ORG-FREITAS.png",
       redirectUrl: null,
       status: "active",
       createdAt: Date.now(),
-      order: 5
+      order: 1
     },
     {
       title: "Apareça nas transmissões, Banners e Eventos Oficiais da Org Freitas.",
