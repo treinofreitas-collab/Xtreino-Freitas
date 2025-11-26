@@ -1559,7 +1559,7 @@ const products = {
     // Eventos e Reservas (cupom ADMFALL = 5% off)
     'evt-xtreino-tokens': { name: 'XTreino Freitas', price: 'R$ 1,00', description: '1 token — 10 horários diários (14h-23h) — Misto | Squad | 2 quedas' },
     'evt-modo-liga': { name: 'XTreino Modo Liga', price: 'R$ 3,00', description: '4 horários (14h, 15h, 17h, 18h) — 15 slots — Transmissão ao vivo' },
-    'evt-camp-freitas': { name: 'Campeonato Freitas Season¹', price: 'R$ 10,00', description: 'Horários: 19h - 20h - 21h - 22h - 23h — Modalidade: Misto | Squad | 2 quedas por fase — Premiação R$ 4.000,00 + Troféu. Funcionamento: Segunda a Sexta-feira. Promoção no site: R$ 8,00 (valor normal R$ 10,00).' },
+    'evt-camp-freitas': { name: 'Campeonato Freitas Season¹', price: 'R$ 8,00', description: 'Horários: 19h - 20h - 21h - 22h - 23h — Modalidade: Misto | Squad | 2 quedas por fase — Premiação R$ 4.000,00 + Troféu. Funcionamento: Segunda a Sexta-feira. Promoção: R$ 8,00 (antes R$ 10,00).' },
     'evt-semanal-freitas': { name: 'Semanal Freitas', price: 'R$ 3,50', description: '3 fases (20h, 21h, 22h) — Premiação R$ 65,00 — Termina no mesmo dia' }
 };
 
@@ -3019,7 +3019,7 @@ function initChat() {
             // Valores e preços (prioridade alta)
             {
                 match: ['valor','valores','preço','preços','quanto','custa','custo','precificar','orçamento','tabela','tabela de preços','preço dos','valor dos','quanto custa','quanto é','quanto sai','quanto fica','preço do','valor do','custo do','preço da','valor da','custo da','preço das','valor das','custo das','preço dos','valor dos','custo dos'],
-                reply: '💰 **VALORES DOS PRODUTOS:**\n\n📱 **Sensibilidade no Free Fire:** R$ 8,00\n🗺️ **Imagens Aéreas:** A partir de R$ 2,00\n📊 **Planilha de Análise:** R$ 19,00\n🎮 **Passe de Elite:** R$ 11,00\n👕 **Camisa Oficial:** R$ 89,90\n\n🎯 **EVENTOS:**\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 10,00 (promo R$ 8,00 no site) - 19h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\n💡 Precisa de mais detalhes sobre algum evento específico?'
+                reply: '💰 **VALORES DOS PRODUTOS:**\n\n📱 **Sensibilidade no Free Fire:** R$ 8,00\n🗺️ **Imagens Aéreas:** A partir de R$ 2,00\n📊 **Planilha de Análise:** R$ 19,00\n🎮 **Passe de Elite:** R$ 11,00\n👕 **Camisa Oficial:** R$ 89,90\n\n🎯 **EVENTOS:**\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 8,00 (promo no site — antes R$ 10,00) - 19h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\n💡 Precisa de mais detalhes sobre algum evento específico?'
             },
             
             // Horários e funcionamento (prioridade alta)
@@ -3069,7 +3069,7 @@ function initChat() {
             // Eventos e treinos
             {
                 match: ['evento','eventos','treino','treinos','xtreino'],
-                reply: '🎯 **EVENTOS DISPONÍVEIS:**\n\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 10,00 (promo R$ 8,00 no site) - 19h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\nVeja na seção Eventos para mais detalhes!'
+                reply: '🎯 **EVENTOS DISPONÍVEIS:**\n\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 8,00 (promo no site — antes R$ 10,00) - 19h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\nVeja na seção Eventos para mais detalhes!'
             },
             {
                 match: ['modo liga','liga','competitivo'],
@@ -3077,7 +3077,7 @@ function initChat() {
             },
             {
                 match: ['camp freitas','camp','campeonato'],
-                reply: '🏆 **CAMPEONATO FREITAS:**\n\n💰 **Valor:** R$ 10,00 (promo R$ 8,00 no site)\n⏰ **Horários:** 19h, 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas por fase\n🏅 **Premiação:** R$ 4.000,00 + Troféu\n📅 **Funcionamento:** Segunda a Sexta-feira\n\n🎯 **Diferencial:** Transmissão modo liga ao vivo a partir das Semifinais + Troféu.'
+                reply: '🏆 **CAMPEONATO FREITAS:**\n\n💰 **Valor:** R$ 8,00 (promo no site — antes R$ 10,00)\n⏰ **Horários:** 19h, 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas por fase\n🏅 **Premiação:** R$ 4.000,00 + Troféu\n📅 **Funcionamento:** Segunda a Sexta-feira\n\n🎯 **Diferencial:** Transmissão modo liga ao vivo a partir das Semifinais + Troféu.'
             },
             {
                 match: ['semanal','semanal freitas'],
@@ -3887,7 +3887,7 @@ window.initSmoothAnimations = initSmoothAnimations;
 // --- Agendamento nativo (Firestore + Netlify Function) ---
 const scheduleConfig = {
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 10.00 },
+    'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2025-01-12', allowedWeekdays: [1,2,3,4,5], slots: ['19h','20h','21h','22h','23h'] },
     'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
@@ -4352,16 +4352,23 @@ function openScheduleModal(eventType){
         const m = String(today.getMonth()+1).padStart(2,'0');
         const d = String(today.getDate()).padStart(2,'0');
         const todayStr = `${y}-${m}-${d}`;
-        // Para camp-freitas, permitir apenas 22/11 e 23/11 (semifinal)
+        // Para camp-freitas, usar configurações específicas (semifinais têm prioridade)
         if (eventType === 'camp-freitas') {
-            // Definir min como a primeira data disponível que ainda não passou
+            const cfg = scheduleConfig[eventType] || {};
+            // Prioridade: se há datas de semifinal, manter essas datas como opções mínimas
             const availableDates = CAMP_SEMIFINAL_DATES.filter(d => d >= todayStr);
             if (availableDates.length > 0) {
                 dateInput.min = availableDates[0];
                 dateInput.max = availableDates[availableDates.length - 1];
-                dateInput.value = availableDates[0]; // Definir primeira data disponível
+                dateInput.value = availableDates[0];
+            } else if (cfg.startDate) {
+                // Usar startDate da configuração quando não for semifinal
+                dateInput.min = cfg.startDate;
+                dateInput.value = cfg.startDate;
+                // remover max para permitir agendamento ad infinitum
+                try { dateInput.removeAttribute('max'); } catch(_) {}
             } else {
-                // Se todas as datas passaram, ainda permitir selecionar (pode ser para visualização)
+                // fallback: manter comportamento antigo (bloqueado)
                 dateInput.min = CAMP_SEMIFINAL_DATES[0];
                 dateInput.max = CAMP_SEMIFINAL_DATES[CAMP_SEMIFINAL_DATES.length - 1];
                 dateInput.value = CAMP_SEMIFINAL_DATES[0];
@@ -4656,13 +4663,37 @@ function isValidScheduleDate(dateStr, eventType){
     
     // Regras específicas por evento
     if (eventType === 'camp-freitas') {
-        // Camp de Fases: apenas datas da semifinal (22/11 e 23/11)
+        // Prioridade: manter suporte a semifinais já definidas
         const dateIso = dateStr || '';
         if (CAMP_SEMIFINAL_DATES.includes(dateIso)) {
-            // Semifinal: permitir mesmo que não seja hoje
             return date >= today;
         }
-        // Oitavas esgotadas - não permitir outras datas
+
+        // Usar configuração em scheduleConfig quando disponível (promoção regular a partir de uma data)
+        const cfg = scheduleConfig[eventType] || {};
+        if (cfg.startDate) {
+            // aceitar datas a partir do startDate e somente em weekdays permitidos
+            const normalizedStart = new Date(cfg.startDate + 'T00:00:00');
+            if (isNaN(normalizedStart.getTime())) {
+                // fallback: não permitir
+                return false;
+            }
+            if (date < normalizedStart) return false;
+            // verificar dias da semana permitidos se definido
+            if (Array.isArray(cfg.allowedWeekdays) && cfg.allowedWeekdays.length > 0) {
+                const day = date.getDay(); // 0..6 (Domingo..Sábado)
+                if (!cfg.allowedWeekdays.includes(day)) return false;
+            } else {
+                // por padrão permitir apenas segunda a sexta
+                const dayOfWeek = date.getDay();
+                if (dayOfWeek < 1 || dayOfWeek > 5) return false;
+            }
+            // não permitir datas no passado
+            if (date < today) return false;
+            return true;
+        }
+
+        // Se não há configuração, não permitir por padrão
         return false;
     } else if (eventType === 'camp-final') {
         const dateIso = dateStr || '';
@@ -4707,16 +4738,22 @@ async function renderScheduleTimes(){
     
     // Definir horários baseados no tipo de evento
     let slots = [];
-    if (eventType === 'xtreino-tokens') {
+    const cfg = scheduleConfig[eventType] || {};
+    // Se a configuração explicitou slots, usar isso (exceto caso de semifinais que tem prioridade)
+    const isSemifinal = CAMP_SEMIFINAL_DATES.includes(date);
+    if (eventType === 'camp-freitas' && isSemifinal) {
+        slots = ['17h'];
+    } else if (Array.isArray(cfg.slots) && cfg.slots.length > 0) {
+        slots = cfg.slots.slice();
+    } else if (eventType === 'xtreino-tokens') {
         // XTreino Tokens: 14h às 23h
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'modo-liga') {
         // XTreino Modo Liga: 14h às 23h
         slots = ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'];
     } else if (eventType === 'camp-freitas') {
-        // Camp Freitas: Oitavas esgotadas - apenas Semifinal disponível
-        const isSemifinal = CAMP_SEMIFINAL_DATES.includes(date);
-        slots = isSemifinal ? ['17h'] : [];
+        // Camp Freitas: handled above (semifinal priority) or by cfg.slots
+        slots = slots || [];
     } else if (eventType === 'camp-final') {
         const isFinal = CAMP_FINAL_DATES.includes(date);
         slots = isFinal ? ['18h'] : [];
