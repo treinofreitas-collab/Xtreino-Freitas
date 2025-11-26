@@ -42,6 +42,77 @@ async function getCampSemifinalLinkByDate(date) {
     return null;
 }
 
+// Creditar tokens de forma atômica (increment + marca de controle)
+async function creditTokensToUser(db, orderData, tokensToAdd, externalRef) {
+    if (!orderData) return;
+    const usersRef = db.collection('users');
+    const userId = orderData.userId || orderData.uid || null;
+    const customerEmail = orderData.customer || orderData.buyerEmail || orderData.email || null;
+
+    try {
+        if (userId) {
+            const userDocRef = usersRef.doc(userId);
+            await db.runTransaction(async (tx) => {
+                const userSnap = await tx.get(userDocRef);
+                if (!userSnap.exists) throw new Error('USER_NOT_FOUND');
+
+                const udata = userSnap.data() || {};
+                // Evitar crédito duplicado: checar marca em orders (orderData.id) ou em user
+                // Usar campo de controle no order: tokensCredited
+                const orderRef = db.collection('orders').doc(orderData.id || externalRef);
+                const orderSnap = await tx.get(orderRef);
+                if (orderSnap.exists) {
+                    const od = orderSnap.data() || {};
+                    if (od.tokensCredited) {
+                        console.log('Tokens já creditados para order', orderRef.id);
+                        return;
+                    }
+                }
+
+                const newTokens = (udata.tokens || 0) + Number(tokensToAdd || 0);
+                tx.update(userDocRef, { tokens: newTokens });
+                if (orderSnap.exists) tx.update(orderRef, { tokensCredited: true });
+            });
+            console.log('✅ Tokens credited via userId:', userId, 'amount:', tokensToAdd);
+            return;
+        }
+
+        if (customerEmail) {
+            // Buscar usuário por email e creditar atomically
+            const q = await usersRef.where('email', '==', customerEmail).limit(1).get();
+            if (q.empty) {
+                console.log('No user found by email to credit tokens:', customerEmail);
+                return;
+            }
+            const userDoc = q.docs[0];
+            const userDocRef = userDoc.ref;
+            await db.runTransaction(async (tx) => {
+                const userSnap = await tx.get(userDocRef);
+                const udata = userSnap.data() || {};
+                const orderRef = db.collection('orders').doc(orderData.id || externalRef);
+                const orderSnap = await tx.get(orderRef);
+                if (orderSnap.exists) {
+                    const od = orderSnap.data() || {};
+                    if (od.tokensCredited) {
+                        console.log('Tokens já creditados para order', orderRef.id);
+                        return;
+                    }
+                }
+
+                const newTokens = (udata.tokens || 0) + Number(tokensToAdd || 0);
+                tx.update(userDocRef, { tokens: newTokens });
+                if (orderSnap.exists) tx.update(orderRef, { tokensCredited: true });
+            });
+            console.log('✅ Tokens credited via email:', customerEmail, 'amount:', tokensToAdd);
+            return;
+        }
+
+        console.log('No identifier to credit tokens (userId/email)');
+    } catch (err) {
+        console.error('Error crediting tokens:', err);
+    }
+}
+
 // Função para obter link do WhatsApp do Firestore
 async function getWhatsAppLinkForRegistration(eventType, schedule, date = null) {
     try {
@@ -451,23 +522,29 @@ exports.handler = async (event, context) => {
             // Se o pagamento foi aprovado, atualizar o Firestore
             if (payment.status === 'approved') {
                 console.log('Payment approved, updating database...');
-                
+
                 try {
                     const db = admin.firestore();
-                    const externalRef = payment.external_reference;
-                    
+                    // Prefer external_reference, fallback para preference_id or metadata.external_reference
+                    const externalRef = payment.external_reference || payment.preference_id || (payment.metadata && payment.metadata.external_reference) || null;
+
                     // Primeiro, tentar buscar na coleção 'orders' (para compras de tokens e produtos)
-                    console.log('Searching for order with external_reference:', externalRef);
+                    console.log('Searching for order with external_reference/preference_id:', externalRef);
                     const ordersRef = db.collection('orders');
-                    const ordersSnapshot = await ordersRef.where('external_reference', '==', externalRef).get();
-                    
-                    console.log('Orders found:', ordersSnapshot.size);
-                    ordersSnapshot.forEach(doc => {
-                        console.log('Order document:', doc.id, doc.data());
-                    });
-                    
+                    let ordersSnapshot = { empty: true };
+                    if (externalRef) {
+                      try {
+                        ordersSnapshot = await ordersRef.where('external_reference', '==', externalRef).get();
+                      } catch(e) {
+                        console.warn('Error querying orders by external_reference:', e);
+                        ordersSnapshot = { empty: true };
+                      }
+                    }
+
+                    console.log('Orders found:', (ordersSnapshot && ordersSnapshot.size) || 0);
+
                     // Se não encontrou, tentar buscar por ID do documento (caso o external_reference seja digital_<docId>)
-                    if (ordersSnapshot.empty && externalRef.startsWith('digital_')) {
+                    if (ordersSnapshot.empty && externalRef && externalRef.startsWith('digital_')) {
                         const docId = externalRef.replace('digital_', '');
                         console.log('Trying to find order by document ID:', docId);
                         const orderDoc = await ordersRef.doc(docId).get();
@@ -478,7 +555,7 @@ exports.handler = async (event, context) => {
                             // Usar o documento encontrado
                             const orderData = orderDoc.data();
                             const orderDocRef = orderDoc.ref;
-                            
+
                             // Atualizar status para 'paid'
                             await orderDocRef.update({
                                 status: 'paid',
@@ -486,34 +563,17 @@ exports.handler = async (event, context) => {
                                 paymentStatus: 'approved',
                                 paidAt: admin.firestore.FieldValue.serverTimestamp()
                             });
-                            
+
                             console.log('Order updated to paid:', orderDoc.id);
-                            
+
                             // Processar o tipo de compra
                             if (payment.description && payment.description.includes('Token')) {
                                 console.log('This is a token purchase! Processing...');
-                                const userId = orderData.userId || orderData.uid;
-                                const customerEmail = orderData.customer || orderData.buyerEmail;
-                                
-                                if (customerEmail) {
-                                    console.log('Looking up user by email:', customerEmail);
-                                    const usersSnapshot = await db.collection('users').where('email', '==', customerEmail).get();
-                                    
-                                    if (!usersSnapshot.empty) {
-                                        const userDoc = usersSnapshot.docs[0];
-                                        const currentTokens = userDoc.data().tokens || 0;
-                                        const tokensToAdd = parseInt(payment.description.match(/\d+/)?.[0] || '1');
-                                        
-                                        await userDoc.ref.update({
-                                            tokens: currentTokens + tokensToAdd
-                                        });
-                                        
-                                        console.log(`✅ Added ${tokensToAdd} tokens to user ${customerEmail}. New balance: ${currentTokens + tokensToAdd}`);
-                                    }
-                                }
+                                const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt(payment.description.match(/(\d+)/)?.[0] || '1');
+                                await creditTokensToUser(db, { ...orderData, id: orderDoc.id }, tokensToAdd, externalRef);
                             } else if (orderData.type === 'digital_product') {
                                 console.log('This is a digital product purchase! Processing delivery...');
-                                
+
                                 const deliveryData = {
                                     orderId: orderDoc.id,
                                     customerEmail: orderData.customer || orderData.buyerEmail,
@@ -526,11 +586,11 @@ exports.handler = async (event, context) => {
                                     downloadLinks: await generateDownloadLinks(orderData.productId, orderData.productOptions),
                                     paymentId: payment.id
                                 };
-                                
+
                                 await db.collection('digital_deliveries').add(deliveryData);
                                 console.log('✅ Digital delivery created for product:', orderData.productId);
                             }
-                            
+
                             return {
                                 statusCode: 200,
                                 headers,
@@ -538,11 +598,11 @@ exports.handler = async (event, context) => {
                             };
                         }
                     }
-                    
+
                     if (!ordersSnapshot.empty) {
                         const orderDoc = ordersSnapshot.docs[0];
                         const orderData = orderDoc.data();
-                        
+
                         // Atualizar status para 'paid'
                         await orderDoc.ref.update({
                             status: 'paid',
@@ -550,97 +610,28 @@ exports.handler = async (event, context) => {
                             paymentStatus: 'approved',
                             paidAt: admin.firestore.FieldValue.serverTimestamp()
                         });
-                        
+
                         console.log('Order updated to paid:', orderDoc.id);
-                        
+
                         // Criar venda de afiliado se houver código de afiliado
                         const orderDataWithId = { ...orderData, id: orderDoc.id };
                         await createAffiliateSale(db, orderDataWithId, orderData.type === 'digital_product' ? 'product' : 'event');
-                        
+
                         // Verificar tipo de compra
                         console.log('Checking purchase type...');
                         console.log('Payment description:', payment.description);
                         console.log('Order data:', orderData);
-                        
-                        // Se for compra de tokens, atualizar saldo do usuário
+
+                        // Se for compra de tokens, atualizar saldo do usuário via transação
                         if (payment.description && payment.description.includes('Token')) {
                             console.log('This is a token purchase! Processing...');
-                            const userId = orderData.userId || orderData.uid;
-                            const customerEmail = orderData.customer || orderData.buyerEmail;
-                            
-                            console.log('User ID:', userId);
-                            console.log('Customer Email:', customerEmail);
-                            
-                            // Primeiro tentar por email (mais confiável)
-                            if (customerEmail) {
-                                console.log('Looking up user by email:', customerEmail);
-                                const usersSnapshot = await db.collection('users').where('email', '==', customerEmail).get();
-                                
-                                if (!usersSnapshot.empty) {
-                                    const userDoc = usersSnapshot.docs[0];
-                                    const currentTokens = userDoc.data().tokens || 0;
-                                    const tokensToAdd = parseInt(payment.description.match(/\d+/)?.[0] || '1');
-                                    
-                                    console.log(`Current tokens: ${currentTokens}, Adding: ${tokensToAdd}`);
-                                    
-                                    await userDoc.ref.update({
-                                        tokens: currentTokens + tokensToAdd
-                                    });
-                                    
-                                    console.log(`✅ Added ${tokensToAdd} tokens to user ${customerEmail}. New balance: ${currentTokens + tokensToAdd}`);
-                                } else {
-                                    console.log('❌ No user found with email:', customerEmail);
-                                }
-                            } else if (userId) {
-                                // Fallback: buscar usuário por ID
-                                console.log('Looking up user by ID:', userId);
-                                const userRef = db.collection('users').doc(userId);
-                                const userDoc = await userRef.get();
-                                
-                                if (userDoc.exists) {
-                                    const currentTokens = userDoc.data().tokens || 0;
-                                    const tokensToAdd = parseInt(payment.description.match(/\d+/)?.[0] || '1');
-                                    
-                                    console.log(`Current tokens: ${currentTokens}, Adding: ${tokensToAdd}`);
-                                    
-                                    await userRef.update({
-                                        tokens: currentTokens + tokensToAdd
-                                    });
-                                    
-                                    console.log(`✅ Added ${tokensToAdd} tokens to user ${userId}. New balance: ${currentTokens + tokensToAdd}`);
-                                } else {
-                                    console.log('❌ User document not found for ID:', userId);
-                                }
-                            } else {
-                                console.log('❌ No user ID or email found in order data');
-                            }
+                            const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt(payment.description.match(/(\d+)/)?.[0] || '1');
+                            await creditTokensToUser(db, { ...orderData, id: orderDoc.id }, tokensToAdd, externalRef);
                         }
-                        
+
                         // Se for produto digital, criar entrega digital
                         else if (orderData.type === 'digital_product') {
                             console.log('This is a digital product purchase! Processing delivery...');
-                            
-                            // Criar entrega digital
-                            const deliveryData = {
-                                orderId: orderDoc.id,
-                                customerEmail: orderData.customer || orderData.buyerEmail,
-                                customerName: orderData.customerName,
-                                productId: orderData.productId,
-                                productName: orderData.title,
-                                productOptions: orderData.productOptions || {},
-                                status: 'delivered',
-                                deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
-                                downloadLinks: await generateDownloadLinks(orderData.productId, orderData.productOptions),
-                                paymentId: payment.id
-                            };
-                            
-                            console.log('Creating digital delivery:', deliveryData);
-                            
-                            // Salvar entrega digital
-                            await db.collection('digital_deliveries').add(deliveryData);
-                            
-                            console.log('✅ Digital delivery created for product:', orderData.productId);
-                        }
                     } else {
                         // Se não encontrou em orders, tentar em registrations (para agendamentos)
                         const registrationsRef = db.collection('registrations');

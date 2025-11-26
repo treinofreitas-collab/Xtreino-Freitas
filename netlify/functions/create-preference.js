@@ -110,7 +110,10 @@ exports.handler = async function(event) {
           if (!c.exists) throw new Error('COUPON_001');
           const cd = c.data() || {};
 
-          if (cd.active === false) throw new Error('COUPON_003');
+          // Accept either `active` or `isActive` boolean flags for backward compatibility
+          if ((typeof cd.active !== 'undefined' && cd.active === false) || (typeof cd.isActive !== 'undefined' && cd.isActive === false)) {
+            throw new Error('COUPON_003');
+          }
           if (cd.expiresAt) {
             const exp = cd.expiresAt.toDate ? cd.expiresAt.toDate() : new Date(cd.expiresAt);
             if (new Date() > exp) throw new Error('COUPON_002');

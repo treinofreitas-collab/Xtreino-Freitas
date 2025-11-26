@@ -1177,98 +1177,80 @@ function getTokenBalance() {
     });
     return balance;
 }
+// Validar se pode gastar tokens
 function canSpendTokens(amountBRL) {
-    const balance = getTokenBalance();
-    const amount = Number(amountBRL || 0);
-    const canSpend = balance >= amount;
-    console.log('🔍 Can spend tokens check:', { balance, amount, canSpend });
-    return canSpend;
-}
-async function spendTokens(amountBRL) {
     try {
-        const amt = Number(amountBRL || 0);
-        
-        // TOKEN_005: Validar valor
-        if (isNaN(amt) || amt <= 0) {
-            throwError('TOKEN_005', 'TOKEN_005');
-        }
-        
-        // TOKEN_001: Validar se pode gastar
-        if (!canSpendTokens(amt)) {
-            const balance = getTokenBalance();
-            throwError('TOKEN_001', 'TOKEN_001');
-        }
-        
-        // AUTH_001: Validar perfil
-        if (!window.currentUserProfile) {
-            throwError('AUTH_001', 'AUTH_001');
-        }
-        
-        const currentBalance = getTokenBalance();
-        const newBalance = Number((currentBalance - amt).toFixed(2));
-        
-        // TOKEN_005: Validar novo saldo
-        if (isNaN(newBalance) || newBalance < 0) {
-            throwError('TOKEN_005', 'TOKEN_005');
-        }
-        
-        window.currentUserProfile.tokens = newBalance;
-        
-        console.log(`🔍 Spending ${amt} tokens. Balance: ${currentBalance} → ${newBalance}`);
-        
-        // TOKEN_004: Persistir no Firestore
+        // Verificar se usuário está autenticado e perfil carregado
+        if (!window.firebaseAuth?.currentUser) return false;
+        if (!window.currentUserProfile) return false;
+
+        const balance = Number(window.currentUserProfile.tokens || 0);
+        const amount = Number(amountBRL || 0);
+
+        if (isNaN(amount) || amount <= 0) return false;
+        if (isNaN(balance) || balance < 0) return false;
+
+        const canSpend = balance >= amount;
+        console.log('🔍 Can spend tokens:', { balance, amount, canSpend });
+        return canSpend;
+    } catch (error) {
+        console.error('❌ Error in canSpendTokens:', error);
+        return false;
+    }
+}
+
+// Debitar tokens localmente (retorna novo saldo)
+function spendTokensSync(amountBRL) {
+    const amt = Number(amountBRL || 0);
+    if (isNaN(amt) || amt <= 0) throw new Error('TOKEN_005');
+    if (!window.currentUserProfile) throw new Error('AUTH_001');
+
+    const currentBalance = Number(window.currentUserProfile.tokens || 0);
+    if (currentBalance < amt) throw new Error('TOKEN_001');
+
+    const newBalance = Number((currentBalance - amt).toFixed(2));
+    if (newBalance < 0) throw new Error('TOKEN_005');
+
+    window.currentUserProfile.tokens = newBalance;
+    try { localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile)); } catch(_) {}
+    console.log(`✅ Tokens debited locally: ${currentBalance} → ${newBalance}`);
+    return newBalance;
+}
+
+// Debitar tokens e persistir no Firestore
+async function spendTokens(amountBRL) {
+    const amt = Number(amountBRL || 0);
+    try {
+        if (isNaN(amt) || amt <= 0) { showError('TOKEN_005','TOKEN_005'); return false; }
+        if (!window.firebaseAuth?.currentUser) { showError('AUTH_001','AUTH_001'); return false; }
+        if (!window.currentUserProfile) { showError('AUTH_001','AUTH_001'); return false; }
+        if (!canSpendTokens(amt)) { showError('TOKEN_001','TOKEN_001'); return false; }
+
+        const currentBalance = Number(window.currentUserProfile.tokens || 0);
+        const newBalance = spendTokensSync(amt);
+
+        // Persistir
         try {
-            await persistUserProfile(window.currentUserProfile);
-            console.log('✅ Perfil persistido no Firestore');
+            const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const userRef = doc(window.firebaseDb, 'users', window.firebaseAuth.currentUser.uid);
+            await updateDoc(userRef, { tokens: newBalance });
+            console.log('✅ Tokens persisted to Firestore');
         } catch (persistError) {
-            // Tentar reverter mudança local
+            console.error('❌ Persist error, reverting local change:', persistError);
+            // Reverter local
             window.currentUserProfile.tokens = currentBalance;
-            throwError(persistError, 'TOKEN_004');
+            try { localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile)); } catch(_) {}
+            showError('TOKEN_004','TOKEN_004');
+            return false;
         }
-        
-        // Atualizar interface se estiver na área do cliente
-        if (window.location.pathname.includes('client.html')) {
-            try {
-                // Recarregar dados do cliente
-                if (typeof loadMyTokens === 'function') {
-                    await loadMyTokens();
-                }
-                if (typeof loadTokenUsageHistory === 'function') {
-                    await loadTokenUsageHistory();
-                }
-            } catch (uiError) {
-                console.warn('⚠️ Erro ao atualizar interface do cliente (não crítico):', uiError);
-                // Não falhar por causa disso, é apenas atualização de UI
-            }
-        }
-        
-        // Atualizar interface na página principal
-        try {
-            renderClientArea();
-            updateHeaderTokenBadges();
-        } catch (uiError) {
-            console.warn('⚠️ Erro ao atualizar interface (não crítico):', uiError);
-        }
-        
-        // Re-sync do Firestore para refletir saldo final
-        try {
-            await syncUserTokens();
-        } catch (syncError) {
-            console.warn('⚠️ Erro ao sincronizar tokens (não crítico):', syncError);
-            // Não falhar por causa disso, o débito já foi feito
-        }
-        
-        console.log(`✅ Débito de tokens concluído: R$ ${amt.toFixed(2)}`);
+
+        // Atualizar UI
+        try { renderClientArea(); updateHeaderTokenBadges(); } catch(e){ console.warn('UI update error', e); }
         return true;
     } catch (error) {
-        console.error('❌ Erro na função spendTokens:', error);
-        // Re-lançar erro com código para tratamento no chamador
-        // Se já foi tratado com código de erro, relançar
-        if (error && typeof error === 'object' && error.code) {
-            throw error;
-        }
-        // Caso contrário, tratar como erro genérico
-        throwError(error, 'TOKEN_002');
+        console.error('❌ Error in spendTokens:', error);
+        showError('TOKEN_002','TOKEN_002');
+        return false;
     }
 }
 function grantTokens(amountBRL) {
@@ -5462,6 +5444,34 @@ function selectTime(timeValue, element) {
 }
 
 // Função para lidar com compra de produtos da loja
+// Armazena falhas de checkout para diagnóstico (pode ser copiado pelo usuário)
+function storeCheckoutFailure(info){
+    try{
+        const existing = JSON.parse(sessionStorage.getItem('lastCheckoutFailure')||'null');
+        const out = { timestamp: Date.now(), ...info };
+        // manter apenas o último registro
+        sessionStorage.setItem('lastCheckoutFailure', JSON.stringify(out));
+        console.warn('📦 Stored checkout failure for diagnosis', out);
+    }catch(e){ console.warn('Could not store checkout failure:', e); }
+}
+
+// Helper to wrap fetch with timeout
+async function fetchWithTimeout(url, opts = {}, ms = 15000){
+    const controller = new AbortController();
+    const id = setTimeout(()=>controller.abort(), ms);
+    opts.signal = controller.signal;
+    try{
+        const r = await fetch(url, opts);
+        clearTimeout(id);
+        return r;
+    }catch(err){
+        clearTimeout(id);
+        throw err;
+    }
+}
+
+// End helpers
+
 async function handleProductPurchase(productId, cfg) {
     try {
         // Coletar dados do formulário (apenas se existirem)
@@ -5593,26 +5603,34 @@ async function handleProductPurchase(productId, cfg) {
         };
         
         console.log('🔍 Enviando requisição para create-preference:', preferencePayload);
-        
-        const response = await fetch('/.netlify/functions/create-preference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(preferencePayload)
-        });
+        let response;
+        try{
+            response = await fetchWithTimeout('/.netlify/functions/create-preference', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(preferencePayload)
+            }, 15000);
+        }catch(fetchErr){
+            console.error('❌ Erro no fetch create-preference (produto):', fetchErr);
+            storeCheckoutFailure({ location: 'product', payload: preferencePayload, errorMessage: String(fetchErr) });
+            throw fetchErr;
+        }
 
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Erro na resposta do create-preference:', errorText);
+            const errorText = await response.text().catch(()=>null);
+            console.error('❌ Erro na resposta do create-preference:', response.status, errorText);
+            storeCheckoutFailure({ location: 'product', payload: preferencePayload, responseStatus: response.status, responseText: errorText });
             throw new Error(errorText || 'Erro ao criar preferência de pagamento');
         }
-        
-        const data = await response.json();
+
+        const data = await response.json().catch((e)=>{ return null; });
         console.log('✅ Preference criada:', data);
         
         // Verificar se tem init_point ou sandbox_init_point
         const checkoutUrl = data.init_point || data.sandbox_init_point;
         if (!checkoutUrl) {
             console.error('❌ Resposta inválida do create-preference:', data);
+            storeCheckoutFailure({ location: 'product', payload: preferencePayload, responseStatus: response.status, responseJson: data, errorMessage: 'No checkout URL in response' });
             throw new Error('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.');
         }
         
@@ -6612,41 +6630,43 @@ async function submitSchedule(e, useTokens=false){
     
     // Usar AbortController e timeout para evitar que o botão fique travado indefinidamente
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-        const resp = await fetch('/.netlify/functions/create-preference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`,
-                unit_price: finalPrice,
-                currency_id: 'BRL',
-                quantity: 1,
-                back_url: window.location.origin,
-                coupon_info: couponInfo,
-                multiple_reservations: {
-                    teams: teams.map(t => t.name || 'Time sem nome'),
-                    schedules: selectedTimes,
-                    dates: datesToUse2,
-                    eventType: eventType
-                },
-                external_reference: externalRef
-            }),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
+        let resp;
+        try{
+            resp = await fetchWithTimeout('/.netlify/functions/create-preference', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: `${cfg.label} - ${totalReservations} reservas - ${datesCount > 1 ? `${datesCount} datas` : datesToUse2[0]}`,
+                    unit_price: finalPrice,
+                    currency_id: 'BRL',
+                    quantity: 1,
+                    back_url: window.location.origin,
+                    coupon_info: couponInfo,
+                    multiple_reservations: {
+                        teams: teams.map(t => t.name || 'Time sem nome'),
+                        schedules: selectedTimes,
+                        dates: datesToUse2,
+                        eventType: eventType
+                    },
+                    external_reference: externalRef
+                })
+            }, 15000);
+        }catch(fetchErr){
+            console.error('❌ Erro no fetch create-preference (schedule):', fetchErr);
+            storeCheckoutFailure({ location: 'schedule', payload: { external_reference: externalRef, totalReservations, datesToUse: datesToUse2 }, errorMessage: String(fetchErr) });
+            throw fetchErr;
+        }
 
         if (!resp.ok) {
-            const txt = await resp.text().catch(() => '');
+            const txt = await resp.text().catch(()=>'');
+            storeCheckoutFailure({ location: 'schedule', payload: { external_reference: externalRef, totalReservations, datesToUse: datesToUse2 }, responseStatus: resp.status, responseText: txt });
             throw new Error(txt || `Erro na função de pagamento (${resp.status})`);
         }
 
-        const data = await resp.json();
+        const data = await resp.json().catch(()=>null);
         closeScheduleModal();
 
-        if (data.external_reference) {
+        if (data && data.external_reference) {
             try { sessionStorage.setItem('lastExternalRef', data.external_reference); } catch(_) {}
             try {
                 const regId = sessionStorage.getItem('lastRegId');
@@ -6675,11 +6695,12 @@ async function submitSchedule(e, useTokens=false){
             }
         }
 
-        const url = data.init_point || data.sandbox_init_point;
+        const url = data ? (data.init_point || data.sandbox_init_point) : null;
         if (url) {
             try { sessionStorage.setItem('lastCheckoutUrl', url); } catch(_) {}
             window.location.href = url;
         } else {
+            storeCheckoutFailure({ location: 'schedule', payload: { external_reference: externalRef, totalReservations, datesToUse: datesToUse2 }, responseJson: data, errorMessage: 'No checkout URL' });
             alert('Não foi possível iniciar o pagamento.');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
         }

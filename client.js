@@ -3083,113 +3083,103 @@ window.setSelectedTokensQty = function(qty){
 
 window.purchaseTokens = async function(quantity) {
     try {
-        // Verificar se Firebase está inicializado
+        // Re-initialize Firebase if needed
         if (!db) {
-            console.error('❌ Firebase not initialized, attempting to reinitialize...');
+            console.warn('Firebase DB not initialized, attempting initializeFirebase()');
             initializeFirebase();
-            if (!db) {
-                alert('Erro: Firebase não foi inicializado. Recarregue a página.');
-                return;
-            }
+            if (!db) { alert('Erro: Firebase não foi inicializado. Recarregue a página.'); return; }
         }
-        
-        // preço base R$1 por token, aplicar cupom se houver
-        const basePrice = quantity || selectedTokensQty || 0;
-        if (!basePrice){ alert('Selecione a quantidade de tokens'); return; }
-        let price = basePrice;
+
+        // Determine base quantity and price (R$1 per token)
+        const baseQty = Number(quantity || selectedTokensQty || 0);
+        if (!baseQty || baseQty <= 0) { alert('Selecione a quantidade de tokens'); return; }
+        let price = baseQty * 1.00;
         if (appliedTokenCoupon) {
             const discount = appliedTokenCoupon.discountType === 'percentage'
-              ? basePrice * (appliedTokenCoupon.discountValue / 100)
-              : appliedTokenCoupon.discountValue;
-            price = Math.max(0, basePrice - discount);
+                ? price * (appliedTokenCoupon.discountValue / 100)
+                : appliedTokenCoupon.discountValue;
+            price = Math.max(0, Number((price - discount).toFixed(2)));
         }
-        
-        // Criar preferência no Mercado Pago
+
+        // Ensure authenticated
+        const currentUser = auth?.currentUser;
+        if (!currentUser) { alert('Você precisa estar logado para comprar tokens'); return; }
+
+        // 1) Create order in Firestore before requesting preference
+        const orderData = {
+            title: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
+            description: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
+            item: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
+            amount: price,
+            total: price,
+            quantity: baseQty,
+            currency: 'BRL',
+            status: 'pending',
+            customer: currentUser.email,
+            buyerEmail: currentUser.email,
+            userId: currentUser.uid,
+            uid: currentUser.uid,
+            createdAt: new Date(),
+            timestamp: Date.now()
+        };
+
+        let savedOrderId = null;
+        try {
+            const docRef = await addDoc(collection(db, 'orders'), orderData);
+            savedOrderId = docRef.id;
+            console.log('✅ Order created in Firestore (preference step):', savedOrderId);
+        } catch (err) {
+            console.warn('⚠️ Could not create order before preference:', err);
+            // continue but ensure we have a fallback id
+            savedOrderId = `tokens_${currentUser.uid}_${Date.now()}`;
+        }
+
+        // 2) Request server-side to create Mercado Pago preference and pass external_reference as order id
+        const payload = {
+            title: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
+            quantity: 1,
+            unit_price: price,
+            currency_id: 'BRL',
+            back_url: window.location.origin + window.location.pathname,
+            external_reference: savedOrderId,
+            coupon_info: appliedTokenCoupon ? {
+                id: appliedTokenCoupon.id,
+                code: appliedTokenCoupon.code,
+                discountType: appliedTokenCoupon.discountType,
+                discountValue: appliedTokenCoupon.discountValue,
+                context: 'tokens'
+            } : undefined
+        };
+
         const response = await fetch('/.netlify/functions/create-preference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: `${basePrice} Token${basePrice > 1 ? 's' : ''} XTreino`,
-                unit_price: price,
-                currency_id: 'BRL',
-                quantity: 1,
-                back_url: window.location.origin + window.location.pathname,
-                coupon_info: appliedTokenCoupon ? {
-                    id: appliedTokenCoupon.id,
-                    code: appliedTokenCoupon.code,
-                    discountType: appliedTokenCoupon.discountType,
-                    discountValue: appliedTokenCoupon.discountValue,
-                    context: 'tokens'
-                } : undefined
-            })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
-        
+
         if (!response.ok) throw new Error('Erro ao criar preferência');
-        
         const data = await response.json();
-        
-        if (data.init_point) {
-            // Salvar order no Firestore ANTES de redirecionar
-            try {
-                const currentUser = auth.currentUser;
-                console.log('🔍 Current user:', currentUser ? `${currentUser.uid} (${currentUser.email})` : 'Not authenticated');
-                console.log('🔍 DB instance:', db ? 'Available' : 'NULL - Firebase not initialized');
-                console.log('🔍 DB type:', typeof db);
-                console.log('🔍 DB constructor:', db ? db.constructor.name : 'null');
-                console.log('🔍 DB has collection method:', db && typeof db.collection === 'function' ? 'YES' : 'NO');
-                
-                if (currentUser && db) {
-                    const orderData = {
-                        // Usar basePrice (garante valor correto mesmo quando quantity não é passado)
-                        title: `${basePrice} Token${basePrice > 1 ? 's' : ''} XTreino`,
-                        description: `${basePrice} Token${basePrice > 1 ? 's' : ''} XTreino`,
-                        item: `${basePrice} Token${basePrice > 1 ? 's' : ''} XTreino`,
-                        amount: price,
-                        total: price,
-                        quantity: 1,
-                        currency: 'BRL',
-                        status: 'pending',
-                        external_reference: data.external_reference,
-                        preference_id: data.id,
-                        customer: currentUser.email,
-                        buyerEmail: currentUser.email,
-                        userId: currentUser.uid,
-                        uid: currentUser.uid,
-                        createdAt: new Date(),
-                        timestamp: Date.now()
-                    };
-                    
-                    console.log('🔍 Attempting to save order:', orderData);
-                    const docRef = await addDoc(collection(db, 'orders'), orderData);
-                    console.log('✅ Order saved to Firestore with ID:', docRef.id);
-                } else {
-                    console.error('❌ Cannot save order: User not authenticated or DB not available');
-                    console.error('❌ User:', currentUser ? 'Authenticated' : 'Not authenticated');
-                    console.error('❌ DB:', db ? 'Available' : 'Not available');
-                }
-            } catch (firestoreError) {
-                console.error('❌ Error saving order to Firestore:', firestoreError);
-                console.error('❌ Error details:', {
-                    message: firestoreError.message,
-                    code: firestoreError.code,
-                    stack: firestoreError.stack
-                });
-                // Continuar mesmo se der erro no Firestore
+
+        if (!data || !data.init_point) {
+            // mark order as error
+            if (savedOrderId && db) {
+                try { const ordRef = doc(db, 'orders', savedOrderId); await updateDoc(ordRef, { status: 'error' }); } catch(_) {}
             }
-            
-            closeTokensPurchaseModal();
-            
-            // Salvar info da compra para processar após pagamento
-            sessionStorage.setItem('tokenPurchase', JSON.stringify({
-                quantity: basePrice,
-                price,
-                external_reference: data.external_reference
-            }));
-            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
-            window.location.href = data.init_point;
-        } else {
             alert('Erro ao iniciar pagamento');
+            return;
         }
+
+        // 3) Save preference metadata into order and redirect
+        try {
+            if (savedOrderId && db) {
+                const ordRef = doc(db, 'orders', savedOrderId);
+                await updateDoc(ordRef, { external_reference: data.external_reference || savedOrderId, preference_id: data.id, paymentUrl: data.init_point });
+            }
+        } catch (updErr) {
+            console.warn('⚠️ Could not update order with preference info:', updErr);
+        }
+
+        closeTokensPurchaseModal();
+        try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
+        window.location.href = data.init_point;
     } catch (error) {
         console.error('Error purchasing tokens:', error);
         alert('Erro ao processar compra de tokens');
