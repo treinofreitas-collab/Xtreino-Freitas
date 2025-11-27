@@ -6800,7 +6800,17 @@ async function submitSchedule(e, useTokens=false){
             'Erro inesperado ao processar sua solicitação. Por favor, tente novamente ou entre em contato com o suporte.',
             `Detalhes: ${errorMessage.substring(0, 200)}${errorStack ? '\n\nStack trace disponível no console' : ''}`
         );
-        if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
+    } finally {
+        // Garantir que o botão seja sempre reabilitado para evitar ficar travado em "Processando..."
+        try {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                // Restaurar texto original apenas se oldText estiver definido
+                if (typeof oldText !== 'undefined' && oldText !== null) submitBtn.textContent = oldText;
+            }
+        } catch (e) {
+            console.warn('⚠️ Erro ao restaurar estado do botão submit:', e);
+        }
     }
 }
 
