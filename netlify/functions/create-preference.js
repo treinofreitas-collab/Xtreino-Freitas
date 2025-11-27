@@ -216,6 +216,41 @@ exports.handler = async function(event) {
       external_reference: externalRef
     };
 
+    // Ensure there is an `orders` document for this external_reference so webhooks
+    // can reliably find and attribute payments even if the client failed to
+    // persist the order (transient network / Firestore errors on client).
+    // This is a safe best-effort; do not fail preference creation if DB is unavailable.
+    try {
+      if (admin && admin.firestore) {
+        const db = admin.firestore();
+        const ordersRef = db.collection('orders');
+        const q = await ordersRef.where('external_reference', '==', externalRef).limit(1).get();
+        if (q.empty) {
+          // Create a minimal pending order record so the webhook can match later.
+          const orderDoc = {
+            title: title || 'Pedido',
+            item: title || 'Item',
+            amount: Number(finalUnitPrice) || Number(unit_price) || 0,
+            total: Number(finalUnitPrice) || Number(unit_price) || 0,
+            currency: currency_id || 'BRL',
+            status: 'pending',
+            external_reference: externalRef,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            metadata: {
+              quantity: quantity || 1,
+              multiple_reservations: body.multiple_reservations || null
+            },
+            type: (body.type || (body.multiple_reservations ? 'event_reservation' : 'purchase'))
+          };
+          await ordersRef.add(orderDoc);
+          console.log('✅ Created fallback order for external_reference:', externalRef);
+        }
+      }
+    } catch (orderEnsureErr) {
+      console.warn('⚠️ Could not ensure orders doc for external_reference:', externalRef, orderEnsureErr && orderEnsureErr.message ? orderEnsureErr.message : orderEnsureErr);
+      // non-fatal: continue to create Mercado Pago preference
+    }
+
     const res = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
       headers: {
