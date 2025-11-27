@@ -567,9 +567,9 @@ exports.handler = async (event, context) => {
                             console.log('Order updated to paid:', orderDoc.id);
 
                             // Processar o tipo de compra
-                            if (payment.description && payment.description.includes('Token')) {
+                            if (orderData.type === 'tokens_purchase' || (payment.description && /token/i.test(payment.description))) {
                                 console.log('This is a token purchase! Processing...');
-                                const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt(payment.description.match(/(\d+)/)?.[0] || '1');
+                                const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt((payment.description && payment.description.match(/(\d+)/)?.[0]) || '1');
                                 await creditTokensToUser(db, { ...orderData, id: orderDoc.id }, tokensToAdd, externalRef);
                             } else if (orderData.type === 'digital_product') {
                                 console.log('This is a digital product purchase! Processing delivery...');
@@ -597,6 +597,19 @@ exports.handler = async (event, context) => {
                                 body: JSON.stringify({ received: true, status: payment.status })
                             };
                         }
+                    
+                    // Se external_reference foi gerado no formato tokens_<docId>, tentar buscar pelo ID do documento
+                    if (ordersSnapshot.empty && externalRef && externalRef.startsWith('tokens_')) {
+                        const docId = externalRef.replace('tokens_', '');
+                        console.log('Trying to find order by tokens document ID:', docId);
+                        const orderDoc = await ordersRef.doc(docId).get();
+                        if (orderDoc.exists) {
+                            console.log('Found tokens order by document ID:', docId);
+                            await orderDoc.ref.update({ external_reference: externalRef });
+                            // Construir um snapshot-like object para prosseguir abaixo
+                            ordersSnapshot = { empty: false, docs: [orderDoc], size: 1 };
+                        }
+                    }
                     }
 
                     if (!ordersSnapshot.empty) {
@@ -623,9 +636,9 @@ exports.handler = async (event, context) => {
                         console.log('Order data:', orderData);
 
                         // Se for compra de tokens, atualizar saldo do usuário via transação
-                        if (payment.description && payment.description.includes('Token')) {
+                        if (orderData.type === 'tokens_purchase' || (payment.description && /token/i.test(payment.description))) {
                             console.log('This is a token purchase! Processing...');
-                            const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt(payment.description.match(/(\d+)/)?.[0] || '1');
+                            const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt((payment.description && payment.description.match(/(\d+)/)?.[0]) || '1');
                             await creditTokensToUser(db, { ...orderData, id: orderDoc.id }, tokensToAdd, externalRef);
                         }
 

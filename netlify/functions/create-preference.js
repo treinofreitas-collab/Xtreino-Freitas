@@ -246,10 +246,18 @@ exports.handler = async function(event) {
             item: title || 'Item',
             amount: Number(finalUnitPrice) || Number(unit_price) || 0,
             total: (Number(finalUnitPrice) || Number(unit_price) || 0) * Number(orderQuantity || 1),
+            // Informações que ajudam o webhook a creditar tokens quando o cliente
+            // não conseguiu persistir a ordem localmente
             currency: currency_id || 'BRL',
             status: 'pending',
             external_reference: externalRef,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            // Campos explícitos para facilitar o matching no webhook
+            quantity: orderQuantity,
+            customer: customerEmail || null,
+            buyerEmail: customerEmail || null,
+            userId: userId || null,
+            uid: userId || null,
             metadata: {
               quantity: orderQuantity,
               multiple_reservations: body.multiple_reservations || null

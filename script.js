@@ -950,6 +950,11 @@ async function checkAuthState() {
                     // Usuário não está logado
                     window.isLoggedIn = false;
                     window.currentUserProfile = null;
+                    // Unsubscribe profile listener if exists
+                    if (window._userProfileUnsubscribe && typeof window._userProfileUnsubscribe === 'function') {
+                        try { window._userProfileUnsubscribe(); } catch(_) {}
+                        window._userProfileUnsubscribe = null;
+                    }
                     toggleAccountButtons(false);
                     updateAdminLinkVisibility();
                 }
@@ -962,32 +967,42 @@ async function checkAuthState() {
 
 async function loadUserProfile(uid) {
     try {
-        // Sempre priorizar Firestore (desabilitado uso de localStorage)
+        // Sempre priorizar Firestore: usar listener onSnapshot para receber atualizações em tempo real
+        // Isso garante que créditos de tokens aplicados pelo webhook apareçam imediatamente
+        if (window._userProfileUnsubscribe && typeof window._userProfileUnsubscribe === 'function') {
+            try { window._userProfileUnsubscribe(); } catch(_) {}
+            window._userProfileUnsubscribe = null;
+        }
         if (window.firebaseReady) {
-            const { doc, getDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const { doc, collection, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const ref = doc(collection(window.firebaseDb, 'users'), uid);
-            const snap = await getDoc(ref);
-            if (snap.exists()) {
-                window.currentUserProfile = snap.data();
-                console.log('Perfil carregado do Firestore');
-            } else {
-                // Cria perfil básico se não existir
-                window.currentUserProfile = {
-                    uid: uid,
-                    email: window.firebaseAuth.currentUser.email,
-                    name: window.firebaseAuth.currentUser.displayName || 'Usuário',
-                    tokens: 0,
-                    role: 'Vendedor',
-                    level: 'Associado Treino'
-                };
-                console.log('Perfil básico criado (Firebase pronto, sem doc)');
-            }
+            // onSnapshot will call immediately with current data and on further updates
+            window._userProfileUnsubscribe = onSnapshot(ref, (snap) => {
+                if (snap.exists && typeof snap.data === 'function') {
+                    window.currentUserProfile = snap.data();
+                    console.log('Perfil sincronizado (onSnapshot) do Firestore:', { tokens: window.currentUserProfile.tokens });
+                } else {
+                    // Criar perfil básico em memória se não existir
+                    window.currentUserProfile = {
+                        uid: uid,
+                        email: window.firebaseAuth.currentUser?.email || '',
+                        name: window.firebaseAuth.currentUser?.displayName || 'Usuário',
+                        tokens: 0,
+                        role: 'Usuario',
+                        level: 'Associado Treino'
+                    };
+                    console.log('Perfil básico criado via onSnapshot (sem doc)');
+                }
+                updateHeaderTokenBadges();
+            }, (err) => {
+                console.error('Erro no listener onSnapshot do perfil:', err);
+            });
         } else {
-            // Fallback: cria perfil básico se Firebase não estiver pronto (sem localStorage)
+            // Fallback: cria perfil básico se Firebase não estiver pronto (em memória)
             window.currentUserProfile = {
                 uid: uid,
-                email: window.firebaseAuth.currentUser.email,
-                name: window.firebaseAuth.currentUser.displayName || 'Usuário',
+                email: window.firebaseAuth.currentUser?.email || '',
+                name: window.firebaseAuth.currentUser?.displayName || 'Usuário',
                 tokens: 0,
                 role: 'Usuario',
                 level: 'Associado Treino'
