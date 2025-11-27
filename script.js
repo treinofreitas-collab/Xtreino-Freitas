@@ -5657,6 +5657,10 @@ async function handleProductPurchase(productId, cfg) {
             const errorText = await response.text().catch(()=>null);
             console.error('❌ Erro na resposta do create-preference:', response.status, errorText);
             storeCheckoutFailure({ location: 'product', payload: preferencePayload, responseStatus: response.status, responseText: errorText });
+            // Detect common server-side misconfiguration and show actionable message
+            if (String(errorText || '').includes('Missing MP_ACCESS_TOKEN') || String(errorText || '').toLowerCase().includes('mercado pago')){
+                alert('Pagamento temporariamente indisponível: problema com a integração do Mercado Pago. Por favor, contate o suporte ou tente pagar via WhatsApp.');
+            }
             throw new Error(errorText || 'Erro ao criar preferência de pagamento');
         }
 
@@ -6697,6 +6701,9 @@ async function submitSchedule(e, useTokens=false){
         if (!resp.ok) {
             const txt = await resp.text().catch(()=>'');
             storeCheckoutFailure({ location: 'schedule', payload: { external_reference: externalRef, totalReservations, datesToUse: datesToUse2 }, responseStatus: resp.status, responseText: txt });
+            if (String(txt || '').includes('Missing MP_ACCESS_TOKEN') || String(txt || '').toLowerCase().includes('mercado pago')){
+                alert('Pagamento temporariamente indisponível: problema com a integração do Mercado Pago. Por favor, contate o suporte ou tente pagar via WhatsApp.');
+            }
             throw new Error(txt || `Erro na função de pagamento (${resp.status})`);
         }
 
