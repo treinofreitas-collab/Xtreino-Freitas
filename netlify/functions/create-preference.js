@@ -90,8 +90,13 @@ exports.handler = async function(event) {
 
     // Usar external_reference do body se fornecido, senão gerar um único
     const externalRef = body.external_reference || `xtreino_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     let finalUnitPrice = Number(unit_price);
+
+    // Inferir se é compra de tokens (quando não informado explicitamente)
+    const titleLower = String(title || '').toLowerCase();
+    const isTokenContext = (body.coupon_info && body.coupon_info.context === 'tokens') || String(externalRef || '').startsWith('tokens_') || /token/.test(titleLower);
+    const inferredType = body.type || (isTokenContext ? 'tokens_purchase' : (body.multiple_reservations ? 'event_reservation' : 'purchase'));
 
     // If couponCode is present, validate and reserve it atomically
     if (couponCode && admin && admin.firestore) {
@@ -227,20 +232,29 @@ exports.handler = async function(event) {
         const q = await ordersRef.where('external_reference', '==', externalRef).limit(1).get();
         if (q.empty) {
           // Create a minimal pending order record so the webhook can match later.
+          // Calcular quantidade e total apropriados (especialmente para tokens)
+          let orderQuantity = quantity || 1;
+          if (inferredType === 'tokens_purchase') {
+            // Tentar extrair quantidade do título se não enviada explicitamente
+            if (!body.quantity) {
+              const m = String(title || '').match(/(\d+)\s*token/i);
+              if (m && m[1]) orderQuantity = Number(m[1]);
+            }
+          }
           const orderDoc = {
             title: title || 'Pedido',
             item: title || 'Item',
             amount: Number(finalUnitPrice) || Number(unit_price) || 0,
-            total: Number(finalUnitPrice) || Number(unit_price) || 0,
+            total: (Number(finalUnitPrice) || Number(unit_price) || 0) * Number(orderQuantity || 1),
             currency: currency_id || 'BRL',
             status: 'pending',
             external_reference: externalRef,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             metadata: {
-              quantity: quantity || 1,
+              quantity: orderQuantity,
               multiple_reservations: body.multiple_reservations || null
             },
-            type: (body.type || (body.multiple_reservations ? 'event_reservation' : 'purchase'))
+            type: inferredType
           };
           await ordersRef.add(orderDoc);
           console.log('✅ Created fallback order for external_reference:', externalRef);
