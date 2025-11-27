@@ -2842,8 +2842,8 @@ async function heroPurchaseTokens(){
                 console.warn('⚠️ Falha ao abrir nova aba para tokens, redirecionando:', e);
                 window.location.href = data.init_point;
             }
-        } else { alert('Erro ao iniciar pagamento'); }
-    }catch(_){ alert('Erro ao comprar tokens'); }
+        } else { showToast('error', 'Erro ao iniciar pagamento. Tente novamente.', 'Erro'); }
+    }catch(e){ console.error('Erro em heroPurchaseTokens:', e); showToast('error', `Erro ao comprar tokens: ${e && e.message ? e.message : String(e)}`, 'Erro'); }
 }
 window.openHeroTokensModal = openHeroTokensModal;
 window.closeHeroTokensModal = closeHeroTokensModal;
@@ -6736,7 +6736,9 @@ async function submitSchedule(e, useTokens=false){
             const txt = await resp.text().catch(()=>'');
             storeCheckoutFailure({ location: 'schedule', payload: { external_reference: externalRef, totalReservations, datesToUse: datesToUse2 }, responseStatus: resp.status, responseText: txt });
             if (String(txt || '').includes('Missing MP_ACCESS_TOKEN') || String(txt || '').toLowerCase().includes('mercado pago')){
-                alert('Pagamento temporariamente indisponível: problema com a integração do Mercado Pago. Por favor, contate o suporte ou tente pagar via WhatsApp.');
+                showToast('error', 'Pagamento temporariamente indisponível: problema com a integração do Mercado Pago.', 'Pagamento');
+            } else {
+                showToast('error', `Erro ao iniciar pagamento: ${txt || `status ${resp.status}`}`, 'Erro');
             }
             throw new Error(txt || `Erro na função de pagamento (${resp.status})`);
         }
@@ -6785,11 +6787,10 @@ async function submitSchedule(e, useTokens=false){
     } catch (err) {
         console.error('❌ Erro no checkout (submitSchedule):', err);
         if (err && err.name === 'AbortError') {
-            alert('Conexão lenta ou instável. Tente novamente (tempo esgotado).');
+            showToast('error', 'Conexão lenta ou instável. Tente novamente (tempo esgotado).', 'Timeout');
         } else {
-            alert('Falha ao iniciar pagamento. ' + (err && err.message ? err.message : 'Por favor, tente novamente.'));
+            showToast('error', `Falha ao iniciar pagamento: ${err && err.message ? err.message : 'Por favor, tente novamente.'}`, 'Erro');
         }
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
     }
     
     } catch (error) {
@@ -7104,7 +7105,7 @@ async function useTokensForEvent(eventType){
         if (schedule && siteEventType){
             const canBook = await checkSlotAvailability(date, schedule, siteEventType);
             if (!canBook){
-                alert('Horário indisponível para este evento (lotado ou travado). Escolha outro horário.');
+                showToast('error', 'Horário indisponível para este evento (lotado ou travado). Escolha outro horário.', 'Horário indisponível');
                 return;
             }
         }
@@ -7117,9 +7118,9 @@ async function useTokensForEvent(eventType){
             await createTokenSchedule(eventType, cost);
             closeTokensModal();
             renderClientArea();
-            alert('✅ Token usado com sucesso! Agendamento criado. Verifique na sua área do cliente.');
+            showToast('success', 'Token usado com sucesso! Agendamento criado. Verifique na sua área do cliente.', 'Sucesso');
         } else {
-            alert('Erro ao processar o resgate de tokens. Tente novamente.');
+            showToast('error', 'Erro ao processar o resgate de tokens. Tente novamente.', 'Erro');
         }
     }
 }

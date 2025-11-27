@@ -3173,7 +3173,7 @@ window.purchaseTokens = async function(quantity) {
             if (savedOrderId && db) {
                 try { const ordRef = doc(db, 'orders', savedOrderId); await updateDoc(ordRef, { status: 'error' }); } catch(_) {}
             }
-            alert('Erro ao iniciar pagamento');
+            showToast('error', 'Erro ao iniciar pagamento. Tente novamente.', 'Erro');
             return;
         }
 
@@ -3198,7 +3198,7 @@ window.purchaseTokens = async function(quantity) {
         }
     } catch (error) {
         console.error('Error purchasing tokens:', error);
-        alert('Erro ao processar compra de tokens');
+        showToast('error', `Erro ao processar compra de tokens: ${error && error.message ? error.message : String(error)}`, 'Erro');
     }
 }
 
@@ -3302,6 +3302,7 @@ window.purchaseTokensQuick = async function(quantity) {
                     code: firestoreError.code,
                     stack: firestoreError.stack
                 });
+                showToast('error', `Erro ao salvar pedido antes do pagamento: ${firestoreError && firestoreError.message ? firestoreError.message : String(firestoreError)}`, 'Erro');
                 // Continuar mesmo se der erro no Firestore
             }
             
@@ -3315,10 +3316,10 @@ window.purchaseTokensQuick = async function(quantity) {
                 window.location.href = data.init_point;
             }
         } else {
-            alert('Erro ao iniciar pagamento');
+            showToast('error', 'Erro ao iniciar pagamento. Tente novamente.', 'Erro');
         }
     } catch (error) {
         console.error('Error in quick purchase:', error);
-        alert('Erro ao processar compra rápida');
+        showToast('error', `Erro ao processar compra rápida: ${error && error.message ? error.message : String(error)}`, 'Erro');
     }
 }
