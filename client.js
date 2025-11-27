@@ -3158,6 +3158,9 @@ window.purchaseTokens = async function(quantity) {
             } : undefined
         };
 
+        // Mark this as tokens purchase to help webhook/server-side handling
+        payload.type = 'tokens_purchase';
+        console.log('🔍 Quick purchase - creating preference with payload:', payload);
         const response = await fetch('/.netlify/functions/create-preference', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
@@ -3243,19 +3246,14 @@ window.purchaseTokensQuick = async function(quantity) {
         }
 
         // Criar preferência de pagamento
+        const prefPayload = {
+            items: [{ title: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`, quantity, unit_price: 1.00 }],
+            external_reference: `tokens_${currentUser.uid}_${Date.now()}`,
+            type: 'tokens_purchase'
+        };
+        console.log('🔍 Quick purchase - create-preference payload:', prefPayload);
         const response = await fetch('/.netlify/functions/create-preference', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                items: [{
-                    title: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
-                    quantity,
-                    unit_price: 1.00
-                }],
-                external_reference: `tokens_${currentUser.uid}_${Date.now()}`
-            })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prefPayload)
         });
 
         const data = await response.json();

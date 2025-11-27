@@ -1221,6 +1221,7 @@ function spendTokensSync(amountBRL) {
 async function spendTokens(amountBRL) {
     const amt = Number(amountBRL || 0);
     try {
+        console.log('🔍 spendTokens called:', { amt, profileTokens: window.currentUserProfile?.tokens });
         if (isNaN(amt) || amt <= 0) { showError('TOKEN_005','TOKEN_005'); return false; }
         if (!window.firebaseAuth?.currentUser) { showError('AUTH_001','AUTH_001'); return false; }
         if (!window.currentUserProfile) { showError('AUTH_001','AUTH_001'); return false; }
@@ -1234,7 +1235,7 @@ async function spendTokens(amountBRL) {
             const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             const userRef = doc(window.firebaseDb, 'users', window.firebaseAuth.currentUser.uid);
             await updateDoc(userRef, { tokens: newBalance });
-            console.log('✅ Tokens persisted to Firestore');
+            console.log('✅ Tokens persisted to Firestore', { uid: window.firebaseAuth.currentUser.uid, newBalance });
         } catch (persistError) {
             console.error('❌ Persist error, reverting local change:', persistError);
             // Reverter local
@@ -2817,7 +2818,18 @@ async function heroPurchaseTokens(){
             console.warn('Não foi possível criar ordem local para tokens:', e);
         }
 
-        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined, external_reference: externalRef }) });
+        const prefBody = {
+            title: `${qty} Token${qty>1?'s':''} XTreino`,
+            unit_price: price,
+            currency_id: 'BRL',
+            quantity: 1,
+            back_url: window.location.origin,
+            external_reference: externalRef,
+            type: 'tokens_purchase'
+        };
+        if (heroAppliedCoupon) prefBody.coupon_info = { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' };
+        console.log('🔍 heroPurchaseTokens - creating preference with body:', prefBody);
+        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prefBody) });
         if (!response.ok) throw new Error('Erro');
         const data = await response.json();
         if (data.init_point){
