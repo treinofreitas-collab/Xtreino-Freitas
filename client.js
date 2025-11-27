@@ -3186,7 +3186,13 @@ window.purchaseTokens = async function(quantity) {
 
         closeTokensPurchaseModal();
         try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
-        window.location.href = data.init_point;
+        try {
+            window.open(data.init_point, '_blank');
+            showToast('success', 'Checkout aberto em nova aba. Finalize o pagamento no Mercado Pago.', 'Checkout');
+        } catch (openErr) {
+            console.warn('⚠️ Falha ao abrir nova aba, redirecionando como fallback:', openErr);
+            window.location.href = data.init_point;
+        }
     } catch (error) {
         console.error('Error purchasing tokens:', error);
         alert('Erro ao processar compra de tokens');
@@ -3301,9 +3307,15 @@ window.purchaseTokensQuick = async function(quantity) {
                 // Continuar mesmo se der erro no Firestore
             }
             
-            // Redirecionar para pagamento
+            // Abrir pagamento em nova aba (fallback para redirect)
             try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
-            window.location.href = data.init_point;
+            try {
+                window.open(data.init_point, '_blank');
+                showToast('success', 'Checkout aberto em nova aba. Finalize o pagamento no Mercado Pago.', 'Checkout');
+            } catch (openErr) {
+                console.warn('⚠️ Falha ao abrir nova aba, redirecionando como fallback:', openErr);
+                window.location.href = data.init_point;
+            }
         } else {
             alert('Erro ao iniciar pagamento');
         }

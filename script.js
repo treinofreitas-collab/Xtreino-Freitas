@@ -2473,8 +2473,14 @@ async function handlePurchase(event) {
         try { 
             sessionStorage.setItem('lastCheckoutUrl', checkoutUrl); 
         } catch(_) {}
-        console.log('🔄 Redirecionando para Mercado Pago:', checkoutUrl);
-        window.location.href = checkoutUrl;
+        console.log('🔄 Abrindo checkout do Mercado Pago em nova aba:', checkoutUrl);
+        try {
+            window.open(checkoutUrl, '_blank');
+            showToast('success', 'Checkout aberto em nova aba. Finalize o pagamento no Mercado Pago.', 'Checkout');
+        } catch (openErr) {
+            console.warn('⚠️ Falha ao abrir nova aba, redirecionando como fallback:', openErr);
+            window.location.href = checkoutUrl;
+        }
     } catch (error) {
         console.error('❌ Erro no checkout:', error);
         if (submitBtn) {
@@ -2814,7 +2820,17 @@ async function heroPurchaseTokens(){
         const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `${qty} Token${qty>1?'s':''} XTreino`, unit_price: price, currency_id: 'BRL', quantity: 1, back_url: window.location.origin, coupon_info: heroAppliedCoupon ? { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' } : undefined, external_reference: externalRef }) });
         if (!response.ok) throw new Error('Erro');
         const data = await response.json();
-        if (data.init_point){ try{ sessionStorage.setItem('lastCheckoutUrl', data.init_point); }catch(_){} closeHeroTokensModal(); window.location.href = data.init_point; } else { alert('Erro ao iniciar pagamento'); }
+        if (data.init_point){
+            try{ sessionStorage.setItem('lastCheckoutUrl', data.init_point); }catch(_){}
+            closeHeroTokensModal();
+            try {
+                window.open(data.init_point, '_blank');
+                showToast('success', 'Checkout aberto em nova aba. Finalize o pagamento no Mercado Pago.', 'Checkout');
+            } catch (e) {
+                console.warn('⚠️ Falha ao abrir nova aba para tokens, redirecionando:', e);
+                window.location.href = data.init_point;
+            }
+        } else { alert('Erro ao iniciar pagamento'); }
     }catch(_){ alert('Erro ao comprar tokens'); }
 }
 window.openHeroTokensModal = openHeroTokensModal;
@@ -5681,7 +5697,13 @@ async function handleProductPurchase(productId, cfg) {
         try { 
             sessionStorage.setItem('lastCheckoutUrl', checkoutUrl); 
         } catch(_) {}
-        window.location.href = checkoutUrl;
+        try {
+            window.open(checkoutUrl, '_blank');
+            showToast('success', 'Checkout aberto em nova aba. Finalize o pagamento no Mercado Pago.', 'Checkout');
+        } catch (openErr) {
+            console.warn('⚠️ Falha ao abrir nova aba, redirecionando como fallback:', openErr);
+            window.location.href = checkoutUrl;
+        }
     } catch (error) {
         console.error('❌ Erro na compra do produto:', error);
         const errorMessage = error.message || 'Falha ao processar compra.';
