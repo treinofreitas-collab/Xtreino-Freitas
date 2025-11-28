@@ -130,6 +130,22 @@ const CAMP_FINAL_DATES = ['2024-11-28', '2025-11-28'];
 const CAMP_SEMIFINAL_LINK_CACHE_TTL = 60000;
 let campSemifinalLinksCache = { data: null, timestamp: 0 };
 
+// --- Agendamento nativo (Firestore + Netlify Function) ---
+// MOVIDO PARA O INÍCIO PARA EVITAR REFERENCE ERROR EM EVENTOS INLINE
+const scheduleConfig = {
+    'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
+    'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2026-01-12', allowedWeekdays: [1, 2, 3, 4, 5], slots: ['19h', '20h', '21h', '22h', '23h'] },
+    'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
+    'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
+    'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
+    // Produtos da loja virtual
+    'sensibilidades': { label: 'Sensibilidade no Free Fire – PC / Android / iOS', price: 8.00, isProduct: true },
+    'imagens': { label: 'Imagens Aéreas dos Mapas', price: 2.00, isProduct: true },
+    'planilhas': { label: 'Planilha de Análise de Times', price: 19.00, isProduct: true },
+    'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
+    'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
+};
+
 const AFFILIATE_REF_KEY = 'xf_affiliate_ref';
 const AFFILIATE_REF_TS_KEY = 'xf_affiliate_ref_ts';
 const AFFILIATE_REF_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
@@ -3978,21 +3994,6 @@ function reinitAnimations(container) {
 // Make functions globally available
 window.reinitAnimations = reinitAnimations;
 window.initSmoothAnimations = initSmoothAnimations;
-
-// --- Agendamento nativo (Firestore + Netlify Function) ---
-const scheduleConfig = {
-    'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2026-01-12', allowedWeekdays: [1, 2, 3, 4, 5], slots: ['19h', '20h', '21h', '22h', '23h'] },
-    'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
-    'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
-    'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
-    // Produtos da loja virtual
-    'sensibilidades': { label: 'Sensibilidade no Free Fire – PC / Android / iOS', price: 8.00, isProduct: true },
-    'imagens': { label: 'Imagens Aéreas dos Mapas', price: 2.00, isProduct: true },
-    'planilhas': { label: 'Planilha de Análise de Times', price: 19.00, isProduct: true },
-    'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
-    'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
-};
 
 // Função para controlar a exibição da seleção de marcas Android
 function handlePlatformChange() {
