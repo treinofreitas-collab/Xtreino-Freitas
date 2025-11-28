@@ -7062,18 +7062,58 @@ async function updateCouponUsageCount(couponId) {
     }
 }
 
-window.applyCoupon = applyCoupon;
-window.applyScheduleCoupon = applyScheduleCoupon;
-window.removeScheduleCoupon = removeScheduleCoupon;
-window.recordCouponUsage = recordCouponUsage;
-window.openScheduleModal = openScheduleModal;
-window.openLoginModal = openLoginModal;
-window.closeLoginModal = closeLoginModal;
-window.openPurchaseModal = openPurchaseModal;
-window.closePurchaseModal = closePurchaseModal;
-window.openTokensModal = openTokensModal;
-window.closeTokensModal = closeTokensModal;
-window.openFreeWhatsModal = openFreeWhatsModal;
-window.closeFreeWhatsModal = closeFreeWhatsModal;
+// Expor funções globalmente após o script estar carregado
+document.addEventListener('DOMContentLoaded', () => {
+    window.applyCoupon = applyCoupon;
+    window.applyScheduleCoupon = applyScheduleCoupon;
+    window.removeScheduleCoupon = removeScheduleCoupon;
+    window.recordCouponUsage = recordCouponUsage;
+    window.openScheduleModal = openScheduleModal;
+    window.openLoginModal = openLoginModal;
+    window.closeLoginModal = closeLoginModal;
+    window.openPurchaseModal = openPurchaseModal;
+    window.closePurchaseModal = closePurchaseModal;
+    window.openTokensModal = openTokensModal;
+    window.closeTokensModal = closeTokensModal;
+    window.openFreeWhatsModal = openFreeWhatsModal;
+    window.closeFreeWhatsModal = closeFreeWhatsModal;
+});
+
+// Fallback imediato para funções essenciais que podem ser chamadas inline
+window.openLoginModal = function() {
+    const m = document.getElementById('loginModal');
+    if (m) m.classList.remove('hidden');
+    if (window.innerWidth <= 767) document.body.classList.add('modal-open-mobile');
+};
+
+window.closeLoginModal = function() {
+    const m = document.getElementById('loginModal');
+    if (m) m.classList.add('hidden');
+    if (window.innerWidth <= 767) maybeClearMobileModalState?.();
+};
+
+window.openPurchaseModal = function() {
+    const m = document.getElementById('purchaseModal');
+    if (m) m.classList.remove('hidden');
+    if (window.innerWidth <= 767) document.body.classList.add('modal-open-mobile');
+};
+
+window.closePurchaseModal = function() {
+    const m = document.getElementById('purchaseModal');
+    if (m) m.classList.add('hidden');
+    if (window.innerWidth <= 767) maybeClearMobileModalState?.();
+};
+
+window.openFreeWhatsModal = function() {
+    const m = document.getElementById('freeWhatsModal');
+    if (m) m.classList.remove('hidden');
+    if (window.innerWidth <= 767) document.body.classList.add('modal-open-mobile');
+};
+
+window.closeFreeWhatsModal = function() {
+    const m = document.getElementById('freeWhatsModal');
+    if (m) m.classList.add('hidden');
+    if (window.innerWidth <= 767) maybeClearMobileModalState?.();
+};
 
 
