@@ -130,77 +130,9 @@ const CAMP_FINAL_DATES = ['2024-11-28', '2025-11-28'];
 const CAMP_SEMIFINAL_LINK_CACHE_TTL = 60000;
 let campSemifinalLinksCache = { data: null, timestamp: 0 };
 
-// --- Agendamento nativo (Firestore + Netlify Function) ---
-// MOVIDO PARA O INÍCIO PARA EVITAR REFERENCE ERROR EM EVENTOS INLINE
-const scheduleConfig = {
-    'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2026-01-12', allowedWeekdays: [1, 2, 3, 4, 5], slots: ['19h', '20h', '21h', '22h', '23h'] },
-    'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
-    'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
-    'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
-    // Produtos da loja virtual
-    'sensibilidades': { label: 'Sensibilidade no Free Fire – PC / Android / iOS', price: 8.00, isProduct: true },
-    'imagens': { label: 'Imagens Aéreas dos Mapas', price: 2.00, isProduct: true },
-    'planilhas': { label: 'Planilha de Análise de Times', price: 19.00, isProduct: true },
-    'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
-    'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
-};
-
-// ============================================================
-//  VARIÁVEIS GLOBAIS (Cole isso ANTES das funções de pagamento)
-// ============================================================
-
-let selectedTimes = [];
-let teams = [];
-let teamCounter = 0;
-let selectedDates = [];
-let scheduleOriginalTotal = 0;
-let appliedScheduleCoupon = null;
-let heroSelectedQty = 0;
-let heroAppliedCoupon = null;
-
-// Configuração de Produtos (Caso tenha sumido também)
-const products = {
-    'passe-booyah': { name: 'Passe de Elite', price: 'R$ 11,00', description: 'Passe de Elite' },
-    'aim-training': { name: 'XTreino - Aim', price: 'R$ 49,90', description: 'Treino de Aim' },
-    'estrategia': { name: 'XTreino - Estratégia', price: 'R$ 79,90', description: 'Treino de Estratégia' },
-    'mentalidade': { name: 'XTreino - Mentalidade', price: 'R$ 39,90', description: 'Treino Mental' },
-    'camisa': { name: 'Camisa Oficial', price: 'R$ 89,90', description: 'Camisa Org Freitas' },
-    'planilhas': { name: 'Planilha Análise', price: 'R$ 19,00', description: 'Planilha Coach' },
-    'imagens': { name: 'Imagens Aéreas', price: 'R$ 2,00', description: 'Mapas Aéreos' },
-    'sensibilidades': { name: 'Sensibilidade', price: 'R$ 8,00', description: 'Pack Sensi' }
-};
-
-// Configuração de Agendamento
-const scheduleConfig = {
-    'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
-    'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2026-01-12', allowedWeekdays: [1, 2, 3, 4, 5], slots: ['19h', '20h', '21h', '22h', '23h'] },
-    'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
-    'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
-    'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
-    'sensibilidades': { label: 'Sensibilidade', price: 8.00, isProduct: true },
-    'imagens': { label: 'Imagens Aéreas', price: 2.00, isProduct: true },
-    'planilhas': { label: 'Planilha Análise', price: 19.00, isProduct: true },
-    'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
-    'camisa': { label: 'Camisa Oficial', price: 89.90, isProduct: true }
-};
-
-// ============================================================
-
 const AFFILIATE_REF_KEY = 'xf_affiliate_ref';
 const AFFILIATE_REF_TS_KEY = 'xf_affiliate_ref_ts';
 const AFFILIATE_REF_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
-
-// ===== GLOBAL VARIABLES INITIALIZATION =====
-// Inicializar todas as variáveis globais ANTES de qualquer evento inline
-let selectedTimes = [];
-let teams = [];
-let teamCounter = 0;
-let selectedDates = [];
-let appliedCoupon = null;
-let appliedScheduleCoupon = null;
-let scheduleOriginalTotal = 0;
-let originalPrice = 0;
 
 function captureAffiliateRefFromUrl() {
     try {
@@ -1309,34 +1241,34 @@ async function spendTokens(amountBRL) {
 
     try {
         console.log('🔍 spendTokens called:', { amt });
-
-        if (isNaN(amt) || amt <= 0) { showError('TOKEN_005', 'Valor inválido'); return false; }
-        if (!window.firebaseAuth?.currentUser) { showError('AUTH_001', 'Faça login novamente'); return false; }
-
+        
+        if (isNaN(amt) || amt <= 0) { showError('TOKEN_005','Valor inválido'); return false; }
+        if (!window.firebaseAuth?.currentUser) { showError('AUTH_001','Faça login novamente'); return false; }
+        
         // Verificação visual imediata
-        if (!canSpendTokens(amt)) { showError('TOKEN_001', 'Saldo insuficiente'); return false; }
+        if (!canSpendTokens(amt)) { showError('TOKEN_001','Saldo insuficiente'); return false; }
 
         // 1. Debita Localmente (Visual Rápido)
         const newBalance = spendTokensSync(amt);
-        updateHeaderTokenBadges();
+        updateHeaderTokenBadges(); 
 
         // 2. Persiste no Banco
         const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const userRef = doc(window.firebaseDb, 'users', window.firebaseAuth.currentUser.uid);
-
+        
         await updateDoc(userRef, { tokens: newBalance });
         console.log('✅ Tokens debitados no banco com sucesso.');
         return true;
 
     } catch (error) {
         console.error('❌ Erro ao gastar tokens (Rede/Banco):', error);
-
+        
         // --- ROLLBACK (Devolve o token visualmente) ---
         console.log('🔄 Revertendo saldo visual devido a erro...');
         if (window.currentUserProfile) {
             window.currentUserProfile.tokens = originalBalance;
-            try { localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile)); } catch (_) { }
-            updateHeaderTokenBadges();
+            try { localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile)); } catch(_) {}
+            updateHeaderTokenBadges(); 
         }
         // ----------------------------------------------
 
@@ -2081,60 +2013,6 @@ async function applyCoupon() {
         console.error('❌ Erro ao validar cupom:', error);
         showError(error, 'COUPON_006');
         showCouponMessage('Erro ao validar cupom. Tente novamente.', 'error');
-    }
-}
-
-// Função para aplicar cupom na hero section (evento inline)
-async function heroApplyTokenCoupon() {
-    const couponCode = document.getElementById('heroCouponCodeInput')?.value?.trim().toUpperCase();
-
-    if (!couponCode) {
-        showToast('error', 'Digite um código de cupom', 'Cupom inválido');
-        return;
-    }
-
-    try {
-        console.log('🔄 Validando cupom na hero:', couponCode);
-
-        // Importar Firebase
-        const { collection, getDocs, query, where, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
-        // Buscar cupom no Firestore
-        const couponsRef = collection(window.firebaseDb, 'coupons');
-        const q = query(couponsRef, where('code', '==', couponCode), limit(1));
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) {
-            showToast('error', 'Cupom não encontrado', 'Erro');
-            return;
-        }
-
-        const couponDoc = snapshot.docs[0];
-        const coupon = { id: couponDoc.id, ...couponDoc.data() };
-
-        // Validar cupom
-        const validation = validateCoupon(coupon);
-        if (!validation.valid) {
-            showToast('error', validation.message || 'Cupom inválido', 'Erro');
-            return;
-        }
-
-        // Aplicar cupom
-        appliedCoupon = coupon;
-        showToast('success', `Cupom "${coupon.code}" aplicado com sucesso!`, 'Sucesso');
-
-        // Limpar input
-        const couponInput = document.getElementById('heroCouponCodeInput');
-        if (couponInput) {
-            couponInput.value = coupon.code;
-            couponInput.disabled = true;
-        }
-
-        console.log('✅ Cupom aplicado na hero:', coupon);
-
-    } catch (error) {
-        console.error('❌ Erro ao validar cupom na hero:', error);
-        showToast('error', 'Erro ao validar cupom', 'Erro');
     }
 }
 
@@ -4101,6 +3979,21 @@ function reinitAnimations(container) {
 window.reinitAnimations = reinitAnimations;
 window.initSmoothAnimations = initSmoothAnimations;
 
+// --- Agendamento nativo (Firestore + Netlify Function) ---
+const scheduleConfig = {
+    'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
+    'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2026-01-12', allowedWeekdays: [1, 2, 3, 4, 5], slots: ['19h', '20h', '21h', '22h', '23h'] },
+    'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
+    'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
+    'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
+    // Produtos da loja virtual
+    'sensibilidades': { label: 'Sensibilidade no Free Fire – PC / Android / iOS', price: 8.00, isProduct: true },
+    'imagens': { label: 'Imagens Aéreas dos Mapas', price: 2.00, isProduct: true },
+    'planilhas': { label: 'Planilha de Análise de Times', price: 19.00, isProduct: true },
+    'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
+    'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
+};
+
 // Função para controlar a exibição da seleção de marcas Android
 function handlePlatformChange() {
     const platformSelect = document.getElementById('platformSelect');
@@ -6010,20 +5903,20 @@ async function handleProductPurchaseWithTokens(productId, cfg) {
     }
 }
 
-async function submitSchedule(e, useTokens = false) {
+async function submitSchedule(e, useTokens=false){
     e.preventDefault();
     const submitBtn = document.getElementById('schedSubmit');
     const oldText = submitBtn ? submitBtn.textContent : '';
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Processando...'; }
-
+    if (submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Processando...'; }
+    
     try {
         const modal = document.getElementById('scheduleModal');
         const eventType = modal?.dataset?.eventType || 'modo-liga';
         const cfg = scheduleConfig[eventType];
-
+        
         // Se for produto da loja, usar lógica de compra (já corrigida na handlePurchase)
         if (cfg.isProduct) {
-            if (useTokens) {
+            if (useTokens){
                 await handleProductPurchaseWithTokens(eventType, cfg);
             } else {
                 await handleProductPurchase(eventType, cfg);
@@ -6031,29 +5924,29 @@ async function submitSchedule(e, useTokens = false) {
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
-
+        
         // Se for pagamento com tokens, chamar a lógica específica (já corrigida na useTokensForEvent)
-        if (useTokens || (cfg && cfg.payWithToken)) {
-            // Nota: Aqui redirecionamos para a lógica de tokens que já tem as proteções
-            await useTokensForEvent(eventType);
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-            return;
+        if (useTokens || (cfg && cfg.payWithToken)){
+             // Nota: Aqui redirecionamos para a lógica de tokens que já tem as proteções
+             await useTokensForEvent(eventType);
+             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+             return;
         }
 
         // --- INÍCIO DO FLUXO DE PAGAMENTO EM DINHEIRO (Modo Liga, Camp, etc) ---
-
-        if (!window.isLoggedIn) {
+        
+        if (!window.isLoggedIn){
             closeScheduleModal();
             if (typeof openLoginModal === 'function') openLoginModal();
             alert('Faça login para continuar a compra.');
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            if (submitBtn){ submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
 
         // Validações básicas
         const date = document.getElementById('schedDate').value;
         const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [date];
-
+        
         if (selectedTimes.length === 0) {
             alert('Selecione pelo menos um horário.');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
@@ -6066,7 +5959,7 @@ async function submitSchedule(e, useTokens = false) {
         }
 
         // Verificar disponibilidade (Front-end check)
-        for (const d of datesToUse) {
+        for (const d of datesToUse){
             const availabilityCheck = await checkMultipleSlotAvailability(d, selectedTimes, eventType, teams.length);
             if (!availabilityCheck.available) {
                 alert(availabilityCheck.message || 'Não há vagas suficientes.');
@@ -6086,14 +5979,14 @@ async function submitSchedule(e, useTokens = false) {
 
         // Calcular Total (Front-end para referência, Backend recalcula)
         let originalTotal = 0;
-        for (const d of datesToUse) {
-            for (const t of selectedTimes) {
+        for (const d of datesToUse){
+            for (const t of selectedTimes){
                 const hour = (t.split(' - ')[1] || '').trim();
                 const price = getEventPrice(eventType, hour, d);
                 originalTotal += price * teams.length;
             }
         }
-
+        
         // Aplicar cupom localmente
         let finalPrice = originalTotal;
         let couponInfo = null;
@@ -6117,23 +6010,23 @@ async function submitSchedule(e, useTokens = false) {
         const datesCount = datesToUse.length;
 
         // --- 1. SALVAR NO FIRESTORE (A GRANDE CORREÇÃO) ---
-        let externalRef = `schedule_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        let externalRef = `schedule_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
         let regIds = [];
 
         try {
             if (!window.firebaseReady || !window.firebaseDb) throw new Error('Conexão com banco falhou');
-
+            
             const { collection, addDoc, serverTimestamp, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
+            
             // Criar registro de cada vaga como 'pending'
-            for (const d of datesToUse) {
+            for (const d of datesToUse){
                 for (let team of teams) {
                     for (let schedule of selectedTimes) {
-                        const hour = (schedule.split(' - ')[1] || '').trim();
+                        const hour = (schedule.split(' - ')[1]||'').trim();
                         const price = getEventPrice(eventType, hour, d);
                         const whatsappLink = await getWhatsAppLink(eventType, hour, d);
-
-                        const docRef = await addDoc(collection(window.firebaseDb, 'registrations'), {
+                        
+                        const docRef = await addDoc(collection(window.firebaseDb,'registrations'),{
                             userId: window.firebaseAuth.currentUser.uid,
                             teamName: team.name,
                             email: team.email,
@@ -6153,11 +6046,11 @@ async function submitSchedule(e, useTokens = false) {
                     }
                 }
             }
-
+            
             // Salvar IDs locais para fallback
             if (regIds.length > 0) {
-                try { sessionStorage.setItem('lastRegId', regIds[0]); } catch (_) { }
-                try { sessionStorage.setItem('lastExternalRef', externalRef); } catch (_) { }
+                try{ sessionStorage.setItem('lastRegId', regIds[0]); }catch(_){}
+                try{ sessionStorage.setItem('lastExternalRef', externalRef); }catch(_){}
             }
 
         } catch (dbError) {
@@ -6192,12 +6085,12 @@ async function submitSchedule(e, useTokens = false) {
             });
 
             if (!resp.ok) throw new Error('Erro ao gerar PIX');
-
+            
             const data = await resp.json();
             closeScheduleModal();
 
             if (data.init_point) {
-                try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch (_) { }
+                try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
                 window.location.href = data.init_point;
             } else {
                 throw new Error('Link de pagamento não recebido');
@@ -6425,7 +6318,7 @@ function closeTokensModal() {
 
 // Compra de tokens removida (somente usuários recebem tokens)
 
-async function useTokensForEvent(eventType) {
+async function useTokensForEvent(eventType){
     const eventCosts = {
         'treino': 1.00,
         'modoLiga': 3.00,
@@ -6434,27 +6327,27 @@ async function useTokensForEvent(eventType) {
         'campFases': 5.00,
         'xtreino-tokens': 1.00
     };
-
+    
     const cost = eventCosts[eventType];
     if (!cost) {
         console.error('Event type not found:', eventType);
         return;
     }
-
+    
     // Verificar se tem tokens suficientes
     const profile = window.currentUserProfile || {};
     console.log('🔍 useTokensForEvent - Profile check:', { profile, tokens: profile.tokens, cost });
-
+    
     if (!profile || profile.tokens === undefined || profile.tokens === null || Number(profile.tokens) < Number(cost)) {
-        alert(`Saldo insuficiente. Você precisa de ${cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} em tokens.`);
+        alert(`Saldo insuficiente. Você precisa de ${cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
         return;
     }
-
+    
     if (!canSpendTokens(cost)) {
-        alert(`Saldo insuficiente. Você precisa de ${cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} em tokens.`);
+        alert(`Saldo insuficiente. Você precisa de ${cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
         return;
     }
-
+    
     const eventNames = {
         'treino': 'Treino Normal',
         'modoLiga': 'Modo Liga',
@@ -6463,19 +6356,19 @@ async function useTokensForEvent(eventType) {
         'campFases': 'Camp de Fases',
         'xtreino-tokens': 'XTreino Tokens'
     };
-
+    
     // Verificar disponibilidade do horário selecionado ANTES de debitar tokens
-    try {
+    try{
         const date = document.getElementById('schedDate')?.value || new Date().toISOString().split('T')[0];
         const rawSchedule = document.getElementById('schedSelectedTime')?.value || document.querySelector('#schedTimes .selected')?.textContent || '';
-        const normalizeHour = (h) => { if (!h) return null; const m = String(h).match(/(\d{1,2})/); return m ? `${parseInt(m[1], 10)}h` : null; };
+        const normalizeHour = (h)=>{ if (!h) return null; const m=String(h).match(/(\d{1,2})/); return m? `${parseInt(m[1],10)}h` : null; };
         const hour = normalizeHour(rawSchedule);
-        const weekday = (() => {
-            try { const d = new Date(`${date}T00:00:00`); const wd = d.toLocaleDateString('pt-BR', { weekday: 'long' }); return wd.charAt(0).toUpperCase() + wd.slice(1); } catch (_) { return ''; }
+        const weekday = (()=>{
+            try{ const d = new Date(`${date}T00:00:00`); const wd = d.toLocaleDateString('pt-BR',{ weekday:'long' }); return wd.charAt(0).toUpperCase()+wd.slice(1); }catch(_){ return ''; }
         })();
         const schedule = (weekday && hour) ? `${weekday} - ${hour}` : null;
-        const mapTokenToSite = (t) => {
-            switch (String(t || '')) {
+        const mapTokenToSite = (t)=>{
+            switch(String(t||'')){
                 case 'modoLiga': return 'modo-liga';
                 case 'semanal':
                 case 'finalSemanal': return 'semanal-freitas';
@@ -6485,44 +6378,44 @@ async function useTokensForEvent(eventType) {
             }
         };
         const siteEventType = mapTokenToSite(eventType);
-        if (schedule && siteEventType) {
+        if (schedule && siteEventType){
             const canBook = await checkSlotAvailability(date, schedule, siteEventType);
-            if (!canBook) {
+            if (!canBook){
                 showToast('error', 'Horário indisponível para este evento (lotado ou travado). Escolha outro horário.', 'Horário indisponível');
                 return;
             }
         }
-    } catch (_) { /* se falhar checagem prévia, deixa seguir */ }
-
-    if (confirm(`Confirmar uso de ${cost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} em tokens para ${eventNames[eventType]}?`)) {
+    }catch(_){ /* se falhar checagem prévia, deixa seguir */ }
+    
+    if (confirm(`Confirmar uso de ${cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens para ${eventNames[eventType]}?`)) {
         // Tenta debitar
         const debitSuccess = await spendTokens(cost);
-
+        
         if (debitSuccess) {
             // Tenta agendar
             try {
                 // A função createTokenSchedule foi modificada para lançar erro se falhar
                 await createTokenSchedule(eventType, cost);
-
+                
                 // Se chegou aqui, sucesso total
                 closeTokensModal();
                 renderClientArea();
                 showToast('success', 'Token usado com sucesso! Agendamento criado. Verifique na sua área do cliente.', 'Sucesso');
             } catch (scheduleError) {
                 console.error('❌ Erro crítico: Token debitado mas agendamento falhou. Iniciando reembolso.', scheduleError);
-
+                
                 // REEMBOLSO AUTOMÁTICO
                 try {
                     const { doc, updateDoc, increment } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
                     const userRef = doc(window.firebaseDb, 'users', window.firebaseAuth.currentUser.uid);
                     await updateDoc(userRef, { tokens: increment(cost) });
-
+                    
                     // Atualiza localmente
                     if (window.currentUserProfile) {
                         window.currentUserProfile.tokens = (Number(window.currentUserProfile.tokens) + Number(cost));
                         updateHeaderTokenBadges();
                     }
-
+                    
                     alert('Houve um erro de conexão ao criar o agendamento. Seus tokens foram devolvidos para sua conta. Tente novamente.');
                 } catch (refundError) {
                     console.error('❌ FALHA NO REEMBOLSO:', refundError);
@@ -7169,58 +7062,18 @@ async function updateCouponUsageCount(couponId) {
     }
 }
 
-// Expor funções globalmente após o script estar carregado
-document.addEventListener('DOMContentLoaded', () => {
-    window.applyCoupon = applyCoupon;
-    window.applyScheduleCoupon = applyScheduleCoupon;
-    window.removeScheduleCoupon = removeScheduleCoupon;
-    window.recordCouponUsage = recordCouponUsage;
-    window.openScheduleModal = openScheduleModal;
-    window.openLoginModal = openLoginModal;
-    window.closeLoginModal = closeLoginModal;
-    window.openPurchaseModal = openPurchaseModal;
-    window.closePurchaseModal = closePurchaseModal;
-    window.openTokensModal = openTokensModal;
-    window.closeTokensModal = closeTokensModal;
-    window.openFreeWhatsModal = openFreeWhatsModal;
-    window.closeFreeWhatsModal = closeFreeWhatsModal;
-});
-
-// Fallback imediato para funções essenciais que podem ser chamadas inline
-window.openLoginModal = function () {
-    const m = document.getElementById('loginModal');
-    if (m) m.classList.remove('hidden');
-    if (window.innerWidth <= 767) document.body.classList.add('modal-open-mobile');
-};
-
-window.closeLoginModal = function () {
-    const m = document.getElementById('loginModal');
-    if (m) m.classList.add('hidden');
-    if (window.innerWidth <= 767) maybeClearMobileModalState?.();
-};
-
-window.openPurchaseModal = function () {
-    const m = document.getElementById('purchaseModal');
-    if (m) m.classList.remove('hidden');
-    if (window.innerWidth <= 767) document.body.classList.add('modal-open-mobile');
-};
-
-window.closePurchaseModal = function () {
-    const m = document.getElementById('purchaseModal');
-    if (m) m.classList.add('hidden');
-    if (window.innerWidth <= 767) maybeClearMobileModalState?.();
-};
-
-window.openFreeWhatsModal = function () {
-    const m = document.getElementById('freeWhatsModal');
-    if (m) m.classList.remove('hidden');
-    if (window.innerWidth <= 767) document.body.classList.add('modal-open-mobile');
-};
-
-window.closeFreeWhatsModal = function () {
-    const m = document.getElementById('freeWhatsModal');
-    if (m) m.classList.add('hidden');
-    if (window.innerWidth <= 767) maybeClearMobileModalState?.();
-};
+window.applyCoupon = applyCoupon;
+window.applyScheduleCoupon = applyScheduleCoupon;
+window.removeScheduleCoupon = removeScheduleCoupon;
+window.recordCouponUsage = recordCouponUsage;
+window.openScheduleModal = openScheduleModal;
+window.openLoginModal = openLoginModal;
+window.closeLoginModal = closeLoginModal;
+window.openPurchaseModal = openPurchaseModal;
+window.closePurchaseModal = closePurchaseModal;
+window.openTokensModal = openTokensModal;
+window.closeTokensModal = closeTokensModal;
+window.openFreeWhatsModal = openFreeWhatsModal;
+window.closeFreeWhatsModal = closeFreeWhatsModal;
 
 
