@@ -2912,6 +2912,73 @@ async function heroPurchaseTokens() {
         } else { showToast('error', 'Erro ao iniciar pagamento. Tente novamente.', 'Erro'); }
     } catch (e) { console.error('Erro em heroPurchaseTokens:', e); showToast('error', `Erro ao comprar tokens: ${e && e.message ? e.message : String(e)}`, 'Erro'); }
 }
+async function heroApplyTokenCoupon() {
+    const couponCode = document.getElementById('heroTokenCouponInput')?.value?.trim().toUpperCase();
+    const couponMessage = document.getElementById('heroTokenCouponMessage');
+
+    if (!couponCode) {
+        showToast('error', 'Digite um código de cupom', 'Cupom');
+        return;
+    }
+
+    if (heroAppliedCoupon && heroAppliedCoupon.code === couponCode) {
+        showToast('error', 'Este cupom já está aplicado.', 'Cupom');
+        return;
+    }
+
+    try {
+        console.log('🔄 Validando cupom de tokens:', couponCode);
+
+        const { collection, getDocs, query, where, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+
+        const couponsRef = collection(window.firebaseDb, 'coupons');
+        const q = query(couponsRef, where('code', '==', couponCode), limit(1));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            showToast('error', 'Cupom não encontrado', 'Cupom');
+            return;
+        }
+
+        const couponDoc = snapshot.docs[0];
+        const coupon = { id: couponDoc.id, ...couponDoc.data() };
+
+        // Validar cupom
+        if (!coupon.isActive) {
+            showToast('error', 'Cupom inativo', 'Cupom');
+            return;
+        }
+
+        if (coupon.expirationDate) {
+            const expirationDate = coupon.expirationDate.toDate ? coupon.expirationDate.toDate() : new Date(coupon.expirationDate);
+            if (expirationDate < new Date()) {
+                showToast('error', 'Cupom expirado', 'Cupom');
+                return;
+            }
+        }
+
+        if (coupon.context && coupon.context !== 'tokens' && coupon.context !== 'all') {
+            showToast('error', 'Este cupom não é válido para compra de tokens', 'Cupom');
+            return;
+        }
+
+        heroAppliedCoupon = coupon;
+        updateHeroTokensSummary();
+        showToast('success', `Cupom "${coupon.code}" aplicado! Desconto: ${coupon.discountType === 'percentage' ? coupon.discountValue + '%' : 'R$ ' + coupon.discountValue}`, 'Cupom');
+
+        const couponInput = document.getElementById('heroTokenCouponInput');
+        if (couponInput) {
+            couponInput.value = coupon.code;
+            couponInput.disabled = true;
+        }
+
+        console.log('✅ Cupom de tokens aplicado:', coupon);
+
+    } catch (error) {
+        console.error('❌ Erro ao validar cupom de tokens:', error);
+        showToast('error', 'Erro ao validar cupom. Tente novamente.', 'Cupom');
+    }
+}
 window.openHeroTokensModal = openHeroTokensModal;
 window.closeHeroTokensModal = closeHeroTokensModal;
 window.heroSetTokensQty = heroSetTokensQty;
