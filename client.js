@@ -3143,18 +3143,24 @@ window.purchaseTokens = async function(quantity) {
 
         // 2) Request server-side to create Mercado Pago preference and pass external_reference as order id
         const payload = {
-            title: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
-            quantity: 1,
-            unit_price: price,
-            currency_id: 'BRL',
-            back_url: window.location.origin + window.location.pathname,
-            external_reference: savedOrderId,
-            coupon_info: appliedTokenCoupon ? {
+        title: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
+        quantity: 1,
+        unit_price: price,
+        currency_id: 'BRL',
+        back_url: window.location.origin + window.location.pathname,
+        external_reference: savedOrderId,
+        // Identificação do usuário para o fallback do create-preference e webhook
+        userId: currentUser.uid,
+        customerEmail: currentUser.email,
+        coupon_info: appliedTokenCoupon ? {
                 id: appliedTokenCoupon.id,
                 code: appliedTokenCoupon.code,
                 discountType: appliedTokenCoupon.discountType,
                 discountValue: appliedTokenCoupon.discountValue,
-                context: 'tokens'
+                context: 'tokens',
+                // Redundância de identificação também dentro do coupon_info
+                userId: currentUser.uid,
+                email: currentUser.email
             } : undefined
         };
 
@@ -3249,7 +3255,10 @@ window.purchaseTokensQuick = async function(quantity) {
         const prefPayload = {
             items: [{ title: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`, quantity, unit_price: 1.00 }],
             external_reference: `tokens_${currentUser.uid}_${Date.now()}`,
-            type: 'tokens_purchase'
+            type: 'tokens_purchase',
+            // Garantir que o backend saiba quem é o dono do pedido mesmo em fallback
+            userId: currentUser.uid,
+            customerEmail: currentUser.email
         };
         console.log('🔍 Quick purchase - create-preference payload:', prefPayload);
         const response = await fetch('/.netlify/functions/create-preference', {
