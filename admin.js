@@ -3062,12 +3062,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
           defaultHours = [];
         }
       } else if (ev.includes('camp')) {
-        if (isCampSemifinalDate) {
-          defaultHours = ['17:00'];
-        } else {
-          // Oitavas esgotadas - ocultar horários não disponíveis
-          defaultHours = [];
-        }
+        // Camp Freitas: sempre exibir pelo menos o horário padrão,
+        // independente de ser data de semifinal ou não,
+        // para permitir controle manual das vagas em qualquer dia.
+        defaultHours = ['17:00'];
       } else if (ev.includes('semanal')) {
         // 1ª fase 20h e 21h; final às 22h
         defaultHours = ['20:00','21:00','22:00'];
