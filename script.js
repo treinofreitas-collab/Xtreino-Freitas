@@ -2813,9 +2813,10 @@ async function heroPurchaseTokens() {
 
         const prefBody = {
             title: `${qty} Token${qty > 1 ? 's' : ''} XTreino`,
-            unit_price: price,
+            // For tokens, Mercado Pago should receive unit_price = 1.00 and quantity = number of tokens
+            unit_price: 1.00,
             currency_id: 'BRL',
-            quantity: 1,
+            quantity: qty,
             back_url: window.location.origin,
             external_reference: externalRef,
             type: 'tokens_purchase'
@@ -2855,63 +2856,7 @@ function updateHeroTokensSummary() {
     if (summary) summary.classList.remove('hidden');
     if (btn) { btn.disabled = base <= 0; btn.textContent = base > 0 ? `Comprar ${base} token${base > 1 ? 's' : ''} por ${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : 'Selecionar quantidade'; }
 }
-async function heroPurchaseTokens() {
-    try {
-        if (!window.firebaseAuth?.currentUser) { openLoginModal(); return; }
-        const qty = heroSelectedQty || 0; if (!qty) { alert('Selecione a quantidade'); return; }
-        const basePrice = qty; let price = basePrice;
-        if (heroAppliedCoupon) { const d = heroAppliedCoupon.discountType === 'percentage' ? basePrice * (heroAppliedCoupon.discountValue / 100) : heroAppliedCoupon.discountValue; price = Math.max(0, basePrice - d); }
-        // Criar ordem no Firestore para associar external_reference e permitir confirmação automática
-        let externalRef;
-        try {
-            const { addDoc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            const orderData = {
-                title: `${qty} Token${qty > 1 ? 's' : ''} XTreino`,
-                amount: price,
-                quantity: qty,
-                currency: 'BRL',
-                customer: window.firebaseAuth.currentUser?.email || null,
-                customerName: window.firebaseAuth.currentUser?.displayName || null,
-                uid: window.firebaseAuth.currentUser?.uid || null,
-                type: 'tokens_purchase',
-                createdAt: new Date(),
-                timestamp: Date.now()
-            };
-            const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
-            externalRef = `tokens_${docRef.id}`;
-            await updateDoc(docRef, { external_reference: externalRef });
-            try { sessionStorage.setItem('lastExternalRef', externalRef); } catch (_) { }
-        } catch (e) {
-            console.warn('Não foi possível criar ordem local para tokens:', e);
-        }
-
-        const prefBody = {
-            title: `${qty} Token${qty > 1 ? 's' : ''} XTreino`,
-            unit_price: price,
-            currency_id: 'BRL',
-            quantity: 1,
-            back_url: window.location.origin,
-            external_reference: externalRef,
-            type: 'tokens_purchase'
-        };
-        if (heroAppliedCoupon) prefBody.coupon_info = { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' };
-        console.log('🔍 heroPurchaseTokens - creating preference with body:', prefBody);
-        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prefBody) });
-        if (!response.ok) throw new Error('Erro');
-        const data = await response.json();
-        if (data.init_point) {
-            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch (_) { }
-            closeHeroTokensModal();
-            try {
-                window.open(data.init_point, '_blank');
-                showToast('success', 'Checkout aberto em nova aba. Finalize o pagamento no Mercado Pago.', 'Checkout');
-            } catch (e) {
-                console.warn('⚠️ Falha ao abrir nova aba para tokens, redirecionando:', e);
-                window.location.href = data.init_point;
-            }
-        } else { showToast('error', 'Erro ao iniciar pagamento. Tente novamente.', 'Erro'); }
-    } catch (e) { console.error('Erro em heroPurchaseTokens:', e); showToast('error', `Erro ao comprar tokens: ${e && e.message ? e.message : String(e)}`, 'Erro'); }
-}
+// duplicate implementation removed (kept single correct implementation above)
 async function heroApplyTokenCoupon() {
     const couponCode = document.getElementById('heroTokenCouponInput')?.value?.trim().toUpperCase();
     const couponMessage = document.getElementById('heroTokenCouponMessage');
