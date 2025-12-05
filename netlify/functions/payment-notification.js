@@ -44,10 +44,14 @@ async function getCampSemifinalLinkByDate(date) {
 
 // Creditar tokens de forma atômica (increment + marca de controle)
 async function creditTokensToUser(db, orderData, tokensToAdd, externalRef) {
-    if (!orderData) return;
+    if (!orderData) {
+        console.log('❌ creditTokensToUser: orderData is null/undefined');
+        return;
+    }
     const usersRef = db.collection('users');
     const userId = orderData.userId || orderData.uid || null;
     const customerEmail = orderData.customer || orderData.buyerEmail || orderData.email || null;
+    console.log('📝 creditTokensToUser called:', { userId, customerEmail, tokensToAdd, externalRef });
 
     try {
         if (userId) {
@@ -615,6 +619,7 @@ exports.handler = async (event, context) => {
                     if (!ordersSnapshot.empty) {
                         const orderDoc = ordersSnapshot.docs[0];
                         const orderData = orderDoc.data();
+                        console.log('✅ Order found by external_reference:', { orderDocId: orderDoc.id, orderDataKeys: Object.keys(orderData) });
 
                         // Atualizar status para 'paid'
                         await orderDoc.ref.update({
@@ -624,21 +629,17 @@ exports.handler = async (event, context) => {
                             paidAt: admin.firestore.FieldValue.serverTimestamp()
                         });
 
-                        console.log('Order updated to paid:', orderDoc.id);
-
-                        // Criar venda de afiliado se houver código de afiliado
-                        const orderDataWithId = { ...orderData, id: orderDoc.id };
-                        await createAffiliateSale(db, orderDataWithId, orderData.type === 'digital_product' ? 'product' : 'event');
+                        console.log('✅ Order updated to paid:', orderDoc.id);
 
                         // Verificar tipo de compra
-                        console.log('Checking purchase type...');
-                        console.log('Payment description:', payment.description);
-                        console.log('Order data:', orderData);
+                        console.log('🔍 Checking purchase type...');
+                        console.log('📦 Order type:', orderData.type, '| userId:', orderData.userId, '| customer:', orderData.customer, '| quantity:', orderData.quantity);
 
                         // Se for compra de tokens, atualizar saldo do usuário via transação
                         if (orderData.type === 'tokens_purchase' || (payment.description && /token/i.test(payment.description))) {
-                            console.log('This is a token purchase! Processing...');
+                            console.log('🎯 This is a token purchase! Processing...');
                             const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt((payment.description && payment.description.match(/(\d+)/)?.[0]) || '1');
+                            console.log('💰 Tokens to add:', tokensToAdd);
                             await creditTokensToUser(db, { ...orderData, id: orderDoc.id }, tokensToAdd, externalRef);
                         }
 
@@ -646,11 +647,13 @@ exports.handler = async (event, context) => {
                         else if (orderData.type === 'digital_product') {
                             console.log('This is a digital product purchase! Processing delivery...');
                     } else {
+                        console.log('❌ Order NOT found by external_reference:', externalRef);
                         // Se não encontrou em orders, tentar em registrations (para agendamentos)
                         const registrationsRef = db.collection('registrations');
                         const registrationsSnapshot = await registrationsRef.where('external_reference', '==', externalRef).get();
                         
                         if (!registrationsSnapshot.empty) {
+                            console.log('✅ Registrations found:', registrationsSnapshot.size);
                             // Atualizar TODOS os registros associados a este pagamento
                             const batch = db.batch();
                             
@@ -694,6 +697,7 @@ exports.handler = async (event, context) => {
                             }
                         } else {
                             console.log('❌ No order or registration found for external_reference:', externalRef);
+                            console.log('🔍 DEBUG: Payment details:', { paymentId: payment.id, paymentStatus: payment.status, externalRef: payment.external_reference, preferenceId: payment.preference_id });
                         }
                     }
                 } catch (firebaseError) {
