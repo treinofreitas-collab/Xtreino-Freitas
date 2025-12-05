@@ -3030,7 +3030,8 @@ async function smartChatAnswer(message) {
         // Horários: listar horários do evento
         if (wantsHours && !hour) {
             let slots = [];
-            if (ev === 'modo-liga' || ev === 'xtreino-tokens') slots = ['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'];
+            if (ev === 'modo-liga') slots = ['14h', '15h', '17h', '18h'];
+            else if (ev === 'xtreino-tokens') slots = ['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'];
             else if (ev === 'semanal-freitas') slots = ['20h', '21h', '22h'];
             else if (ev === 'camp-freitas') slots = ['19h', '20h', '21h', '22h', '23h'];
             return { answer: `⏰ Horários de ${scheduleConfig[ev]?.label || 'evento'}: ${slots.join(', ')}`, confidence: 0.9 };
@@ -4856,8 +4857,8 @@ async function renderScheduleTimes() {
         // XTreino Tokens: 14h às 23h
         slots = ['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'];
     } else if (eventType === 'modo-liga') {
-        // XTreino Modo Liga: 14h às 23h
-        slots = ['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'];
+        // XTreino Modo Liga: horários oficiais (4 horários)
+        slots = ['14h', '15h', '17h', '18h'];
     } else if (eventType === 'camp-freitas') {
         // Camp Freitas: handled above (semifinal priority) or by cfg.slots
         slots = slots || [];
