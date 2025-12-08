@@ -803,7 +803,7 @@ async function displayAllOrdersPaginated() {
                         <span class="font-medium">Data:</span> ${order.eventDate ? `${formatShortDatePtBr(order.eventDate)} ${parseSchedule(order.schedule).hour? 'às '+parseSchedule(order.schedule).hour : ''}` : formatDate(order.date)}
                     </div>
                     <div>
-                        <span class="font-medium">${order.paidWithTokens ? 'Consumo:' : 'Valor:'}</span> ${order.paidWithTokens ? `-${order.tokensUsed||1} token${(order.tokensUsed||1)>1?'s':''}` : `R$ ${Number(order.price||0).toFixed(2)}`}
+                        <span class="font-medium">${order.paidWithTokens ? 'Consumo:' : 'Valor:'}</span> ${order.paidWithTokens ? `${Math.abs(order.tokensUsed||1)} token${(Math.abs(order.tokensUsed||1))>1?'s':''}` : `R$ ${Number(order.price||0).toFixed(2)}`}
                     </div>
                 </div>
                 ${whatsappButton}
