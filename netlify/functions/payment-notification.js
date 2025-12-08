@@ -122,7 +122,7 @@ async function getWhatsAppLinkForRegistration(eventType, schedule, date = null) 
     try {
         const db = admin.firestore();
         const whatsappLinksRef = db.collection('whatsapp_links');
-        
+
         // Normalizar tipo de evento
         const normalizeType = (t) => String(t || '')
             .toLowerCase()
@@ -132,7 +132,7 @@ async function getWhatsAppLinkForRegistration(eventType, schedule, date = null) 
             .replace('xtreino-tokens', 'xtreino-tokens')
             .replace('modo liga', 'modo-liga')
             .replace('camp', 'camp-freitas');
-        
+
         // Normalizar horário
         const normalizeHour = (h) => {
             if (!h) return null;
@@ -140,56 +140,81 @@ async function getWhatsAppLinkForRegistration(eventType, schedule, date = null) 
             const m = s.match(/(\d{1,2})/);
             return m ? `${parseInt(m[1], 10)}h` : null;
         };
-        
+
         const type = normalizeType(eventType);
         const hour = normalizeHour(schedule);
         const normalizedDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : null;
-        
+
+        console.log('🔎 getWhatsAppLinkForRegistration:', { type, hour, normalizedDate });
+
+        // Prioridade: link específico para semifinal do camp
         if (type === 'camp-freitas' && normalizedDate && CAMP_SEMIFINAL_DATES.includes(normalizedDate)) {
             const semifinalLink = await getCampSemifinalLinkByDate(normalizedDate);
             if (semifinalLink) {
+                console.log('🔗 Found semifinal link for camp:', normalizedDate);
                 return semifinalLink;
             }
+            console.log('⚠️ No semifinal link found for date:', normalizedDate);
         }
-        
-        // Buscar link específico para o horário
+
+        // 1) Buscar link específico para o horário (eventType + schedule)
         if (hour) {
             const specificQuery = whatsappLinksRef
                 .where('eventType', '==', type)
                 .where('schedule', '==', hour)
                 .where('status', '==', 'active')
                 .limit(1);
-            
             const specificSnapshot = await specificQuery.get();
+            console.log('specificSnapshot size for', type, hour, specificSnapshot.size || 0);
             if (!specificSnapshot.empty) {
-                return specificSnapshot.docs[0].data().link;
+                const link = specificSnapshot.docs[0].data().link;
+                console.log('🔗 Specific schedule link found:', link);
+                return link;
             }
         }
-        
-        // Buscar link geral (schedule = null)
+
+        // 2) Buscar link geral (schedule === null)
         const generalQuery = whatsappLinksRef
             .where('eventType', '==', type)
             .where('schedule', '==', null)
             .where('status', '==', 'active')
             .limit(1);
-        
         const generalSnapshot = await generalQuery.get();
+        console.log('generalSnapshot size for', type, generalSnapshot.size || 0);
         if (!generalSnapshot.empty) {
-            return generalSnapshot.docs[0].data().link;
+            const link = generalSnapshot.docs[0].data().link;
+            console.log('🔗 General (null) schedule link found:', link);
+            return link;
         }
-        
-        // Fallback: buscar com schedule vazio
+
+        // 3) Buscar schedule vazio string ('') por compatibilidade
         const emptyQuery = whatsappLinksRef
             .where('eventType', '==', type)
             .where('schedule', '==', '')
             .where('status', '==', 'active')
             .limit(1);
-        
         const emptySnapshot = await emptyQuery.get();
+        console.log('emptySnapshot size for', type, emptySnapshot.size || 0);
         if (!emptySnapshot.empty) {
-            return emptySnapshot.docs[0].data().link;
+            const link = emptySnapshot.docs[0].data().link;
+            console.log('🔗 Empty-string schedule link found:', link);
+            return link;
         }
-        
+
+        // 4) Fallback final: qualquer link ativo para o eventType
+        const anyQuery = whatsappLinksRef
+            .where('eventType', '==', type)
+            .where('status', '==', 'active')
+            .limit(1);
+        const anySnapshot = await anyQuery.get();
+        console.log('anySnapshot size for', type, anySnapshot.size || 0);
+        if (!anySnapshot.empty) {
+            const link = anySnapshot.docs[0].data().link;
+            console.log('🔗 Fallback any active link found for', type, link);
+            return link;
+        }
+
+        console.log('⚠️ No whatsapp link found for', { type, hour, normalizedDate });
         return null;
     } catch (error) {
         console.error('Erro ao buscar link do WhatsApp:', error);
