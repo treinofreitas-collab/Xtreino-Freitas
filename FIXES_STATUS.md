@@ -84,7 +84,7 @@
   - ✅ Tokens são creditados ao usuário
   - ✅ `groupLink`/`whatsappLink` são adicionados a registration
 - Como testar:
-  1. Abra site em https://xtreino-freitas.netlify.app
+  1. Abra site em https://orgfreitas.com.br
   2. Compre tokens ou agende campal
   3. Complete pagamento no MP
   4. Verifique: Logs em Netlify Functions → observar diagnostic logs
