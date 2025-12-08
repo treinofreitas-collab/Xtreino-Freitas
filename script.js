@@ -5396,6 +5396,12 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
                 selectTime(schedule, btn);
             };
         }
+        // Diagnostic log for debugging remaining seats issues (only for camp/camp-final)
+        try {
+            if (eventType === 'camp-freitas' || eventType === 'camp-final') {
+                console.log('SLOT_DEBUG', { date: normalizedDate, schedule, capacity, taken: takenClamped, available });
+            }
+        } catch (_) { }
     });
 }
 
