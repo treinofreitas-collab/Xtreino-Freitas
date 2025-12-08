@@ -4964,24 +4964,35 @@ async function fetchOccupiedForDate(day, date, eventType) {
         if (eventType) clauses.push(where('eventType', '==', eventType));
         const q = query(regsRef, ...clauses);
         const snap = await getDocs(q);
+        const parseHourFromRecord = (r) => {
+            // Try multiple fields that may contain hour info
+            const candidates = [];
+            if (r == null) return null;
+            const pushIf = (v) => { if (v !== undefined && v !== null) candidates.push(String(v)); };
+            pushIf(r.schedule);
+            pushIf(r.hour);
+            pushIf(r.time);
+            pushIf(r.selectedTime);
+            pushIf(r.slot);
+            pushIf(r.scheduledTime);
+            pushIf(r.hourString);
+
+            for (const raw of candidates) {
+                if (!raw) continue;
+                // Examples: 'Segunda - 19h', '19:00', '19h', '19', 'Seg - 19h (algum texto)'
+                // Try patterns in order
+                const m1 = raw.match(/(\d{1,2})\s*h/); // 19h
+                if (m1) return parseInt(m1[1], 10);
+                const m2 = raw.match(/(\d{1,2})\s*:\s*\d{2}/); // 19:00
+                if (m2) return parseInt(m2[1], 10);
+                const m3 = raw.match(/\b(\d{1,2})\b/); // any standalone number
+                if (m3) return parseInt(m3[1], 10);
+            }
+            return null;
+        };
+
         const normalizeToScheduleKey = (r) => {
-            // Extrair hora de 'schedule' (ex.: 'Segunda - 19h') ou de 'hour'/'19:00'
-            const rawSchedule = String(r.schedule || '');
-            const rawHour = String(r.hour || '');
-            let hh = null;
-            // Tenta '19h'
-            const mH = rawSchedule.match(/(\d{1,2})\s*h/);
-            if (mH) hh = parseInt(mH[1], 10);
-            // Tenta '19:00'
-            if (hh == null) {
-                const m2 = (rawSchedule || rawHour).match(/(\d{1,2})\s*:/);
-                if (m2) hh = parseInt(m2[1], 10);
-            }
-            // Fallback: qualquer número na string
-            if (hh == null) {
-                const m3 = (rawSchedule || rawHour).match(/(\d{1,2})/);
-                if (m3) hh = parseInt(m3[1], 10);
-            }
+            const hh = parseHourFromRecord(r);
             if (hh == null || Number.isNaN(hh)) return null;
             const hourStr = `${hh}h`;
             return `${day} - ${hourStr}`;
@@ -5367,31 +5378,31 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
             // Horário travado pelo admin - mostrar como LOTADO
             btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
             btn.disabled = true;
-            btn.textContent = `${time} (Lotado)`;
+            btn.textContent = `${time} (Lotado ${takenClamped}/${capacity})`;
             btn.onclick = null;
         } else if (eventType === 'semanal-freitas' && time === '19h') {
             // Semanal Freitas: 19h sempre esgotado
             btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
             btn.disabled = true;
-            btn.textContent = `${time} (Lotado)`;
+            btn.textContent = `${time} (Lotado ${takenClamped}/${capacity})`;
             btn.onclick = null;
         } else if (available === 0) {
             // Horário lotado - prioridade sobre verificação de tempo
             btn.className = 'slot-btn bg-red-100 text-red-600 cursor-not-allowed';
             btn.disabled = true;
-            btn.textContent = `${time} (Lotado)`;
+            btn.textContent = `${time} (Lotado ${takenClamped}/${capacity})`;
             btn.onclick = null;
         } else if (!isTimeAvailable) {
             // Verificar disponibilidade de tempo (12 minutos antes)
             btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
             btn.disabled = true;
-            btn.textContent = `${time} (${timeMessage})`;
+            btn.textContent = `${time} (${timeMessage}) (${available}/${capacity})`;
             btn.onclick = null;
         } else {
             // Horário disponível - mostrar "Restam X"
             btn.className = 'slot-btn';
             btn.disabled = false;
-            btn.textContent = `${time} (Restam ${available})`;
+            btn.textContent = `${time} (Restam ${available}/${capacity})`;
             btn.onclick = () => {
                 selectTime(schedule, btn);
             };
