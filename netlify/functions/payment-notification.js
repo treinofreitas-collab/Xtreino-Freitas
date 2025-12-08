@@ -626,6 +626,7 @@ exports.handler = async (event, context) => {
                                 body: JSON.stringify({ received: true, status: payment.status })
                             };
                         }
+                    }
                     
                     // Se external_reference foi gerado no formato tokens_<docId>, tentar buscar pelo ID do documento
                     if (ordersSnapshot.empty && externalRef && externalRef.startsWith('tokens_')) {
@@ -638,7 +639,6 @@ exports.handler = async (event, context) => {
                             // Construir um snapshot-like object para prosseguir abaixo
                             ordersSnapshot = { empty: false, docs: [orderDoc], size: 1 };
                         }
-                    }
                     }
 
                     if (!ordersSnapshot.empty) {
@@ -667,10 +667,27 @@ exports.handler = async (event, context) => {
                             console.log('💰 Tokens to add:', tokensToAdd);
                             await creditTokensToUser(db, { ...orderData, id: orderDoc.id }, tokensToAdd, externalRef);
                         }
-
                         // Se for produto digital, criar entrega digital
                         else if (orderData.type === 'digital_product') {
                             console.log('This is a digital product purchase! Processing delivery...');
+
+                            const deliveryData = {
+                                orderId: orderDoc.id,
+                                customerEmail: orderData.customer || orderData.buyerEmail,
+                                customerName: orderData.customerName,
+                                productId: orderData.productId,
+                                productName: orderData.title,
+                                productOptions: orderData.productOptions || {},
+                                status: 'delivered',
+                                deliveredAt: admin.firestore.FieldValue.serverTimestamp(),
+                                downloadLinks: await generateDownloadLinks(orderData.productId, orderData.productOptions),
+                                paymentId: payment.id
+                            };
+
+                            await db.collection('digital_deliveries').add(deliveryData);
+                            console.log('✅ Digital delivery created for product:', orderData.productId);
+                        }
+
                     } else {
                         console.log('❌ Order NOT found by external_reference:', externalRef);
                         // Se não encontrou em orders, tentar em registrations (para agendamentos)
