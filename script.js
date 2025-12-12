@@ -6702,8 +6702,12 @@ async function createTokenSchedule(eventType, cost) {
                 title: scheduleData.title,
                 item: scheduleData.title,
                 eventType: eventType, // 'xtreino-tokens'
-                schedule: hour || null,
+                schedule: schedule || hour || null,
                 date: date,
+                teamName: team,
+                email: email,
+                phone: phone,
+                contact: email,
                 amount: 0,
                 total: 0,
                 currency: 'BRL',
@@ -6711,6 +6715,7 @@ async function createTokenSchedule(eventType, cost) {
                 paidWithTokens: true,
                 tokensUsed: cost,
                 whatsappLink: whatsappLink,
+                groupLink: whatsappLink || null,
                 createdAt: serverTimestamp(),
                 timestamp: Date.now()
             });
