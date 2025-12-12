@@ -1003,38 +1003,43 @@ async function getWhatsAppLinkForOrder(order) {
         console.log('🔍 EventType:', order.eventType);
         console.log('🔍 Schedule:', order.schedule);
         
-        // Se o pedido já tem um link salvo, usar ele
-        if (order.whatsappLink) {
+        // Se o pedido já tem um link salvo e é válido, usar ele
+        if (order.whatsappLink && order.whatsappLink.trim()) {
             console.log('✅ Usando link salvo no pedido:', order.whatsappLink);
             return order.whatsappLink;
         }
         
-        // Buscar no Firestore (links do admin)
+        // Se não tem link salvo, tentar buscar usando a função getWhatsAppLink do script.js
         if (window.getWhatsAppLink) {
-            console.log('🔍 Buscando link no admin...');
+            console.log('🔍 Link não salvo no pedido, buscando dinamicamente...');
             try {
-                const adminLink = await window.getWhatsAppLink(order.eventType, order.schedule, order.date || null);
-                console.log('🔍 Link encontrado no admin:', adminLink);
+                const dynamicLink = await window.getWhatsAppLink(
+                    order.eventType, 
+                    order.schedule, 
+                    order.eventDate || order.date || null
+                );
                 
-                if (adminLink && adminLink !== 'https://chat.whatsapp.com/SEU_GRUPO_PADRAO' && adminLink !== 'https://chat.whatsapp.com/SEU_GRUPO_TOKENS') {
-                    console.log('✅ Usando link do admin:', adminLink);
-                    return adminLink;
+                console.log('🔍 Link obtido dinamicamente:', dynamicLink);
+                
+                if (dynamicLink && dynamicLink.trim()) {
+                    console.log('✅ Link dinâmico válido encontrado:', dynamicLink);
+                    return dynamicLink;
                 }
             } catch (error) {
-                console.error('❌ Erro ao buscar link no admin:', error);
+                console.error('❌ Erro ao buscar link dinamicamente:', error);
             }
         } else {
             console.warn('⚠️ Função getWhatsAppLink não disponível');
         }
         
-        // Tentar buscar diretamente no Firestore se a função não estiver disponível
+        // Se ainda não tem link, tentar buscar diretamente no Firestore (fallback)
         try {
-            console.log('🔍 Tentando buscar diretamente no Firestore...');
+            console.log('🔍 Tentando buscar diretamente no Firestore (fallback)...');
             const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
             
             if (window.firebaseDb) {
                 const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
-                // Normalizar parâmetros como no admin/script
+                // Normalizar parâmetros como no script.js
                 const normalizeType = (t)=> String(t||'').toLowerCase().trim().replace(/\s+/g,'-')
                     .replace('modo liga','modo-liga').replace('camp','camp-freitas');
                 const normalizeHour = (h)=>{
@@ -1045,6 +1050,8 @@ async function getWhatsAppLinkForOrder(order) {
                 };
                 const type = normalizeType(order.eventType);
                 const hour = normalizeHour(order.schedule);
+                
+                console.log('🔍 Buscando com parâmetros normalizados:', { type, hour });
                 
                 // Buscar link específico para o horário
                 if (hour) {
@@ -1058,50 +1065,39 @@ async function getWhatsAppLinkForOrder(order) {
                     
                     if (!specificSnapshot.empty) {
                         const link = specificSnapshot.docs[0].data().link;
-                        console.log('✅ Link específico encontrado diretamente:', link);
+                        console.log('✅ Link específico encontrado no fallback:', link);
                         return link;
                     }
                 }
                 
-                // Buscar link geral para o evento
-                const generalQuery = query(
-                    whatsappLinksRef,
-                    where('eventType', '==', type),
-                    where('schedule', '==', null),
-                    where('status', '==', 'active')
-                );
-                const generalSnapshot = await getDocs(generalQuery);
-                
-                if (!generalSnapshot.empty) {
-                    const link = generalSnapshot.docs[0].data().link;
-                    console.log('✅ Link geral encontrado diretamente:', link);
-                    return link;
+                // Buscar link geral para o evento (schedule = null ou "")
+                for (const schedValue of [null, '']) {
+                    const generalQuery = query(
+                        whatsappLinksRef,
+                        where('eventType', '==', type),
+                        where('schedule', '==', schedValue),
+                        where('status', '==', 'active')
+                    );
+                    const generalSnapshot = await getDocs(generalQuery);
+                    
+                    if (!generalSnapshot.empty) {
+                        const link = generalSnapshot.docs[0].data().link;
+                        console.log(`✅ Link geral encontrado no fallback (schedule='${schedValue}'):`, link);
+                        return link;
+                    }
                 }
 
-                // Alguns cadastros podem usar string vazia em vez de null
-                const generalEmptyQuery = query(
-                    whatsappLinksRef,
-                    where('eventType', '==', type),
-                    where('schedule', '==', ''),
-                    where('status', '==', 'active')
-                );
-                const generalEmptySnapshot = await getDocs(generalEmptyQuery);
-                if (!generalEmptySnapshot.empty) {
-                    const link = generalEmptySnapshot.docs[0].data().link;
-                    console.log('✅ Link geral (vazio) encontrado diretamente:', link);
-                    return link;
-                }
+                console.log('❌ Nenhum link encontrado no Firestore para:', { type, hour });
             }
         } catch (error) {
             console.error('❌ Erro ao buscar diretamente no Firestore:', error);
         }
         
-        // Fallback desativado: se não houver link válido, retornar vazio
-        const fallbackLink = '';
-        console.log('🔍 Usando link padrão:', fallbackLink);
-        return fallbackLink;
+        // Se não houver link em nenhum lugar, retornar string vazia
+        console.log('⚠️ Nenhum link encontrado. Retornando string vazia.');
+        return '';
     } catch (error) {
-        console.error('❌ Erro ao obter link do WhatsApp:', error);
+        console.error('❌ Erro crítico ao obter link do WhatsApp:', error);
         return '';
     }
 }

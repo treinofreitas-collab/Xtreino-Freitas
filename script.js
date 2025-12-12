@@ -6490,6 +6490,8 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
     try {
         const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
 
+        console.log('🔍 getWhatsAppLink - Buscando link para:', { eventType, schedule, date });
+
         const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
         // Normalizar parâmetros
         const normalizeType = (t) => String(t || '').toLowerCase().trim()
@@ -6506,6 +6508,8 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
         };
         const type = normalizeType(eventType);
         const hour = normalizeHour(schedule);
+        console.log('🔍 Tipo normalizado:', type, 'Horário normalizado:', hour);
+
         // Aliases para compatibilidade com cadastros antigos
         const typeAliases = Array.from(new Set([
             type,
@@ -6514,18 +6518,23 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
             type.replace('camp-freitas', 'camp'),
             type.replace('camp-freitas', 'camp freitas'),
         ])).filter(Boolean);
+        console.log('🔍 Aliases de tipo para busca:', typeAliases);
+
         const generalScheduleAliases = [null, '', 'geral', 'general', 'todos', 'all'];
 
         const normalizedDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : null;
         if (type === 'camp-freitas' && normalizedDate && CAMP_SEMIFINAL_DATES.includes(normalizedDate)) {
+            console.log('🔍 Buscando link de semifinal para data:', normalizedDate);
             const semifinalLink = await getCampSemifinalLinkByDate(normalizedDate);
             if (semifinalLink) {
+                console.log('✅ Link de semifinal encontrado:', semifinalLink);
                 return semifinalLink;
             }
         }
 
         // Primeiro, tentar encontrar link específico para o horário (testando aliases)
         if (hour) {
+            console.log('🔍 Buscando link específico para horário:', hour);
             for (const t of typeAliases) {
                 const specificQuery = query(
                     whatsappLinksRef,
@@ -6535,13 +6544,16 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
                 );
                 const specificSnapshot = await getDocs(specificQuery);
                 if (!specificSnapshot.empty) {
-                    return specificSnapshot.docs[0].data().link;
+                    const link = specificSnapshot.docs[0].data().link;
+                    console.log('✅ Link específico encontrado para', t, hour, ':', link);
+                    return link;
                 }
             }
+            console.log('❌ Nenhum link específico encontrado para horário:', hour);
         }
 
         // Se não encontrou específico, buscar link geral para o evento
-        // Depois, tentar links gerais (sem horário), testando aliases e variações de schedule
+        console.log('🔍 Buscando link geral (sem horário)...');
         for (const t of typeAliases) {
             for (const sched of generalScheduleAliases) {
                 const generalQuery = query(
@@ -6552,25 +6564,21 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
                 );
                 const generalSnapshot = await getDocs(generalQuery);
                 if (!generalSnapshot.empty) {
-                    return generalSnapshot.docs[0].data().link;
+                    const link = generalSnapshot.docs[0].data().link;
+                    console.log('✅ Link geral encontrado para', t, 'schedule:', sched, '->', link);
+                    return link;
                 }
             }
         }
 
-        // Fallback para links padrão se não encontrar no Firestore
-        const defaultLinks = {
-            'xtreino-tokens': '',
-            'xtreino-gratuito': '',
-            'modo-liga': '',
-            'camp-freitas': '',
-            'semanal-freitas': '',
-            'treino': ''
-        };
+        console.log('❌ Nenhum link encontrado no Firestore para:', { type, hour, typeAliases });
 
-        return defaultLinks[type] || '';
+        // Fallback: apenas retornar string vazia com log
+        return '';
 
     } catch (error) {
         console.error('❌ Erro ao obter link do WhatsApp:', error);
+        console.error('🔍 Stack:', error.stack);
         return '';
     }
 }

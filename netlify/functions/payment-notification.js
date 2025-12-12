@@ -646,13 +646,38 @@ exports.handler = async (event, context) => {
                         const orderData = orderDoc.data();
                         console.log('✅ Order found by external_reference:', { orderDocId: orderDoc.id, orderDataKeys: Object.keys(orderData) });
 
-                        // Atualizar status para 'paid'
-                        await orderDoc.ref.update({
+                        const updateData = {
                             status: 'paid',
                             paymentId: payment.id,
                             paymentStatus: 'approved',
                             paidAt: admin.firestore.FieldValue.serverTimestamp()
-                        });
+                        };
+
+                        // 🔥 IMPORTANTE: Buscar e adicionar link do WhatsApp se não existir
+                        if (!orderData.whatsappLink || orderData.whatsappLink === '' || orderData.whatsappLink === null) {
+                            console.log('🔍 Link do WhatsApp não encontrado no pedido, buscando...');
+                            try {
+                                const whatsappLink = await getWhatsAppLinkForRegistration(
+                                    orderData.eventType || orderData.event_type,
+                                    orderData.schedule || orderData.hour || null,
+                                    orderData.date || null
+                                );
+                                if (whatsappLink) {
+                                    updateData.whatsappLink = whatsappLink;
+                                    updateData.groupLink = whatsappLink;
+                                    console.log(`✅ Link do WhatsApp adicionado ao pedido ${orderDoc.id}:`, whatsappLink);
+                                } else {
+                                    console.log(`⚠️ Nenhum link do WhatsApp encontrado para o pedido ${orderDoc.id}. Deixando vazio.`);
+                                }
+                            } catch (linkError) {
+                                console.error('❌ Erro ao buscar link do WhatsApp para o pedido:', linkError);
+                            }
+                        } else {
+                            console.log('✅ Link do WhatsApp já existe no pedido:', orderData.whatsappLink);
+                        }
+
+                        // Atualizar status para 'paid' (com link se encontrado)
+                        await orderDoc.ref.update(updateData);
 
                         console.log('✅ Order updated to paid:', orderDoc.id);
 
