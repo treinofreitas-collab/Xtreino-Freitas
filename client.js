@@ -1129,7 +1129,7 @@ async function getOrderActionButton(order) {
     }
     
     // Verificar se o pedido está confirmado
-    if (!(order.status === 'paid' || order.status === 'confirmed')) {
+    if (!(order.status === 'paid' || order.status === 'confirmed' || order.status === 'approved')) {
         console.log('❌ Pedido não confirmado, status:', order.status);
         return '';
     }
