@@ -3080,7 +3080,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const regs = collection(window.firebaseDb,'registrations');
       // status pago/confirmado para computar ocupação
-      const q = query(regs, where('date','==', date), where('status','in',['paid','confirmed']));
+      const q = query(regs, where('date','==', date), where('status','in',['paid','confirmed','approved']));
       const snap = await getDocs(q);
       const map = {};
       snap.forEach(d=>{
@@ -3330,7 +3330,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const { collection, query, where, getDocs, doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const regs = collection(window.firebaseDb,'registrations');
       // Busca reservas PAGAS/CONFIRMADAS do dia; filtra por eventType e hora com normalização (schedule ou hour)
-      const snap = await getDocs(query(regs, where('date','==', date), where('status','in',['paid','confirmed'])));
+      const snap = await getDocs(query(regs, where('date','==', date), where('status','in',['paid','confirmed','approved'])));
       list.innerHTML = '';
       let any = false;
       const evLower = String(eventType||'').toLowerCase();
@@ -3660,7 +3660,7 @@ async function loadPopularHoursData(dayFilter = '', eventFilter = '') {
             const data = doc.data();
             
             // Filtrar por status (apenas confirmados/pagos)
-            if (!['paid', 'confirmed'].includes(data.status)) return;
+            if (!['paid', 'confirmed', 'approved'].includes(data.status)) return;
             
             // Filtrar por evento se especificado
             if (eventFilter && data.eventType !== eventFilter) return;

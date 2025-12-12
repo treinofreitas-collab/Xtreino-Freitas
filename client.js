@@ -505,12 +505,12 @@ async function loadOrders() {
         }));
         console.log('🔍 Mapped orders:', mappedOrders);
 
-        // Incluir eventos das registrations: tokens e pagamentos aprovados (paid/confirmed)
+        // Incluir eventos das registrations: tokens e pagamentos aprovados (paid/confirmed/approved)
         const regsData = await fetchUserDocs('registrations', 200, true);
         console.log('🔍 Registrations raw data:', regsData);
         
         const mappedRegs = regsData
-          .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed')
+          .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed' || d.data.status === 'approved')
           .map(d => ({
             id: d.id,
             date: d.data.createdAt?.toDate?.() || new Date(),

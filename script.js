@@ -4960,7 +4960,7 @@ async function fetchOccupiedForDate(day, date, eventType) {
         const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const regsRef = collection(window.firebaseDb, 'registrations');
         // Incluir 'pending' para contar todas as reservas, mesmo as que ainda não foram pagas
-        const clauses = [where('date', '==', date), where('status', 'in', ['paid', 'confirmed', 'pending'])];
+        const clauses = [where('date', '==', date), where('status', 'in', ['paid', 'confirmed', 'approved', 'pending'])];
         if (eventType) clauses.push(where('eventType', '==', eventType));
         const q = query(regsRef, ...clauses);
         const snap = await getDocs(q);
@@ -5061,7 +5061,7 @@ async function checkSlotAvailability(date, schedule, eventType) {
         const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const regsRef = collection(window.firebaseDb, 'registrations');
         // Incluir 'pending' para evitar que múltiplas reservas sejam criadas simultaneamente
-        const clauses = [where('date', '==', date), where('status', 'in', ['paid', 'confirmed', 'pending'])];
+        const clauses = [where('date', '==', date), where('status', 'in', ['paid', 'confirmed', 'approved', 'pending'])];
         if (eventType) clauses.push(where('eventType', '==', eventType));
         const q = query(regsRef, ...clauses);
         const snap = await getDocs(q);
@@ -5159,7 +5159,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
             const clauses = [
                 where('date', '==', normalizedDate),
                 // Incluir 'pending' para evitar que múltiplas reservas sejam criadas simultaneamente
-                where('status', 'in', ['paid', 'confirmed', 'pending'])
+                where('status', 'in', ['paid', 'confirmed', 'approved', 'pending'])
             ];
             if (eventType) clauses.push(where('eventType', '==', eventType));
             const q = query(regsRef, ...clauses);
