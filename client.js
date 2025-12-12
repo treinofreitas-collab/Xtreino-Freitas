@@ -498,10 +498,13 @@ async function loadOrders() {
             price: d.data.amount ?? d.data.total ?? 0,
             eventDate: d.data.date || null,
             schedule: d.data.schedule || d.data.hour || d.data.time || '',
+            teamName: d.data.teamName || d.data.team || d.data.name || '',
+            email: d.data.email || null,
+            contact: d.data.contact || d.data.phone || null,
             eventType: d.data.eventType || '',
             paidWithTokens: d.data.paidWithTokens || false,
             tokensUsed: d.data.tokensUsed || 0,
-            whatsappLink: d.data.whatsappLink || null
+            whatsappLink: d.data.whatsappLink || d.data.groupLink || d.data.group_link || null
         }));
         console.log('🔍 Mapped orders:', mappedOrders);
 
@@ -509,21 +512,24 @@ async function loadOrders() {
         const regsData = await fetchUserDocs('registrations', 200, true);
         console.log('🔍 Registrations raw data:', regsData);
         
-        const mappedRegs = regsData
-          .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed' || d.data.status === 'approved')
-          .map(d => ({
-            id: d.id,
-            date: d.data.createdAt?.toDate?.() || new Date(),
-            title: d.data.title || d.data.eventType || 'Reserva',
-            status: d.data.status || 'paid',
-            price: d.data.paidWithTokens ? 0 : (d.data.price || 0),
-            eventDate: d.data.date || null,
-            schedule: d.data.schedule || d.data.hour || d.data.time || '',
-            eventType: d.data.eventType || '',
-            paidWithTokens: d.data.paidWithTokens === true,
-            tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0,
-            whatsappLink: d.data.whatsappLink || null
-          }));
+                const mappedRegs = regsData
+                    .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed' || d.data.status === 'approved')
+                    .map(d => ({
+                        id: d.id,
+                        date: d.data.createdAt?.toDate?.() || new Date(),
+                        title: d.data.title || d.data.eventType || 'Reserva',
+                        status: d.data.status || 'paid',
+                        price: d.data.paidWithTokens ? 0 : (d.data.price || 0),
+                        eventDate: d.data.date || null,
+                        schedule: d.data.schedule || d.data.hour || d.data.time || '',
+                        eventType: d.data.eventType || '',
+                        paidWithTokens: d.data.paidWithTokens === true,
+                        tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0,
+                        teamName: d.data.teamName || d.data.team || d.data.name || '',
+                        email: d.data.email || null,
+                        contact: d.data.contact || d.data.phone || null,
+                        whatsappLink: d.data.whatsappLink || d.data.groupLink || d.data.group_link || null
+                    }));
         console.log('🔍 Mapped registrations:', mappedRegs);
 
         allOrdersData = [...mappedOrders, ...mappedRegs]
@@ -804,6 +810,10 @@ async function displayAllOrdersPaginated() {
                     </div>
                     <div>
                         <span class="font-medium">${order.paidWithTokens ? 'Consumo:' : 'Valor:'}</span> ${order.paidWithTokens ? `${Math.abs(order.tokensUsed||1)} token${(Math.abs(order.tokensUsed||1))>1?'s':''}` : `R$ ${Number(order.price||0).toFixed(2)}`}
+                    </div>
+                    <div>
+                        <span class="font-medium">Time:</span> ${order.teamName ? order.teamName : (order.email ? order.email : '-')}<br/>
+                        <span class="text-gray-500">${order.contact || ''}</span>
                     </div>
                 </div>
                 ${whatsappButton}
