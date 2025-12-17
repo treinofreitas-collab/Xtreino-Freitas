@@ -598,7 +598,14 @@ exports.handler = async (event, context) => {
                             // Processar o tipo de compra
                             if (orderData.type === 'tokens_purchase' || (payment.description && /token/i.test(payment.description))) {
                                 console.log('This is a token purchase! Processing...');
-                                const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt((payment.description && payment.description.match(/(\d+)/)?.[0]) || '1');
+                                // Robust token quantity calculation: prefer explicit quantity, else derive from total/amount
+                                let tokensToAdd = 0;
+                                if (orderData && !isNaN(Number(orderData.quantity))) tokensToAdd = parseInt(Number(orderData.quantity), 10);
+                                else if (!isNaN(Number(orderData.total)) && Number(orderData.total) > 0) tokensToAdd = Math.round(Number(orderData.total));
+                                else if (!isNaN(Number(orderData.amount)) && Number(orderData.amount) > 0) tokensToAdd = Math.round(Number(orderData.amount));
+                                else tokensToAdd = parseInt((payment.description && payment.description.match(/(\d+)/)?.[0]) || '1', 10) || 1;
+                                if (isNaN(tokensToAdd) || tokensToAdd <= 0) tokensToAdd = 1;
+                                console.log('💰 Tokens to add (computed):', tokensToAdd);
                                 await creditTokensToUser(db, { ...orderData, id: orderDoc.id }, tokensToAdd, externalRef);
                             } else if (orderData.type === 'digital_product') {
                                 console.log('This is a digital product purchase! Processing delivery...');
@@ -688,8 +695,14 @@ exports.handler = async (event, context) => {
                         // Se for compra de tokens, atualizar saldo do usuário via transação
                         if (orderData.type === 'tokens_purchase' || (payment.description && /token/i.test(payment.description))) {
                             console.log('🎯 This is a token purchase! Processing...');
-                            const tokensToAdd = Number(orderData.quantity || orderData.amount || orderData.total) || parseInt((payment.description && payment.description.match(/(\d+)/)?.[0]) || '1');
-                            console.log('💰 Tokens to add:', tokensToAdd);
+                            // Robust token quantity calculation for non-id path
+                            let tokensToAdd = 0;
+                            if (orderData && !isNaN(Number(orderData.quantity))) tokensToAdd = parseInt(Number(orderData.quantity), 10);
+                            else if (!isNaN(Number(orderData.total)) && Number(orderData.total) > 0) tokensToAdd = Math.round(Number(orderData.total));
+                            else if (!isNaN(Number(orderData.amount)) && Number(orderData.amount) > 0) tokensToAdd = Math.round(Number(orderData.amount));
+                            else tokensToAdd = parseInt((payment.description && payment.description.match(/(\d+)/)?.[0]) || '1', 10) || 1;
+                            if (isNaN(tokensToAdd) || tokensToAdd <= 0) tokensToAdd = 1;
+                            console.log('💰 Tokens to add (computed):', tokensToAdd);
                             await creditTokensToUser(db, { ...orderData, id: orderDoc.id }, tokensToAdd, externalRef);
                         }
                         // Se for produto digital, criar entrega digital
