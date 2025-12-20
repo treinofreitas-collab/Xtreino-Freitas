@@ -26,6 +26,12 @@ try {
       // Último recurso: tentar inicializar sem credencial (pode falhar localmente)
       admin.initializeApp();
     }
+
+// Small helper to escape HTML in generated pages
+function escapeHtml(str){
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
   }
 } catch (_) {}
 
@@ -174,21 +180,32 @@ exports.handler = async (event) => {
 
     if (listOnly) {
       // Retornar lista de arquivos disponíveis
-      // Para iOS, incluir URLs diretos do Google Drive para evitar problemas com proxy no Safari
       const isIOS = links.length > 1 && links.some(l => l.url && l.url.includes('drive.google.com'));
       const list = links.map((l, idx) => {
         const item = { index: idx, name: l.name || `file-${idx+1}` };
-        // Para iOS, incluir URL direto para evitar problemas com proxy no Safari
-        if (isIOS && l.url) {
-          item.url = l.url;
-        }
+        if (isIOS && l.url) item.url = l.url;
         return item;
       });
-      const body = { files: list };
-      if (platformUsed) {
-        body.platform = platformUsed;
-        if (brandUsed) body.brand = brandUsed;
+
+      // Se o cliente aceitar HTML (navegador), retornar uma página simples com links
+      const accept = (event.headers && (event.headers.accept || event.headers.Accept)) || '';
+      const wantsHtml = String(accept).toLowerCase().includes('text/html');
+      if (wantsHtml) {
+        const filesHtml = list.map(f => {
+          const href = f.url ? f.url : `/.netlify/functions/download?orderId=${encodeURIComponent(orderId)}&i=${encodeURIComponent(f.index)}`;
+          return `<li style="margin:8px 0"><a href="${href}" target="_blank" rel="noopener noreferrer" style="color:#1a73e8;text-decoration:none">${escapeHtml(f.name || `Arquivo ${f.index+1}`)}</a></li>`;
+        }).join('\n');
+
+        const platformNote = platformUsed ? `<p style="color:#555;font-size:0.9rem">Plataforma selecionada: <strong>${escapeHtml(platformUsed)}</strong>${brandUsed ? ` • Marca: <strong>${escapeHtml(brandUsed)}</strong>` : ''}</p>` : '';
+
+        const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arquivos para download</title></head><body style="font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:32px;color:#222"><h1 style="margin-bottom:8px">Arquivos disponíveis</h1>${platformNote}<ul style="padding-left:20px">${filesHtml}</ul><p style="color:#666;font-size:0.9rem;margin-top:18px">Se o link abrir uma página em branco, copie o link e cole no navegador.</p></body></html>`;
+
+        return { statusCode: 200, headers: { ...headers, 'Content-Type': 'text/html' }, body: html };
       }
+
+      // Default: retornar JSON para chamadas via fetch
+      const body = { files: list };
+      if (platformUsed) { body.platform = platformUsed; if (brandUsed) body.brand = brandUsed; }
       return { statusCode: 200, headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
     }
 
