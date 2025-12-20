@@ -5956,9 +5956,10 @@ async function submitSchedule(e, useTokens=false){
         }
         
         // Se for pagamento com tokens, chamar a lógica específica (já corrigida na useTokensForEvent)
-        if (useTokens || (cfg && cfg.payWithToken)){
-             // Nota: Aqui redirecionamos para a lógica de tokens que já tem as proteções
-             await useTokensForEvent(eventType);
+           if (useTokens || (cfg && cfg.payWithToken)){
+               // Nota: Aqui redirecionamos para a lógica de tokens que já tem as proteções
+               // Passar quantidade total de reservas e o valor final calculado
+               await useTokensForEvent(eventType, totalReservations, finalPrice);
              if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
              return;
         }
@@ -6348,7 +6349,7 @@ function closeTokensModal() {
 
 // Compra de tokens removida (somente usuários recebem tokens)
 
-async function useTokensForEvent(eventType){
+async function useTokensForEvent(eventType, quantity = 1, explicitTotalCost = null){
     const eventCosts = {
         'treino': 1.00,
         'modoLiga': 3.00,
@@ -6357,24 +6358,41 @@ async function useTokensForEvent(eventType){
         'campFases': 5.00,
         'xtreino-tokens': 1.00
     };
-    
-    const cost = eventCosts[eventType];
-    if (!cost) {
-        console.error('Event type not found:', eventType);
+
+    // Resolve possíveis variações no nome do evento (kebab-case, evt- prefix, camelCase)
+    const resolveCostKey = (t) => {
+        if (!t) return null;
+        if (eventCosts[t]) return t;
+        let s = String(t).replace(/^evt[-_]?/i, '').replace(/\s+/g,'-').trim();
+        if (eventCosts[s]) return s;
+        const camel = s.split('-').map((p,i)=> i===0? p : (p.charAt(0).toUpperCase()+p.slice(1)) ).join('');
+        if (eventCosts[camel]) return camel;
+        return null;
+    };
+
+    const key = resolveCostKey(eventType) || eventType;
+    const unitCost = (typeof eventCosts[key] !== 'undefined') ? eventCosts[key] : null;
+    const costPerUnit = (explicitTotalCost !== null && explicitTotalCost !== undefined) ? Number(explicitTotalCost) : (unitCost !== null ? Number(unitCost) : null);
+    const qty = Number(quantity || 1);
+    const totalCost = (costPerUnit !== null) ? Number((costPerUnit * qty).toFixed(2)) : null;
+
+    if (totalCost === null) {
+        console.error('Event type/cost not found:', eventType, { key, unitCost });
+        alert('Não foi possível determinar o valor do evento. Contate o suporte.');
         return;
     }
-    
+
     // Verificar se tem tokens suficientes
     const profile = window.currentUserProfile || {};
-    console.log('🔍 useTokensForEvent - Profile check:', { profile, tokens: profile.tokens, cost });
-    
-    if (!profile || profile.tokens === undefined || profile.tokens === null || Number(profile.tokens) < Number(cost)) {
-        alert(`Saldo insuficiente. Você precisa de ${cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+    console.log('🔍 useTokensForEvent - Profile check:', { profile, tokens: profile.tokens, costPerUnit, qty, totalCost });
+
+    if (!profile || profile.tokens === undefined || profile.tokens === null || Number(profile.tokens) < Number(totalCost)) {
+        alert(`Saldo insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
         return;
     }
-    
-    if (!canSpendTokens(cost)) {
-        alert(`Saldo insuficiente. Você precisa de ${cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
+
+    if (!canSpendTokens(totalCost)) {
+        alert(`Saldo insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
         return;
     }
     
@@ -6417,15 +6435,16 @@ async function useTokensForEvent(eventType){
         }
     }catch(_){ /* se falhar checagem prévia, deixa seguir */ }
     
-    if (confirm(`Confirmar uso de ${cost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens para ${eventNames[eventType]}?`)) {
+    const labelName = eventNames[key] || eventNames[eventType] || eventType;
+    if (confirm(`Confirmar uso de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens para ${labelName}?`)) {
         // Tenta debitar
-        const debitSuccess = await spendTokens(cost);
+        const debitSuccess = await spendTokens(totalCost);
         
         if (debitSuccess) {
-            // Tenta agendar
-            try {
-                // A função createTokenSchedule foi modificada para lançar erro se falhar
-                await createTokenSchedule(eventType, cost);
+                // Tenta agendar
+                try {
+                    // A função createTokenSchedule aceita o tipo resolvido e o custo total
+                    await createTokenSchedule(key, totalCost);
                 
                 // Se chegou aqui, sucesso total
                 closeTokensModal();
