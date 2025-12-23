@@ -8533,7 +8533,20 @@ document.addEventListener('DOMContentLoaded', function() {
   // Listener: adicionar time manualmente no quadro de horários
   const addTeamForm = document.getElementById('formAddTeam');
   if (addTeamForm) {
-    addTeamForm.addEventListener('submit', submitAddTeam);
+    addTeamForm.addEventListener('submit', (e) => {
+      try {
+        if (typeof window.submitAddTeam === 'function') {
+          return window.submitAddTeam(e);
+        }
+      } catch (_) {}
+      // Função ainda não exposta — prevenir submissão e avisar o usuário
+      e.preventDefault();
+      if (typeof showNotification === 'function') {
+        showNotification('Aguardando inicialização do formulário. Tente novamente em instantes.', 'warning');
+      } else {
+        alert('Aguardando inicialização do admin. Tente novamente em instantes.');
+      }
+    });
   }
   
   // Listeners de filtros do uso de cupons

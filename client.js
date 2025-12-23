@@ -1050,16 +1050,27 @@ async function getWhatsAppLinkForOrder(order) {
             if (window.firebaseDb) {
                 const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
                 // Normalizar parâmetros como no script.js
-                const normalizeType = (t)=> String(t||'').toLowerCase().trim().replace(/\s+/g,'-')
-                    .replace('modo liga','modo-liga').replace('camp','camp-freitas');
+                // Aceitar `eventType` como objeto ou string (compatível com script.js)
+                const rawTypeInput = (typeof order.eventType === 'object' && order.eventType !== null)
+                    ? (order.eventType.eventType || order.eventType.type || order.eventType.key || order.eventType.label || order.eventType.name || '')
+                    : order.eventType;
+
+                const normalizeType = (t)=> String(t||'').toLowerCase().trim()
+                    .replace(/\s+/g,'-')
+                    .replace('modo liga','modo-liga')
+                    .replace('semanal freitas','semanal-freitas')
+                    .replace('camp','camp-freitas');
+
                 const normalizeHour = (h)=>{
                     if (!h) return null;
-                    const s = String(h).toLowerCase().trim();
+                    const raw = (typeof h === 'object' && h !== null) ? (h.hour || h.schedule || JSON.stringify(h)) : h;
+                    const s = String(raw).toLowerCase().trim();
                     const m = s.match(/(\d{1,2})/);
-                    return m ? `${parseInt(m[1],10)}h` : null;
+                    return m ? `${parseInt(m[1],10)}h` : s;
                 };
-                const type = normalizeType(order.eventType);
-                const hour = normalizeHour(order.schedule);
+
+                const type = normalizeType(rawTypeInput);
+                const hour = normalizeHour(order.schedule || order.hour || null);
                 
                 console.log('🔍 Buscando com parâmetros normalizados:', { type, hour });
                 
