@@ -5433,7 +5433,6 @@ function addTeam() {
     teamDiv.id = teamId;
     teamDiv.className = 'bg-gray-50 rounded-xl p-4 border border-gray-200';
     teamDiv.innerHTML = `
-        <div class="flex items-center justify-between mb-3">
             <h5 class="font-semibold text-gray-900">Time ${teamCounter}</h5>
             ${teamCounter > 1 ? `<button type="button" onclick="removeTeam('${teamId}')" class="text-red-600 hover:text-red-800 text-sm">Remover</button>` : ''}
         </div>
@@ -6511,6 +6510,8 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
         console.log('🔍 getWhatsAppLink - Buscando link para:', { eventType, schedule, date });
 
         const whatsappLinksRef = collection(window.firebaseDb, 'whatsapp_links');
+        // Aceitar `eventType` como string ou objeto (compatibilidade com chamadas que passam cfg)
+        const rawTypeInput = (typeof eventType === 'object' && eventType !== null) ? (eventType.eventType || eventType.type || eventType.key || eventType.label || '') : eventType;
         // Normalizar parâmetros
         const normalizeType = (t) => String(t || '').toLowerCase().trim()
             .replace(/\s+/g, '-')
@@ -6524,7 +6525,7 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
             const m = s.match(/(\d{1,2})/);
             return m ? `${parseInt(m[1], 10)}h` : s;
         };
-        const type = normalizeType(eventType);
+        const type = normalizeType(rawTypeInput);
         const hour = normalizeHour(schedule);
         console.log('🔍 Tipo normalizado:', type, 'Horário normalizado:', hour);
 
@@ -6693,6 +6694,12 @@ async function createTokenSchedule(eventType, cost) {
             }
         }
 
+        // Garantir `eventName` seguro (não escrever undefined no Firestore)
+        const safeEventName = (eventNames && eventNames[eventType])
+            || (scheduleConfig && scheduleConfig[eventType] && scheduleConfig[eventType].label)
+            || (typeof eventType === 'object' && eventType ? (eventType.label || eventType.name || eventType.eventType || null) : null)
+            || String(eventType || 'Evento');
+
         const scheduleData = {
             teamName: team,
             contact: email,
@@ -6703,10 +6710,10 @@ async function createTokenSchedule(eventType, cost) {
             eventType: eventType,
             status: 'confirmed',
             paidWithTokens: true,
-            tokenCost: cost,
-            tokensUsed: cost, // Campo para histórico
-            eventName: eventNames[eventType],
-            title: eventNames[eventType], // Campo para compatibilidade
+            tokenCost: (typeof cost !== 'undefined' && cost !== null) ? cost : 0,
+            tokensUsed: (typeof cost !== 'undefined' && cost !== null) ? cost : 0, // Campo para histórico
+            eventName: safeEventName,
+            title: safeEventName, // Campo para compatibilidade
             whatsappLink: whatsappLink,
             groupLink: whatsappLink || null,
             userId: window.firebaseAuth.currentUser?.uid,
