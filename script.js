@@ -6457,18 +6457,18 @@ async function useTokensForEvent(eventType, quantity = 1, explicitTotalCost = nu
                 try {
                     const { doc, updateDoc, increment } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
                     const userRef = doc(window.firebaseDb, 'users', window.firebaseAuth.currentUser.uid);
-                    await updateDoc(userRef, { tokens: increment(cost) });
+                    await updateDoc(userRef, { tokens: increment(totalCost) });
                     
                     // Atualiza localmente
                     if (window.currentUserProfile) {
-                        window.currentUserProfile.tokens = (Number(window.currentUserProfile.tokens) + Number(cost));
+                        window.currentUserProfile.tokens = (Number(window.currentUserProfile.tokens) + Number(totalCost));
                         updateHeaderTokenBadges();
                     }
                     
                     alert('Houve um erro de conexão ao criar o agendamento. Seus tokens foram devolvidos para sua conta. Tente novamente.');
                 } catch (refundError) {
                     console.error('❌ FALHA NO REEMBOLSO:', refundError);
-                    alert(`Erro grave: O agendamento falhou e não conseguimos restaurar seus tokens automaticamente. Tire um print desta tela e contate o suporte. Tokens perdidos: ${cost}`);
+                    alert(`Erro grave: O agendamento falhou e não conseguimos restaurar seus tokens automaticamente. Tire um print desta tela e contate o suporte. Tokens perdidos: ${totalCost}`);
                 }
             }
         } else {
