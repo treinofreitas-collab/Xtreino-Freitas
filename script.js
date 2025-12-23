@@ -6068,6 +6068,8 @@ async function submitSchedule(e, useTokens=false){
                             createdAt: serverTimestamp(),
                             external_reference: externalRef,
                             groupLink: whatsappLink || null,
+                            whatsappLink: whatsappLink || null,
+                            hour: hour || null,
                             affiliateCode: getActiveAffiliateCode(appliedScheduleCoupon?.affiliateId || null)
                         });
                         regIds.push(docRef.id);
