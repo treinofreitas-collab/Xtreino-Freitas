@@ -6660,12 +6660,14 @@ async function createTokenSchedule(eventType, cost) {
             }
         }
 
+        // Normalizar eventType e preparar para checagens
+        const siteTypeMap = { modoLiga: 'modo-liga', semanal: 'semanal-freitas', finalSemanal: 'semanal-freitas', campFases: 'camp-freitas', treino: 'xtreino-tokens' };
+        const siteEventType = (siteTypeMap[eventType] || eventType);
+        const normalizeType = (t) => String(t || '').toLowerCase().trim().replace(/\s+/g,'-').replace('modo liga','modo-liga').replace('camp','camp-freitas').replace('semanal freitas','semanal-freitas');
+        const normalizedEventType = normalizeType(siteEventType);
+
         // Re-checar disponibilidade logo antes de criar (evita corrida)
         try {
-            const siteTypeMap = { modoLiga: 'modo-liga', semanal: 'semanal-freitas', finalSemanal: 'semanal-freitas', campFases: 'camp-freitas', treino: 'xtreino-tokens' };
-                const siteEventType = (siteTypeMap[eventType] || eventType);
-                const normalizeType = (t) => String(t || '').toLowerCase().trim().replace(/\s+/g,'-').replace('modo liga','modo-liga').replace('camp','camp-freitas').replace('semanal freitas','semanal-freitas');
-                const normalizedEventType = normalizeType(siteEventType);
             if (schedule && siteEventType) {
                 const canBook = await checkSlotAvailability(date, schedule, siteEventType);
                 if (!canBook) {
