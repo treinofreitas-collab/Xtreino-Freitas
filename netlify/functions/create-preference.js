@@ -225,6 +225,48 @@ exports.handler = async function(event) {
     // can reliably find and attribute payments even if the client failed to
     // persist the order (transient network / Firestore errors on client).
     // This is a safe best-effort; do not fail preference creation if DB is unavailable.
+    let fallbackWhatsappLink = null;
+    try {
+      if (admin && admin.firestore && body.multiple_reservations) {
+        // Try to fetch whatsappLink for fallback order (best-effort)
+        try {
+          const eventType = body.multiple_reservations.eventType || body.eventType;
+          const schedule = body.multiple_reservations.schedules ? body.multiple_reservations.schedules[0] : null;
+          const date = body.multiple_reservations.dates ? body.multiple_reservations.dates[0] : null;
+          if (eventType && date) {
+            const db = admin.firestore();
+            const whatsappLinksRef = db.collection('whatsapp_links');
+            // Query for specific hour if available
+            if (schedule) {
+              const hourMatch = String(schedule || '').match(/(\d{1,2})h/);
+              if (hourMatch) {
+                const hour = hourMatch[1] + 'h';
+                const q = await whatsappLinksRef
+                  .where('eventType', '==', eventType)
+                  .where('schedule', '==', hour)
+                  .where('status', '==', 'active')
+                  .limit(1).get();
+                if (!q.empty) fallbackWhatsappLink = q.docs[0].data().link;
+              }
+            }
+            // Fallback to general link if hour-specific not found
+            if (!fallbackWhatsappLink) {
+              const q = await whatsappLinksRef
+                .where('eventType', '==', eventType)
+                .where('schedule', '==', null)
+                .where('status', '==', 'active')
+                .limit(1).get();
+              if (!q.empty) fallbackWhatsappLink = q.docs[0].data().link;
+            }
+          }
+        } catch (linkErr) {
+          console.warn('⚠️ Could not fetch whatsappLink for fallback order:', linkErr?.message || linkErr);
+        }
+      }
+    } catch (linkFetchErr) {
+      // ignore, will continue without whatsappLink
+    }
+    
     try {
       if (admin && admin.firestore) {
         const db = admin.firestore();
@@ -252,12 +294,24 @@ exports.handler = async function(event) {
             status: 'pending',
             external_reference: externalRef,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            // Campos explícitos para facilitar o matching no webhook
+            // Campos explícitos para facilitar o matching no webhook and Admin UI
             quantity: orderQuantity,
-            customer: customerEmail || null,
-            buyerEmail: customerEmail || null,
+            customer: customerEmail || body.customer || null,
+            buyerEmail: customerEmail || body.buyerEmail || body.buyer || null,
             userId: userId || null,
             uid: userId || null,
+            // Reservation details (for schedule purchases)
+            teamName: body.teamName || (body.multiple_reservations && Array.isArray(body.multiple_reservations.teams) ? (body.multiple_reservations.teams[0] || null) : null),
+            teams: (body.multiple_reservations && body.multiple_reservations.teams) || null,
+            schedules: (body.multiple_reservations && body.multiple_reservations.schedules) || null,
+            dates: (body.multiple_reservations && body.multiple_reservations.dates) || null,
+            eventType: (body.multiple_reservations && body.multiple_reservations.eventType) || body.eventType || body.type || inferredType,
+            phone: body.phone || body.contact || null,
+            // WhatsApp/group links if client passed them (helps Admin show link immediately)
+            // Use fallback link fetched from whatsapp_links collection if available
+            whatsappLink: body.whatsappLink || body.groupLink || fallbackWhatsappLink || null,
+            groupLink: body.groupLink || body.whatsappLink || fallbackWhatsappLink || null,
+            // Keep original minimal metadata for backwards compatibility
             metadata: {
               quantity: orderQuantity,
               multiple_reservations: body.multiple_reservations || null
