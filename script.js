@@ -5954,15 +5954,6 @@ async function submitSchedule(e, useTokens=false){
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
-        
-        // Se for pagamento com tokens, chamar a lógica específica (já corrigida na useTokensForEvent)
-           if (useTokens || (cfg && cfg.payWithToken)){
-               // Nota: Aqui redirecionamos para a lógica de tokens que já tem as proteções
-               // Passar quantidade total de reservas e o valor final calculado
-               await useTokensForEvent(eventType, totalReservations, finalPrice);
-             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-             return;
-        }
 
         // --- INÍCIO DO FLUXO DE PAGAMENTO EM DINHEIRO (Modo Liga, Camp, etc) ---
         
@@ -6008,7 +5999,7 @@ async function submitSchedule(e, useTokens=false){
             }
         }
 
-        // Calcular Total (Front-end para referência, Backend recalcula)
+        // Calcular Total ANTES de qualquer operação (Front-end para referência, Backend recalcula)
         let originalTotal = 0;
         for (const d of datesToUse){
             for (const t of selectedTimes){
@@ -6038,7 +6029,13 @@ async function submitSchedule(e, useTokens=false){
         }
 
         const totalReservations = teams.length * selectedTimes.length * datesToUse.length;
-        const datesCount = datesToUse.length;
+
+        // Se for pagamento com tokens, chamar a lógica específica
+        if (useTokens || (cfg && cfg.payWithToken)){
+            await useTokensForEvent(eventType, totalReservations, finalPrice);
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
 
         // --- 1. SALVAR NO FIRESTORE (A GRANDE CORREÇÃO) ---
         let externalRef = `schedule_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
