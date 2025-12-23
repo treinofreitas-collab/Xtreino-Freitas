@@ -86,13 +86,24 @@ async function backfillCollection(collectionName, batchSize = 10) {
     
     for (const doc of snapshot.docs) {
       const data = doc.data();
-      const link = await getWhatsAppLinkForRegistration(data.eventType, data.schedule || data.hour, data.date);
+      
+      // Normalizar schedule: se for string "null" ou "undefined", converter para null
+      let schedule = data.schedule || data.hour || null;
+      if (schedule === 'null' || schedule === 'undefined' || schedule === 'NaN') schedule = null;
+      
+      const link = await getWhatsAppLinkForRegistration(data.eventType, schedule, data.date);
       
       if (link) {
-        batch.update(doc.ref, {
+        // Também normalizar schedule no documento se foi string "null"
+        const updateData = {
           whatsappLink: link,
           groupLink: link || null
-        });
+        };
+        if (schedule === null && (data.schedule === 'null' || data.hour === 'undefined')) {
+          updateData.schedule = null;
+          updateData.hour = null;
+        }
+        batch.update(doc.ref, updateData);
         updated++;
         console.log(`✅ [${updated}] Doc ${doc.id}: whatsappLink populated`);
       } else {
