@@ -5940,8 +5940,11 @@ async function submitSchedule(e, useTokens=false){
     
     try {
         const modal = document.getElementById('scheduleModal');
-        const eventType = modal?.dataset?.eventType || 'modo-liga';
-        const cfg = scheduleConfig[eventType];
+        const rawEventType = modal?.dataset?.eventType || 'modo-liga';
+        const normalizeType = (t) => String(t || '').toLowerCase().trim().replace(/\s+/g, '-').replace('modo liga','modo-liga').replace('camp','camp-freitas').replace('semanal freitas','semanal-freitas');
+        const normalizeHour = (h) => { if (!h) return null; const s = String(h).toLowerCase().trim(); const m = s.match(/(\d{1,2})/); return m ? `${parseInt(m[1],10)}h` : s; };
+        const eventType = normalizeType(rawEventType);
+        const cfg = scheduleConfig[rawEventType] || scheduleConfig[eventType] || {};
         
         // Se for produto da loja, usar lógica de compra (já corrigida na handlePurchase)
         if (cfg.isProduct) {
@@ -6050,8 +6053,9 @@ async function submitSchedule(e, useTokens=false){
                 for (let team of teams) {
                     for (let schedule of selectedTimes) {
                         const hour = (schedule.split(' - ')[1]||'').trim();
+                        const normalizedHour = normalizeHour(hour);
                         const price = getEventPrice(eventType, hour, d);
-                        const whatsappLink = await getWhatsAppLink(eventType, hour, d);
+                        const whatsappLink = await getWhatsAppLink(eventType, normalizedHour, d);
                         
                         const docRef = await addDoc(collection(window.firebaseDb,'registrations'),{
                             userId: window.firebaseAuth.currentUser.uid,
@@ -6068,7 +6072,7 @@ async function submitSchedule(e, useTokens=false){
                             external_reference: externalRef,
                             groupLink: whatsappLink || null,
                             whatsappLink: whatsappLink || null,
-                            hour: hour || null,
+                            hour: normalizedHour || null,
                             affiliateCode: getActiveAffiliateCode(appliedScheduleCoupon?.affiliateId || null)
                         });
                         regIds.push(docRef.id);
@@ -6614,12 +6618,7 @@ async function createTokenSchedule(eventType, cost) {
         const date = document.getElementById('schedDate')?.value || new Date().toISOString().split('T')[0];
         // Pegar horário selecionado sem defaultar para 19h
         const rawSchedule = document.getElementById('schedSelectedTime')?.value || document.querySelector('#schedTimes .selected')?.textContent || '';
-        const normalizeHour = (h) => {
-            if (!h) return null;
-            const s = String(h).toLowerCase().trim();
-            const m = s.match(/(\d{1,2})/);
-            return m ? `${parseInt(m[1], 10)}h` : s;
-        };
+        const normalizeHour = (h) => { if (!h) return null; const s = String(h).toLowerCase().trim(); const m = s.match(/(\d{1,2})/); return m ? `${parseInt(m[1],10)}h` : s; };
         const hour = normalizeHour(rawSchedule);
         // Montar "Dia - 14h" para compatibilidade com o controle de vagas
         const weekday = (() => {
@@ -6664,7 +6663,9 @@ async function createTokenSchedule(eventType, cost) {
         // Re-checar disponibilidade logo antes de criar (evita corrida)
         try {
             const siteTypeMap = { modoLiga: 'modo-liga', semanal: 'semanal-freitas', finalSemanal: 'semanal-freitas', campFases: 'camp-freitas', treino: 'xtreino-tokens' };
-            const siteEventType = siteTypeMap[eventType] || eventType;
+                const siteEventType = (siteTypeMap[eventType] || eventType);
+                const normalizeType = (t) => String(t || '').toLowerCase().trim().replace(/\s+/g,'-').replace('modo liga','modo-liga').replace('camp','camp-freitas').replace('semanal freitas','semanal-freitas');
+                const normalizedEventType = normalizeType(siteEventType);
             if (schedule && siteEventType) {
                 const canBook = await checkSlotAvailability(date, schedule, siteEventType);
                 if (!canBook) {
@@ -6675,7 +6676,7 @@ async function createTokenSchedule(eventType, cost) {
         } catch (_) { }
 
         // Obter link do WhatsApp dinamicamente do Firestore
-        let whatsappLink = await getWhatsAppLink(eventType, schedule, date);
+        let whatsappLink = await getWhatsAppLink(normalizedEventType || eventType, schedule, date);
         // Se não encontrou, tentar alternativas (apenas hora, depois geral) — evita salvar vazio quando há link cadastrado com outro formato
         if (!whatsappLink) {
             console.warn('⚠️ WhatsApp link não encontrado para schedule completo, tentando alternativas', { eventType, schedule, date, hour });
@@ -6735,15 +6736,15 @@ async function createTokenSchedule(eventType, cost) {
         console.log('✅ Token schedule created with ID:', regDocRef.id);
 
         // 2. Criar registro leve em 'orders' para aparecer no "Meus Pedidos"
-        try {
-            await addDoc(collection(window.firebaseDb, 'orders'), {
+            try {
+                await addDoc(collection(window.firebaseDb, 'orders'), {
                 userId: window.firebaseAuth.currentUser?.uid,
                 uid: window.firebaseAuth.currentUser?.uid,
                 customer: email,
                 buyerEmail: email,
                 title: scheduleData.title,
                 item: scheduleData.title,
-                eventType: eventType, // 'xtreino-tokens'
+                eventType: (typeof normalizedEventType !== 'undefined' ? normalizedEventType : eventType),
                 schedule: schedule || hour || null,
                 date: date,
                 teamName: team,
@@ -6756,7 +6757,7 @@ async function createTokenSchedule(eventType, cost) {
                 status: 'approved',
                 paidWithTokens: true,
                 tokensUsed: cost,
-                whatsappLink: whatsappLink,
+                whatsappLink: whatsappLink || null,
                 groupLink: whatsappLink || null,
                 createdAt: serverTimestamp(),
                 timestamp: Date.now()
