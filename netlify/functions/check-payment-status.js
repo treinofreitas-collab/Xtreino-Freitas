@@ -37,8 +37,16 @@ exports.handler = async (event, context) => {
 
         // Buscar pagamentos usando a API REST do Mercado Pago
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        const searchUrl = `https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&begin_date=${today}&external_reference=${external_reference || preference_id}`;
-        
+        // O endpoint aceita diferentes parâmetros de busca; usar `external_reference` quando disponível,
+        // caso contrário, usar `preference_id` para procurar pelo id da preferência.
+        let queryParam = '';
+        if (external_reference) {
+            queryParam = `external_reference=${encodeURIComponent(external_reference)}`;
+        } else if (preference_id) {
+            queryParam = `preference_id=${encodeURIComponent(preference_id)}`;
+        }
+        const searchUrl = `https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&begin_date=${today}${queryParam ? `&${queryParam}` : ''}`;
+
         console.log('Searching payments with URL:', searchUrl);
         console.log('External reference:', external_reference);
         console.log('Preference ID:', preference_id);
