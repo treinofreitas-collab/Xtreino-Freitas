@@ -6672,7 +6672,24 @@ async function createTokenSchedule(eventType, cost) {
         } catch (_) { }
 
         // Obter link do WhatsApp dinamicamente do Firestore
-        const whatsappLink = await getWhatsAppLink(eventType, schedule, date);
+        let whatsappLink = await getWhatsAppLink(eventType, schedule, date);
+        // Se não encontrou, tentar alternativas (apenas hora, depois geral) — evita salvar vazio quando há link cadastrado com outro formato
+        if (!whatsappLink) {
+            console.warn('⚠️ WhatsApp link não encontrado para schedule completo, tentando alternativas', { eventType, schedule, date, hour });
+            try {
+                if (hour) {
+                    const byHour = await getWhatsAppLink(eventType, hour, date);
+                    if (byHour) whatsappLink = byHour;
+                }
+            } catch (e) { console.warn('Erro ao buscar link alternativo por hora', e); }
+
+            if (!whatsappLink) {
+                try {
+                    const general = await getWhatsAppLink(eventType, null, date);
+                    if (general) whatsappLink = general;
+                } catch (e) { console.warn('Erro ao buscar link geral', e); }
+            }
+        }
 
         const scheduleData = {
             teamName: team,
