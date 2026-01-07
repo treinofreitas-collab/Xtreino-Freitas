@@ -1242,11 +1242,11 @@ async function spendTokens(amountBRL) {
     try {
         console.log('🔍 spendTokens called:', { amt });
         
-        if (isNaN(amt) || amt <= 0) { showError('TOKEN_005','Valor inválido'); return false; }
-        if (!window.firebaseAuth?.currentUser) { showError('AUTH_001','Faça login novamente'); return false; }
+        if (isNaN(amt) || amt <= 0) { showErrorToast('Valor inválido', 'TOKEN_005'); return false; }
+        if (!window.firebaseAuth?.currentUser) { showErrorToast('Faça login novamente', 'AUTH_001'); return false; }
         
         // Verificação visual imediata
-        if (!canSpendTokens(amt)) { showError('TOKEN_001','Saldo insuficiente'); return false; }
+        if (!canSpendTokens(amt)) { showErrorToast('Saldo insuficiente', 'TOKEN_001'); return false; }
 
         // 1. Debita Localmente (Visual Rápido)
         const newBalance = spendTokensSync(amt);
@@ -1914,14 +1914,24 @@ async function payCurrentProductWithTokens() {
         };
         const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
         closePurchaseModal();
+        
+        // Mostrar sucesso e redirecionar
         if (typeof openPaymentConfirmModal === 'function') {
             openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento em tokens foi aprovado. Confira em Minha Conta.');
         } else {
-            alert('Pagamento confirmado com tokens!');
+            showSuccessToast('Seu pagamento em tokens foi aprovado', 'Sucesso');
         }
+        
+        // Redirecionar para client.html após 2 segundos
+        setTimeout(() => {
+            try {
+                window.location.href = 'client.html?tab=products';
+            } catch (_) { }
+        }, 2000);
+        
     } catch (e) {
         console.error('Erro ao pagar com tokens:', e);
-        alert('Erro ao pagar com tokens.');
+        showErrorToast('Erro ao pagar com tokens. Por favor, tente novamente.', 'Erro');
     }
 }
 
@@ -1968,8 +1978,7 @@ async function applyCoupon() {
         const snapshot = await getDocs(q);
 
         if (snapshot.empty) {
-            showError('COUPON_001', 'COUPON_001');
-            showCouponMessage('Cupom não encontrado', 'error');
+                showErrorToast('Cupom não encontrado', 'COUPON_001');
             return;
         }
 
@@ -1980,7 +1989,7 @@ async function applyCoupon() {
         const validation = validateCoupon(coupon);
         if (!validation.valid) {
             const errorCode = validation.code || 'COUPON_006';
-            showError(errorCode, errorCode);
+            showErrorToast(validation.message, errorCode);
             showCouponMessage(validation.message, 'error');
             return;
         }
@@ -2011,7 +2020,7 @@ async function applyCoupon() {
 
     } catch (error) {
         console.error('❌ Erro ao validar cupom:', error);
-        showError(error, 'COUPON_006');
+        showErrorToast('Erro ao validar cupom. Tente novamente.', 'COUPON_006');
         showCouponMessage('Erro ao validar cupom. Tente novamente.', 'error');
     }
 }
@@ -6452,6 +6461,13 @@ async function useTokensForEvent(eventType, quantity = 1, explicitTotalCost = nu
                 closeTokensModal();
                 renderClientArea();
                 showToast('success', 'Token usado com sucesso! Agendamento criado. Verifique na sua área do cliente.', 'Sucesso');
+                
+                // Redirecionar para client.html após 2 segundos para ver o pedido
+                setTimeout(() => {
+                    try {
+                        window.location.href = 'client.html?tab=myTokens';
+                    } catch (_) { }
+                }, 2000);
             } catch (scheduleError) {
                 console.error('❌ Erro crítico: Token debitado mas agendamento falhou. Iniciando reembolso.', scheduleError);
                 
