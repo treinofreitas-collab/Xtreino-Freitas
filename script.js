@@ -1922,12 +1922,12 @@ async function payCurrentProductWithTokens() {
             showSuccessToast('Seu pagamento em tokens foi aprovado', 'Sucesso');
         }
         
-        // Redirecionar para client.html na aba de pedidos após 3.5 segundos (tempo para sincronizar)
+        // Redirecionar para client.html na aba de pedidos após 4.5 segundos (tempo para sincronizar ambas as collections)
         setTimeout(() => {
             try {
                 window.location.href = 'client.html?tab=orders';
             } catch (_) { }
-        }, 3500);
+        }, 4500);
         
     } catch (e) {
         console.error('Erro ao pagar com tokens:', e);
@@ -6462,12 +6462,12 @@ async function useTokensForEvent(eventType, quantity = 1, explicitTotalCost = nu
                 renderClientArea();
                 showToast('success', 'Token usado com sucesso! Agendamento criado. Verifique na sua área do cliente.', 'Sucesso');
                 
-                // Redirecionar para client.html após 3.5 segundos para sincronizar e ver o pedido
+                // Redirecionar para client.html após 4.5 segundos para sincronizar e ver o pedido
                 setTimeout(() => {
                     try {
                         window.location.href = 'client.html?tab=orders';
                     } catch (_) { }
-                }, 3500);
+                }, 4500);
             } catch (scheduleError) {
                 console.error('❌ Erro crítico: Token debitado mas agendamento falhou. Iniciando reembolso.', scheduleError);
                 
