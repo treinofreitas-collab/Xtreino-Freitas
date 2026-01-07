@@ -735,36 +735,25 @@ async function displayAllOrdersPaginated() {
     console.log('🔍 Total de pedidos carregados:', allOrdersData.length);
     console.log('🔍 Todos os pedidos:', allOrdersData);
     
-    // Filter only events (Treinos, Camps, Semanal, Modo Liga) -
-    // incluir xtreino-tokens (consumo via tokens) e excluir compras de tokens
-    const eventsOnly = allOrdersData.filter(order => {
+    // Filter events AND products (both paid and token purchases)
+    // Mostrar TODOS os pedidos: eventos, compras com tokens, etc.
+    const allOrders = allOrdersData.filter(order => {
         const title = (order.title || '').toLowerCase();
         const item = (order.item || '').toLowerCase();
         const eventType = (order.eventType || '').toLowerCase();
+        const status = (order.status || '').toLowerCase();
+        const paidWithTokens = order.paidWithTokens === true;
         
         console.log('🔍 Analisando pedido:', {
             title,
             item,
             eventType,
-            status: order.status,
+            status,
+            paidWithTokens,
             whatsappLink: order.whatsappLink
         });
         
-        // Excluir compras de tokens (orders com descrição/item contendo token)
-        // mas manter registros de consumo (eventType === 'xtreino-tokens').
-        // Exception: mostrar compras de tokens quando estiverem com status 'pending'
-        // para que o usuário/admin veja a data/hora da compra pendente.
-        if ((title.includes('token') || item.includes('token')) && eventType !== 'xtreino-tokens') {
-            if (order.status === 'pending') {
-                console.log('⚠️ Pedido de compra de token PENDENTE incluído para exibir data/hora');
-                // permitir exibição (retornar true implicitamente)
-            } else {
-                console.log('❌ Pedido excluído - compra de token (não-pendente)');
-                return false;
-            }
-        }
-        
-        // Incluir somente eventos + xtreino-tokens
+        // Incluir TUDO que for evento ou compra com tokens pagos/confirmados
         const isEvent = eventType === 'xtreino-tokens' ||
                title.includes('xtreino') || 
                title.includes('camp') || 
@@ -775,23 +764,26 @@ async function displayAllOrdersPaginated() {
                item.includes('semanal') || 
                item.includes('modo liga');
         
-        console.log(isEvent ? '✅ Pedido incluído - é evento' : '❌ Pedido excluído - não é evento');
-        return isEvent;
+        const isPaidWithTokens = paidWithTokens && (status === 'paid' || status === 'confirmed' || status === 'approved');
+        
+        const shouldInclude = isEvent || isPaidWithTokens;
+        console.log(shouldInclude ? '✅ Pedido incluído' : '❌ Pedido excluído');
+        return shouldInclude;
     });
     
-    console.log('🔍 Pedidos de eventos filtrados:', eventsOnly.length);
-    console.log('🔍 Eventos encontrados:', eventsOnly);
+    console.log('🔍 Pedidos filtrados:', allOrders.length);
+    console.log('🔍 Pedidos encontrados:', allOrders);
     
-    if (eventsOnly.length === 0) {
+    if (allOrders.length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-center">Nenhum evento encontrado</p>';
         return;
     }
 
     // Calculate pagination
-    const totalPages = Math.ceil(eventsOnly.length / ordersPerPage);
+    const totalPages = Math.ceil(allOrders.length / ordersPerPage);
     const startIndex = (currentPage - 1) * ordersPerPage;
     const endIndex = startIndex + ordersPerPage;
-    const currentOrders = eventsOnly.slice(startIndex, endIndex);
+    const currentOrders = allOrders.slice(startIndex, endIndex);
 
     // Generate orders HTML with WhatsApp buttons
     const ordersHTML = await Promise.all(currentOrders.map(async order => {
