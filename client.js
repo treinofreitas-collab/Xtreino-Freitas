@@ -281,7 +281,7 @@ async function switchTab(tabName) {
         button.classList.add('border-transparent', 'text-gray-500');
     });
 
-    // Show selected tab content
+    // Show selected tab content.
     document.getElementById(tabName + 'Content').classList.remove('hidden');
 
     // Add active class to selected tab
