@@ -1,0 +1,46 @@
+[functions]
+  node_bundler = "esbuild"
+
+[[scheduled]]
+  path = "/.netlify/functions/reconcile-payments"
+  schedule = "*/1 * * * *" # a cada 1 minuto (fallback automático)
+
+[build]
+  functions = "netlify/functions"
+  publish = "."
+
+[build.environment]
+  NODE_VERSION = "18"
+  # Domínio canônico do site
+  SITE_URL = "https://orgfreitas.com.br"
+  MP_BACK_BASE_URL = "https://orgfreitas.com.br"
+  WEBHOOK_URL = "https://orgfreitas.com.br/.netlify/functions/payment-notification"
+  MP_ACCESS_TOKEN = "APP_USR-6502424523223040-102009-bc2e614d26be8b582e772ab969fd2566-1741191818"
+
+# Plugin para instalar dependências das funções
+[[plugins]]
+  package = "@netlify/plugin-functions-install-core"
+
+# Segurança e HTTPS
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "SAMEORIGIN"
+    Content-Security-Policy = "upgrade-insecure-requests"
+
+[[headers]]
+  for = "/admin.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    Cache-Control = "no-store, no-cache, must-revalidate, max-age=0"
+
+# Redirecionar www para domínio canônico
+[[redirects]]
+  from = "/*"
+  to = "https://orgfreitas.com.br/:splat"
+  status = 301
+  force = true
+  conditions = { Host = ["www.orgfreitas.com.br"] }

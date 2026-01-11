@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - X-TREINO FREITAS</title>
+    <link rel="icon" type="image/png" href="assets/images/Logo - Xtreino Freitas.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Fallback rápido se o Tailwind não carregar em 2 segundos
+        setTimeout(function() {
+            if (typeof tailwind === 'undefined') {
+                console.warn('⚠️ Tailwind não carregou, tentando novamente...');
+                const script = document.createElement('script');
+                script.src = 'https://cdn.tailwindcss.com?v=' + Date.now();
+                document.head.appendChild(script);
+            }
+        }, 2000);
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="admin-styles.css">
+</head>
+<body class="bg-white text-black">
+    <header class="w-full border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white sticky top-0 z-40 shadow-sm">
+        <nav class="container mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="relative">
+                    <img src="assets/images/Logo - Xtreino Freitas.png" alt="X-TREINO FREITAS" class="h-16 w-16 rounded-lg object-contain shadow-md" />
+                    <div class="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-gray-800">Painel Admin</h1>
+                    <p class="text-xs text-gray-500">Gerenciamento e Controle</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="text-sm px-4 py-2 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 hover:shadow-md transition-all flex items-center gap-2 font-medium">
+                    <i class="fas fa-home text-blue-600"></i>
+                    Voltar ao Site
+                </a>
+                <button id="btnRefreshRole" class="text-sm px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 flex items-center gap-2 font-medium transition-all" title="Recarregar permissões do banco de dados">
+                    <i class="fas fa-sync-alt"></i>
+                    Atualizar Permissões
+                </button>
+                <div class="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200">
+                    <div class="relative w-8 h-8 rounded-full overflow-hidden border-2 border-blue-500 bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center" style="aspect-ratio: 1/1; border-radius: 50%;">
+                        <img id="adminUserPhoto" src="" alt="Foto de perfil" class="absolute inset-0 w-full h-full object-cover hidden" style="aspect-ratio: 1/1; border-radius: 50%;">
+                        <div id="adminUserInitials" class="w-full h-full flex items-center justify-center text-white text-xs font-bold">A</div>
+                    </div>
+                    <span id="adminUserName" class="text-sm text-gray-700 font-medium"></span>
+                </div>
+                <button id="btnLogout" class="text-sm px-4 py-2 rounded-lg bg-red-50 border border-red-200 hover:bg-red-100 text-red-700 font-medium transition-all flex items-center gap-2">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Sair
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-6 py-8">
+        <section id="authGate" class="hidden">
+            <div class="max-w-md mx-auto bg-white border border-gray-200 rounded-2xl p-8 shadow-lg">
+                <div class="text-center mb-6">
+                    <img src="assets/images/Logo - Xtreino Freitas.png" alt="X-TREINO FREITAS" class="h-16 w-16 mx-auto mb-4 rounded-lg object-contain" />
+                    <h2 class="text-2xl font-bold mb-2">Painel Administrativo</h2>
+                    <p class="text-gray-600">Acesso restrito a administradores autorizados</p>
+                </div>
+                <form id="emailLoginForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Email Administrativo</label>
+                        <input id="adminEmail" type="email" required class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none" placeholder="admin@xtreinofreitas.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Senha</label>
+                        <input id="adminPassword" type="password" required class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none" placeholder="••••••••">
+                        <div class="mt-2 text-right">
+                            <button id="btnForgotPassword" type="button" class="text-sm text-blue-600 hover:text-blue-800">Esqueceu a senha?</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <input id="rememberMe" type="checkbox" class="mr-2">
+                        <label for="rememberMe" class="text-sm text-gray-600">Manter sessão ativa</label>
+                    </div>
+                    <button id="btnEmailLogin" type="submit" class="w-full bg-blue-matte text-white hover:bg-blue-600 py-3 rounded-lg font-semibold transition-colors">
+                        <i class="fas fa-lock mr-2"></i>Entrar no Painel
+                    </button>
+                </form>
+                <div id="loginError" class="hidden mt-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg text-sm"></div>
+                <div id="loginInfo" class="hidden mt-4 p-3 bg-green-100 border border-green-300 text-green-700 rounded-lg text-sm"></div>
+                <div class="mt-6 text-center">
+                    <p class="text-xs text-gray-500">
+                        <i class="fas fa-shield-alt mr-1"></i>
+                        Conexão segura e criptografada
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <section id="dashboard" class="hidden">
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold">Visão Geral</h2>
+                <p id="roleBadge" class="text-sm text-gray-500">Carregando permissões...</p>
+            </div>
+
+            <div id="sectionKPIs" class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
+                <div class="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-sm font-medium text-green-700">Vendas Hoje</div>
+                        <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div id="kpiToday" class="text-2xl md:text-3xl font-bold text-green-800">R$ 0,00</div>
+                </div>
+                <div class="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-sm font-medium text-blue-700">Vendas Mês</div>
+                        <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div id="kpiMonth" class="text-2xl md:text-3xl font-bold text-blue-800">R$ 0,00</div>
+                </div>
+                <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-sm font-medium text-yellow-700">A Receber</div>
+                        <div class="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div id="kpiReceivable" class="text-2xl md:text-3xl font-bold text-yellow-800">R$ 0,00</div>
+                </div>
+                <div class="bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500 rounded-xl p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-sm font-medium text-purple-700">Usuários Ativos (30d)</div>
+                        <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div id="kpiActiveUsers" class="text-2xl md:text-3xl font-bold text-purple-800">0</div>
+                </div>
+            </div>
+
+            <div id="sectionFilters" class="bg-white border border-gray-200 rounded-xl p-4 mb-6 shadow-sm hover:shadow-md transition-shadow">
+                <!-- Filtros de Período -->
+                <div class="flex flex-wrap items-end gap-3 mb-4">
+                    <div class="min-w-[120px]">
+                        <label class="block text-xs text-gray-500 mb-1">Período</label>
+                        <select id="reportPeriod" class="w-full border rounded px-2 py-1 text-sm">
+                            <option value="today">Hoje</option>
+                            <option value="7d">Últimos 7 dias</option>
+                            <option value="30d">Últimos 30 dias</option>
+                            <option value="custom">Personalizado</option>
+                        </select>
+                    </div>
+                    <div class="min-w-[120px]">
+                        <label class="block text-xs text-gray-500 mb-1">De</label>
+                        <input id="dateFrom" type="date" class="w-full border rounded px-2 py-1 text-sm" />
+                    </div>
+                    <div class="min-w-[120px]">
+                        <label class="block text-xs text-gray-500 mb-1">Até</label>
+                        <input id="dateTo" type="date" class="w-full border rounded px-2 py-1 text-sm" />
+                    </div>
+                    <button id="btnApplyFilter" class="px-3 py-2 bg-black text-white rounded text-sm whitespace-nowrap">Aplicar</button>
+                </div>
+                
+                <!-- Botões de Ação -->
+                <div class="flex flex-wrap gap-2">
+                    <button id="btnExportOrdersCsv" class="px-3 py-2 border rounded text-sm hover:bg-gray-50 whitespace-nowrap">Exportar Vendas (CSV)</button>
+                    <button id="btnExportSchedulesCsv" class="px-3 py-2 border rounded text-sm hover:bg-gray-50 whitespace-nowrap">Exportar Inscrições (CSV)</button>
+                    <button id="btnReconcile" class="px-3 py-2 bg-emerald-600 text-white rounded text-sm whitespace-nowrap">Reconciliar pagamentos (24h)</button>
+                </div>
+            </div>
+
+            <div id="sectionCharts" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <div class="bg-white border border-gray-200 rounded-xl p-4 lg:col-span-2 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm flex items-center gap-2" id="salesChartTitle">
+                            <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            Vendas
+                        </h3>
+                    </div>
+                    <div class="relative w-full h-64 lg:h-48">
+                        <canvas id="salesChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+                <div id="sectionUsers" class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm flex items-center gap-2">
+                            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                            Top Produtos
+                        </h3>
+                    </div>
+                    <div class="relative w-full h-64 lg:h-48">
+                        <canvas id="topProductsChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm flex items-center gap-2">
+                            <div class="w-2 h-2 bg-purple-500 rounded-full"></div>
+                            Formas de Pagamento
+                        </h3>
+                    </div>
+                    <div class="relative w-full h-64">
+                        <canvas id="paymentMethodsChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sectionTokenStats" class="grid lg:grid-cols-3 gap-6">
+                <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm flex items-center">
+                            <svg class="w-4 h-4 mr-2 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                            </svg>
+                            Tokens Comprados
+                        </h3>
+                        <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <span id="tokensCount">0 compras</span>
+                            <span id="tokensPageInfo">Página 1 de 1</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Estatísticas de Tokens Compactas -->
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3 border border-green-200">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-xs text-green-600 font-medium">Comprados</p>
+                                    <p id="totalTokensPurchased" class="text-lg font-bold text-green-700">0</p>
+                                </div>
+                                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 border border-blue-200">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-xs text-blue-600 font-medium">Usados</p>
+                                    <p id="totalTokensUsed" class="text-lg font-bold text-blue-700">0</p>
+                                </div>
+                                <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Histórico de Compras de Tokens -->
+                    <div class="mb-3">
+                        <h4 class="text-xs font-semibold text-gray-700 mb-2">Compras Recentes</h4>
+                        <div id="tokensTable" class="overflow-x-auto text-xs">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="text-left text-gray-600 bg-gray-50">
+                                        <th class="py-1">Cliente</th>
+                                        <th class="py-1">Pacote</th>
+                                        <th class="py-1">Tokens</th>
+                                        <th class="py-1">Valor</th>
+                                        <th class="py-1">Data</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tokensTbody" class="divide-y"></tbody>
+                            </table>
+                        </div>
+                        <div id="tokensPurchasesPagination" class="flex justify-center mt-2 gap-1">
+                            <!-- Pagination buttons will be added here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Uso de Tokens -->
+                    <div>
+                        <h4 class="text-xs font-semibold text-gray-700 mb-2">Uso Recente</h4>
+                        <div id="tokenUsageTable" class="overflow-x-auto text-xs">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="text-left text-gray-600 bg-gray-50">
+                                        <th class="py-1">Cliente</th>
+                                        <th class="py-1">Evento</th>
+                                        <th class="py-1">Tokens</th>
+                                        <th class="py-1">Data/Hora</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tokenUsageTbody" class="divide-y"></tbody>
+                            </table>
+                        </div>
+                        <div id="tokenUsagePagination" class="flex justify-center mt-2 gap-1">
+                            <!-- Pagination buttons will be added here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm">Pedidos Pendentes</h3>
+                        <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <span id="pendingCount">0 pedidos</span>
+                            <span id="pendingPageInfo">Página 1 de 1</span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto text-xs">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="text-left text-gray-600 bg-yellow-50">
+                                    <th class="py-2">Cliente</th>
+                                    <th class="py-2">Item</th>
+                                    <th class="py-2">Valor</th>
+                                    <th class="py-2">Criado</th>
+                                    <th class="py-2">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pendingTbody" class="divide-y"></tbody>
+                        </table>
+                    </div>
+                    <div id="pendingPagination" class="flex justify-center mt-3 gap-1">
+                        <!-- Pagination buttons will be added here -->
+                    </div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm">Pedidos Confirmados</h3>
+                        <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <span id="confirmedCount">0 pedidos</span>
+                            <span id="confirmedPageInfo">Página 1 de 1</span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto text-xs">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="text-left text-gray-600 bg-green-50">
+                                    <th class="py-2">Cliente</th>
+                                    <th class="py-2">Item</th>
+                                    <th class="py-2">Valor</th>
+                                    <th class="py-2">Pago em</th>
+                                </tr>
+                            </thead>
+                            <tbody id="confirmedTbody" class="divide-y"></tbody>
+                        </table>
+                    </div>
+                    <div id="confirmedPagination" class="flex justify-center mt-3 gap-1">
+                        <!-- Pagination buttons will be added here -->
+                    </div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm">Horários mais procurados</h3>
+                        <button id="resetFiltersBtn" class="text-xs text-blue-600 hover:text-blue-800">Limpar filtros</button>
+                    </div>
+                    
+                    <!-- Filtros -->
+                    <div class="flex flex-wrap gap-3 mb-4">
+                        <div class="flex-1 min-w-[140px]">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Dia da semana</label>
+                            <select id="dayFilter" class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Todos os dias</option>
+                                <option value="monday">Segunda-feira</option>
+                                <option value="tuesday">Terça-feira</option>
+                                <option value="wednesday">Quarta-feira</option>
+                                <option value="thursday">Quinta-feira</option>
+                                <option value="friday">Sexta-feira</option>
+                            </select>
+                        </div>
+                        <div class="flex-1 min-w-[140px]">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Evento</label>
+                            <select id="eventFilter" class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Todos os eventos</option>
+                                <!-- Opções serão carregadas dinamicamente -->
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="relative h-64 w-full overflow-x-auto">
+                        <canvas id="popularHoursChart" class="min-w-[400px]"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cards de Usuários - Layout Responsivo -->
+            <div id="sectionUsersManagement" class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+                <!-- Novo Card: Usuários Ativos -->
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm flex items-center">
+                            <svg class="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                            </svg>
+                            Usuários Ativos
+                        </h3>
+                        <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <span id="activeUsersCount">0 usuários</span>
+                            <span id="activeUsersPageInfo">Página 1 de 1</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Filtros de Atividade -->
+                    <div class="mb-3">
+                        <div class="flex flex-wrap gap-1">
+                            <button id="filterAllUsers" class="px-2 py-1 bg-blue-matte text-white rounded text-xs hover:bg-blue-600 transition-colors whitespace-nowrap">Todos</button>
+                            <button id="filterActive30Days" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition-colors whitespace-nowrap">30 dias</button>
+                            <button id="filterActive7Days" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition-colors whitespace-nowrap">7 dias</button>
+                            <button id="filterActive1Day" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition-colors whitespace-nowrap">1 dia</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Estatísticas -->
+                    <div class="grid grid-cols-3 gap-2 mb-3">
+                        <div class="bg-blue-50 p-2 rounded text-center min-w-0">
+                            <div class="text-lg font-bold text-blue-matte" id="totalUsers">0</div>
+                            <div class="text-xs text-gray-600 truncate">Total</div>
+                        </div>
+                        <div class="bg-green-50 p-2 rounded text-center min-w-0">
+                            <div class="text-lg font-bold text-green-600" id="activeUsers">0</div>
+                            <div class="text-xs text-gray-600 truncate">Ativos</div>
+                        </div>
+                        <div class="bg-orange-50 p-2 rounded text-center min-w-0">
+                            <div class="text-lg font-bold text-orange-600" id="inactiveUsers">0</div>
+                            <div class="text-xs text-gray-600 truncate">Inativos</div>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto -mx-4 px-4">
+                        <table class="w-full text-xs min-w-[500px]">
+                            <thead>
+                                <tr class="border-b border-gray-200">
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Email</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Função</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Último Login</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activeUsersTableBody">
+                                <tr>
+                                    <td colspan="4" class="py-6 text-center text-gray-500">Carregando usuários...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="activeUsersPagination" class="flex justify-center mt-3 gap-1">
+                        <!-- Pagination buttons will be added here -->
+                    </div>
+                </div>
+                
+                <!-- Card Simplificado: Usuários & Permissões -->
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm flex items-center">
+                            <svg class="w-4 h-4 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                            Usuários & Permissões
+                        </h3>
+                        <div class="flex items-center gap-2 text-xs text-gray-500">
+                            <span id="permissionsUsersCount">0 usuários</span>
+                            <span id="permissionsUsersPageInfo">Página 1 de 1</span>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto -mx-4 px-4">
+                        <table class="w-full text-xs min-w-[600px]">
+                            <thead>
+                                <tr class="border-b border-gray-200">
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Nome</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Email</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Função</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Nova Função</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="permissionsTableBody">
+                                <tr>
+                                    <td colspan="5" class="py-6 text-center text-gray-500">Carregando usuários...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="permissionsPagination" class="flex justify-center mt-3 gap-1">
+                        <!-- Pagination buttons will be added here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seção de Gerenciamento de Tokens -->
+            <div id="sectionTokens" class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+                <!-- Card de Tokens por Usuário -->
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-sm flex items-center">
+                            <span class="mr-2">🪙</span>
+                            Gerenciamento de Tokens
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <div id="tokensJumpPagination" class="hidden sm:flex items-center gap-1 text-xs">
+                                <!-- Botões 1 2 3 4 › serão renderizados via JS -->
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                <span id="tokensUsersCount">0 usuários</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Campo de Busca -->
+                    <div class="mb-4">
+                        <div class="relative">
+                            <input type="text" 
+                                   id="tokensSearchInput" 
+                                   placeholder="Buscar por email ou função..." 
+                                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   onkeyup="filterTokensUsers()">
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+                                <span class="text-gray-400">🔍</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto -mx-4 px-4">
+                        <table class="w-full text-xs min-w-[500px]">
+                            <thead>
+                                <tr class="border-b border-gray-200">
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Email</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Função</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Tokens</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tokensTableBody">
+                                <tr>
+                                    <td colspan="4" class="py-6 text-center text-gray-500">Carregando usuários...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="tokensPagination" class="flex justify-center mt-3 gap-1">
+                        <!-- Pagination buttons will be added here -->
+                    </div>
+                </div>
+
+                <!-- Card de Histórico do Admin -->
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-sm flex items-center">
+                            <span class="mr-2">📋</span>
+                            Histórico do Admin
+                        </h3>
+                        <div class="text-xs text-gray-500">
+                            <span id="adminHistoryCount">0 ações</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Campo de Busca -->
+                    <div class="mb-4">
+                        <div class="relative">
+                            <input type="text" 
+                                   id="historySearchInput" 
+                                   placeholder="Buscar por nome, email, ação ou detalhes..." 
+                                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   onkeyup="filterAdminHistory()">
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+                                <span class="text-gray-400">🔍</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto -mx-4 px-4">
+                        <table class="w-full text-xs min-w-[500px]">
+                            <thead>
+                                <tr class="border-b border-gray-200">
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Data/Hora</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[140px]">Admin Responsável</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Ação</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Detalhes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminHistoryTableBody">
+                                <tr>
+                                    <td colspan="4" class="py-6 text-center text-gray-500">Carregando histórico...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="adminHistoryPagination" class="flex justify-center mt-3 gap-1">
+                        <!-- Pagination buttons will be added here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seção de Cupons -->
+            <div id="sectionCoupons" class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+                <!-- Card de Criação de Cupons -->
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-sm flex items-center">
+                            <span class="mr-2">🎫</span>
+                            Criar Cupom
+                        </h3>
+                        <button onclick="openCreateCouponModal()" class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+                            <i class="fas fa-plus mr-1"></i>Novo Cupom
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div class="text-center text-gray-500 text-sm">
+                            Clique em "Novo Cupom" para criar um cupom de desconto
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card de Cupons Ativos -->
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-sm flex items-center">
+                            <span class="mr-2">📊</span>
+                            Cupons Ativos
+                        </h3>
+                        <div class="text-xs text-gray-500">
+                            <span id="activeCouponsCount">0 cupons</span>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto -mx-4 px-4">
+                        <table class="w-full text-xs min-w-[500px]">
+                            <thead>
+                                <tr class="border-b border-gray-200">
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Código</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Desconto</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Tipo</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Afiliado</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Status</th>
+                                    <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="couponsTableBody">
+                                <tr>
+                                    <td colspan="6" class="py-6 text-center text-gray-500">Carregando cupons...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seção de Uso de Cupons - Painel Interativo -->
+            <div id="sectionCouponUsage" class="bg-white border border-gray-200 rounded-xl p-4 mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm flex items-center">
+                        <span class="mr-2">📈</span>
+                        Análise de Uso de Cupons
+                    </h3>
+                    <div class="text-xs text-gray-500">
+                        <span id="couponUsageCount">0 usos</span>
+                    </div>
+                </div>
+
+                <!-- Filtros Avançados de Uso de Cupons -->
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs text-gray-700 mb-1 font-medium">Período</label>
+                            <select id="couponUsagePeriod" class="w-full border border-gray-300 rounded px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="1d">Último 1 dia</option>
+                                <option value="7d" selected>Últimos 7 dias</option>
+                                <option value="15d">Últimos 15 dias</option>
+                                <option value="30d">Últimos 30 dias</option>
+                                <option value="all">Todos</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-700 mb-1 font-medium">Tipo de Compra</label>
+                            <select id="couponUsageContext" class="w-full border border-gray-300 rounded px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="all" selected>Eventos e Produtos</option>
+                                <option value="events">Somente Eventos</option>
+                                <option value="store">Somente Produtos</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-700 mb-1 font-medium">Cupom Específico</label>
+                            <select id="couponUsageCodeFilter" class="w-full border border-gray-300 rounded px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="all" selected>Todos os cupons</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-700 mb-1 font-medium">Produto</label>
+                            <input type="text" id="couponUsageProductFilter" placeholder="Buscar produto..." 
+                                   class="w-full border border-gray-300 rounded px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="couponUsageApply" class="px-4 py-2 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition">
+                            <i class="fas fa-filter mr-1"></i>Aplicar Filtros
+                        </button>
+                        <button id="couponUsageReset" class="px-4 py-2 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300 transition">
+                            <i class="fas fa-redo mr-1"></i>Limpar
+                        </button>
+                        <button id="couponUsageExport" class="px-4 py-2 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition">
+                            <i class="fas fa-download mr-1"></i>Exportar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resumo Estatístico -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div class="text-xs text-blue-600 mb-1">Total de Usos</div>
+                        <div class="text-lg font-bold text-blue-800" id="couponStatsTotal">0</div>
+                    </div>
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div class="text-xs text-green-600 mb-1">Desconto Total</div>
+                        <div class="text-lg font-bold text-green-800" id="couponStatsDiscount">R$ 0,00</div>
+                    </div>
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                        <div class="text-xs text-purple-600 mb-1">Valor Total Vendido</div>
+                        <div class="text-lg font-bold text-purple-800" id="couponStatsRevenue">R$ 0,00</div>
+                    </div>
+                    <div class="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                        <div class="text-xs text-orange-600 mb-1">Ticket Médio</div>
+                        <div class="text-lg font-bold text-orange-800" id="couponStatsAverage">R$ 0,00</div>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto -mx-4 px-4">
+                    <table class="w-full text-xs min-w-[900px]">
+                        <thead>
+                            <tr class="border-b border-gray-200 bg-gray-50">
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Data/Hora</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Código Cupom</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Cliente</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[180px]">Produto</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Valor Original</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Desconto (%)</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Valor Desconto</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Valor Final</th>
+                            </tr>
+                        </thead>
+                        <tbody id="couponUsageTableBody">
+                            <tr>
+                                <td colspan="8" class="py-6 text-center text-gray-500">Carregando histórico...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Seção: Gerenciamento de Afiliados -->
+            <div id="sectionAffiliates" class="bg-white border border-gray-200 rounded-xl p-4 mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm flex items-center">
+                        <span class="mr-2">🤝</span>
+                        Gerenciamento de Afiliados
+                    </h3>
+                    <button onclick="openCreateAffiliateModal()" class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+                        <i class="fas fa-plus mr-1"></i>Novo Afiliado
+                    </button>
+                </div>
+
+                <!-- Estatísticas Gerais -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div class="text-xs text-blue-600 mb-1">Total de Afiliados</div>
+                        <div class="text-lg font-bold text-blue-800" id="affiliateStatsTotal">0</div>
+                    </div>
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div class="text-xs text-green-600 mb-1">Vendas Totais</div>
+                        <div class="text-lg font-bold text-green-800" id="affiliateStatsSales">0</div>
+                    </div>
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                        <div class="text-xs text-purple-600 mb-1">Comissão Total</div>
+                        <div class="text-lg font-bold text-purple-800" id="affiliateStatsCommission">R$ 0,00</div>
+                    </div>
+                    <div class="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                        <div class="text-xs text-orange-600 mb-1">Comissão Pendente</div>
+                        <div class="text-lg font-bold text-orange-800" id="affiliateStatsPending">R$ 0,00</div>
+                    </div>
+                </div>
+
+                <!-- Tabela de Afiliados -->
+                <div class="overflow-x-auto -mx-4 px-4">
+                    <table class="w-full text-xs min-w-[900px]">
+                        <thead>
+                            <tr class="border-b border-gray-200 bg-gray-50">
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Afiliado</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Email</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Comissão (%)</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Vendas</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Comissão Total</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Pendente</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Status</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="affiliatesTableBody">
+                            <tr>
+                                <td colspan="8" class="py-6 text-center text-gray-500">Carregando afiliados...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Seção: Vendas e Comissões de Afiliados -->
+            <div id="sectionAffiliateSales" class="bg-white border border-gray-200 rounded-xl p-4 mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm flex items-center">
+                        <span class="mr-2">💰</span>
+                        Vendas e Comissões
+                    </h3>
+                    <div class="flex gap-2">
+                        <select id="affiliateSalesFilter" class="border border-gray-300 rounded px-3 py-2 text-xs">
+                            <option value="all">Todos os afiliados</option>
+                        </select>
+                        <select id="affiliateSalesStatusFilter" class="border border-gray-300 rounded px-3 py-2 text-xs">
+                            <option value="all">Todos os status</option>
+                            <option value="pending">Pendentes</option>
+                            <option value="paid">Pagas</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto -mx-4 px-4">
+                    <table class="w-full text-xs min-w-[1000px]">
+                        <thead>
+                            <tr class="border-b border-gray-200 bg-gray-50">
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Data</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Afiliado</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Cliente</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Produto</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Valor Venda</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Comissão %</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Comissão</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Status</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="affiliateSalesTableBody">
+                            <tr>
+                                <td colspan="9" class="py-6 text-center text-gray-500">Carregando vendas...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Seção: Painel do Afiliado (Acesso Restrito) -->
+            <div id="sectionAffiliatePanel" class="hidden bg-white border border-gray-200 rounded-xl p-6 mb-8">
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Painel do Afiliado</h2>
+                    <p class="text-gray-600">Acompanhe suas conversões e solicite pagamentos</p>
+                </div>
+
+                <!-- Cards de Estatísticas -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-xl p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-sm font-medium text-blue-700">Total de Vendas</div>
+                            <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-shopping-cart text-white"></i>
+                            </div>
+                        </div>
+                        <div id="affiliatePanelTotalSales" class="text-2xl font-bold text-blue-800">0</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-xl p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-sm font-medium text-green-700">Comissão Total</div>
+                            <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-dollar-sign text-white"></i>
+                            </div>
+                        </div>
+                        <div id="affiliatePanelTotalCommission" class="text-2xl font-bold text-green-800">R$ 0,00</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-500 rounded-xl p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-sm font-medium text-yellow-700">Pendente</div>
+                            <div class="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-clock text-white"></i>
+                            </div>
+                        </div>
+                        <div id="affiliatePanelPendingCommission" class="text-2xl font-bold text-yellow-800">R$ 0,00</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-purple-500 rounded-xl p-4 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-sm font-medium text-purple-700">Pago</div>
+                            <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-check-circle text-white"></i>
+                            </div>
+                        </div>
+                        <div id="affiliatePanelPaidCommission" class="text-2xl font-bold text-purple-800">R$ 0,00</div>
+                    </div>
+                </div>
+
+                <!-- Card de Solicitação de Pagamento -->
+                <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 border-2 border-emerald-300 rounded-xl p-6 mb-6 shadow-md">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold text-emerald-800 mb-1">Solicitar Pagamento</h3>
+                            <p class="text-sm text-emerald-700">Valor mínimo para solicitação: <strong>R$ 25,00</strong></p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm text-emerald-700 mb-1">Saldo Disponível</div>
+                            <div id="affiliatePanelAvailableBalance" class="text-3xl font-bold text-emerald-800">R$ 0,00</div>
+                        </div>
+                    </div>
+                    <div id="affiliatePaymentRequestSection" class="space-y-4">
+                        <div id="affiliatePaymentRequestForm" class="hidden">
+                            <div class="bg-white rounded-lg p-4 mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Valor a Solicitar</label>
+                                <input type="number" id="affiliateRequestAmount" step="0.01" min="25" max="0" 
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" 
+                                    placeholder="Digite o valor (mín. R$ 25,00)">
+                                <p class="text-xs text-gray-500 mt-1">Valor mínimo: R$ 25,00</p>
+                            </div>
+                            <button id="btnSubmitPaymentRequest" 
+                                class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2">
+                                <i class="fas fa-paper-plane"></i>
+                                Solicitar Pagamento
+                            </button>
+                        </div>
+                        <div id="affiliatePaymentRequestMessage" class="text-center">
+                            <p id="affiliatePaymentRequestText" class="text-sm text-emerald-700"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabela de Conversões -->
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-lg text-gray-800">Minhas Conversões</h3>
+                        <select id="affiliatePanelSalesFilter" class="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            <option value="all">Todas as vendas</option>
+                            <option value="pending">Pendentes</option>
+                            <option value="paid">Pagas</option>
+                        </select>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-200 bg-gray-50">
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Data</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Cliente</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Produto</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Valor Venda</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Comissão %</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Comissão</th>
+                                    <th class="text-left py-3 px-4 font-medium text-gray-600">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="affiliatePanelSalesTableBody">
+                                <tr>
+                                    <td colspan="7" class="py-6 text-center text-gray-500">Carregando conversões...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seção: Controle Passe Booyah -->
+            <div id="sectionPasseBooyah" class="bg-white border border-gray-200 rounded-xl p-4 mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm flex items-center">
+                        <span class="mr-2">💳</span>
+                        Controle Passe Booyah
+                    </h3>
+                    <div class="text-xs text-gray-500">
+                        <span id="booyahCount">0 registros</span>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto -mx-4 px-4">
+                    <table class="w-full text-xs min-w-[600px]">
+                        <thead>
+                            <tr class="border-b border-gray-200">
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[160px]">Cliente</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Email</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Player ID</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Status</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="booyahTbody">
+                            <tr>
+                                <td colspan="5" class="py-6 text-center text-gray-500">Carregando registros...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Gerenciar Destaques -->
+            <div id="sectionHighlights" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm">Gerenciar Destaques</h3>
+                    <button onclick="openHighlightsModal()" class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+                        <i class="fas fa-edit mr-1"></i>Editar
+                    </button>
+                </div>
+                <div id="highlightsPreview" class="space-y-3">
+                    <div class="text-center text-gray-500 text-sm">Carregando destaques...</div>
+                </div>
+            </div>
+
+            <!-- Gerenciar Notícias -->
+            <div id="sectionNews" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm">Gerenciar Notícias</h3>
+                    <button onclick="openNewsModal()" class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+                        <i class="fas fa-newspaper mr-1"></i>Editar
+                    </button>
+                </div>
+                <div id="newsPreview" class="space-y-3">
+                    <div class="text-center text-gray-500 text-sm">Carregando notícias...</div>
+                </div>
+            </div>
+
+            <!-- Gerenciar Produtos -->
+            <div id="sectionProducts" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm">Gerenciar Produtos</h3>
+                    <button onclick="openProductsModal()" class="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+                        <i class="fas fa-box mr-1"></i>Editar
+                    </button>
+                </div>
+                <div id="productsPreview" class="space-y-3">
+                    <div class="text-center text-gray-500 text-sm">Carregando produtos...</div>
+                </div>
+            </div>
+
+            <!-- Seção: Camisas - Envios -->
+            <div id="sectionShirtOrders" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-bold text-sm">Camisas - Envios</h3>
+                    <button onclick="loadShirtOrders()" class="text-xs px-3 py-1 border rounded">Atualizar</button>
+                </div>
+                <div class="overflow-x-auto text-xs">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-left text-gray-600 bg-gray-50">
+                                <th class="py-2 px-2">Cliente</th>
+                                <th class="py-2 px-2">Pedido</th>
+                                <th class="py-2 px-2">Endereço</th>
+                                <th class="py-2 px-2">Status</th>
+                                <th class="py-2 px-2">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shirtOrdersBody">
+                            <tr><td colspan="5" class="py-6 text-center text-gray-500">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Modal Detalhes do Pedido de Camisa -->
+            <div id="shirtOrderModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+              <div class="bg-white rounded-xl max-w-lg w-full p-6">
+                <div class="flex items-center justify-between mb-3">
+                  <h3 class="font-bold text-lg">Detalhes do Pedido (Camisa)</h3>
+                  <button onclick="closeShirtOrderModal()" class="text-gray-500 hover:text-black">✕</button>
+                </div>
+                <div class="space-y-3 text-sm">
+                  <div class="grid grid-cols-2 gap-3">
+                    <div><span class="text-gray-500">Pedido:</span> <span id="shirtOrderTitle" class="font-medium"></span></div>
+                    <div><span class="text-gray-500">Status:</span> <span id="shirtOrderStatus" class="font-medium"></span></div>
+                    <div><span class="text-gray-500">Cliente:</span> <span id="shirtOrderCustomer" class="font-medium"></span></div>
+                    <div><span class="text-gray-500">Email:</span> <span id="shirtOrderEmail" class="font-medium"></span></div>
+                    <div><span class="text-gray-500">Order ID:</span> <span id="shirtOrderId" class="font-mono text-xs"></span></div>
+                    <div><span class="text-gray-500">Valor:</span> <span id="shirtOrderAmount" class="font-medium"></span></div>
+                  </div>
+                  <div class="pt-2 border-t">
+                    <div class="font-semibold mb-2">Produto</div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div><span class="text-gray-500">Tamanho:</span> <span id="shirtOrderSize" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Nome na camisa:</span> <span id="shirtOrderNameOnShirt" class="font-medium"></span></div>
+                    </div>
+                  </div>
+                  <div class="pt-2 border-t">
+                    <div class="font-semibold mb-2">Endereço de Entrega</div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div><span class="text-gray-500">Nome:</span> <span id="shipNameVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">CPF:</span> <span id="shipCpfVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">CEP:</span> <span id="shipCepVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Rua:</span> <span id="shipAddressVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Número:</span> <span id="shipNumberVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Compl.:</span> <span id="shipComplementVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Bairro:</span> <span id="shipDistrictVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Cidade:</span> <span id="shipCityVal" class="font-medium"></span></div>
+                      <div><span class="text-gray-500">Estado:</span> <span id="shipStateVal" class="font-medium"></span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-4 flex justify-end gap-2">
+                  <button onclick="closeShirtOrderModal()" class="px-3 py-2 border rounded">Fechar</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Gerenciamento de Links WhatsApp -->
+            <div id="sectionWhatsAppLinks" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-sm flex items-center">
+                        <span class="mr-2">📱</span>
+                        Links do WhatsApp
+                    </h3>
+                    <button onclick="openWhatsAppLinksModal()" class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+                        <i class="fas fa-plus mr-1"></i>
+                        Novo Link
+                    </button>
+                </div>
+                
+                <!-- Filtro -->
+                <div class="mb-4 flex gap-2">
+                    <select id="whatsappEventFilter" class="px-3 py-1 border border-gray-300 rounded text-xs">
+                        <option value="">Todos os Eventos</option>
+                        <option value="xtreino-tokens">XTreino Freitas</option>
+                        <option value="modo-liga">XTreino Modo Liga</option>
+                        <option value="camp-freitas">Campeonato Freitas</option>
+                        <option value="semanal-freitas">Semanal Freitas</option>
+                    </select>
+                    <select id="whatsappStatusFilter" class="px-3 py-1 border border-gray-300 rounded text-xs">
+                        <option value="">Todos os Status</option>
+                        <option value="active">Ativo</option>
+                        <option value="inactive">Inativo</option>
+                    </select>
+                    <input type="text" id="whatsappSearchFilter" placeholder="Buscar..." class="px-3 py-1 border border-gray-300 rounded text-xs flex-1">
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-200">
+                                <th class="text-left py-2 px-3">Evento</th>
+                                <th class="text-left py-2 px-3">Horário</th>
+                                <th class="text-left py-2 px-3">Link</th>
+                                <th class="text-left py-2 px-3">Status</th>
+                                <th class="text-left py-2 px-3">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="whatsappLinksTableBody">
+                            <tr>
+                                <td colspan="5" class="text-center text-gray-500 py-4">Carregando links...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Controle de Horários -->
+            <div id="sectionSchedules" class="bg-white border border-gray-200 rounded-xl p-6 mt-6">
+                <div class="flex flex-wrap gap-3 items-end mb-4">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Evento</label>
+                        <select id="boardEventType" class="border rounded px-2 py-1">
+                            <option value="xtreino-tokens">XTREINO TOKENS</option>
+                            <option value="liga">XTREINO MODO LIGA</option>
+                            <option value="semanal">SEMANAL FREITAS</option>
+                            <option value="camp">CAMP FREITAS</option>
+                            <option value="camp-final">CAMP FINAL</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Data</label>
+                        <input id="boardDate" type="date" class="border rounded px-2 py-1" />
+                    </div>
+                    <button id="btnLoadBoard" class="px-3 py-2 bg-black text-white rounded">Carregar</button>
+                    <button id="btnClearLocks" class="px-3 py-2 bg-red-600 text-white rounded">Destravar tudo do dia</button>
+                </div>
+                <div id="scheduleBoard" class="overflow-x-auto text-sm">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-left text-gray-500">
+                                <th class="py-2">Hora</th>
+                                <th class="py-2">Vagas</th>
+                                <th class="py-2">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="boardTbody"></tbody>
+                    </table>
+                </div>
+                <div id="campSemifinalLinksPanel" class="mt-6 bg-red-50 border border-red-200 rounded-xl p-4 hidden">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h4 class="text-sm font-bold text-red-700">Camp Freitas • Links das Semifinais (ID e Senha)</h4>
+                            <p class="text-xs text-red-600 mt-1">Cadastre os links oficiais dos grupos para 22/11 e 23/11 às 17h. Eles serão enviados automaticamente para as equipes confirmadas.</p>
+                        </div>
+                        <button id="campSemifinalLinksRefresh" class="px-3 py-1 bg-white border border-red-300 text-red-700 rounded text-xs font-semibold hover:bg-red-100">Atualizar links</button>
+                    </div>
+                    <div id="campSemifinalLinksList" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
+            </div>
+
+            <!-- Reset de Dados (Perigoso) -->
+            <div id="sectionResetData" class="bg-white border border-red-300 rounded-xl p-6 mt-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-bold text-sm text-red-700">Reset de Dados (PERIGOSO)</h3>
+                    <button onclick="openResetDataModal()" class="text-xs px-3 py-1 bg-red-600 text-white rounded">Zerar / Limpar</button>
+                </div>
+                <p class="text-xs text-gray-600">Use somente antes de ir ao ar. Essa ação apaga coleções selecionadas e pode zerar tokens de usuários.</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal: Reset de Dados -->
+    <div id="resetDataModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-lg w-full p-6">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-lg text-red-700">Reset de Dados</h3>
+                <button onclick="closeResetDataModal()" class="text-gray-500 hover:text-black">✕</button>
+            </div>
+            <p class="text-sm text-gray-700 mb-3">Selecione o que deseja apagar/zerar. Esta ação não pode ser desfeita.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetOrders"> Apagar pedidos (orders)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetRegistrations"> Apagar inscrições (registrations)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetCouponUsage"> Apagar uso de cupons (couponUsage)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="resetNews"> Apagar notícias (news)</label>
+            </div>
+            <div class="mt-4">
+                <label class="block text-xs text-gray-500 mb-1">Confirmação</label>
+                <input id="resetConfirm" type="text" placeholder="Digite ZERAR" class="w-full border rounded px-3 py-2 text-sm" />
+            </div>
+            <div class="mt-4 text-xs text-gray-600" id="resetDataLog"></div>
+            <div class="mt-4 flex justify-end gap-2">
+                <button onclick="closeResetDataModal()" class="px-3 py-2 border rounded">Cancelar</button>
+                <button onclick="performDataReset()" class="px-3 py-2 bg-red-600 text-white rounded">Apagar selecionados</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Criação/Edição de Afiliado -->
+    <div id="createAffiliateModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl p-6 w-full max-w-md">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-lg" id="affiliateModalTitle">Criar Novo Afiliado</h3>
+                    <button onclick="closeCreateAffiliateModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form id="createAffiliateForm" class="space-y-4">
+                    <input type="hidden" id="affiliateEditId">
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Email do Usuário</label>
+                        <input type="email" id="affiliateEmail" placeholder="usuario@email.com" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                               required>
+                        <p class="text-xs text-gray-500 mt-1">O usuário deve já estar cadastrado no sistema</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Comissão Eventos (%)</label>
+                        <input type="number" id="affiliateCommissionRateEvents" placeholder="10" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                               min="0" max="100" step="0.1" required>
+                        <p class="text-xs text-gray-500 mt-1">Comissão para campeonatos e treinos (ex: 10 para 10%)</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Comissão Produtos Digitais (%)</label>
+                        <input type="number" id="affiliateCommissionRateProducts" placeholder="15" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                               min="0" max="100" step="0.1" required>
+                        <p class="text-xs text-gray-500 mt-1">Comissão para produtos da lojinha (ex: 15 para 15%)</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                        <select id="affiliateStatus" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" required>
+                            <option value="active">Ativo</option>
+                            <option value="inactive">Inativo</option>
+                        </select>
+                    </div>
+                    
+                    <div class="flex gap-3 pt-4">
+                        <button type="button" onclick="closeCreateAffiliateModal()" 
+                                class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+                            Cancelar
+                        </button>
+                        <button type="submit" 
+                                class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                            Salvar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Criação de Cupom -->
+    <div id="createCouponModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl p-6 w-full max-w-md">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-lg">Criar Novo Cupom</h3>
+                    <button onclick="closeCreateCouponModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form id="createCouponForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Código do Cupom</label>
+                        <input type="text" id="couponCode" placeholder="Ex: DESCONTO10" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                               maxlength="20" required>
+                        <p class="text-xs text-gray-500 mt-1">Máximo 20 caracteres, sem espaços</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Desconto</label>
+                        <select id="discountType" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" required>
+                            <option value="percentage">Porcentagem (%)</option>
+                            <option value="fixed">Valor Fixo (R$)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Valor do Desconto</label>
+                        <input type="number" id="discountValue" placeholder="10" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                               min="0" step="0.01" required>
+                    </div>
+                    
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Data de Expiração</label>
+                        <input type="date" id="expirationDate" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        <p class="text-xs text-gray-500 mt-1">Opcional - deixe vazio para não expirar</p>
+                    </div>
+                    
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Uso</label>
+                        <select id="couponUsageType" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm" required>
+                            <option value="both">Eventos e Loja Virtual</option>
+                            <option value="events">Apenas Eventos</option>
+                            <option value="store">Apenas Loja Virtual</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Onde o cupom pode ser usado</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Vincular a Afiliado (Opcional)</label>
+                        <select id="couponAffiliateId" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                            <option value="">Nenhum afiliado</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Se selecionado, vendas com este cupom serão creditadas ao afiliado</p>
+                    </div>
+                    
+                    <!-- Campo de eventos específicos removido a pedido -->
+                    
+                    <div class="flex gap-3 pt-4">
+                        <button type="button" onclick="closeCreateCouponModal()" 
+                                class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+                            Cancelar
+                        </button>
+                        <button type="submit" 
+                                class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                            Criar Cupom
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <footer class="py-10 text-center text-gray-500 text-sm">
+        © 2025 X-TREINO FREITAS • Admin
+    </footer>
+
+    <script>
+        window.FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBzD0iWNIfZwuzWN-Xhjbg22OfCHv1Qwjo",
+            authDomain: "orgfreitas-ofc.firebaseapp.com",
+            projectId: "orgfreitas-ofc",
+            storageBucket: "orgfreitas-ofc.firebasestorage.app",
+            messagingSenderId: "493859004030",
+            appId: "1:493859004030:web:a1cba415344e4a7567822f",
+            measurementId: "G-WZCYZL5VC0"
+        };
+    </script>
+    <script type="module" src="config/firebase.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="admin.js"></script>
+
+    <!-- Modal Adicionar Time -->
+    <div id="modalAddTeam" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-lg w-full p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-lg">Adicionar time ao horário</h3>
+                <button onclick="document.getElementById('modalAddTeam').classList.add('hidden')">✕</button>
+            </div>
+            <form id="formAddTeam" class="space-y-3">
+                <input type="hidden" id="addHour" />
+                <div>
+                    <label class="block text-sm mb-1">Time/Org</label>
+                    <input id="addTeamName" class="w-full border rounded px-3 py-2" required />
+                </div>
+                <div>
+                    <label class="block text-sm mb-1">Contato (email ou celular)</label>
+                    <input id="addContact" class="w-full border rounded px-3 py-2" required />
+                </div>
+                <div>
+                    <label class="block text-sm mb-1">Responsável / Jogador</label>
+                    <input id="addPerson" class="w-full border rounded px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-sm mb-1">Observações</label>
+                    <textarea id="addNotes" class="w-full border rounded px-3 py-2"></textarea>
+                </div>
+                <div class="text-right">
+                    <button type="submit" class="px-4 py-2 bg-black text-white rounded">Salvar</button>
+                </div>
+                <p id="addTeamMsg" class="text-sm text-gray-500"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Gerenciar Horário -->
+    <div id="modalManageHour" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-xl w-full p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="manageHourTitle" class="font-bold text-lg">Gerenciar horário</h3>
+                <button onclick="document.getElementById('modalManageHour').classList.add('hidden')">✕</button>
+            </div>
+            <div id="manageHourList" class="space-y-2"></div>
+        </div>
+    </div>
+
+    <!-- Modal Gerenciar Destaques -->
+    <div id="modalHighlights" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="font-bold text-xl">Gerenciar Destaques</h3>
+                <div class="flex items-center gap-3">
+                    <button onclick="addHighlight()" class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700">
+                        <i class="fas fa-plus mr-1"></i>Adicionar
+                    </button>
+                    <button onclick="closeHighlightsModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="highlightsContainer" class="space-y-6">
+                <!-- Os destaques serão carregados dinamicamente aqui -->
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+                <button onclick="closeHighlightsModal()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    Cancelar
+                </button>
+                <button onclick="saveHighlights()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    <i class="fas fa-save mr-2"></i>Salvar Destaques
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Gerenciar Notícias -->
+    <div id="modalNews" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="font-bold text-xl">Gerenciar Notícias</h3>
+                <div class="flex items-center gap-3">
+                    <button onclick="addNews()" class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700">
+                        <i class="fas fa-plus mr-1"></i>Adicionar
+                    </button>
+                    <button onclick="closeNewsModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="newsContainer" class="space-y-6">
+                <!-- As notícias serão carregadas dinamicamente aqui -->
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+                <button onclick="closeNewsModal()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    Cancelar
+                </button>
+                <button onclick="saveNews()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                    <i class="fas fa-save mr-2"></i>Salvar Notícias
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Gerenciar Produtos -->
+    <div id="modalProducts" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="font-bold text-xl">Gerenciar Produtos</h3>
+                <div class="flex items-center gap-3">
+                    <button onclick="addProduct()" class="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700">
+                        <i class="fas fa-plus mr-1"></i>Adicionar
+                    </button>
+                    <button onclick="closeProductsModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="productsContainer" class="space-y-6">
+                <!-- Os produtos serão carregados dinamicamente aqui -->
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+                <button onclick="closeProductsModal()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    Cancelar
+                </button>
+                <button onclick="saveProducts()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    <i class="fas fa-save mr-2"></i>Salvar Produtos
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Gerenciar Links do WhatsApp -->
+    <div id="modalWhatsAppLinks" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold flex items-center">
+                    <span class="mr-2">📱</span>
+                    Gerenciar Links do WhatsApp
+                </h2>
+                <button onclick="closeWhatsAppLinksModal()" class="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+            </div>
+
+            <!-- Formulário para adicionar/editar link -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 class="font-semibold mb-4" id="whatsappLinkFormTitle">Adicionar Novo Link</h3>
+                <form id="whatsappLinkForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Tipo de Evento</label>
+                        <select id="whatsappEventType" required class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                            <option value="">Selecione o evento</option>
+                            <option value="xtreino-tokens">XTreino Tokens</option>
+                            <option value="xtreino-gratuito">XTreino Gratuito</option>
+                            <option value="modo-liga">Modo Liga</option>
+                            <option value="camp-freitas">Camp Freitas</option>
+                            <option value="semanal-freitas">Semanal Freitas</option>
+                            <option value="treino">Treino Normal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Horário (opcional)</label>
+                        <input id="whatsappSchedule" type="text" placeholder="Ex: 19h, 20h, 21h" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                        <small class="text-gray-500">Deixe vazio para aplicar a todos os horários do evento</small>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium mb-2">Link do WhatsApp</label>
+                        <input id="whatsappLink" type="url" required placeholder="https://chat.whatsapp.com/..." class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Status</label>
+                        <select id="whatsappStatus" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                            <option value="active">Ativo</option>
+                            <option value="inactive">Inativo</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Descrição (opcional)</label>
+                        <input id="whatsappDescription" type="text" placeholder="Descrição do link" class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                    </div>
+                </form>
+                <div class="flex justify-end gap-3 mt-4">
+                    <button onclick="clearWhatsAppLinkForm()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Limpar
+                    </button>
+                    <button onclick="saveWhatsAppLink()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                        <i class="fas fa-save mr-2"></i>Salvar Link
+                    </button>
+                </div>
+            </div>
+
+            <!-- Lista de links existentes -->
+            <div class="space-y-4" id="whatsappLinksList">
+                <div class="text-center text-gray-500 py-4">Carregando links...</div>
+            </div>
+        </div>
+    </div>
+
+<!-- Toast Notifications Container -->
+<div id="toastContainer" class="fixed top-20 right-4 z-[9999] flex flex-col gap-3 max-w-md w-full md:w-auto pointer-events-none"></div>
+
+<!-- Confirmation Modal -->
+<div id="confirmModal" class="fixed inset-0 bg-black bg-opacity-50 z-[10000] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl transform transition-all">
+        <div class="flex items-center justify-between mb-4">
+            <h3 id="confirmTitle" class="text-xl font-bold text-gray-800">Confirmar</h3>
+            <button onclick="closeConfirmModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <p id="confirmMessage" class="text-gray-600 mb-6"></p>
+        <div class="flex gap-3 justify-end">
+            <button onclick="closeConfirmModal()" class="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-colors">
+                Cancelar
+            </button>
+            <button id="confirmOkBtn" onclick="handleConfirmOk()" class="px-6 py-2 bg-blue-matte hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                Confirmar
+            </button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
+
+

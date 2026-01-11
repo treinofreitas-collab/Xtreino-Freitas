@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Site em manutenção • XTreino Freitas</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --accent-dark: #16a34a;
+      --brand: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: radial-gradient(1200px 600px at 20% 20%, rgba(37,99,235,.15), transparent 50%),
+                  radial-gradient(1200px 600px at 80% 80%, rgba(34,197,94,.12), transparent 50%),
+                  var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: grid;
+      place-items: center;
+    }
+    .card {
+      width: min(680px, 92vw);
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+      backdrop-filter: blur(8px);
+      text-align: center;
+    }
+    .logo {
+      width: 80px; height: 80px; border-radius: 16px; object-fit: cover;
+      box-shadow: 0 10px 20px rgba(0,0,0,.4);
+    }
+    h1 {
+      margin: 16px 0 8px;
+      font-size: clamp(22px, 4vw, 30px);
+      letter-spacing: .3px;
+    }
+    p { color: var(--muted); margin: 8px 0 0; line-height: 1.6; }
+    .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+    .btn {
+      appearance: none;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      color: white;
+      transition: transform .05s ease, box-shadow .2s ease, background .2s ease;
+      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 10px;
+      box-shadow: 0 8px 20px rgba(34,197,94,.18);
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn.whats { background: var(--accent); }
+    .btn.whats:hover { background: var(--accent-dark); }
+    .btn.info {
+      background: rgba(255,255,255,.06);
+      box-shadow: none; border: 1px solid rgba(255,255,255,.08);
+    }
+    .small {
+      margin-top: 16px; color: var(--muted); font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card" role="main" aria-live="polite">
+    <img class="logo" src="assets/images/Logo - Xtreino Freitas.png" alt="Logo XTreino Freitas" />
+    <h1>Estamos em manutenção</h1>
+    <p>Voltamos amanhã com o site normalizado. Enquanto isso, você pode comprar diretamente pelo WhatsApp.</p>
+    <div class="row">
+      <a class="btn whats" href="https://wa.me/5511949830454?text=Ol%C3%A1%21+Quero+comprar+minhas+vagas%2Ftokens." target="_blank" rel="noopener">
+        <i class="fa-brands fa-whatsapp"></i> Comprar no WhatsApp
+      </a>
+      <a class="btn info" href="/" onclick="location.reload(); return false;">
+        <i class="fa-solid fa-rotate-right"></i> Tentar novamente
+      </a>
+    </div>
+    <p class="small">Suporte: (11) 94983‑0454</p>
+  </main>
+</body>
+</html>
+
+

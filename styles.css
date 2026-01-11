@@ -1,0 +1,946 @@
+/* Rolagem suave global */
+html {
+	scroll-behavior: smooth;
+}
+
+/* Esconder scrollbar mas manter funcionalidade de scroll */
+.scrollbar-hide {
+	-ms-overflow-style: none;  /* IE and Edge */
+	scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+	display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Ajustes mobile para não sobrepor o header fixo */
+:root { --header-h: 96px; }
+/* Aplicar scroll padding para âncoras considerando safe-area */
+html, body { scroll-padding-top: calc(var(--header-h) + env(safe-area-inset-top, 0px)); }
+@media (max-width: 767px){
+	#home { padding-top: calc(80px + env(safe-area-inset-top, 0px)); min-height: calc(100dvh - 80px); }
+	#home .container { padding-left: clamp(16px, 5vw, 24px); padding-right: clamp(16px, 5vw, 24px); }
+	#home h1 { font-size: clamp(2.1rem, 6.2vw, 3.2rem); line-height: 1.1; letter-spacing: -0.01em; }
+	#home p { font-size: clamp(0.95rem, 2.8vw, 1.125rem); line-height: 1.6; }
+	#home .btn-primary { width: 100%; }
+}
+
+/* Compact mode when viewport height < 800px */
+.vh-compact #home h1 { font-size: clamp(1.9rem, 5.6vw, 2.8rem); }
+.vh-compact #home p { font-size: clamp(0.9rem, 2.4vw, 1.05rem); }
+.vh-compact #home .container { padding-left: clamp(12px, 4vw, 20px); padding-right: clamp(12px, 4vw, 20px); }
+/* Branding: cores e fontes */
+:root {
+    --brand-yellow: #ecd414;
+    --brand-green-1: #09d7d1;
+    --brand-green-2: #07b7b4;
+    --brand-green-3: #046d66;
+    --brand-black: #181818;
+}
+
+/* Fontes: substitua as URLs quando disponibilizar os arquivos oficiais */
+/*
+@font-face {
+    font-family: 'Mango';
+    src: url('/fonts/Mango.woff2') format('woff2');
+    font-weight: 400 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Stapel';
+    src: url('/fonts/Stapel.woff2') format('woff2');
+    font-weight: 300 800;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Lovtony';
+    src: url('/fonts/Lovtony.woff2') format('woff2');
+    font-weight: 400 700;
+    font-style: normal;
+    font-display: swap;
+}
+*/
+
+body {
+    box-sizing: border-box;
+    color: var(--brand-black);
+    font-family: 'Stapel', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+/* Otimizações para desktop - melhor aproveitamento da tela */
+@media (min-width: 1024px) {
+    .container {
+        max-width: 1200px !important;
+        margin: 0 auto !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+    
+    /* Reduzir espaçamentos verticais em desktop */
+    .py-16 { padding-top: 3rem !important; padding-bottom: 3rem !important; }
+    .py-12 { padding-top: 2.5rem !important; padding-bottom: 2.5rem !important; }
+    .py-8 { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+    
+    /* Otimizar seções principais */
+    section {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+    }
+    
+    /* Grid mais compacto para produtos */
+    /* Removido seletor inválido que estava quebrando o CSS */
+    /* .grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3 {
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 1.5rem !important;
+    } */
+    
+    /* Hero section mais compacta */
+    .hero-section {
+        min-height: 60vh !important;
+        padding-top: 4rem !important;
+        padding-bottom: 2rem !important;
+    }
+    
+    /* Cards mais compactos */
+    .product-card, .event-card {
+        padding: 1.5rem !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    /* Modal mais compacto */
+    .modal-content {
+        max-height: 80vh !important;
+        max-width: 1000px !important;
+    }
+    
+    /* Layout em duas colunas para desktop */
+    .desktop-two-column {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 3rem !important;
+        align-items: start !important;
+    }
+    
+    /* Reduzir altura de elementos grandes */
+    .h-96 { height: 20rem !important; }
+    .h-80 { height: 16rem !important; }
+    .h-64 { height: 14rem !important; }
+    
+    /* Otimizar espaçamentos de texto */
+    .text-4xl { font-size: 2.5rem !important; line-height: 1.1 !important; }
+    .text-3xl { font-size: 2rem !important; line-height: 1.2 !important; }
+    .text-2xl { font-size: 1.75rem !important; line-height: 1.3 !important; }
+    
+    /* Compactar listas e elementos */
+    .space-y-8 > * + * { margin-top: 1.5rem !important; }
+    .space-y-6 > * + * { margin-top: 1rem !important; }
+    .space-y-4 > * + * { margin-top: 0.75rem !important; }
+    
+    /* Otimizar header fixo */
+    header {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+    
+    /* Reduzir margens entre seções */
+    .section-spacing {
+        margin-top: 2rem !important;
+        margin-bottom: 2rem !important;
+    }
+    
+    /* Centralização e layout otimizado */
+    .content-center {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-align: center !important;
+    }
+    
+    /* Layout compacto para seções */
+    .compact-section {
+        padding: 2rem 0 !important;
+        max-width: 100% !important;
+    }
+    
+    /* Grid responsivo otimizado */
+    .responsive-grid {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+        gap: 1.5rem !important;
+        align-items: start !important;
+    }
+    
+    /* Reduzir altura de imagens e mídia */
+    .media-compact {
+        height: 200px !important;
+        object-fit: cover !important;
+    }
+    
+    /* Texto mais compacto */
+    .text-compact {
+        line-height: 1.4 !important;
+        margin-bottom: 0.75rem !important;
+    }
+}
+
+/* Otimizações para telas muito grandes (1440px+) */
+@media (min-width: 1440px) {
+    .container {
+        max-width: 1400px !important;
+    }
+    
+    /* Layout ainda mais compacto */
+    .py-16 { padding-top: 2rem !important; padding-bottom: 2rem !important; }
+    .py-12 { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; }
+    
+    /* Grid com mais colunas */
+    /* Removido seletor inválido que estava quebrando o CSS */
+    /* .grid-cols-1.md\\:grid-cols-2.lg\\:grid-cols-3 {
+        grid-template-columns: repeat(5, 1fr) !important;
+        gap: 1.25rem !important;
+    } */
+    
+    /* Hero section mais baixa */
+    .hero-section {
+        min-height: 50vh !important;
+        padding-top: 3rem !important;
+        padding-bottom: 1.5rem !important;
+    }
+    
+    /* Cards ainda mais compactos */
+    .product-card, .event-card {
+        padding: 1.25rem !important;
+        margin-bottom: 0.75rem !important;
+    }
+    
+    /* Reduzir ainda mais espaçamentos */
+    .space-y-8 > * + * { margin-top: 1rem !important; }
+    .space-y-6 > * + * { margin-top: 0.75rem !important; }
+    .space-y-4 > * + * { margin-top: 0.5rem !important; }
+    
+    /* Texto mais compacto */
+    .text-4xl { font-size: 2.25rem !important; }
+    .text-3xl { font-size: 1.875rem !important; }
+    .text-2xl { font-size: 1.5rem !important; }
+    
+    /* Imagens mais compactas */
+    .media-compact {
+        height: 180px !important;
+    }
+    
+    /* Modal mais compacto para telas grandes */
+    #scheduleModal > div {
+        max-width: 700px !important;
+        max-height: 75vh !important;
+    }
+    
+    #scheduleModal .p-6 {
+        padding: 1.5rem !important;
+    }
+    
+    #scheduleModal .space-y-6 > * + * {
+        margin-top: 1rem !important;
+    }
+}
+
+/* Otimizações gerais para reduzir scroll */
+@media (min-width: 768px) {
+    /* Reduzir altura mínima de seções */
+    .min-h-screen { min-height: 80vh !important; }
+    .min-h-full { min-height: auto !important; }
+    
+    /* Otimizar espaçamentos de elementos grandes */
+    .mb-16 { margin-bottom: 2rem !important; }
+    .mb-12 { margin-bottom: 1.5rem !important; }
+    .mb-8 { margin-bottom: 1rem !important; }
+    
+    .mt-16 { margin-top: 2rem !important; }
+    .mt-12 { margin-top: 1.5rem !important; }
+    .mt-8 { margin-top: 1rem !important; }
+    
+    /* Reduzir padding de elementos grandes */
+    .p-8 { padding: 1.5rem !important; }
+    .p-6 { padding: 1.25rem !important; }
+    .p-4 { padding: 1rem !important; }
+    
+    /* Otimizar listas e elementos de texto */
+    ul, ol {
+        margin-bottom: 1rem !important;
+    }
+    
+    li {
+        margin-bottom: 0.25rem !important;
+    }
+    
+    /* Reduzir espaçamento entre parágrafos */
+    p {
+        margin-bottom: 0.75rem !important;
+    }
+    
+    /* Otimizar botões e elementos interativos */
+    .btn, button {
+        padding: 0.75rem 1.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    /* Reduzir altura de inputs e formulários */
+    input, textarea, select {
+        padding: 0.75rem !important;
+        margin-bottom: 0.75rem !important;
+    }
+}
+
+/* Utilitários de marca */
+.bg-brand-yellow { background-color: var(--brand-yellow); }
+.text-brand-black { color: var(--brand-black); }
+.btn-primary {
+    background-color: var(--brand-yellow);
+    color: var(--brand-black);
+}
+.btn-primary:hover {
+    filter: brightness(0.95);
+}
+
+.bg-dark-matte {
+    background-color: #1a1a1a;
+}
+
+.bg-blue-matte {
+    /* Mantemos o nome da classe para evitar refatoração extensa */
+    background-color: var(--brand-green-2);
+}
+
+.text-blue-matte {
+    color: var(--brand-green-2);
+}
+
+.border-blue-matte {
+    border-color: var(--brand-green-2);
+}
+
+.hover-blue-matte:hover {
+    background-color: var(--brand-green-3);
+}
+
+.gradient-bg {
+    /* Se desejar usar gradiente com as cores novas */
+    background: linear-gradient(135deg, #ffffff 0%, #f8f8f8 50%, #ffffff 100%);
+}
+
+/* ===== Footer full-bleed bar ===== */
+.full-bleed {
+    width: 100vw;
+    position: relative;
+    left: 50%;
+    right: 50%;
+    margin-left: -50vw;
+    margin-right: -50vw;
+}
+.footer-green { background-color: var(--brand-green-2); }
+
+.glass-effect {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Melhorar contraste de textos dentro de cards com glass-effect em fundo claro */
+.glass-effect p { color: #4b5563; }
+.glass-effect .text-gray-300 { color: #374151; }
+.glass-effect .text-gray-400 { color: #4b5563; }
+
+.neon-glow {
+    box-shadow: 0 0 20px rgba(7, 183, 180, 0.3);
+}
+
+.animate-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+.card-hover {
+    transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 40px rgba(74, 144, 226, 0.2);
+}
+
+.client-tab.active {
+    border-color: #4a90e2 !important;
+    color: #4a90e2 !important;
+}
+
+/* Alerta topo piscando quando poucas vagas */
+.blink {
+    animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink {
+    to { visibility: hidden; }
+}
+
+/* Botão voltar ao topo */
+.back-to-top {
+    position: fixed;
+    bottom: 24px;
+    right: 96px;
+    z-index: 60;
+}
+
+.cart-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 160px;
+    z-index: 60;
+}
+
+/* Ocultar FAB do carrinho e botão voltar ao topo em mobile quando um modal estiver aberto */
+@media (max-width: 767px) {
+    body.modal-open-mobile #backToTop,
+    body.modal-open-mobile #cartFab {
+        display: none !important;
+    }
+}
+
+/* Schedule slots - Novo design moderno */
+.slot-grid { 
+    display: grid; 
+    grid-template-columns: repeat(2, 1fr); 
+    gap: 12px; 
+}
+@media (max-width: 480px) { 
+    .slot-grid { 
+        grid-template-columns: repeat(2, 1fr); 
+        gap: 8px; 
+    } 
+}
+
+/* Correções para modal no desktop */
+@media (min-width: 768px) {
+    #scheduleModal {
+        padding: 1rem !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    
+    #scheduleModal > div {
+        max-height: 80vh !important;
+        max-width: 800px !important;
+        width: 90% !important;
+        overflow-y: auto !important;
+        margin: auto !important;
+    }
+    
+    /* Seletores simplificados para evitar conflitos */
+    #scheduleModal .grid.lg\\:grid-cols-2 {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 1.5rem !important;
+    }
+    
+    /* Quando a coluna esquerda está escondida (produtos), a direita ocupa toda a largura */
+    #scheduleModal .grid.lg\\:grid-cols-2 > div:first-child[style*="display: none"] + div {
+        grid-column: 1 / -1 !important;
+    }
+    
+    /* Quando a coluna esquerda está visível (eventos), manter grid normal */
+    #scheduleModal .grid.lg\\:grid-cols-2 > div:first-child[style*="display: block"] + div {
+        grid-column: auto !important;
+    }
+    
+    /* Otimizar espaçamentos internos do modal */
+    #scheduleModal .p-6 {
+        padding: 1.5rem !important;
+    }
+    
+    #scheduleModal .space-y-6 > * + * {
+        margin-top: 1.25rem !important;
+    }
+    
+    #scheduleModal .space-y-4 > * + * {
+        margin-top: 0.75rem !important;
+    }
+    
+    /* Reduzir padding dos cards internos */
+    #scheduleModal .bg-gray-50 {
+        padding: 1.25rem !important;
+    }
+    
+    /* Centralizar melhor o modal quando visível */
+    #scheduleModal:not(.hidden) {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+}
+
+/* Correções para modal no mobile */
+@media (max-width: 767px) {
+    #scheduleModal {
+        padding: 0 !important;
+        align-items: flex-start !important;
+    }
+    
+    #scheduleModal > div {
+        max-height: 100vh !important;
+        height: 100vh !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        flex-direction: column !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    
+    #scheduleModal .grid.lg\\:grid-cols-2 {
+        grid-template-columns: 1fr !important;
+        gap: 0 !important;
+    }
+    
+    #scheduleModal .space-y-6 > div:first-child {
+        padding-bottom: 1rem !important;
+    }
+    
+    #scheduleModal .space-y-6 > div:last-child {
+        padding-top: 1rem !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    
+    #scheduleModal .p-6 {
+        padding: 1rem !important;
+    }
+    
+    #scheduleModal .rounded-2xl {
+        border-radius: 0.5rem !important;
+    }
+    
+    #scheduleModal .max-w-4xl {
+        max-width: 100% !important;
+    }
+}
+.slot-btn {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border: 2px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 16px 12px;
+    font-weight: 700;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    font-size: 0.9rem;
+}
+.slot-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    transition: left 0.5s;
+}
+.slot-btn:hover::before {
+    left: 100%;
+}
+.slot-btn:hover { 
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    border-color: #3b82f6;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+}
+.slot-btn.selected { 
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #10b981;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+}
+.slot-btn.full { 
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    border-color: #fca5a5;
+    color: #dc2626;
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+.slot-btn.bg-gray-300 {
+    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+    border-color: #d1d5db;
+    color: #9ca3af;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+.slot-btn.bg-red-100 {
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    border-color: #fca5a5;
+    color: #dc2626;
+    cursor: not-allowed;
+}
+
+/* Fundo empresarial simples (padrão sutil) */
+.enterprise-bg {
+    background-image: radial-gradient(rgba(0,0,0,0.03) 1px, transparent 1px);
+    background-size: 12px 12px;
+}
+
+/* Loja - cards uniformes */
+.product-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb; /* gray-200 */
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.product-media {
+    width: 100%;
+    aspect-ratio: 16 / 9; /* suporta imagens 1920x1080 */
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f3f4f6; /* gray-100 */
+    margin-bottom: 16px;
+}
+.product-media img { width: 100%; height: 100%; object-fit: cover; }
+.product-title { font-weight: 700; font-size: 1.125rem; margin-bottom: 8px; color: var(--brand-black); }
+.product-desc { color: #4b5563; margin-bottom: 12px; flex: 1 1 auto; }
+.product-meta { margin-top: auto; }
+.product-card > button:last-child { margin-top: auto; }
+
+/* Altura mínima consistente para cards (desktop) */
+@media (min-width: 768px) {
+    .product-card { min-height: 520px; }
+}
+
+/* ==================== CHAT INTERNO ==================== */
+#chatWidget {
+  font-family: 'Inter', sans-serif;
+}
+
+#chatWindow {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+#chatMessages {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e0 #f7fafc;
+}
+
+#chatMessages::-webkit-scrollbar {
+  width: 6px;
+}
+
+#chatMessages::-webkit-scrollbar-track {
+  background: #f7fafc;
+  border-radius: 3px;
+}
+
+#chatMessages::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 3px;
+}
+
+#chatMessages::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+#chatInput:disabled {
+  background-color: #f7fafc;
+  cursor: not-allowed;
+}
+
+#chatSend:disabled {
+  background-color: #a0aec0;
+  cursor: not-allowed;
+}
+
+/* Animação para mensagens */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#chatMessages > div {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Responsive chat */
+@media (max-width: 480px) {
+  #chatWindow {
+    width: calc(100vw - 2rem);
+    right: 1rem;
+    left: 1rem;
+  }
+}
+
+/* Toast Notifications */
+.toast {
+  @apply bg-white rounded-xl shadow-2xl p-5 flex items-start gap-4 min-w-[320px] max-w-md pointer-events-auto transform transition-all duration-300 ease-out;
+  animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(10px);
+}
+
+.toast.toast-exit {
+  animation: toastSlideOut 0.3s ease-in forwards;
+}
+
+.toast-success {
+  @apply border-l-4 border-green-500;
+  background: linear-gradient(to right, #f0fdf4 0%, #ffffff 15%);
+}
+
+.toast-error {
+  @apply border-l-4 border-red-500;
+  background: linear-gradient(to right, #fef2f2 0%, #ffffff 15%);
+}
+
+.toast-info {
+  @apply border-l-4 border-blue-500;
+  background: linear-gradient(to right, #eff6ff 0%, #ffffff 15%);
+}
+
+.toast-warning {
+  @apply border-l-4 border-yellow-500;
+  background: linear-gradient(to right, #fefce8 0%, #ffffff 15%);
+}
+
+.toast-icon {
+  @apply flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white text-base font-bold shadow-md;
+  flex-shrink: 0;
+}
+
+.toast-success .toast-icon {
+  @apply bg-gradient-to-br from-green-500 to-green-600;
+}
+
+.toast-error .toast-icon {
+  @apply bg-gradient-to-br from-red-500 to-red-600;
+}
+
+.toast-info .toast-icon {
+  @apply bg-gradient-to-br from-blue-500 to-blue-600;
+}
+
+.toast-warning .toast-icon {
+  @apply bg-gradient-to-br from-yellow-500 to-yellow-600;
+}
+
+.toast-content {
+  @apply flex-1 pt-0.5;
+}
+
+.toast-title {
+  @apply font-bold text-gray-900 mb-1.5 text-sm;
+}
+
+.toast-message {
+  @apply text-sm text-gray-700 leading-relaxed;
+}
+
+.toast-close {
+  @apply flex-shrink-0 text-gray-400 hover:text-gray-700 cursor-pointer transition-all duration-200 rounded-full p-1 hover:bg-gray-100;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes toastSlideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toastSlideOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+}
+
+/* Mobile toast adjustments */
+@media (max-width: 640px) {
+  #toastContainer {
+    @apply right-2 left-2 max-w-none;
+  }
+  .toast {
+    @apply min-w-0 w-full;
+  }
+}
+
+/* ==================== SMOOTH ANIMATIONS ==================== */
+
+/* Fade-in animation for cards */
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Stagger delay for multiple cards */
+.fade-in-delay-1 { transition-delay: 0.1s; }
+.fade-in-delay-2 { transition-delay: 0.2s; }
+.fade-in-delay-3 { transition-delay: 0.3s; }
+.fade-in-delay-4 { transition-delay: 0.4s; }
+
+/* Enhanced hover effects for cards */
+.product-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.product-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(74, 144, 226, 0.25);
+}
+
+.product-card img {
+  transition: transform 0.4s ease-out;
+}
+
+.product-card:hover img {
+  transform: scale(1.05);
+}
+
+/* Enhanced button hover effects */
+.btn-primary {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.btn-primary:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(74, 144, 226, 0.3);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Scroll reveal animation */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+.scroll-reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Smooth transitions for interactive elements */
+a, button {
+  transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+/* Smooth page transitions */
+body {
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Enhanced modal animations */
+.modal {
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Smooth image loading - only apply to images that haven't loaded yet */
+img[loading="lazy"]:not(.loaded) {
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Garantir que imagens lazy carregadas apareçam */
+img[loading="lazy"].loaded {
+  opacity: 1 !important;
+}
+
+/* Garantir que imagens sem lazy sempre apareçam */
+img:not([loading="lazy"]) {
+  opacity: 1 !important;
+}
+
+/* Fallback: se uma imagem lazy não recebeu a classe loaded após 2 segundos, mostrar mesmo assim */
+img[loading="lazy"] {
+  animation: fadeInFallback 0.3s ease-in 2s forwards;
+}
+
+@keyframes fadeInFallback {
+  to {
+    opacity: 1;
+  }
+}
+
+

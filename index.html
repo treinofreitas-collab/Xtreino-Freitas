@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="scroll-smooth scroll-pt-24">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-TREINO FREITAS - Treinamento eSports de Alta Performance</title>
+    <link rel="icon" type="image/png" href="assets/images/Logo - Xtreino Freitas.png">
+    <script>
+        // Carregar Tailwind com retry automático em caso de falha do CloudFlare
+        (function() {
+            const maxRetries = 5;
+            const retryDelay = 1000; // 1 segundo entre tentativas
+            let retryCount = 0;
+            let loaded = false;
+            
+            function tryLoadTailwind() {
+                if (loaded) return;
+                
+                const script = document.createElement('script');
+                script.src = 'https://cdn.tailwindcss.com?v=' + Date.now(); // Cache busting
+                script.async = true;
+                
+                const timeout = setTimeout(() => {
+                    if (!loaded) {
+                        script.remove();
+                        retryCount++;
+                        if (retryCount < maxRetries) {
+                            console.warn(`⚠️ Timeout ao carregar Tailwind (tentativa ${retryCount}/${maxRetries}). Tentando novamente...`);
+                            setTimeout(tryLoadTailwind, retryDelay);
+                        } else {
+                            console.error('❌ Não foi possível carregar o Tailwind após', maxRetries, 'tentativas. O site pode não funcionar corretamente.');
+                            // Carregar estilos básicos como último recurso
+                            loadFallbackStyles();
+                        }
+                    }
+                }, 10000); // 10 segundos de timeout
+                
+                script.onload = function() {
+                    clearTimeout(timeout);
+                    loaded = true;
+                    console.log('✅ Tailwind carregado com sucesso!');
+                };
+                
+                script.onerror = function() {
+                    clearTimeout(timeout);
+                    script.remove();
+                    retryCount++;
+                    if (retryCount < maxRetries) {
+                        console.warn(`⚠️ Erro ao carregar Tailwind (tentativa ${retryCount}/${maxRetries}). Tentando novamente em ${retryDelay}ms...`);
+                        setTimeout(tryLoadTailwind, retryDelay);
+                    } else {
+                        console.error('❌ Não foi possível carregar o Tailwind após', maxRetries, 'tentativas.');
+                        loadFallbackStyles();
+                    }
+                };
+                
+                document.head.appendChild(script);
+            }
+            
+            function loadFallbackStyles() {
+                const style = document.createElement('style');
+                style.textContent = `
+                    * { box-sizing: border-box; }
+                    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+                    .container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+                    .btn { padding: 0.5rem 1rem; border-radius: 0.25rem; cursor: pointer; border: none; }
+                    .hidden { display: none !important; }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            tryLoadTailwind();
+        })();
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="mobile-optimizations.css">
+</head>
+<body class="bg-white text-black enterprise-bg">
+    <!-- Top Alert -->
+    <div id="topAlert" class="w-full bg-[var(--brand-yellow)] text-[var(--brand-black)] text-sm py-2 text-center">
+        <span class="font-semibold">🏆 Participa e concorra a um PC Gamer + Kit Periféricos + Troféu!</span>
+    </div>
+    <!-- Header -->
+    <header class="fixed w-full top-0 z-50 glass-effect">
+        <nav class="container mx-auto px-4 md:px-6 py-3 md:py-4">
+            <div class="flex items-center justify-between">
+                <!-- Logo -->
+                <a href="#home" class="flex items-center flex-shrink-0">
+                    <img src="assets/images/Logo - Xtreino Freitas.png" alt="X-TREINO FREITAS" class="h-12 w-12 md:h-20 md:w-20 rounded-lg object-contain" />
+                </a>
+                
+                <!-- Desktop Menu -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="#home" class="text-black hover:text-blue-matte transition-colors">HOME</a>
+                    <a href="#xtreinos" class="text-black hover:text-blue-matte transition-colors">TREINO/CAMP</a>
+                    <a href="#loja" class="text-black hover:text-blue-matte transition-colors">LOJA</a>
+                    <a href="#sobre" class="text-black hover:text-blue-matte transition-colors">SOBRE NÓS</a>
+                    <a href="#contato" class="text-black hover:text-blue-matte transition-colors">CONTATO</a>
+                    <a href="#" onclick="requestAdminAccess()" id="adminLink" class="text-black hover:text-blue-matte transition-colors hidden">ADMIN</a>
+                    <button id="loginBtnDesktop" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
+                        LOGIN
+                    </button>
+                    <span id="tokenBadgeDesktop" class="hidden bg-yellow-400 text-[var(--brand-black)] px-3 py-1 rounded-full text-xs font-bold shadow-sm">💎 0</span>
+                    <div id="accountSectionDesktop" class="hidden flex items-center space-x-3">
+                        <button id="accountBtnDesktop" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
+                            MINHA CONTA
+                        </button>
+                        <button onclick="window.location.href='client.html'" class="relative w-10 h-10 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg bg-gradient-to-br from-blue-500 to-purple-600" id="profileAvatarDesktop" title="Meu Perfil" style="aspect-ratio: 1/1; border-radius: 50%;">
+                            <img id="profileAvatarImageDesktop" src="" alt="Foto de perfil" class="absolute inset-0 w-full h-full object-cover hidden" style="aspect-ratio: 1/1; border-radius: 50%;">
+                            <div id="profileAvatarInitialsDesktop" class="w-full h-full flex items-center justify-center text-white font-bold text-sm">
+                                U
+                            </div>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Mobile Menu - Always Visible -->
+                <div class="md:hidden flex items-center space-x-2 overflow-x-auto flex-1 ml-4">
+                    <a href="#xtreinos" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">TREINO/CAMP</a>
+                    <a href="#loja" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2">LOJA</a>
+                    <a href="#" onclick="requestAdminAccess()" id="adminLinkMobile" class="text-black hover:text-blue-matte transition-colors whitespace-nowrap text-sm font-medium px-2 hidden">ADMIN</a>
+                    <button id="loginBtnMobile" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-colors whitespace-nowrap flex-shrink-0">
+                        LOGIN
+                    </button>
+                    <span id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-2 py-1 rounded-full text-xs font-bold shadow-sm whitespace-nowrap flex-shrink-0">💎 0</span>
+                    <!-- Avatar apenas - sem botão CONTA -->
+                    <button onclick="window.location.href='client.html'" class="relative w-8 h-8 rounded-full overflow-hidden border-2 border-blue-matte hover:border-blue-600 transition-all cursor-pointer shadow-md hover:shadow-lg flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600" id="profileAvatarMobile" title="Meu Perfil" style="aspect-ratio: 1/1; border-radius: 50%;">
+                        <img id="profileAvatarImageMobile" src="" alt="Foto de perfil" class="absolute inset-0 w-full h-full object-cover hidden" style="aspect-ratio: 1/1; border-radius: 50%;">
+                        <div id="profileAvatarInitialsMobile" class="w-full h-full flex items-center justify-center text-white font-bold text-xs">
+                            U
+                        </div>
+                    </button>
+                </div>
+                
+                <!-- Mobile Menu Expandido (aparece ao rolar para baixo) -->
+                <div id="mobileMenuExpanded" class="md:hidden hidden border-t border-gray-200 mt-2 pt-3 pb-2">
+                    <div class="flex flex-col space-y-2">
+                        <button id="accountBtnMobileExpanded" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-4 py-2 rounded-lg text-white text-sm font-semibold transition-colors w-full text-left hidden">
+                            MINHA CONTA
+                        </button>
+                        <a href="#" onclick="requestAdminAccess()" id="adminLinkMobileExpanded" class="text-black hover:text-blue-matte transition-colors text-sm font-medium px-2 hidden">ADMIN</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="home" class="pt-24 md:pt-24 h-[calc(100vh-5rem)] md:h-[calc(100vh-6rem)] bg-white flex items-center">
+        <div class="container mx-auto px-6">
+            <div class="grid md:grid-cols-2 gap-12 items-center">
+                <div class="space-y-8">
+                    <h1 class="text-5xl md:text-7xl font-bold leading-tight">
+                        ELEVE SEU
+                        <span class="text-blue-matte">GAME</span>
+                        AO PRÓXIMO
+                        <span class="text-blue-matte">NÍVEL</span>
+                    </h1>
+                    <p class="text-xl text-gray-700 leading-relaxed">
+                        Treinamento eSports de alta performance para jogadores profissionais e aspirantes. 
+                        Desenvolva suas habilidades com os melhores coaches do cenário.
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <button onclick="scrollToSection('eventos')" class="btn-primary px-8 py-4 rounded-lg font-bold text-lg transition-colors neon-glow">
+                            COMEÇAR AGORA
+                        </button>
+                        <button onclick="scrollToSection('sobre')" class="border-2 border-[var(--brand-yellow)] text-[var(--brand-black)] hover:bg-brand-yellow px-8 py-4 rounded-lg font-bold text-lg transition-colors">
+                            SAIBA MAIS
+                        </button>
+                    </div>
+                </div>
+                <div class="flex justify-center">
+                    <div class="relative w-full max-w-xl aspect-video rounded-2xl overflow-hidden neon-glow">
+                        <iframe width="100%" height="100%" src="https://www.youtube.com/embed/B_EDNMDm4k4?rel=0&modestbranding=1&controls=1&playsinline=1" title="Vídeo de Abertura" frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"></iframe>
+                        <div class="absolute inset-0 bg-gradient-to-br from-blue-matte to-purple-600 flex items-center justify-center text-white text-center p-8" style="display: none;">
+                            <div>
+                                <i class="fas fa-play-circle text-6xl mb-4 opacity-80"></i>
+                                <h3 class="text-2xl font-bold mb-2">XTreino Freitas</h3>
+                                <p class="text-lg opacity-90">Treinamentos profissionais para Free Fire</p>
+                                <a href="https://www.youtube.com/@Organiza%C3%A7%C3%A3oFreitas" target="_blank" rel="noopener noreferrer" class="inline-block mt-4 bg-white text-blue-matte px-6 py-2 rounded-lg font-semibold hover:bg-opacity-90 transition-colors">
+                                    Ver no YouTube
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Destaques (Carrossel) -->
+    <section class="py-16 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold">Destaques</h2>
+                <div class="flex space-x-3">
+                    <button id="carouselPrev" class="w-12 h-12 bg-blue-matte hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 border-2 border-white">
+                        <span class="text-white font-bold text-xl">‹</span>
+                    </button>
+                    <button id="carouselNext" class="w-12 h-12 bg-blue-matte hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 border-2 border-white">
+                        <span class="text-white font-bold text-xl">›</span>
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-hidden rounded-2xl border border-gray-200">
+                <div id="carouselTrack" class="flex transition-transform duration-500">
+                    <!-- Os destaques serão carregados dinamicamente aqui -->
+                    <div class="min-w-full p-8 bg-white flex items-center justify-center">
+                        <p class="text-gray-500">Carregando destaques...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Treino e Campeonatos -->
+    <section id="xtreinos" class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-4xl md:text-5xl font-bold mb-4 text-blue-matte">Treino e Campeonatos</h2>
+                <p class="text-lg text-gray-700">Eventos de Segunda a Sexta</p>
+                <p class="text-sm text-gray-500">Participa e concorra a um PC Gamer + Kit Periféricos + Troféu!</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                 <!-- Camp Freitas (old-style card layout) -->
+                <article class="product-card">
+                    <div class="product-media">
+                        <div class="absolute top-4 right-4 bg-[var(--brand-yellow)] text-[var(--brand-black)] text-xs font-bold px-2 py-1 rounded">Novidade!</div>
+                        <img src="assets/images/events/CAMP.jpeg" alt="Camp Freitas - Premiação R$ 4.000,00" referrerpolicy="no-referrer">
+                    </div>
+                    <div class="product-title">CAMPEONATO FREITAS SEASON⁴</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ 8,00</div>
+                            <div><strong>Horários:</strong> Segunda a Sexta • 19h - 20h - 21h - 22h - 23h</div>
+                            <div><strong>Início:</strong> A partir do dia 12/01</div>
+                            <div><strong>Formato:</strong> Misto | Squad | 2 quedas por fase</div>
+                            <div><strong>Vagas por horário:</strong> Limitadas</div>
+                            <div><strong>Premiação:</strong> R$ 4.000,00</div>
+                        <div><strong>Diferencial:</strong> Transmissão modo liga ao vivo a partir das Semifinais + Troféu</div>
+                        </div>
+                    </div>
+                    <div class="text-sm text-gray-600 border-t border-gray-200 pt-4 mt-4">
+                    </div>
+                    <button onclick="openScheduleModal('camp-freitas')" class="w-full btn-primary py-2 rounded-lg font-semibold">RESERVAR VAGA</button>
+                </article>
+                <!-- XTreino Tokens -->
+                <article class="product-card">
+                    <div class="product-media relative">
+                        <span class="absolute top-2 left-2 bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded">TOKENS</span>
+                        <img src="assets/images/events/XTREINO TOKENS.jpeg" alt="XTREINO TOKENS" loading="lazy" referrerpolicy="no-referrer">
+                    </div>
+                    <div class="product-title">XTREINO FREITAS</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ 1,00 (1 token)</div>
+                            <div><strong>Horários:</strong> 14h - 15h - 16h - 17h - 18h - 19h - 20h - 21h - 22h - 23h</div>
+                            <div><strong>Modalidade:</strong> Misto | Squad | 2 quedas</div>
+                            <div><strong>Premiação:</strong> Vaga em Campeonato pro top¹ da tabela</div>
+                            <div><strong>Funcionamento:</strong> De Segunda-feira a Sexta-feira</div>
+                            <div><strong>Diferencial:</strong> 10 horários diários, montagem de cronograma e Troféu</div>
+                        </div>
+                    </div>
+                    <button onclick="openScheduleModal('xtreino-tokens')" class="w-full btn-primary py-2 rounded-lg font-semibold">USAR TOKENS</button>
+                </article>
+
+                <!-- Modo Liga -->
+                <article class="product-card">
+                    <div class="product-media">
+                        <img src="assets/images/events/Modo Liga.jpeg" alt="XTREINO FREITAS Modo Liga" loading="lazy" referrerpolicy="no-referrer">
+                    </div>
+                    <div class="product-title">XTREINO FREITAS MODO LIGA</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ 3,00</div>
+                            <div><strong>Horários:</strong> 14h - 15h - 16h - 17h - 18h - 19h - 20h - 21h - 22h - 23h</div>
+                            <div><strong>Modalidade:</strong> Misto | Squad | 2 quedas | 15 slots</div>
+                            <div><strong>Premiação:</strong> Vaga em campeonato pro top¹ da tabela</div>
+                            <div><strong>Funcionamento:</strong> De Segunda-feira a Sexta-feira</div>
+                            <div><strong>Diferencial:</strong> Transmissão modo liga ao vivo, montagem de cronograma, 15 slots e Troféu</div>
+                        </div>
+                    </div>
+                    <button onclick="openScheduleModal('modo-liga')" class="w-full btn-primary py-2 rounded-lg font-semibold">RESERVAR VAGA</button>
+                </article>
+
+                <!-- Semanal Freitas -->
+                <article class="product-card">
+                    <div class="product-media">
+                        <img src="assets/images/events/SEMANAL FREITAS FORMATO YOUTUBE.png" alt="Semanal Freitas" loading="lazy" referrerpolicy="no-referrer">
+                    </div>
+                    <div class="product-title">SEMANAL FREITAS</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ 3,50</div>
+                            <div><strong>Horários:</strong> 1ª Fase às 20h e 21h | Final às 22h</div>
+                            <div><strong>Bônus:</strong> Vaga direto na Final por apenas R$ 7,00</div>
+                            <div><strong>Modalidade:</strong> Misto | Squad | 2 quedas</div>
+                            <div><strong>Premiação:</strong> R$ 65,00</div>
+                            <div><strong>Funcionamento:</strong> De Segunda-feira a Sexta-feira</div>
+                            <div><strong>Diferencial:</strong> Termina no mesmo dia + premiação em dinheiro pro top¹</div>
+                        </div>
+                    </div>
+                    <button onclick="openScheduleModal('semanal-freitas')" class="w-full btn-primary py-2 rounded-lg font-semibold">INSCREVER</button>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    
+
+    <!-- Loja Section -->
+    <section id="loja" class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6 text-blue-matte">LOJA VIRTUAL</h2>
+                <p class="text-xl text-black max-w-3xl mx-auto">
+                    Produtos físicos e digitais para elevar sua performance
+                </p>
+            </div>
+            
+            <div class="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
+                <div class="product-card relative">
+                    <div class="absolute top-4 right-4 bg-[var(--brand-yellow)] text-[var(--brand-black)] text-xs font-bold px-2 py-1 rounded">MAIS VENDIDO</div>
+                    <div class="product-media">
+                        <img src="assets/images/products/SENSIBILIDADE ORG FREITAS FORMATO YOUTUBE.png" alt="Sensis Freitas">
+                    </div>
+                    <div class="product-title">Sensibilidade no Free Fire</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ 8,00</div>
+                            <div><strong>Plataformas:</strong> PC/Android/iOS</div>
+                            <div><strong>Benefícios:</strong> Precisão, estabilidade e cursor secreto</div>
+                            <div><strong>Extras:</strong> Atualizações por temporada + vídeo explicativo</div>
+                        </div>
+                    </div>
+                    <div class="product-meta flex justify-between items-center mb-3">
+                        <span class="text-2xl font-bold text-blue-matte">R$ 8,00</span>
+                        <span class="text-sm text-gray-500">Digital</span>
+                    </div>
+                    <button onclick="openScheduleModal('sensibilidades')" class="w-full btn-primary py-2 rounded-lg font-semibold transition-colors">
+                        COMPRAR
+                    </button>
+                </div>
+                
+                <div class="product-card">
+                    <div class="product-media">
+                        <img src="assets/images/products/IMAGENS AÉREAS ORG FREITAS FORMATO YOUTUBE.png" alt="Imagens Aéreas">
+                    </div>
+                    <div class="product-title">Imagens Aéreas dos Mapas</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> A partir de R$ 2,00</div>
+                            <div><strong>Conteúdo:</strong> Mapas: Bermuda, Purgatório, Kalahari, Nova Terra, Alpine</div>
+                            <div><strong>Benefícios:</strong> Visão privilegiada para estudo de calls e estratégias</div>
+                            <div><strong>Extras:</strong> Mínimo 20 imagens por mapa</div>
+                        </div>
+                    </div>
+                    <div class="product-meta flex justify-between items-center mb-3">
+                        <span class="text-2xl font-bold text-blue-matte">a partir de R$ 2,00</span>
+                        <span class="text-sm text-gray-500">Digital</span>
+                    </div>
+                    <button onclick="openScheduleModal('imagens')" class="w-full btn-primary py-2 rounded-lg font-semibold transition-colors">
+                        COMPRAR
+                    </button>
+                </div>
+                
+                <div class="product-card">
+                    <div class="product-media">
+                        <img src="assets/images/products/PLANILHAS ORG FREITAS FORMATO YOUTUBE.png" alt="Planilhas de Análises">
+                    </div>
+                    <div class="product-title">Planilha de Análise de Times</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ 19,00</div>
+                            <div><strong>Conteúdo:</strong> Análise de até 8 integrantes com dados detalhados</div>
+                            <div><strong>Público:</strong> Coach e Analista</div>
+                            <div><strong>Extras:</strong> Gráficos, top 3 e análise de desempenho</div>
+                        </div>
+                    </div>
+                    <div class="product-meta flex justify-between items-center mb-3">
+                        <span class="text-2xl font-bold text-blue-matte">R$ 19,00</span>
+                        <span class="text-sm text-gray-500">Digital</span>
+                    </div>
+                    <button onclick="openScheduleModal('planilhas')" class="w-full btn-primary py-2 rounded-lg font-semibold transition-colors">
+                        COMPRAR
+                    </button>
+                </div>
+                
+                <div class="product-card relative">
+                    <div class="absolute top-4 right-4 bg-[var(--brand-yellow)] text-[var(--brand-black)] text-xs font-bold px-2 py-1 rounded">PROMOÇÃO</div>
+                    <div class="product-media">
+                        <img src="assets/images/products/PASSE ORG FREITAS FEED.png" alt="Passe Booyah">
+                    </div>
+                    <div class="product-title">Passe de Elite</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ 11,00</div>
+                            <div><strong>Entrega:</strong> Rápida e segura</div>
+                            <div><strong>Requisitos:</strong> Apenas ID do jogador</div>
+                            <div><strong>Extras:</strong> Entrega em até 24h + suporte</div>
+                        </div>
+                    </div>
+                    <div class="product-meta flex justify-between items-center mb-3">
+                        <span class="text-2xl font-bold text-blue-matte">R$ 11,00</span>
+                        <span class="text-sm text-gray-500">Assinatura</span>
+                    </div>
+                    <button onclick="openScheduleModal('passe-booyah')" class="w-full btn-primary py-2 rounded-lg font-semibold transition-colors">
+                        COMPRAR
+                    </button>
+                </div>
+
+                <div class="product-card">
+                    <div class="product-media">
+                        <img src="assets/images/products/MANTO ORG FREITAS FORMATO YOUTUBE.png" alt="Camisa Oficial" loading="lazy">
+                    </div>
+                    <div class="product-title">Camisa Oficial Org Freitas</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ 89,90</div>
+                            <div><strong>Material:</strong> Tecido leve com design exclusivo</div>
+                            <div><strong>Qualidade:</strong> Personalização com nome + bom caimento</div>
+                            <div><strong>Entrega:</strong> Todo Brasil - todos os tamanhos</div>
+                        </div>
+                    </div>
+                    <div class="product-meta flex justify-between items-center mb-3">
+                        <span class="text-2xl font-bold text-blue-matte">R$ 89,90</span>
+                        <span class="text-sm text-gray-500">Físico</span>
+                    </div>
+                    <button onclick="openScheduleModal('camisa')" class="w-full btn-primary py-2 rounded-lg font-semibold transition-colors">
+                        COMPRAR
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Sobre Nós Section -->
+    <section id="sobre" class="py-24 bg-gradient-to-br from-gray-50 to-white">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-20">
+                <h2 class="text-5xl md:text-6xl font-bold mb-8 bg-gradient-to-r from-blue-matte to-blue-600 bg-clip-text text-transparent">SOBRE NÓS</h2>
+                <p class="text-xl text-gray-700 max-w-4xl mx-auto leading-relaxed">
+                    Conheça a história, os objetivos e a metodologia por trás do X-TREINO FREITAS
+                </p>
+            </div>
+            
+            <div class="grid lg:grid-cols-2 gap-16 items-center mb-20">
+                <div class="space-y-6">
+                    <h3 class="text-3xl font-bold text-blue-matte">Quem Somos</h3>
+                    <p class="text-lg text-gray-700 leading-relaxed">
+                        Somos uma organização focada em treinos de alto desempenho, desenvolvimento de talentos e formação de equipes vencedoras no cenário eSports.
+                    </p>
+                    <h3 class="text-3xl font-bold text-blue-matte">Objetivo</h3>
+                    <p class="text-lg text-gray-700 leading-relaxed">
+                        Transformar jogadores em verdadeiros profissionais do eSports através de metodologia comprovada, 
+                        treinamento intensivo e mentalidade vencedora. Acreditamos que todo jogador tem potencial para 
+                        alcançar a elite, precisando apenas da orientação correta.
+                    </p>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="text-center">
+                            <div class="text-3xl font-bold mb-2" style="color: #ecd414;">+900</div>
+                            <div class="text-gray-600">Equipes que treinam por semana</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-3xl font-bold mb-2" style="color: #ecd414;">50+</div>
+                            <div class="text-gray-600">Pro-Players Formados</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-blue-matte bg-opacity-10 rounded-2xl p-8 glass-effect">
+                    <div class="text-center">
+                        <img src="assets/images/TROFEU TREINO FREITAS.png" alt="Troféu Treino Freitas" class="w-24 h-24 mb-6 mx-auto">
+                        <h4 class="text-2xl font-bold mb-4">Metodologia Comprovada</h4>
+                        <p class="text-gray-700">
+                            Desenvolvemos uma metodologia única que combina treinamento técnico, 
+                            análise estratégica e preparação mental para formar campeões.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FAQ -->
+            <div class="mb-32">
+                <h3 class="text-4xl font-bold text-center mb-16 text-blue-matte">Perguntas Frequentes</h3>
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                    <!-- Card 1: Treinos Modo Liga -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fas fa-trophy text-black text-2xl"></i>
+                        </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">XTreino Modo Liga</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            Treinos competitivos com 2 quedas consecutivas (15 slots) em salas Modo Liga. Horários: 14h, 15h, 17h, 18h. Top 1 de cada horário ganha vaga no Campeonato Freitas.
+                        </p>
+                        <button onclick="openFAQModal('faq1')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+                        </div>
+
+                    <!-- Card 2: Cancelamento de Inscrição -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fas fa-times-circle text-black text-2xl"></i>
+                        </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">Cancelamento de Inscrição</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            Após o pagamento, a inscrição não pode ser cancelada, pois o slot é reservado exclusivamente para sua equipe.
+                        </p>
+                        <button onclick="openFAQModal('faq2')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+                </div>
+
+                    <!-- Card 3: Formas de Pagamento -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fas fa-credit-card text-black text-2xl"></i>
+            </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">Formas de Pagamento</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            Aceitamos PIX, transferência bancária e PayPal. Pagamentos confirmados garantem a vaga automaticamente.
+                        </p>
+                        <button onclick="openFAQModal('faq3')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+                        </div>
+
+                    <!-- Card 4: Grupos das Salas -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fab fa-whatsapp text-black text-2xl"></i>
+                        </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">Grupos das Salas</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            Após confirmação, você recebe o link do grupo oficial no WhatsApp com ID, senha e atualizações do cronograma.
+                        </p>
+                        <button onclick="openFAQModal('faq4')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+                        </div>
+
+                    <!-- Card 5: Premiações -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fas fa-gift text-black text-2xl"></i>
+                        </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">Premiações</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            Top 1 dos treinos recebem vagas gratuitas para campeonatos. Associados participam de premiações exclusivas e sorteios mensais.
+                        </p>
+                        <button onclick="openFAQModal('faq5')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+                </div>
+
+                    <!-- Card 6: Benefícios de Associado -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fas fa-crown text-black text-2xl"></i>
+                        </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">Benefícios de Associado</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            Acesso a campeonatos com vantagens, troféus personalizados, até 10 horários por dia e ranking das melhores equipes.
+                        </p>
+                        <button onclick="openFAQModal('faq6')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+            </div>
+
+                    <!-- Card 7: Horários dos Treinos -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fas fa-clock text-black text-2xl"></i>
+                        </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">Horários dos Treinos</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            X Treinos Freitas acontecem de segunda a sexta, das 14h às 23h (horário de Brasília). Vagas limitadas por horário.
+                        </p>
+                        <button onclick="openFAQModal('faq7')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+                    </div>
+
+                    <!-- Card 8: Resgate da Premiação -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fas fa-coins text-black text-2xl"></i>
+                        </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">Resgate da Premiação</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            Após o resultado oficial, um representante entra em contato via WhatsApp para confirmar os dados de pagamento.
+                        </p>
+                        <button onclick="openFAQModal('faq8')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+                    </div>
+
+                    <!-- Card 9: Modalidade do Jogo -->
+                    <div class="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow">
+                        <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center" style="background-color: #ecd414;">
+                            <i class="fas fa-gamepad text-black text-2xl"></i>
+                        </div>
+                        <h4 class="text-xl font-bold text-center mb-4 text-black">Modalidade do Jogo</h4>
+                        <p class="text-gray-600 text-center mb-6 leading-relaxed">
+                            A modalidade é Misto, permitindo jogadores de todas as plataformas (mobile, emulador e iPad).
+                        </p>
+                        <button onclick="openFAQModal('faq9')" class="block w-full text-center font-semibold transition-colors" style="color: #07b7b4;">Saiba mais →</button>
+                    </div>
+                </div>
+            </div>
+
+            
+
+            <!-- Team Section -->
+            <div class="mb-32">
+                <h3 class="text-4xl font-bold text-center mb-16 text-blue-matte">Nossa Equipe</h3>
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                    <div class="text-center glass-effect rounded-2xl p-8 card-hover">
+                        <div class="w-24 h-24 rounded-full mx-auto mb-4 overflow-hidden shadow-lg">
+                            <img src="assets/images/team/Mario Freitas.JPG" alt="Mário Freitas" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-full h-full bg-blue-matte flex items-center justify-center" style="display: none;">
+                                <i class="fas fa-crown text-3xl text-white"></i>
+                        </div>
+                        </div>
+                        <h4 class="text-xl font-bold mb-2">Mário Freitas</h4>
+                        <p class="text-blue-matte mb-3">🎯 CEO</p>
+                        <p class="text-gray-300 text-sm">
+                            Responsável pela visão estratégica e crescimento da Org Freitas. Lidera os projetos, parcerias e inovações que fortalecem o cenário competitivo.
+                        </p>
+                    </div>
+                    <div class="text-center glass-effect rounded-2xl p-8 card-hover">
+                        <div class="w-24 h-24 rounded-full mx-auto mb-4 overflow-hidden shadow-lg">
+                            <img src="assets/images/team/WESLEY.JPG" alt="Wesley Freitas" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-full h-full bg-blue-matte flex items-center justify-center" style="display: none;">
+                                <i class="fas fa-cogs text-3xl text-white"></i>
+                        </div>
+                        </div>
+                        <h4 class="text-xl font-bold mb-2">Wesley Freitas</h4>
+                        <p class="text-blue-matte mb-3">🧩 Cofundador e Diretor de Operações</p>
+                        <p class="text-gray-300 text-sm">
+                            Atua nas decisões e operações internas da Org Freitas, ajudando a manter o equilíbrio entre desempenho, estrutura e resultados.
+                        </p>
+                    </div>
+                    <div class="text-center glass-effect rounded-2xl p-8 card-hover">
+                        <div class="w-24 h-24 rounded-full mx-auto mb-4 overflow-hidden shadow-lg">
+                            <img src="assets/images/team/Flavia regina.jpg" alt="Flávia Regina" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-full h-full bg-blue-matte flex items-center justify-center" style="display: none;">
+                                <i class="fas fa-tasks text-3xl text-white"></i>
+                        </div>
+                        </div>
+                        <h4 class="text-xl font-bold mb-2">Flávia Regina</h4>
+                        <p class="text-blue-matte mb-3">⚙ Gerente</p>
+                        <p class="text-gray-300 text-sm">
+                            Coordena as operações diárias da Org Freitas, garantindo que cada torneio, projeto e parceria aconteçam com excelência. É peça-chave na gestão e na execução das estratégias da organização.
+                        </p>
+                    </div>
+                    <div class="text-center glass-effect rounded-2xl p-8 card-hover">
+                        <div class="w-24 h-24 rounded-full mx-auto mb-4 overflow-hidden shadow-lg">
+                            <img src="assets/images/team/JAINE ANDRESSA.JPG" alt="Jaine Andressa" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-full h-full bg-blue-matte flex items-center justify-center" style="display: none;">
+                                <i class="fas fa-palette text-3xl text-white"></i>
+                            </div>
+                        </div>
+                        <h4 class="text-xl font-bold mb-2">Jaine Andressa</h4>
+                        <p class="text-blue-matte mb-3">🎨 Designer</p>
+                        <p class="text-gray-300 text-sm">
+                            Responsável por dar vida à identidade visual da Org Freitas. Cria cada banner, arte e material oficial com o estilo único que representa a força, profissionalismo e presença da organização dentro e fora do cenário competitivo.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Patrocinadores Section -->
+            <div>
+                <h3 class="text-4xl font-bold text-center mb-12 text-blue-matte">Nossos Patrocinadores</h3>
+                <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                    <div class="bg-white bg-opacity-5 rounded-xl p-6 text-center card-hover">
+                        <div class="w-20 h-20 bg-white rounded-lg mx-auto mb-2 flex items-center justify-center shadow-lg">
+                            <img src="assets/images/logos/espartanos-suplementos.jpg" alt="Espartanos Suplementos" class="max-w-full max-h-full object-contain" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-full h-full bg-gradient-to-br from-orange-400 to-red-500 rounded-lg flex items-center justify-center text-white font-bold text-xs" style="display: none;">
+                                ESPARTANOS
+                        </div>
+                    </div>
+                        <h4 class="text-lg font-bold mb-3 text-gray-600">Espartanos Suplementos</h4>
+                        <p class="text-gray-600 text-sm">Suplementos de alta qualidade para atletas</p>
+                    </div>
+                    <div class="bg-white bg-opacity-5 rounded-xl p-6 text-center card-hover">
+                        <div class="w-20 h-20 bg-black rounded-lg mx-auto mb-2 flex items-center justify-center shadow-lg">
+                            <img src="assets/images/logos/estudante-divulgacoes.png" alt="Estudante Divulgações" class="max-w-full max-h-full object-contain" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="w-full h-full bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg flex items-center justify-center text-white font-bold text-xs" style="display: none;">
+                                ESTUDANTE
+                        </div>
+                    </div>
+                        <h4 class="text-lg font-bold mb-3 text-gray-600">Estudante Divulgações</h4>
+                        <p class="text-gray-600 text-sm">Marketing digital e divulgação</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contato Section -->
+    <section id="contato" class="py-20" style="background-color: #f1f1f1;">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6 text-blue-matte">CONTATO</h2>
+                <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                    Entre em contato conosco para dúvidas, suporte ou parcerias
+                </p>
+            </div>
+            
+            <div class="max-w-4xl mx-auto">
+                <div class="grid md:grid-cols-2 gap-12">
+                    <div class="bg-white rounded-2xl p-8 shadow-lg">
+                        <h3 class="text-2xl font-bold mb-8 text-center text-blue-matte">Informações de Contato</h3>
+                        <div class="space-y-6">
+                            <div class="flex items-center space-x-4">
+                                <div class="w-14 h-14 rounded-lg flex items-center justify-center" style="background-color: #ecd414;">
+                                    <i class="fas fa-envelope text-black text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-lg text-black">Email</p>
+                                    <p class="text-black">treinofreitas@gmail.com</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-4">
+                                <div class="w-14 h-14 rounded-lg flex items-center justify-center" style="background-color: #ecd414;">
+                                    <i class="fab fa-whatsapp text-black text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-lg text-black">WhatsApp</p>
+                                    <a href="https://wa.me/5511949830454" target="_blank" rel="noopener" class="text-black hover:text-gray-600 transition-colors text-lg">+55 11 94983-0454</a>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-4">
+                                <div class="w-14 h-14 rounded-lg flex items-center justify-center" style="background-color: #ecd414;">
+                                    <i class="fas fa-clock text-black text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-lg text-black">Horário de Atendimento</p>
+                                    <p class="text-black">Segunda a Sexta: 08h às 23h</p>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-2xl p-8 shadow-lg">
+                        <h3 class="text-2xl font-bold mb-8 text-center text-blue-matte">Redes Sociais</h3>
+                        <div class="grid grid-cols-1 gap-4">
+                            <a href="#" class="rounded-lg p-6 text-center transition-colors flex items-center space-x-4" style="background-color: #ecd414;">
+                                <i class="fab fa-instagram text-2xl text-black"></i>
+                                <span class="text-lg font-semibold text-black">Instagram</span>
+                            </a>
+                            <a href="#" class="rounded-lg p-6 text-center transition-colors flex items-center space-x-4" style="background-color: #ecd414;">
+                                <i class="fab fa-youtube text-2xl text-black"></i>
+                                <span class="text-lg font-semibold text-black">YouTube</span>
+                            </a>
+                            <a href="https://discord.gg/Sr4N7qPME9" target="_blank" rel="noopener noreferrer" class="rounded-lg p-6 text-center transition-colors flex items-center space-x-4" style="background-color: #ecd414;">
+                                <i class="fab fa-discord text-2xl text-black"></i>
+                                <span class="text-lg font-semibold text-black">Discord</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Feed de Notícias Section -->
+    <section class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6 text-blue-matte">ÚLTIMAS NOTÍCIAS</h2>
+                <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                    Fique por dentro das novidades, eventos e avisos da organização
+                </p>
+            </div>
+            
+            <div id="newsContainer" class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- As notícias serão carregadas dinamicamente aqui -->
+                <div class="col-span-full flex items-center justify-center py-12">
+                    <p class="text-gray-500">Carregando notícias...</p>
+                    </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-white py-16">
+        <div class="container mx-auto px-6">
+            <div class="grid md:grid-cols-4 gap-8 mb-8">
+                <div>
+                    <div class="flex items-center space-x-3 mb-6">
+                        <img src="assets/images/Logo - Xtreino Freitas.png" alt="Logo XTreino Freitas" class="w-16 h-16 rounded-lg">
+                        <div>
+                            <h3 class="text-lg font-bold">X-TREINO FREITAS</h3>
+                        </div>
+                    </div>
+                    <p class="text-gray-600">
+                        Elevando jogadores ao próximo nível através de treinamento profissional e metodologia comprovada.
+                    </p>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold mb-4">Links Úteis</h4>
+                    <div class="space-y-2">
+                        <a href="#" class="block text-gray-600 hover:text-blue-matte transition-colors">FAQ</a>
+                        <a href="#" class="block text-gray-600 hover:text-blue-matte transition-colors">Termos de Uso</a>
+                        <a href="#" class="block text-gray-600 hover:text-blue-matte transition-colors">Política de Privacidade</a>
+                        <a href="#" class="block text-gray-600 hover:text-blue-matte transition-colors">Suporte</a>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold mb-4">Contato</h4>
+                    <div class="space-y-2">
+                        <p class="text-gray-600">
+                            <i class="fas fa-envelope mr-2"></i>
+                            treinofreitas@gmail.com
+                        </p>
+                        <p class="text-gray-600">
+                            <i class="fas fa-phone mr-2"></i>
+                        +55 11 94983-0454
+                        </p>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold mb-4">Redes Sociais</h4>
+                    <div class="flex space-x-4">
+                        <a href="https://www.instagram.com/xtreino_freitas/" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-opacity-80 transition-colors" style="background-color: #ecd414;">
+                            <i class="fab fa-instagram text-black"></i>
+                        </a>
+                        <a href="https://www.youtube.com/@Organiza%C3%A7%C3%A3oFreitas" target="_blank" rel="noopener noreferrer" class="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-opacity-80 transition-colors" style="background-color: #ecd414;">
+                            <i class="fab fa-youtube text-black"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-300 pt-8 text-center footer-green full-bleed" style="padding: 32px 24px;">
+                <p class="text-white">
+                    © 2025 X-TREINO FREITAS
+                </p>
+                <p class="text-white mt-2">
+                    Desenvolvido por <a href="https://agenciaelevare.netlify.app/" target="_blank" rel="noopener noreferrer" class="text-white hover:text-gray-200 underline">Agência Elevare</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- WhatsApp Float Button removido -->
+
+    <!-- Back To Top Button -->
+    <button id="backToTop" class="back-to-top hidden w-12 h-12 rounded-full bg-blue-matte text-white shadow-lg flex items-center justify-center hover-blue-matte" aria-label="Voltar ao topo">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+
+    
+
+
+    <!-- FAQ Modal -->
+    <div id="faqModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="faqModalTitle" class="text-2xl font-bold text-blue-matte">Pergunta</h3>
+                <button onclick="closeFAQModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div id="faqModalContent" class="text-gray-700 space-y-4">
+                <!-- Conteúdo será preenchido dinamicamente -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Client Area Modal (placeholder removido de login) -->
+    <div id="clientAreaModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-dark-matte rounded-2xl p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto glass-effect">
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Área do Cliente</h2>
+                    <p class="text-gray-300">Bem-vindo, João Silva!</p>
+                </div>
+                <button onclick="closeClientArea()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            
+            <!-- Client Area Tabs -->
+            <div class="flex space-x-4 mb-8 border-b border-gray-700">
+                <button onclick="showClientTab('overview')" class="client-tab active px-6 py-3 font-semibold border-b-2 border-blue-matte text-blue-matte">
+                    Visão Geral
+                </button>
+                <button onclick="showClientTab('orders')" class="client-tab px-6 py-3 font-semibold border-b-2 border-transparent text-gray-400 hover:text-white">
+                    Meus Pedidos
+                </button>
+                <button onclick="showClientTab('products')" class="client-tab px-6 py-3 font-semibold border-b-2 border-transparent text-gray-400 hover:text-white">
+                    Meus Produtos
+                </button>
+                <button onclick="showClientTab('downloads')" class="client-tab px-6 py-3 font-semibold border-b-2 border-transparent text-gray-400 hover:text-white">
+                    Downloads
+                </button>
+                
+                <button onclick="showClientTab('profile')" class="client-tab px-6 py-3 font-semibold border-b-2 border-transparent text-gray-400 hover:text-white">
+                    Meu Perfil
+                </button>
+                
+            </div>
+            
+            <!-- Overview Tab -->
+            <div id="overviewTab" class="client-tab-content">
+                <div class="grid md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-blue-matte bg-opacity-20 rounded-xl p-6 text-center">
+                        <i class="fas fa-shopping-cart text-3xl text-blue-matte mb-3"></i>
+                        <h3 class="text-xl font-bold mb-2">12</h3>
+                        <p class="text-gray-300">Compras Realizadas</p>
+                    </div>
+                    <div class="bg-blue-matte bg-opacity-20 rounded-xl p-6 text-center">
+                        <i class="fas fa-download text-3xl text-blue-matte mb-3"></i>
+                        <h3 class="text-xl font-bold mb-2">8</h3>
+                        <p class="text-gray-300">Downloads Disponíveis</p>
+                    </div>
+                    <div class="bg-blue-matte bg-opacity-20 rounded-xl p-6 text-center">
+                        <i class="fas fa-coins text-3xl text-blue-matte mb-3"></i>
+                        <h3 class="text-xl font-bold mb-2">3</h3>
+                        <p class="text-gray-300">Tokens Disponíveis</p>
+                    </div>
+                </div>
+                
+                <div class="bg-white bg-opacity-5 rounded-xl p-6">
+                    <h3 class="text-xl font-bold mb-4">Status da Assinatura</h3>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-lg font-semibold text-blue-matte">Passe Booyah - Ativo</p>
+                            <p class="text-gray-300">Próxima cobrança: 15/12/2024</p>
+                        </div>
+                        <button class="bg-blue-matte hover-blue-matte px-4 py-2 rounded-lg font-semibold transition-colors">
+                            Gerenciar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            
+            <!-- Orders Tab (Treinos e Camps) -->
+            <div id="ordersTab" class="client-tab-content hidden">
+                <div class="bg-white rounded-lg shadow-sm">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-900">Meus Pedidos - Eventos</h3>
+                        </div>
+                    <div id="allOrders" class="p-6">
+                        <p class="text-gray-500 text-center">Carregando pedidos...</p>
+                        </div>
+                    </div>
+                    
+                <!-- WhatsApp Links para pedidos confirmados -->
+                <div id="whatsappLinks" class="bg-white rounded-lg shadow-sm mt-6 hidden">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-900">Links dos Grupos</h3>
+                        </div>
+                    <div id="whatsappList" class="p-6">
+                        <!-- Links do WhatsApp serão carregados aqui -->
+                    </div>
+                        </div>
+                    </div>
+                    
+            <!-- Products Tab (Produtos da Loja) -->
+            <div id="productsTab" class="client-tab-content hidden">
+                <div class="bg-white rounded-lg shadow-sm">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-900">Meus Produtos</h3>
+                        </div>
+                    <div id="allProducts" class="p-6">
+                        <p class="text-gray-500 text-center">Carregando produtos...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Downloads Tab -->
+            <div id="downloadsTab" class="client-tab-content hidden">
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-white bg-opacity-5 rounded-xl p-6">
+                        <div class="flex items-center mb-4">
+                            <i class="fas fa-chart-line text-2xl text-blue-matte mr-3"></i>
+                            <div>
+                                <h3 class="font-bold">Planilhas de Análise v2.1</h3>
+                                <p class="text-sm text-gray-400">Comprado em 15/11/2024</p>
+                            </div>
+                        </div>
+                        <button onclick="downloadFile('planilhas')" class="w-full bg-blue-matte hover-blue-matte py-2 rounded-lg font-semibold transition-colors">
+                            <i class="fas fa-download mr-2"></i>Download
+                        </button>
+                    </div>
+                    
+                    <div class="bg-white bg-opacity-5 rounded-xl p-6">
+                        <div class="flex items-center mb-4">
+                            <i class="fas fa-sliders-h text-2xl text-blue-matte mr-3"></i>
+                            <div>
+                                <h3 class="font-bold">Sensibilidades Pro</h3>
+                                <p class="text-sm text-gray-400">Comprado em 15/11/2024</p>
+                            </div>
+                        </div>
+                        <button onclick="downloadFile('sensibilidades')" class="w-full bg-blue-matte hover-blue-matte py-2 rounded-lg font-semibold transition-colors">
+                            <i class="fas fa-download mr-2"></i>Download
+                        </button>
+                    </div>
+                    
+                    <div class="bg-white bg-opacity-5 rounded-xl p-6">
+                        <div class="flex items-center mb-4">
+                            <i class="fas fa-map text-2xl text-blue-matte mr-3"></i>
+                            <div>
+                                <h3 class="font-bold">Imagens Aéreas HD</h3>
+                                <p class="text-sm text-gray-400">Comprado em 08/11/2024</p>
+                            </div>
+                        </div>
+                        <button onclick="downloadFile('imagens')" class="w-full bg-blue-matte hover-blue-matte py-2 rounded-lg font-semibold transition-colors">
+                            <i class="fas fa-download mr-2"></i>Download
+                        </button>
+                    </div>
+                    
+                    <div class="bg-white bg-opacity-5 rounded-xl p-6">
+                        <div class="flex items-center mb-4">
+                            <i class="fas fa-video text-2xl text-blue-matte mr-3"></i>
+                            <div>
+                                <h3 class="font-bold">Vídeos Exclusivos</h3>
+                                <p class="text-sm text-gray-400">Passe Booyah</p>
+                            </div>
+                        </div>
+                        <button onclick="viewOnline('videos')" class="w-full bg-blue-matte hover-blue-matte py-2 rounded-lg font-semibold transition-colors">
+                            <i class="fas fa-play mr-2"></i>Assistir Online
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            
+            
+            <!-- Profile Tab removed (duplicate fields) -->
+        </div>
+    </div>
+
+    <!-- Purchase Modal -->
+    <div id="purchaseModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-3xl w-full border border-gray-200 overflow-hidden relative">
+            <button onclick="closePurchaseModal()" class="absolute top-4 right-4 text-gray-500 hover:text-black">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            <div class="grid md:grid-cols-2">
+                <div class="bg-gray-100 p-4 flex items-center justify-center">
+                    <img id="purchaseImage" src="" alt="Produto" class="max-h-80 rounded-lg object-cover">
+                </div>
+                <div class="p-6">
+                    <h2 id="purchaseTitle" class="text-2xl font-bold mb-2">Produto</h2>
+                    <p id="purchaseDescription" class="text-gray-600 mb-4">Descrição do produto</p>
+                    <form onsubmit="handlePurchase(event)" class="space-y-4">
+                        <div id="purchaseOptions"></div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Nome Completo</label>
+                            <input type="text" class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none" placeholder="Seu nome completo">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Email (opcional)</label>
+                            <input type="text" class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none" placeholder="seu@email.com">
+                        </div>
+                        
+                        <!-- Campo de Cupom -->
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Cupom de Desconto (Opcional)</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="couponCodeInput" placeholder="Digite o código do cupom" 
+                                       class="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none">
+                                <button type="button" onclick="applyCoupon()" 
+                                        class="px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors">
+                                    Aplicar
+                                </button>
+                            </div>
+                            <div id="couponMessage" class="mt-2 text-sm hidden"></div>
+                        </div>
+                        
+                        <!-- Resumo de Preços -->
+                        <div class="bg-gray-50 rounded-lg p-4 space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span>Subtotal:</span>
+                                <span id="purchaseSubtotal" class="font-medium">R$ 0,00</span>
+                            </div>
+                            <div id="discountRow" class="flex justify-between items-center text-green-600 hidden">
+                                <span>Desconto:</span>
+                                <span id="discountAmount" class="font-medium">-R$ 0,00</span>
+                            </div>
+                            <div class="border-t pt-2">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-semibold">Total:</span>
+                                    <span id="purchasePrice" class="text-2xl font-bold text-blue-matte">R$ 0,00</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <button type="button" id="purchasePayTokensBtn" onclick="payCurrentProductWithTokens()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-lg font-semibold transition-colors">
+                                Pagar com Tokens
+                            </button>
+                            <button type="submit" class="w-full btn-primary py-3 rounded-lg font-semibold transition-colors">
+                                Finalizar (Mercado Pago)
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule Modal (Novo Design) -->
+    <div id="scheduleModal" class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-3xl max-w-4xl max-w-[calc(100vw-2rem)] w-full max-h-[90vh] overflow-hidden relative shadow-2xl mx-auto">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 relative">
+                <button onclick="closeScheduleModal()" class="absolute top-4 right-4 text-white hover:text-gray-200 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-2xl font-bold">Reservar Horário</h3>
+                        <p class="text-blue-100 text-sm">Escolha a data e horário para seu evento</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="p-6">
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <!-- Left Column - Date & Time Selection -->
+                    <div class="space-y-6">
+                        <!-- Date Selection -->
+                        <div class="bg-gray-50 rounded-2xl p-6">
+                            <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                Selecionar Data
+                            </h4>
+                            <div class="space-y-4">
+                                <input type="date" id="schedDate" class="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-3 text-lg focus:border-blue-500 focus:ring-0 transition-colors" />
+                                <div class="flex gap-3">
+                                    <button onclick="setSchedToday()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-xl font-semibold transition-colors">
+                                        Hoje
+                                    </button>
+                                    <button onclick="setSchedTomorrow()" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-xl font-semibold transition-colors">
+                                        Amanhã
+                                    </button>
+                                </div>
+                                <!-- Multi-date selection helpers -->
+                                <div class="flex gap-3">
+                                    <button type="button" onclick="addSelectedDate()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-3 rounded-lg font-semibold transition-colors">
+                                        + Adicionar esta data
+                                    </button>
+                                    <button type="button" onclick="clearSelectedDates()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-lg font-semibold transition-colors">
+                                        Limpar datas
+                                    </button>
+                                </div>
+                                <div id="selectedDatesList" class="text-sm text-gray-700 space-y-1"></div>
+                            </div>
+                        </div>
+
+                        <!-- Time Selection -->
+                        <div class="bg-gray-50 rounded-2xl p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h4 class="text-lg font-semibold text-gray-900 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                Horários Disponíveis
+                            </h4>
+                                <span class="text-sm text-gray-500">Selecione múltiplos horários</span>
+                            </div>
+                            <div id="schedTimes" class="grid grid-cols-2 gap-3"></div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column - Form & Payment -->
+                    <div class="space-y-6">
+                        <!-- Event Info -->
+                        <div class="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-100">
+                            <div class="flex items-center justify-between mb-4">
+                                <h4 class="text-lg font-semibold text-gray-900">Detalhes do Evento</h4>
+                                <div class="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-semibold" id="schedEventType">XTreino Freitas</div>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Data selecionada:</span>
+                                    <span class="font-semibold" id="schedSelectedDate">--</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Horário:</span>
+                                    <span class="font-semibold" id="schedSelectedTimeDisplay">--</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Valor:</span>
+                                    <span class="text-2xl font-bold text-green-600" id="schedPrice">R$ 0,00</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Form -->
+                        <form id="schedForm" onsubmit="submitSchedule(event)" class="space-y-4">
+                            <input type="hidden" id="schedSelectedTime">
+                            
+                            <!-- Teams Section -->
+                            <div id="teamsSection" class="bg-white rounded-2xl p-6 border border-gray-200">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h4 class="text-lg font-semibold text-gray-900 flex items-center">
+                                    <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                    </svg>
+                                        Informações dos Times
+                                </h4>
+                                    <button type="button" onclick="addTeam()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                                        + Adicionar Time
+                                    </button>
+                                </div>
+                                <div id="teamsContainer" class="space-y-4">
+                                    <!-- Teams will be added here dynamically -->
+                                </div>
+                            </div>
+
+                            <!-- Reservations Summary -->
+                            <div id="reservationsSummarySection" class="bg-gradient-to-br from-green-50 to-blue-50 rounded-2xl p-6 border border-green-100">
+                                <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                    <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                                    </svg>
+                                    Resumo das Reservas
+                                </h4>
+                                <div id="reservationsSummary" class="space-y-2 text-sm">
+                                    <p class="text-gray-600">Nenhuma reserva selecionada</p>
+                                </div>
+                                <div class="mt-4 pt-4 border-t border-gray-200">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-lg font-semibold text-gray-900">Total:</span>
+                                        <span class="text-2xl font-bold text-green-600" id="totalPrice">R$ 0,00</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Coupon Section -->
+                            <div id="scheduleCouponSection" class="bg-white rounded-2xl p-6 border border-gray-200">
+                                <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                    <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                    </svg>
+                                    Cupom de Desconto
+                                </h4>
+                                <div class="space-y-3">
+                                    <div class="flex gap-2 flex-wrap">
+                                        <input type="text" id="schedCouponCodeInput" placeholder="Digite o código do cupom" 
+                                               class="flex-1 bg-white border border-gray-300 rounded-lg px-4 py-3 text-black placeholder-gray-400 focus:border-blue-matte focus:outline-none">
+                                        <button type="button" id="applyScheduleCouponBtn" onclick="applyScheduleCoupon()" 
+                                                class="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors">
+                                            Aplicar
+                                        </button>
+                                        <button type="button" id="removeScheduleCouponBtn" onclick="removeScheduleCoupon()" 
+                                                class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors hidden">
+                                            Remover
+                                        </button>
+                                    </div>
+                                    <div id="schedCouponMessage" class="text-sm hidden"></div>
+                                </div>
+                            </div>
+
+                            <!-- Payment Section -->
+                            <div class="bg-white rounded-2xl p-6 border border-gray-200">
+                                <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                    <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                                    </svg>
+                                    Finalizar Reservas
+                                </h4>
+                                <div class="space-y-4">
+                                    <div class="flex gap-3">
+                                        <button type="button" id="buyTokensBtn" onclick="goToTokensFromSchedule()" 
+                                                class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-xl font-semibold transition-colors hidden">
+                                            💎 Comprar Tokens
+                                        </button>
+                                        <button type="button" id="schedPayTokens" onclick="payScheduleWithTokens()" 
+                                                class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-xl font-semibold transition-colors">
+                                            💎 Pagar com Tokens
+                                        </button>
+                                        <button type="submit" id="schedSubmit" 
+                                                class="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-3 px-4 rounded-xl font-semibold transition-all transform hover:scale-105">
+                                            ✅ Confirmar e Pagar
+                                        </button>
+                                    </div>
+                                    <div id="schedHint" class="text-sm text-gray-500 text-center"></div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Free WhatsApp Modal -->
+    <div id="freeWhatsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 relative">
+            <button onclick="closeFreeWhatsModal()" class="absolute top-4 right-4 text-gray-500 hover:text-black">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            <h3 class="text-xl font-bold mb-3">XTREINO GRATUITO</h3>
+            <p class="text-gray-700 mb-4">Clique abaixo para abrir o WhatsApp e solicitar sua vaga gratuita. Enviaremos os horários disponíveis.</p>
+            <a id="freeWhatsLink" target="_blank" rel="noopener" class="w-full btn-primary py-3 rounded-lg font-semibold block text-center">Abrir WhatsApp</a>
+        </div>
+    </div>
+
+    <!-- Tokens Modal -->
+    <div id="tokensModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 relative">
+            <button onclick="closeTokensModal()" class="absolute top-4 right-4 text-gray-500 hover:text-black">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            <h3 class="text-xl font-bold mb-3">Sistema de Tokens</h3>
+            <div class="mb-4">
+                <div class="bg-blue-matte bg-opacity-20 rounded-lg p-4 text-center mb-4">
+                    <i class="fas fa-coins text-2xl text-blue-matte mb-2"></i>
+                    <div class="text-2xl font-bold" id="tokensBalance">0</div>
+                    <div class="text-sm text-gray-600">Tokens Disponíveis</div>
+                </div>
+                <p class="text-sm text-gray-600 mb-4">Cada token vale R$ 1,00 e pode ser usado para vagas em eventos.</p>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="bg-blue-50 text-blue-700 border border-blue-200 rounded-lg p-3 text-sm">
+                    Use seus tokens para reservar vagas em eventos.
+                </div>
+            </div>
+            
+            <div class="mt-6 pt-4 border-t">
+                <h4 class="font-semibold mb-3">Usar Tokens</h4>
+                <div class="space-y-2">
+                    <button onclick="useTokensForEvent('xtreino-tokens')" class="w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-semibold">
+                        1 Token = 1 Vaga XTreino Freitas
+                    </button>
+                    <button onclick="useTokensForEvent('modo-liga')" class="w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-semibold">
+                        3 Tokens = 1 Vaga XTreino Modo Liga
+                    </button>
+                    <button onclick="useTokensForEvent('semanal-freitas')" class="w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-semibold">
+                        3,5 Tokens = 1 Vaga Semanal Freitas
+                    </button>
+                    <button onclick="useTokensForEvent('camp-freitas')" class="w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-semibold">
+                        5 Tokens = 1 Vaga Campeonato Freitas
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Comprar Tokens (Home/Destaques) -->
+    <div id="heroTokensModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h3 class="font-bold text-xl text-gray-900">💎 Comprar Tokens</h3>
+                    <p class="text-sm text-gray-600 mt-1">Adicione tokens à sua conta</p>
+                </div>
+                <button onclick="closeHeroTokensModal()" class="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+            </div>
+
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="heroSetTokensQty(1)" class="p-4 border-2 border-green-200 rounded-xl hover:border-green-400 hover:bg-green-50 transition-all duration-200 hover:scale-105">
+                        <div class="text-2xl font-bold text-green-700">1</div>
+                        <div class="text-sm text-green-600 font-medium">Token</div>
+                        <div class="text-lg font-bold text-green-800 mt-1">R$ 1,00</div>
+                    </button>
+                    <button onclick="heroSetTokensQty(5)" class="p-4 border-2 border-blue-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 hover:scale-105">
+                        <div class="text-2xl font-bold text-blue-700">5</div>
+                        <div class="text-sm text-blue-600 font-medium">Tokens</div>
+                        <div class="text-lg font-bold text-blue-800 mt-1">R$ 5,00</div>
+                    </button>
+                    <button onclick="heroSetTokensQty(25)" class="p-4 border-2 border-purple-200 rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-all duration-200 hover:scale-105">
+                        <div class="text-2xl font-bold text-purple-700">25</div>
+                        <div class="text-sm text-purple-600 font-medium">Tokens</div>
+                        <div class="text-lg font-bold text-purple-800 mt-1">R$ 25,00</div>
+                    </button>
+                    <button onclick="heroSetTokensQty(50)" class="p-4 border-2 border-orange-200 rounded-xl hover:border-orange-400 hover:bg-orange-50 transition-all duration-200 hover:scale-105">
+                        <div class="text-2xl font-bold text-orange-700">50</div>
+                        <div class="text-sm text-orange-600 font-medium">Tokens</div>
+                        <div class="text-lg font-bold text-orange-800 mt-1">R$ 50,00</div>
+                    </button>
+                </div>
+                <div class="mt-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cupom de desconto</label>
+                    <div class="flex gap-2">
+                        <input id="heroTokensCoupon" type="text" placeholder="EX: ORG10" class="flex-1 border border-gray-300 rounded-lg px-3 py-2" />
+                        <button onclick="heroApplyTokenCoupon()" class="px-3 py-2 bg-gray-900 text-white rounded-lg text-sm">Aplicar</button>
+                    </div>
+                    <p id="heroTokensCouponMsg" class="text-xs mt-1 text-gray-500"></p>
+                </div>
+                <div id="heroTokensSummary" class="text-sm text-gray-700 hidden">
+                    <div class="flex justify-between"><span>Subtotal</span><span id="heroTokensSubtotal">R$ 0,00</span></div>
+                    <div class="flex justify-between" id="heroTokensDiscountRow" style="display:none"><span class="text-green-700">Desconto</span><span id="heroTokensDiscount" class="text-green-700">- R$ 0,00</span></div>
+                    <div class="flex justify-between font-semibold"><span>Total</span><span id="heroTokensTotal">R$ 0,00</span></div>
+                </div>
+                <div class="pt-2">
+                    <button id="heroTokensBuyBtn" onclick="heroPurchaseTokens()" class="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Selecionar quantidade
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Modal (Login/Cadastro/Recuperação) -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full border border-gray-200 shadow-xl relative">
+            <button onclick="closeLoginModal()" class="absolute top-4 right-4 text-gray-500 hover:text-black">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            <div class="flex space-x-4 mb-4 border-b">
+                <button id="tabLogin" class="px-3 py-2 font-semibold border-b-2 border-blue-matte" onclick="showAuthTab('login')">Entrar</button>
+                <button id="tabRegister" class="px-3 py-2 text-gray-500" onclick="showAuthTab('register')">Cadastrar</button>
+                <button id="tabReset" class="px-3 py-2 text-gray-500" onclick="showAuthTab('reset')">Recuperar</button>
+            </div>
+            <div id="authLogin" class="space-y-3">
+                <input id="authEmail" type="email" placeholder="Email" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <input id="authPassword" type="password" placeholder="Senha" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <button onclick="loginWithEmailPassword()" class="w-full bg-blue-matte hover:bg-blue-600 text-white py-3 rounded-lg font-semibold transition-colors">Entrar</button>
+                <button onclick="loginWithGoogle()" class="w-full bg-white border border-gray-300 hover:bg-gray-100 text-black py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-5 h-5"> Entrar com Google
+                </button>
+            </div>
+            <div id="authRegister" class="space-y-3 hidden">
+                <input id="regName" type="text" placeholder="Nome completo" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <input id="regEmail" type="email" placeholder="Email" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <input id="regPhone" type="tel" placeholder="(11) 99999-9999" class="w-full border border-gray-300 rounded-lg px-4 py-3" oninput="formatPhone(this)" />
+                <input id="regNickname" type="text" placeholder="Nickname gamer" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <input id="regTeam" type="text" placeholder="Time/Org" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <input id="regAge" type="number" min="10" max="99" placeholder="Idade" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <input id="regPassword" type="password" placeholder="Senha" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <button onclick="registerWithEmailPassword()" class="w-full bg-blue-matte hover:bg-blue-600 text-white py-3 rounded-lg font-semibold transition-colors">Criar conta</button>
+            </div>
+            <div id="authReset" class="space-y-3 hidden">
+                <div class="text-center space-y-2">
+                    <div class="mx-auto w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-blue-matte" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12A4 4 0 118 12a4 4 0 018 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14v7m-3-3h6"/></svg>
+                    </div>
+                    <p class="text-sm text-gray-600">Informe o email da sua conta e enviaremos um link para redefinir a senha.</p>
+                </div>
+                <input id="resetEmail" type="email" placeholder="seu@email.com" class="w-full border border-gray-300 rounded-lg px-4 py-3" />
+                <div id="resetAlert" class="hidden text-sm px-3 py-2 rounded-md"></div>
+                <button id="resetBtn" onclick="sendPasswordReset()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors">Enviar link de recuperação</button>
+                <p id="resetHelp" class="text-xs text-gray-500 text-center">Não encontrou o email? Verifique a caixa de spam ou promoções.</p>
+            </div>
+            <p id="authMsg" class="text-sm text-center mt-3 text-gray-600"></p>
+        </div>
+    </div>
+
+
+    <script>
+        // Configuração real do Firebase
+        window.FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBzD0iWNIfZwuzWN-Xhjbg22OfCHv1Qwjo",
+            authDomain: "orgfreitas-ofc.firebaseapp.com",
+            projectId: "orgfreitas-ofc",
+            storageBucket: "orgfreitas-ofc.firebasestorage.app",
+            messagingSenderId: "493859004030",
+            appId: "1:493859004030:web:a1cba415344e4a7567822f",
+            measurementId: "G-WZCYZL5VC0"
+        };
+    </script>
+    <script type="module" src="config/firebase.js"></script>
+    <!-- Sistema de Códigos de Erro -->
+    <script src="js/error-codes.js"></script>
+    <script src="js/error-handler.js"></script>
+    <script>
+        // Ajusta dinamicamente a altura do header e da seção #home
+        function getViewportHeight(){
+            return Math.round((window.visualViewport ? window.visualViewport.height : window.innerHeight));
+        }
+        function setHeaderAndHomeSizes(){
+            const header = document.querySelector('header');
+            const home = document.getElementById('home');
+            const topAlert = document.getElementById('topAlert');
+            if (!header || !home) return;
+            
+            // Calcular altura total do header (incluindo topAlert se visível)
+            let headerH = Math.ceil(header.getBoundingClientRect().height);
+            if (topAlert && !topAlert.classList.contains('hidden')) {
+                const alertH = Math.ceil(topAlert.getBoundingClientRect().height);
+                headerH += alertH;
+            }
+            
+            document.documentElement.style.setProperty('--header-h', headerH + 'px');
+            const vh = getViewportHeight();
+            // Marca layout compacto quando vh < 800px (aperta tipografia/espacamentos)
+            if (vh < 800) {
+                document.documentElement.classList.add('vh-compact');
+            } else {
+                document.documentElement.classList.remove('vh-compact');
+            }
+            const minH = Math.max(360, vh - headerH); // nunca menor que 360px
+            home.style.minHeight = minH + 'px';
+            // Aplicar padding-top dinamicamente no mobile (sempre, não só no carregamento)
+            if (window.innerWidth <= 767) {
+                home.style.paddingTop = (headerH + 16) + 'px';
+            } else {
+                // Desktop: remover padding inline se houver, deixar CSS gerenciar
+                home.style.paddingTop = '';
+            }
+        }
+        const rerender = ()=> window.requestAnimationFrame(setHeaderAndHomeSizes);
+        // Executar imediatamente no DOMContentLoaded para aplicar padding antes do render
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setHeaderAndHomeSizes);
+        } else {
+            setHeaderAndHomeSizes();
+        }
+        window.addEventListener('load', setHeaderAndHomeSizes);
+        window.addEventListener('resize', rerender);
+        window.addEventListener('orientationchange', rerender);
+        
+        // Observar mudanças no topAlert para recalcular quando ele aparecer/desaparecer
+        const topAlert = document.getElementById('topAlert');
+        if (topAlert) {
+            const observer = new MutationObserver(() => {
+                setHeaderAndHomeSizes();
+            });
+            observer.observe(topAlert, { attributes: true, attributeFilter: ['class'] });
+        }
+        if (window.visualViewport){
+            window.visualViewport.addEventListener('resize', rerender);
+        }
+    </script>
+    <script src="script.js"></script>
+    
+    <style>
+        /* Esconder botões flutuantes no mobile quando modal estiver aberto */
+        @media (max-width: 768px) {
+            .modal-open #chatWidget {
+                display: none !important;
+            }
+        }
+    </style>
+</body>
+</html>
+<!-- Modal Confirmação de Pagamento -->
+<div id="paymentConfirmModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+  <div class="bg-white rounded-xl max-w-md w-full p-6 text-center">
+    <h3 id="paymentConfirmTitle" class="text-xl font-bold mb-2">Pagamento</h3>
+    <p id="paymentConfirmMsg" class="text-gray-600 mb-4"></p>
+    <div class="flex justify-center gap-3">
+      <a id="paymentGroupBtn" href="#" target="_blank" class="px-4 py-2 border rounded hidden">Entrar no grupo</a>
+        <button id="paymentPayNowBtn" class="px-4 py-2 bg-green-600 text-white rounded hidden">Pagar agora</button>
+        <button id="paymentGoAccountBtn" onclick="window.location.href='client.html'; closePaymentConfirmModal()" class="px-4 py-2 bg-blue-matte text-white rounded">Ir para Minha Conta</button>
+      <button onclick="closePaymentConfirmModal()" class="px-4 py-2 border rounded">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chat Interno -->
+<div id="chatWidget" class="fixed bottom-6 right-6 z-50">
+    <!-- Botão do Chat -->
+    <button id="chatToggle" class="bg-blue-matte hover:bg-blue-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300">
+        <i class="fas fa-comments text-2xl"></i>
+    </button>
+    
+    <!-- Janela do Chat -->
+        <div id="chatWindow" class="hidden fixed bottom-24 right-2 left-2 md:left-auto md:right-6 md:bottom-24 w-auto md:w-[400px] max-w-[calc(100vw-1rem)] h-[65vh] md:h-[560px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col">
+        <!-- Header do Chat -->
+        <div class="bg-blue-matte text-white p-4 rounded-t-lg flex items-center justify-between">
+            <div class="flex items-center">
+                <div class="w-3 h-3 bg-green-400 rounded-full mr-2"></div>
+                <span class="font-semibold">Suporte Online</span>
+            </div>
+            <button id="chatClose" class="text-white hover:text-gray-200">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <!-- Status de Atendimento -->
+        <div id="chatStatus" class="p-3 bg-gray-50 border-b">
+            <div id="onlineStatus" class="hidden text-sm text-green-600">
+                <i class="fas fa-circle text-green-500 mr-1"></i>
+                Online - Segunda a Sexta, 08h às 23h
+            </div>
+            <div id="offlineStatus" class="hidden text-sm text-gray-500">
+                <i class="fas fa-clock text-gray-400 mr-1"></i>
+                Fora do horário - Segunda a Sexta, 08h às 23h
+            </div>
+        </div>
+        
+        <!-- Mensagens -->
+        <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3">
+            <div class="flex justify-start">
+                <div class="bg-gray-100 rounded-lg p-3 max-w-xs">
+                    <p class="text-sm text-gray-700">Olá! Como posso ajudá-lo hoje?</p>
+                    <span class="text-xs text-gray-500">Agora</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Sugestões de Perguntas Frequentes -->
+        <div id="chatSuggestions" class="px-4 pb-2 border-t border-gray-200">
+            <p class="text-xs text-gray-500 mb-2">Perguntas frequentes:</p>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="sendQuickMessage('Qual o preço dos treinos?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
+                    💰 Preços
+                </button>
+                <button onclick="sendQuickMessage('Quais horários estão disponíveis?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
+                    🕐 Horários
+                </button>
+                <button onclick="sendQuickMessage('Como comprar tokens?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
+                    💎 Tokens
+                </button>
+                <button onclick="openWhatsAppDirect()" class="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-full transition-colors">
+                    💬 WhatsApp
+                </button>
+            </div>
+        </div>
+        
+        <!-- Input de Mensagem -->
+        <div class="p-4 border-t">
+            <div class="flex space-x-2">
+                <input type="text" id="chatInput" placeholder="Digite sua mensagem..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-matte focus:border-transparent" disabled>
+                <button id="chatSend" class="bg-blue-matte hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm transition-colors" disabled>
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+            <div class="flex items-center justify-between mt-2">
+                <p class="text-xs text-gray-500">Atendimento: Segunda a Sexta, 08h às 23h</p>
+                <button onclick="clearChatHistory()" class="text-xs text-gray-400 hover:text-gray-600 transition-colors" title="Limpar histórico">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notifications Container -->
+<div id="toastContainer" class="fixed top-20 right-4 z-[9999] flex flex-col gap-3 max-w-md w-full md:w-auto pointer-events-none"></div>
+
+<!-- Confirmation Modal -->
+<div id="confirmModal" class="fixed inset-0 bg-black bg-opacity-50 z-[10000] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl transform transition-all">
+        <div class="flex items-center justify-between mb-4">
+            <h3 id="confirmTitle" class="text-xl font-bold text-gray-800">Confirmar</h3>
+            <button onclick="closeConfirmModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <p id="confirmMessage" class="text-gray-600 mb-6"></p>
+        <div class="flex gap-3 justify-end">
+            <button onclick="closeConfirmModal()" class="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-colors">
+                Cancelar
+            </button>
+            <button id="confirmOkBtn" onclick="handleConfirmOk()" class="px-6 py-2 bg-blue-matte hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors">
+                Confirmar
+            </button>
+        </div>
+    </div>
+</div>
