@@ -178,6 +178,9 @@
                     <button id="btnExportOrdersCsv" class="px-3 py-2 border rounded text-sm hover:bg-gray-50 whitespace-nowrap">Exportar Vendas (CSV)</button>
                     <button id="btnExportSchedulesCsv" class="px-3 py-2 border rounded text-sm hover:bg-gray-50 whitespace-nowrap">Exportar Inscrições (CSV)</button>
                     <button id="btnReconcile" class="px-3 py-2 bg-emerald-600 text-white rounded text-sm whitespace-nowrap">Reconciliar pagamentos (24h)</button>
+                    <button onclick="openProductsModal()" class="px-3 py-2 bg-blue-600 text-white rounded text-sm whitespace-nowrap hover:bg-blue-700">
+                        <i class="fas fa-box mr-1"></i>Gerenciar Produtos
+                    </button>
                 </div>
             </div>
 
@@ -321,10 +324,11 @@
                         <table class="w-full">
                             <thead>
                                 <tr class="text-left text-gray-600 bg-yellow-50">
-                                    <th class="py-2">Cliente</th>
+                                    <th class="py-2">Nome</th>
+                                    <th class="py-2">Contato</th>
+                                    <th class="py-2">Time</th>
+                                    <th class="py-2">Email</th>
                                     <th class="py-2">Item</th>
-                                    <th class="py-2">Valor</th>
-                                    <th class="py-2">Criado</th>
                                     <th class="py-2">Ações</th>
                                 </tr>
                             </thead>
@@ -347,10 +351,11 @@
                         <table class="w-full">
                             <thead>
                                 <tr class="text-left text-gray-600 bg-green-50">
-                                    <th class="py-2">Cliente</th>
+                                    <th class="py-2">Nome</th>
+                                    <th class="py-2">Contato</th>
+                                    <th class="py-2">Time</th>
+                                    <th class="py-2">Email</th>
                                     <th class="py-2">Item</th>
-                                    <th class="py-2">Valor</th>
-                                    <th class="py-2">Pago em</th>
                                 </tr>
                             </thead>
                             <tbody id="confirmedTbody" class="divide-y"></tbody>

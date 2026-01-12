@@ -4046,7 +4046,7 @@ async function loadConfirmedOrders() {
             confirmedTbody.innerHTML = '';
             
             if (snapshot.empty) {
-                confirmedTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-500">Nenhum pedido confirmado encontrado</td></tr>';
+                confirmedTbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">Nenhum pedido confirmado encontrado</td></tr>';
             } else {
                 // Ordenar manualmente por data
                 const orders = [];
@@ -4082,11 +4082,16 @@ async function loadConfirmedOrders() {
                 
                 orders.forEach(order => {
                     const row = document.createElement('tr');
+                    const nameDisplay = order.customerName || order.name || order.customer || '-';
+                    const contactDisplay = order.phone || order.contact || '-';
+                    const teamDisplay = order.teamName || order.team || '-';
+                    const emailDisplay = order.buyerEmail || order.customer || '-';
                     row.innerHTML = `
-                        <td class="py-2">${order.customerName || order.customer || '-'}</td>
-                        <td class="py-2">${getItemName(order)}</td>
-                        <td class="py-2">R$ ${(order.amount || order.total || 0).toFixed(2)}</td>
-                        <td class="py-2">${order.createdAt ? new Date(order.createdAt.toDate ? order.createdAt.toDate() : order.createdAt).toLocaleDateString('pt-BR') : '-'}</td>
+                        <td class="py-2 text-sm"><strong>${nameDisplay}</strong></td>
+                        <td class="py-2 text-sm">${contactDisplay}</td>
+                        <td class="py-2 text-sm">${teamDisplay}</td>
+                        <td class="py-2 text-sm">${emailDisplay}</td>
+                        <td class="py-2 text-sm">${getItemName(order)}</td>
                     `;
                     confirmedTbody.appendChild(row);
                 });
@@ -4123,7 +4128,7 @@ async function loadPendingOrders() {
             pendingTbody.innerHTML = '';
             
             if (snapshot.empty) {
-                pendingTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-500">Nenhum pedido pendente encontrado</td></tr>';
+                pendingTbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">Nenhum pedido pendente encontrado</td></tr>';
             } else {
                 // Ordenar manualmente por data
                 const orders = [];
@@ -4159,13 +4164,18 @@ async function loadPendingOrders() {
                 
                 orders.forEach(order => {
                     const row = document.createElement('tr');
+                    const nameDisplay = order.customerName || order.name || order.customer || '-';
+                    const contactDisplay = order.phone || order.contact || '-';
+                    const teamDisplay = order.teamName || order.team || '-';
+                    const emailDisplay = order.buyerEmail || order.customer || '-';
                     row.innerHTML = `
-                        <td class="py-2">${order.customerName || order.customer || '-'}</td>
-                        <td class="py-2">${getItemName(order)}</td>
-                        <td class="py-2">R$ ${(order.amount || order.total || 0).toFixed(2)}</td>
-                        <td class="py-2">${order.createdAt ? new Date(order.createdAt.toDate ? order.createdAt.toDate() : order.createdAt).toLocaleDateString('pt-BR') : '-'}</td>
-                        <td class="py-2">
-                            <button onclick="approveOrder('${order.id}')" class="text-green-600 hover:text-green-800 text-sm">Aprovar</button>
+                        <td class="py-2 text-sm"><strong>${nameDisplay}</strong></td>
+                        <td class="py-2 text-sm">${contactDisplay}</td>
+                        <td class="py-2 text-sm">${teamDisplay}</td>
+                        <td class="py-2 text-sm">${emailDisplay}</td>
+                        <td class="py-2 text-sm">${getItemName(order)}</td>
+                        <td class="py-2 text-sm">
+                            <button onclick="approveOrder('${order.id}')" class="text-green-600 hover:text-green-800 text-xs">Aprovar</button>
                         </td>
                     `;
                     pendingTbody.appendChild(row);
@@ -9568,3 +9578,201 @@ async function submitPaymentRequest(affiliateId, maxAmount) {
 // Expor funções globalmente
 window.loadAffiliatePanelData = loadAffiliatePanelData;
 window.submitPaymentRequest = submitPaymentRequest;
+
+// ===== GERENCIAMENTO DE PRODUTOS =====
+
+let productsData = [];
+let productCounter = 1;
+
+// Abrir modal de produtos
+function openProductsModal() {
+    loadProducts();
+    const modal = document.getElementById('modalProducts');
+    if (modal) modal.classList.remove('hidden');
+}
+
+// Fechar modal de produtos
+function closeProductsModal() {
+    const modal = document.getElementById('modalProducts');
+    if (modal) modal.classList.add('hidden');
+}
+
+// Carregar produtos do Firestore
+async function loadProducts() {
+    try {
+        const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const productsRef = collection(window.firebaseDb, 'products');
+        const snapshot = await getDocs(productsRef);
+        
+        productsData = [];
+        snapshot.forEach(doc => {
+            productsData.push({ id: doc.id, ...doc.data() });
+        });
+        
+        renderProducts();
+    } catch (error) {
+        console.error('Erro ao carregar produtos:', error);
+        showToast('error', 'Erro ao carregar produtos', 'Erro');
+    }
+}
+
+// Renderizar produtos na interface
+function renderProducts() {
+    const container = document.getElementById('productsContainer');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (productsData.length === 0) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-500">Nenhum produto cadastrado. Clique em "Adicionar" para criar um novo.</div>';
+        return;
+    }
+    
+    productsData.forEach((product, index) => {
+        const productDiv = document.createElement('div');
+        productDiv.className = 'bg-white border border-gray-200 rounded-lg p-6 mb-4';
+        productDiv.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Nome do Produto</label>
+                    <input type="text" value="${product.name || ''}" class="w-full border rounded px-3 py-2 text-sm" 
+                           onchange="productsData[${index}].name = this.value" placeholder="Ex: Sensibilidade, Planilha">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Descrição</label>
+                    <input type="text" value="${product.description || ''}" class="w-full border rounded px-3 py-2 text-sm"
+                           onchange="productsData[${index}].description = this.value" placeholder="Descrição breve">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Preço (R$)</label>
+                    <input type="number" value="${product.price || 0}" step="0.01" class="w-full border rounded px-3 py-2 text-sm"
+                           onchange="productsData[${index}].price = parseFloat(this.value)" placeholder="0.00">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Categoria</label>
+                    <select onchange="productsData[${index}].category = this.value" class="w-full border rounded px-3 py-2 text-sm">
+                        <option value="">Selecione</option>
+                        <option value="digital" ${product.category === 'digital' ? 'selected' : ''}>Produto Digital</option>
+                        <option value="physical" ${product.category === 'physical' ? 'selected' : ''}>Produto Físico</option>
+                        <option value="service" ${product.category === 'service' ? 'selected' : ''}>Serviço</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">URL da Imagem</label>
+                    <input type="url" value="${product.image || ''}" class="w-full border rounded px-3 py-2 text-sm"
+                           onchange="productsData[${index}].image = this.value" placeholder="https://...">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Link de Download/Acesso</label>
+                    <input type="url" value="${product.downloadLink || ''}" class="w-full border rounded px-3 py-2 text-sm"
+                           onchange="productsData[${index}].downloadLink = this.value" placeholder="https://...">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Status</label>
+                    <select onchange="productsData[${index}].active = this.value === 'true'" class="w-full border rounded px-3 py-2 text-sm">
+                        <option value="true" ${product.active !== false ? 'selected' : ''}>Ativo</option>
+                        <option value="false" ${product.active === false ? 'selected' : ''}>Inativo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Estoque (se aplicável)</label>
+                    <input type="number" value="${product.stock || 0}" class="w-full border rounded px-3 py-2 text-sm"
+                           onchange="productsData[${index}].stock = parseInt(this.value)" placeholder="0">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">ID do Produto (será salvo)</label>
+                    <input type="text" value="${product.id || ''}" class="w-full border rounded px-3 py-2 text-sm bg-gray-100" disabled>
+                </div>
+            </div>
+            <div class="mt-4 flex justify-end gap-2">
+                <button onclick="deleteProduct(${index})" class="px-3 py-1 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200">
+                    <i class="fas fa-trash mr-1"></i>Excluir
+                </button>
+            </div>
+        `;
+        container.appendChild(productDiv);
+    });
+}
+
+// Adicionar novo produto
+function addProduct() {
+    const newProduct = {
+        id: `product_${Date.now()}`,
+        name: '',
+        description: '',
+        price: 0,
+        category: 'digital',
+        image: '',
+        downloadLink: '',
+        active: true,
+        stock: 0,
+        createdAt: new Date()
+    };
+    
+    productsData.push(newProduct);
+    renderProducts();
+    
+    // Scroll para o novo produto
+    setTimeout(() => {
+        const container = document.getElementById('productsContainer');
+        if (container) container.scrollTop = container.scrollHeight;
+    }, 100);
+}
+
+// Deletar produto
+function deleteProduct(index) {
+    if (confirm('Tem certeza que deseja deletar este produto?')) {
+        productsData.splice(index, 1);
+        renderProducts();
+    }
+}
+
+// Salvar produtos no Firestore
+async function saveProducts() {
+    try {
+        if (productsData.length === 0) {
+            showToast('warning', 'Nenhum produto para salvar', 'Aviso');
+            return;
+        }
+        
+        const { collection, doc, setDoc, deleteDoc, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const productsRef = collection(window.firebaseDb, 'products');
+        
+        // Primeiro, deletar produtos que foram removidos
+        const existingSnap = await getDocs(productsRef);
+        const existingIds = new Set(productsData.map(p => p.id));
+        
+        for (const existingDoc of existingSnap.docs) {
+            if (!existingIds.has(existingDoc.id)) {
+                await deleteDoc(doc(window.firebaseDb, 'products', existingDoc.id));
+            }
+        }
+        
+        // Salvar/atualizar produtos
+        for (const product of productsData) {
+            const productRef = doc(window.firebaseDb, 'products', product.id);
+            const { id, ...productData } = product;
+            await setDoc(productRef, {
+                ...productData,
+                updatedAt: new Date()
+            });
+        }
+        
+        showToast('success', `${productsData.length} produto(s) salvo(s) com sucesso!`, 'Sucesso');
+        closeProductsModal();
+    } catch (error) {
+        console.error('Erro ao salvar produtos:', error);
+        showToast('error', 'Erro ao salvar produtos: ' + error.message, 'Erro');
+    }
+}
+
+// Expor funções globalmente
+window.openProductsModal = openProductsModal;
+window.closeProductsModal = closeProductsModal;
+window.addProduct = addProduct;
+window.deleteProduct = deleteProduct;
+window.saveProducts = saveProducts;

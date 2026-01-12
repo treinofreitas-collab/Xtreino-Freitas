@@ -554,7 +554,8 @@ async function loadProducts() {
             title: d.data.title || d.data.item || 'Produto',
             status: d.data.status || 'pending',
             price: d.data.amount ?? d.data.total ?? 0,
-            eventType: d.data.eventType || ''
+            eventType: d.data.eventType || '',
+            type: d.data.type || ''
         }));
 
         // Filter only products (not events or tokens)

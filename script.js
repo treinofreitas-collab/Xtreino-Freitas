@@ -3226,7 +3226,7 @@ function initChat() {
             },
             {
                 match: ['contato', 'falar', 'ajuda', 'suporte', 'problema'],
-                reply: 'Precisa de ajuda? Use este chat 24 horas ou WhatsApp: (11) 94983-0454. Chat sempre disponível!'
+                reply: 'Precisa de ajuda? Use este chat 24 horas ou WhatsApp: (11) 94911-3275. Chat sempre disponível!'
             },
 
             // Pagamento e cupons
@@ -3338,7 +3338,7 @@ function initChat() {
             } else if (textLower.includes('cupom') || textLower.includes('desconto') || textLower.includes('promocao') || textLower.includes('promo')) {
                 matchedReply = 'Cupons de desconto disponíveis! Digite o código na compra. Alguns são específicos para eventos ou loja.';
             } else {
-                matchedReply = `❌ Não temos essa resposta no chat.\n\nChame no WhatsApp para saber melhor:\n\n📱 (11) 94983-0454\n\n🔗 [Clique aqui para abrir o WhatsApp](${whatsLink})`;
+                matchedReply = `❌ Não temos essa resposta no chat.\n\nChame no WhatsApp para saber melhor:\n\n📱 (11) 94911-3275\n\n🔗 [Clique aqui para abrir o WhatsApp](${whatsLink})`;
             }
         }
 
