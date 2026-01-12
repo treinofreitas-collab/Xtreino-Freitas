@@ -5147,129 +5147,67 @@ async function checkSlotAvailability(date, schedule, eventType) {
 
 // Verifica disponibilidade para múltiplos horários e times
 async function checkMultipleSlotAvailability(date, selectedTimes, eventType, numberOfTeams) {
-    try {
-        if (!window.firebaseReady) return { available: true };
-
-        // CRÍTICO: Garantir que a data está normalizada (YYYY-MM-DD)
-        const normalizedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-        if (!normalizedDate) {
-            console.warn('⚠️ Data inválida em checkMultipleSlotAvailability:', date);
-            return { available: true }; // Em caso de data inválida, permitir (evitar bloqueio indevido)
-        }
-
-        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const regsRef = collection(window.firebaseDb, 'registrations');
-
-        const unavailableSlots = [];
-        const partiallyAvailableSlots = [];
-
-        // Verificar cada horário selecionado
-        for (let schedule of selectedTimes) {
-            const clauses = [
-                where('date', '==', normalizedDate),
-                // Incluir 'pending' para evitar que múltiplas reservas sejam criadas simultaneamente
-                where('status', 'in', ['paid', 'confirmed', 'approved', 'pending'])
-            ];
-            if (eventType) clauses.push(where('eventType', '==', eventType));
-            const q = query(regsRef, ...clauses);
-            const snap = await getDocs(q);
-            const wantedHour = parseInt(String(schedule).match(/(\d{1,2})\s*h/)?.[1] || 'NaN', 10);
-            let occupiedSlots = 0;
-            snap.forEach(d => {
-                const r = d.data();
-                const rawSchedule = String(r.schedule || '');
-                const rawHour = String(r.hour || '');
-                let hh = rawSchedule.match(/(\d{1,2})\s*h/)?.[1]
-                    || rawSchedule.match(/(\d{1,2})\s*:/)?.[1]
-                    || rawHour.match(/(\d{1,2})/)?.[1];
-                hh = parseInt(hh || 'NaN', 10);
-                if (!Number.isNaN(hh) && hh === wantedHour) occupiedSlots++;
-            });
-            // Overrides (horários travados pelo admin)
-            try {
-                const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                const ovRef = c2(window.firebaseDb, 'schedule_overrides');
-
-                // Buscar APENAS overrides da data específica (normalizada)
-                const ovSnap = await g2(q2(ovRef, w2('date', '==', normalizedDate)));
-
-                ovSnap.forEach(doc => {
-                    const ov = doc.data();
-
-                    // VALIDAÇÃO CRÍTICA: Garantir que o override é realmente para esta data
-                    const ovDate = ov.date || '';
-                    if (ovDate !== normalizedDate) {
-                        console.warn(`⚠️ Override com data inconsistente em checkMultipleSlotAvailability: esperado ${normalizedDate}, encontrado ${ovDate}. Ignorando.`);
-                        return; // Ignorar override de data diferente
-                    }
-
-                    const ovHour = parseInt(String(ov.hour || ov.hh || '').replace(/\D/g, ''), 10);
-
-                    if (ovHour === wantedHour) {
-                        const ovEventType = ov.eventType || null;
-                        const shouldApply = !ovEventType || ovEventType === eventType || !eventType;
-
-                        if (shouldApply) {
-                            if (ov.locked) {
-                                // Horário travado pelo admin: marcar como lotado
-                                occupiedSlots = getEventCapacity(eventType, `${wantedHour}h`, normalizedDate);
-                                console.log(`🔒 Horário ${wantedHour}h travado para ${normalizedDate} (eventType: ${eventType || 'todos'})`);
-                            }
-                            if (ov.extraOccupied) {
-                                occupiedSlots += Number(ov.extraOccupied || 0);
-                            }
-                        }
-                    }
-                });
-            } catch (err) {
-                console.error('Erro ao verificar overrides:', err);
-            }
-            const capacity = getEventCapacity(eventType, `${wantedHour}h`, normalizedDate);
-            const availableSlots = capacity - occupiedSlots;
-
-            // Não permitir compra se ocupado >= capacidade (não pode ultrapassar)
-            if (occupiedSlots >= capacity || availableSlots <= 0) {
-                unavailableSlots.push(schedule);
-            } else if (availableSlots < numberOfTeams) {
-                partiallyAvailableSlots.push({
-                    schedule: schedule,
-                    available: availableSlots,
-                    requested: numberOfTeams
-                });
-            }
-        }
-
-        // Gerar mensagem de erro apropriada
-        if (unavailableSlots.length > 0) {
-            // Usar capacidade padrão para mensagem (sem horário específico)
-            const defaultCapacity = getEventCapacity(eventType, '20h', normalizedDate);
-            return {
-                available: false,
-                message: `❌ Horários sem vagas: ${unavailableSlots.join(', ')}\n\nLimite: ${defaultCapacity} times por horário`
-            };
-        }
-
-        if (partiallyAvailableSlots.length > 0) {
-            const details = partiallyAvailableSlots.map(slot =>
-                `${slot.schedule}: ${slot.available} vagas disponíveis (você quer ${slot.requested})`
-            ).join('\n');
-
-            // Usar capacidade padrão para mensagem (sem horário específico)
-            const defaultCapacity = getEventCapacity(eventType, '20h', normalizedDate);
-            return {
-                available: false,
-                message: `⚠️ Vagas insuficientes:\n\n${details}\n\nLimite: ${defaultCapacity} times por horário\n\nSugestão: Reduza o número de times ou escolha outros horários.`
-            };
-        }
-
-        return { available: true };
-
-    } catch (error) {
-        console.error('Erro ao verificar disponibilidade:', error);
-        logError(error, 'EVENT_004');
-        return { available: true }; // Em caso de erro, permite continuar
+  try {
+    // Fail-safe: se algo básico estiver errado, não bloqueia o usuário
+    if (!date || !Array.isArray(selectedTimes) || selectedTimes.length === 0) {
+      return { available: true };
     }
+
+    // Normalização defensiva da data
+    const normalizedDate =
+      typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? date
+        : null;
+
+    if (!normalizedDate) {
+      console.warn('⚠️ Data inválida em checkMultipleSlotAvailability:', date);
+      return { available: true };
+    }
+
+    // 🔥 ÚNICO ponto de verdade agora é o backend
+    const response = await fetch('/.netlify/functions/check-availability', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: normalizedDate,
+        selectedTimes,
+        eventType: eventType || null,
+        numberOfTeams: Number(numberOfTeams || 1)
+      })
+    });
+
+    if (!response.ok) {
+      console.error('⚠️ check-availability retornou erro HTTP:', response.status);
+      return { available: true }; // fail-safe
+    }
+
+    const result = await response.json();
+
+    // Garantia mínima de contrato
+    if (typeof result !== 'object' || result === null) {
+      console.warn('⚠️ Resposta inválida do check-availability:', result);
+      return { available: true };
+    }
+
+    return result;
+
+  } catch (error) {
+    // 🔒 Nunca bloquear compra por erro técnico
+    console.error('Erro ao verificar disponibilidade:', error);
+
+    try {
+      logError(
+        typeof error?.message === 'string' ? error.message : 'CHECK_AVAILABILITY_ERROR',
+        'EVENT_004'
+      );
+    } catch (_) {
+      // logging não pode quebrar fluxo
+    }
+
+    return { available: true };
+  }
 }
+
 async function updateOccupiedAndRefreshButtons(day, date, eventType, container) {
     // IMPORTANTE: Sempre invalidar cache ao mudar de data para evitar dados antigos
     // Garantir que a data está no formato correto (YYYY-MM-DD)

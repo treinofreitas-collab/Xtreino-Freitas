@@ -26,3 +26,6 @@ yarn-error.log*
 serviceAccount-*.json
 *-firebase-adminsdk-*.json
 
+
+# Local Netlify folder
+.netlify
