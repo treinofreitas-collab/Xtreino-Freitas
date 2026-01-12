@@ -281,7 +281,7 @@ async function switchTab(tabName) {
         button.classList.add('border-transparent', 'text-gray-500');
     });
 
-    // Show selected tab content
+    // Show selected tab content.
     document.getElementById(tabName + 'Content').classList.remove('hidden');
 
     // Add active class to selected tab
@@ -3151,10 +3151,11 @@ window.purchaseTokens = async function(quantity) {
         }
 
         // 2) Request server-side to create Mercado Pago preference and pass external_reference as order id
+        console.log(selectedTokensQty, 'selectedTokensQty antes do payload');
         const payload = {
         title: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
-        quantity: 1,
-        unit_price: price,
+        quantity: baseQty, // COMO ESTAVA ANTES quantity: 1 isso faz que a quantidade de tokens sempre seja 1 independente do selecionado
+        unit_price: 1,
         currency_id: 'BRL',
         back_url: window.location.origin + window.location.pathname,
         external_reference: savedOrderId,
