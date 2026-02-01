@@ -589,11 +589,162 @@ async function loadProducts() {
 }
 
 // Função para converter data e horário do evento em DateTime - VERSÃO CORRIGIDA
+// function getEventDateTime(dateStr, scheduleStr) {
+//     try {
+//         console.log('🔍 getEventDateTime - dateStr:', dateStr, 'scheduleStr:', scheduleStr);
+        
+//         // Verificar se dateStr é válido - SE NÃO HOUVER DATA DO EVENTO, RETORNAR INVÁLIDO
+//         if (!dateStr || dateStr === 'undefined' || dateStr === 'null' || dateStr === '' || dateStr === 'Invalid Date') {
+//             console.log('❌ dateStr inválido ou vazio:', dateStr);
+//             return new Date(NaN); // Retorna data inválida
+//         }
+        
+//         let date;
+        
+//         // Se dateStr já é um objeto Date
+//         if (dateStr instanceof Date) {
+//             // Verificar se é uma data válida
+//             if (isNaN(dateStr.getTime())) {
+//                 console.log('❌ Date inválida');
+//                 return new Date(NaN);
+//             }
+//             // Criar nova data usando o timezone local
+//             date = new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate());
+//             console.log('🔍 dateStr é Date, criando nova Date local:', date);
+//         } 
+//         // Se é uma string
+//         else if (typeof dateStr === 'string') {
+//             console.log('🔍 dateStr é string, processando...');
+            
+//             // Limpar a string
+//             dateStr = dateStr.trim();
+            
+//             // Tentar diferentes formatos de data
+//             if (dateStr.includes('/')) {
+//                 // Formato DD/MM/YYYY ou DD/MM/YYYY HH:mm
+//                 console.log('🔍 Formato com / detectado');
+//                 const dateParts = dateStr.split(/[/\sT]/);
+                
+//                 if (dateParts.length >= 3) {
+//                     const day = parseInt(dateParts[0], 10);
+//                     const month = parseInt(dateParts[1], 10) - 1; // Meses são 0-indexed
+//                     const year = parseInt(dateParts[2], 10);
+                    
+//                     // Verificar se é uma data válida
+//                     if (isNaN(day) || isNaN(month) || isNaN(year) || day < 1 || day > 31 || month < 0 || month > 11) {
+//                         console.log('❌ Partes de data inválidas:', { day, month, year });
+//                         return new Date(NaN);
+//                     }
+                    
+//                     date = new Date(year, month, day);
+//                     console.log('🔍 Data criada a partir de partes:', { day, month, year, result: date });
+//                 } else {
+//                     console.log('❌ Formato de data inválido');
+//                     return new Date(NaN);
+//                 }
+//             } 
+//             else if (dateStr.includes('-')) {
+//                 // Formato YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ss
+//                 console.log('🔍 Formato com - detectado');
+                
+//                 // Remover parte do tempo se existir
+//                 const dateOnly = dateStr.split('T')[0].split(' ')[0];
+//                 const parts = dateOnly.split('-');
+                
+//                 if (parts.length === 3) {
+//                     const year = parseInt(parts[0], 10);
+//                     const month = parseInt(parts[1], 10) - 1; // Meses são 0-indexed
+//                     const day = parseInt(parts[2], 10);
+                    
+//                     // Verificar se é uma data válida
+//                     if (isNaN(year) || isNaN(month) || isNaN(day) || day < 1 || day > 31 || month < 0 || month > 11) {
+//                         console.log('❌ Partes de data inválidas:', { year, month, day });
+//                         return new Date(NaN);
+//                     }
+                    
+//                     date = new Date(year, month, day);
+//                     console.log('🔍 Data criada no timezone local a partir de partes:', { year, month, day, result: date });
+//                 } else {
+//                     console.log('❌ Formato de data inválido');
+//                     return new Date(NaN);
+//                 }
+//             } 
+//             else {
+//                 // Tentar parsing direto
+//                 console.log('🔍 Formato não reconhecido, tentando new Date()');
+//                 const tempDate = new Date(dateStr);
+//                 if (isNaN(tempDate.getTime())) {
+//                     console.log('❌ new Date() retornou inválido');
+//                     return new Date(NaN);
+//                 }
+//                 date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
+//             }
+//         } 
+//         else {
+//             console.log('❌ Tipo não reconhecido para dateStr:', typeof dateStr);
+//             return new Date(NaN);
+//         }
+        
+//         console.log('🔍 Data base criada:', date);
+//         console.log('🔍 Data base é válida?', !isNaN(date.getTime()));
+        
+//         // Verificar se a data é válida
+//         if (isNaN(date.getTime())) {
+//             console.log('❌ Data inválida após parsing');
+//             return new Date(NaN);
+//         }
+        
+//         // Extrair o horário do schedule
+//         let hour = 0; // Default para meia-noite se não houver horário
+//         let minute = 0;
+        
+//         if (scheduleStr && scheduleStr.trim()) {
+//             console.log('🔍 Processando schedule:', scheduleStr);
+            
+//             // Extrair números do schedule (aceita "19", "19h", "19:00", "19h00", "Terça-feira - 19h")
+//             const timeMatch = scheduleStr.toString().match(/(\d{1,2})[h:]?(\d{0,2})/i);
+            
+//             if (timeMatch) {
+//                 hour = parseInt(timeMatch[1], 10);
+//                 minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+                
+//                 // Validar hora e minuto
+//                 if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+//                     console.log('❌ Hora/minuto inválidos:', { hour, minute });
+//                     hour = 0;
+//                     minute = 0;
+//                 }
+                
+//                 console.log('🔍 Hora extraída:', hour, 'Minuto:', minute);
+//             } else {
+//                 console.log('❌ Não foi possível extrair hora do schedule');
+//             }
+//         } else {
+//             console.log('⚠️ Sem schedule, usando meia-noite como padrão');
+//         }
+        
+//         // Definir a data e hora do evento
+//         date.setHours(hour, minute, 0, 0);
+        
+//         console.log('🔍 Data/hora final do evento:', date);
+//         console.log('🔍 Data/hora final (ISO):', date.toISOString());
+//         console.log('🔍 Data/hora final (local):', date.toLocaleString('pt-BR'));
+//         console.log('🔍 Data/hora final é válida?', !isNaN(date.getTime()));
+        
+//         return date;
+//     } catch (error) {
+//         console.error('❌ Erro ao converter data/hora do evento:', error);
+//         console.error('❌ Stack trace:', error.stack);
+//         return new Date(NaN);
+//     }
+// }
+
+// Função para converter data e horário do evento em DateTime - VERSÃO CORRIGIDA PRESERVANDO HORÁRIO
 function getEventDateTime(dateStr, scheduleStr) {
     try {
         console.log('🔍 getEventDateTime - dateStr:', dateStr, 'scheduleStr:', scheduleStr);
         
-        // Verificar se dateStr é válido - SE NÃO HOUVER DATA DO EVENTO, RETORNAR INVÁLIDO
+        // Verificar se dateStr é válido
         if (!dateStr || dateStr === 'undefined' || dateStr === 'null' || dateStr === '' || dateStr === 'Invalid Date') {
             console.log('❌ dateStr inválido ou vazio:', dateStr);
             return new Date(NaN); // Retorna data inválida
@@ -608,9 +759,10 @@ function getEventDateTime(dateStr, scheduleStr) {
                 console.log('❌ Date inválida');
                 return new Date(NaN);
             }
-            // Criar nova data usando o timezone local
-            date = new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate());
-            console.log('🔍 dateStr é Date, criando nova Date local:', date);
+            // Usar a data COM o horário original
+            date = new Date(dateStr);
+            console.log('🔍 dateStr é Date, usando com horário original:', date);
+            console.log('🔍 Horário original:', date.getHours() + ':' + date.getMinutes());
         } 
         // Se é uma string
         else if (typeof dateStr === 'string') {
@@ -636,8 +788,19 @@ function getEventDateTime(dateStr, scheduleStr) {
                         return new Date(NaN);
                     }
                     
-                    date = new Date(year, month, day);
-                    console.log('🔍 Data criada a partir de partes:', { day, month, year, result: date });
+                    // Se tiver partes de hora (partes 3 e 4)
+                    let hour = 0;
+                    let minute = 0;
+                    
+                    if (dateParts.length >= 4) {
+                        // Extrair hora dos formatos como "HH:mm" ou "HH:mm:ss"
+                        const timeParts = dateParts[3].split(':');
+                        hour = parseInt(timeParts[0], 10) || 0;
+                        minute = parseInt(timeParts[1], 10) || 0;
+                    }
+                    
+                    date = new Date(year, month, day, hour, minute);
+                    console.log('🔍 Data criada a partir de partes com horário:', { year, month, day, hour, minute, result: date });
                 } else {
                     console.log('❌ Formato de data inválido');
                     return new Date(NaN);
@@ -647,26 +810,37 @@ function getEventDateTime(dateStr, scheduleStr) {
                 // Formato YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ss
                 console.log('🔍 Formato com - detectado');
                 
-                // Remover parte do tempo se existir
-                const dateOnly = dateStr.split('T')[0].split(' ')[0];
-                const parts = dateOnly.split('-');
-                
-                if (parts.length === 3) {
-                    const year = parseInt(parts[0], 10);
-                    const month = parseInt(parts[1], 10) - 1; // Meses são 0-indexed
-                    const day = parseInt(parts[2], 10);
-                    
-                    // Verificar se é uma data válida
-                    if (isNaN(year) || isNaN(month) || isNaN(day) || day < 1 || day > 31 || month < 0 || month > 11) {
-                        console.log('❌ Partes de data inválidas:', { year, month, day });
+                // Se tiver "T" (formato ISO), manter hora original
+                if (dateStr.includes('T')) {
+                    // Formato ISO completo: YYYY-MM-DDTHH:mm:ss
+                    const isoDate = new Date(dateStr);
+                    if (isNaN(isoDate.getTime())) {
+                        console.log('❌ Formato ISO inválido');
                         return new Date(NaN);
                     }
-                    
-                    date = new Date(year, month, day);
-                    console.log('🔍 Data criada no timezone local a partir de partes:', { year, month, day, result: date });
+                    date = isoDate;
+                    console.log('🔍 Data criada a partir de formato ISO:', date);
                 } else {
-                    console.log('❌ Formato de data inválido');
-                    return new Date(NaN);
+                    // Formato YYYY-MM-DD sem hora
+                    const parts = dateStr.split('-');
+                    
+                    if (parts.length === 3) {
+                        const year = parseInt(parts[0], 10);
+                        const month = parseInt(parts[1], 10) - 1; // Meses são 0-indexed
+                        const day = parseInt(parts[2], 10);
+                        
+                        // Verificar se é uma data válida
+                        if (isNaN(year) || isNaN(month) || isNaN(day) || day < 1 || day > 31 || month < 0 || month > 11) {
+                            console.log('❌ Partes de data inválidas:', { year, month, day });
+                            return new Date(NaN);
+                        }
+                        
+                        date = new Date(year, month, day); // Sem hora (meia-noite)
+                        console.log('🔍 Data criada no formato YYYY-MM-DD (sem hora):', date);
+                    } else {
+                        console.log('❌ Formato de data inválido');
+                        return new Date(NaN);
+                    }
                 }
             } 
             else {
@@ -677,7 +851,8 @@ function getEventDateTime(dateStr, scheduleStr) {
                     console.log('❌ new Date() retornou inválido');
                     return new Date(NaN);
                 }
-                date = new Date(tempDate.getFullYear(), tempDate.getMonth(), tempDate.getDate());
+                date = new Date(tempDate);
+                console.log('🔍 Data criada por new Date():', date);
             }
         } 
         else {
@@ -686,6 +861,7 @@ function getEventDateTime(dateStr, scheduleStr) {
         }
         
         console.log('🔍 Data base criada:', date);
+        console.log('🔍 Horário da data base:', date.getHours() + ':' + date.getMinutes() + ':' + date.getSeconds());
         console.log('🔍 Data base é válida?', !isNaN(date.getTime()));
         
         // Verificar se a data é válida
@@ -694,37 +870,40 @@ function getEventDateTime(dateStr, scheduleStr) {
             return new Date(NaN);
         }
         
-        // Extrair o horário do schedule
-        let hour = 0; // Default para meia-noite se não houver horário
-        let minute = 0;
-        
+        // Extrair o horário do schedule (somente se scheduleStr tiver horário válido)
         if (scheduleStr && scheduleStr.trim()) {
-            console.log('🔍 Processando schedule:', scheduleStr);
+            console.log('🔍 Processando schedule para possível ajuste de horário:', scheduleStr);
             
             // Extrair números do schedule (aceita "19", "19h", "19:00", "19h00", "Terça-feira - 19h")
             const timeMatch = scheduleStr.toString().match(/(\d{1,2})[h:]?(\d{0,2})/i);
             
             if (timeMatch) {
-                hour = parseInt(timeMatch[1], 10);
-                minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+                const hour = parseInt(timeMatch[1], 10);
+                const minute = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
                 
                 // Validar hora e minuto
-                if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-                    console.log('❌ Hora/minuto inválidos:', { hour, minute });
-                    hour = 0;
-                    minute = 0;
+                if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+                    // Ajustar SOMENTE se a data atual não tiver horário específico (meia-noite)
+                    // OU se quisermos sempre priorizar o schedule (dependendo da regra de negócio)
+                    
+                    // REGRA: Se a data já tem um horário específico (não é meia-noite), manter
+                    // Se for meia-noite, usar o schedule
+                    if (date.getHours() === 0 && date.getMinutes() === 0) {
+                        console.log('🔍 Data tem meia-noite, ajustando com horário do schedule:', hour, ':', minute);
+                        date.setHours(hour, minute, 0, 0);
+                    } else {
+                        console.log('🔍 Data já tem horário específico, mantendo:', date.getHours(), ':', date.getMinutes());
+                        console.log('🔍 Schedule ignorado pois data já tem horário');
+                    }
+                } else {
+                    console.log('❌ Hora/minuto inválidos do schedule:', { hour, minute });
                 }
-                
-                console.log('🔍 Hora extraída:', hour, 'Minuto:', minute);
             } else {
                 console.log('❌ Não foi possível extrair hora do schedule');
             }
         } else {
-            console.log('⚠️ Sem schedule, usando meia-noite como padrão');
+            console.log('⚠️ Sem schedule, mantendo horário da data');
         }
-        
-        // Definir a data e hora do evento
-        date.setHours(hour, minute, 0, 0);
         
         console.log('🔍 Data/hora final do evento:', date);
         console.log('🔍 Data/hora final (ISO):', date.toISOString());
@@ -1162,6 +1341,25 @@ async function getWhatsAppLinkForOrder(order) {
     }
 }
 
+function toBrazilISOString(dateStr) {
+  const date = new Date(dateStr);
+
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).formatToParts(date);
+
+  const get = type => parts.find(p => p.type === type).value;
+
+  return `${get('year')}-${get('month')}-${get('day')}T` +
+         `${get('hour')}:${get('minute')}:${get('second')}-03:00`;
+}
+
 // Get appropriate action button for order (events only) - VERSÃO CORRIGIDA
 async function getOrderActionButton(order) {
     console.log('🔍 getOrderActionButton - Order:', order);
@@ -1223,10 +1421,10 @@ async function getOrderActionButton(order) {
     } 
     // Se tiver data do evento, calcular disponibilidade
     else {
-        console.log('✅ Tem data do evento, calculando disponibilidade...');
+        console.log('✅ Tem data do evento, calculando disponibilidade...');     
         
-        const eventDateTime = getEventDateTime(order.eventDate, scheduleStr);
-        console.log('🔍 Data/hora do evento calculada:', eventDateTime);
+        const eventDateTime = new Date(order.eventDate); 
+        console.log('🔍 Data/hora do evento calculada:', eventDateTime.getTime(), 'ISO STRING');
         
         if (isNaN(eventDateTime.getTime())) {
             console.log('❌ Data/hora do evento inválida');
@@ -1234,16 +1432,13 @@ async function getOrderActionButton(order) {
             buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
             isAvailable = false;
         } else {
-            // Regra: disponível imediatamente após a compra e expira no horário do evento
+          
             const now = new Date();
-            const eventTime = eventDateTime.getTime();
-            
-            console.log('🔍 Agora:', now.toISOString(), '(', now.toLocaleString('pt-BR'), ')');
-            console.log('🔍 Evento em:', eventDateTime.toISOString(), '(', eventDateTime.toLocaleString('pt-BR'), ')');
-            console.log('🔍 Timestamp - Agora:', now.getTime(), 'Evento:', eventTime);
+            const ymd = now.toISOString().split('T')[0];            
+            const eventTime = order.eventDate;           
             
             // Disponibilidade: agora <= horário do evento
-            if (now.getTime() <= eventTime) {
+            if (ymd <= eventTime) {
                 isAvailable = true;
                 buttonText = 'Entrar no Grupo';
                 buttonClass = 'text-green-700 bg-green-100 hover:bg-green-200';
