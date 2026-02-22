@@ -784,15 +784,13 @@ function formatTitleWithSchedule(title, dateStr, schedule){
     return title;
 }
 
-function parseSchedule(scheduleStr){
-    const out = { weekday: '', hour: (scheduleStr||'').trim() };
-    if (!scheduleStr) return out;
-    if (scheduleStr.includes('-')){
-        const parts = scheduleStr.split('-');
-        out.weekday = (parts[0]||'').trim();
-        out.hour = (parts[1]||'').trim();
-    }
-    return out;
+function parseSchedule(scheduleStr) {
+    const match = scheduleStr?.match(/^(.+?)\s-\s(.+)$/);
+
+    return {
+        weekday: match ? match[1] : '',
+        hour: match ? match[2] : ''
+    };
 }
 
 function formatShortDatePtBr(dateStr){
