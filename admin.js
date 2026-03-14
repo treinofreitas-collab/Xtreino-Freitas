@@ -413,6 +413,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (sectionAdminHistory) sectionAdminHistory.style.display = 'none';
       
       console.log('✅ Permissões de Afiliado aplicadas - apenas painel de afiliado');
+
+          
       return; // Sair da função para não aplicar outras regras
     }
     

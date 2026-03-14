@@ -415,28 +415,33 @@ async function loadRecentOrders() {
             eventType: d.data.eventType || '',
             paidWithTokens: d.data.paidWithTokens || false,
             tokensUsed: d.data.tokensUsed || 0
-        })).filter(o=> o.status !== 'confirmed');
+        })).filter(o => o.status !== 'confirmed');
 
-        // Registrations de eventos: incluir tokens e pagamentos aprovados (paid/confirmed)
+        // Registrations de eventos: incluir TODOS os pagos com tokens (qualquer status) e os com status 'paid'
         const regsData = await fetchUserDocs('registrations', 10, true);
         const regEvents = regsData
-          .filter(d => (d.data.paidWithTokens === true && d.data.status !== 'confirmed') || d.data.status === 'paid')
-          .map(d => ({
-            id: d.id,
-            date: d.data.createdAt?.toDate?.() || new Date(),
-            title: d.data.title || d.data.eventType || 'Reserva',
-            status: d.data.status || 'paid',
-            price: d.data.paidWithTokens ? 0 : (d.data.price || 0),
-            eventDate: d.data.date || null,
-            schedule: d.data.schedule || d.data.hour || d.data.time || '',
-            eventType: d.data.eventType || '',
-            paidWithTokens: d.data.paidWithTokens === true,
-            tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0
-          }));
+            .filter(d => {
+                const paidWithTokens = d.data.paidWithTokens === true;
+                const status = d.data.status || '';
+                // Inclui se pago com tokens OU se status for 'paid'
+                return paidWithTokens || status === 'paid';
+            })
+            .map(d => ({
+                id: d.id,
+                date: d.data.createdAt?.toDate?.() || new Date(),
+                title: d.data.title || d.data.eventType || 'Reserva',
+                status: d.data.status || 'paid',
+                price: d.data.paidWithTokens ? 0 : (d.data.price || 0),
+                eventDate: d.data.date || null,
+                schedule: d.data.schedule || d.data.hour || d.data.time || '',
+                eventType: d.data.eventType || '',
+                paidWithTokens: d.data.paidWithTokens === true,
+                tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0
+            }));
 
         const merged = [...orders, ...regEvents]
-          .sort((a,b)=> (b.date?.getTime?.()||0) - (a.date?.getTime?.()||0))
-          .slice(0, 5);
+            .sort((a, b) => (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0))
+            .slice(0, 5);
 
         displayRecentOrders(merged);
     } catch (error) {
@@ -457,21 +462,27 @@ function displayRecentOrders(orders) {
         return;
     }
 
-    const ordersHTML = orders.map(order => `
-        <div class="flex items-center justify-between py-3 border-b border-gray-200 last:border-b-0">
-            <div>
-                <p class="font-medium text-gray-900">${order.title || 'Reserva'}</p>
-                <p class="text-sm text-gray-500">${formatDate(order.date)}</p>
+    const ordersHTML = orders.map(order => {
+        // Define o valor a ser exibido: se pago com tokens, mostra a quantidade; senão, mostra o valor monetário
+        const valorDisplay = order.paidWithTokens
+            ? `${order.tokensUsed} token${order.tokensUsed !== 1 ? 's' : ''}`
+            : `R$ ${order.price?.toFixed(2) || '0,00'}`;
+
+        return `
+            <div class="flex items-center justify-between py-3 border-b border-gray-200 last:border-b-0">
+                <div>
+                    <p class="font-medium text-gray-900">${order.title || 'Reserva'}</p>
+                    <p class="text-sm text-gray-500">${formatDate(order.date)}</p>
+                </div>
+                <div class="text-right">
+                    <p class="font-medium text-gray-900">${valorDisplay}</p>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status, order)}">
+                        ${getStatusText(order.status, order)}
+                    </span>
+                </div>
             </div>
-            <div class="text-right">
-                <p class="font-medium text-gray-900">R$ ${order.price?.toFixed(2) || '0,00'}</p>
-                <!-- Debug: ${JSON.stringify({price: order.price, amount: order.amount, total: order.total})} -->
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status, order)}">
-                    ${getStatusText(order.status, order)}
-                </span>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     container.innerHTML = ordersHTML;
 }
@@ -492,6 +503,7 @@ async function loadOrders() {
         
         const mappedOrders = ordersData.map(d => ({
             id: d.id,
+            source: 'order', // <-- ADICIONADO
             date: d.data.createdAt?.toDate?.() || new Date(),
             title: d.data.title || d.data.item || 'Pedido',
             status: d.data.status || 'pending',
@@ -512,24 +524,25 @@ async function loadOrders() {
         const regsData = await fetchUserDocs('registrations', 200, true);
         console.log('🔍 Registrations raw data:', regsData);
         
-                const mappedRegs = regsData
-                    .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed' || d.data.status === 'approved')
-                    .map(d => ({
-                        id: d.id,
-                        date: d.data.createdAt?.toDate?.() || new Date(),
-                        title: d.data.title || d.data.eventType || 'Reserva',
-                        status: d.data.status || 'paid',
-                        price: d.data.paidWithTokens ? 0 : (d.data.price || 0),
-                        eventDate: d.data.date || null,
-                        schedule: d.data.schedule || d.data.hour || d.data.time || '',
-                        eventType: d.data.eventType || '',
-                        paidWithTokens: d.data.paidWithTokens === true,
-                        tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0,
-                        teamName: d.data.teamName || d.data.team || d.data.name || '',
-                        email: d.data.email || null,
-                        contact: d.data.contact || d.data.phone || null,
-                        whatsappLink: d.data.whatsappLink || d.data.groupLink || d.data.group_link || null
-                    }));
+        const mappedRegs = regsData
+            .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed' || d.data.status === 'approved')
+            .map(d => ({
+                id: d.id,
+                source: 'registration', // <-- ADICIONADO
+                date: d.data.createdAt?.toDate?.() || new Date(),
+                title: d.data.title || d.data.eventType || 'Reserva',
+                status: d.data.status || 'paid',
+                price: d.data.paidWithTokens ? 0 : (d.data.price || 0),
+                eventDate: d.data.date || null,
+                schedule: d.data.schedule || d.data.hour || d.data.time || '',
+                eventType: d.data.eventType || '',
+                paidWithTokens: d.data.paidWithTokens === true,
+                tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0,
+                teamName: d.data.teamName || d.data.team || d.data.name || '',
+                email: d.data.email || null,
+                contact: d.data.contact || d.data.phone || null,
+                whatsappLink: d.data.whatsappLink || d.data.groupLink || d.data.group_link || null
+            }));
         console.log('🔍 Mapped registrations:', mappedRegs);
 
         allOrdersData = [...mappedOrders, ...mappedRegs]
@@ -793,102 +806,166 @@ function parseSchedule(scheduleStr) {
     };
 }
 
-function formatShortDatePtBr(dateStr){
-    try{
-        const d = new Date(`${dateStr}T00:00:00`);
-        return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    }catch(_){ return dateStr||''; }
-}
-
-
-// Display all orders with pagination (filtered for events only)
 async function displayAllOrdersPaginated() {
     const container = document.getElementById('allOrders');
     
-    console.log('🔍 Total de pedidos carregados:', allOrdersData.length);
-    console.log('🔍 Todos os pedidos:', allOrdersData);
-    
-    // Filter events AND products (both paid and token purchases)
-    // Mostrar TODOS os pedidos: eventos, compras com tokens, etc.
+    console.log('🔍 Total de pedidos carregados (allOrdersData):', allOrdersData.length);
+    console.log('🔍 Todos os pedidos:', allOrdersData.map(o => ({ 
+        id: o.id, 
+        source: o.source,
+        schedule: o.schedule, 
+        hour: o.hour, 
+        eventDate: o.eventDate, 
+        externalRef: o.external_reference,
+        tokensUsed: o.tokensUsed,
+        paidWithTokens: o.paidWithTokens
+    })));
+
+    // Filtra apenas eventos (source === 'registration') e que estejam pagos/confirmados
     const allOrders = allOrdersData.filter(order => {
-        const title = (order.title || '').toLowerCase();
-        const item = (order.item || '').toLowerCase();
-        const eventType = (order.eventType || '').toLowerCase();
+        // Se for um produto (source === 'order'), excluir
+        if (order.source === 'order') return false;
+        
         const status = (order.status || '').toLowerCase();
         const paidWithTokens = order.paidWithTokens === true;
         
-        console.log('🔍 Analisando pedido:', {
-            title,
-            item,
-            eventType,
-            status,
-            paidWithTokens,
-            whatsappLink: order.whatsappLink
-        });
-        
-        // Incluir TUDO que for evento ou compra com tokens pagos/confirmados
-        const isEvent = eventType === 'xtreino-tokens' ||
-               title.includes('xtreino') || 
-               title.includes('camp') || 
-               title.includes('semanal') || 
-               title.includes('modo liga') ||
-               item.includes('xtreino') || 
-               item.includes('camp') || 
-               item.includes('semanal') || 
-               item.includes('modo liga');
-        
-        const isPaidWithTokens = paidWithTokens && (status === 'paid' || status === 'confirmed' || status === 'approved');
-        
-        const shouldInclude = isEvent || isPaidWithTokens;
-        console.log(shouldInclude ? '✅ Pedido incluído' : '❌ Pedido excluído');
-        return shouldInclude;
+        // Para registrations, considerar apenas se estiver pago/confirmado
+        return (status === 'paid' || status === 'confirmed' || status === 'approved') || paidWithTokens;
     });
     
-    console.log('🔍 Pedidos filtrados:', allOrders.length);
-    console.log('🔍 Pedidos encontrados:', allOrders);
-    
+    console.log('🔍 Pedidos filtrados (allOrders):', allOrders.length);
+    allOrders.forEach(o => console.log('Filtrado:', { 
+        id: o.id, 
+        source: o.source,
+        schedule: o.schedule, 
+        hour: o.hour, 
+        eventDate: o.eventDate,
+        tokensUsed: o.tokensUsed,
+        paidWithTokens: o.paidWithTokens
+    }));
+
     if (allOrders.length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-center">Nenhum evento encontrado</p>';
         return;
     }
 
-    // Calculate pagination
-    const totalPages = Math.ceil(allOrders.length / ordersPerPage);
+    // Agrupa por external_reference
+    const groups = {};
+    allOrders.forEach(order => {
+        const groupKey = order.external_reference || `${order.eventDate}_${order.teamName}_${order.email}`;
+        if (!groups[groupKey]) {
+            groups[groupKey] = {
+                externalRef: order.external_reference,
+                date: order.date,
+                eventDate: order.eventDate,
+                teamName: order.teamName,
+                email: order.email,
+                contact: order.contact,
+                price: order.price,
+                tokensUsed: order.tokensUsed, // será substituído pela soma depois
+                paidWithTokens: order.paidWithTokens,
+                status: order.status,
+                items: []
+            };
+        }
+        groups[groupKey].items.push({
+            schedule: order.schedule,
+            hour: order.hour,
+            whatsappLink: order.whatsappLink,
+            eventType: order.eventType,
+            title: order.title,
+            id: order.id,
+            tokensUsed: order.tokensUsed || 0
+        });
+    });
+
+    // Calcula o total de tokens para cada grupo
+    Object.values(groups).forEach(group => {
+        if (group.paidWithTokens) {
+            group.totalTokens = group.items.reduce((sum, item) => sum + (item.tokensUsed || 0), 0);
+        } else {
+            group.totalTokens = null; // não se aplica
+        }
+    });
+
+    const groupedOrders = Object.values(groups).sort((a, b) => 
+        (b.date?.getTime?.() || 0) - (a.date?.getTime?.() || 0)
+    );
+
+    console.log('🔍 Grupos formados:', groupedOrders.length);
+    groupedOrders.forEach((g, idx) => {
+        console.log(`Grupo ${idx}:`, {
+            externalRef: g.externalRef,
+            eventDate: g.eventDate,
+            teamName: g.teamName,
+            totalTokens: g.totalTokens,
+            items: g.items.map(i => ({ schedule: i.schedule, tokensUsed: i.tokensUsed }))
+        });
+    });
+
+    // Paginação
+    const totalPages = Math.ceil(groupedOrders.length / ordersPerPage);
     const startIndex = (currentPage - 1) * ordersPerPage;
     const endIndex = startIndex + ordersPerPage;
-    const currentOrders = allOrders.slice(startIndex, endIndex).filter(x=> x.status !== 'confirmed');
+    const currentGroups = groupedOrders.slice(startIndex, endIndex);
 
-    // Generate orders HTML with WhatsApp buttons
-    const ordersHTML = await Promise.all(currentOrders.map(async order => {
-        const whatsappButton = await getOrderActionButton(order);
+    const ordersHTML = await Promise.all(currentGroups.map(async group => {
+        const itemsHTML = await Promise.all(group.items.map(async item => {
+            const tempOrder = {
+                ...item,
+                eventDate: group.eventDate,
+                teamName: group.teamName,
+                email: group.email,
+                contact: group.contact,
+                price: group.price,
+                tokensUsed: item.tokensUsed,
+                paidWithTokens: group.paidWithTokens,
+                status: group.status
+            };
+            const whatsappButton = await getOrderActionButton(tempOrder);
+            const hourDisplay = item.schedule ? (item.schedule.split(' - ')[1] || item.schedule) : (item.hour || '');
+            return `
+                <div class="border-t border-gray-200 pt-2 mt-2 first:border-t-0 first:pt-0 first:mt-0">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">${hourDisplay}</span>
+                        ${whatsappButton}
+                    </div>
+                </div>
+            `;
+        }));
+
+        const eventDateStr = group.eventDate ? new Date(group.eventDate + 'T00:00:00').toLocaleDateString('pt-BR') : '';
+
         return `
             <div class="bg-gray-50 rounded-lg p-4 mb-4">
                 <div class="flex items-center justify-between mb-2">
-                    <h4 class="font-medium text-gray-900">${formatTitleWithSchedule((order.title||'Reserva'), (order.eventDate||''), (order.schedule||''))}</h4>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status, order)}">
-                        ${getStatusText(order.status, order)}
+                    <h4 class="font-medium text-gray-900">${group.teamName || 'Reserva'} • ${eventDateStr}</h4>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(group.status, { eventType: 'xtreino-tokens' })}">
+                        ${getStatusText(group.status, { eventType: 'xtreino-tokens' })}
                     </span>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600 mb-3">
                     <div>
-                        <span class="font-medium">Data:</span> ${order.eventDate ? `${formatShortDatePtBr(order.eventDate)} ${parseSchedule(order.schedule).hour? 'às '+parseSchedule(order.schedule).hour : ''}` : formatDate(order.date)}
+                        <span class="font-medium">Contato:</span> ${group.email || group.contact || '-'}
                     </div>
                     <div>
-                        <span class="font-medium">${order.paidWithTokens ? 'Consumo:' : 'Valor:'}</span> ${order.paidWithTokens ? `${Math.abs(order.tokensUsed||1)} token${(Math.abs(order.tokensUsed||1))>1?'s':''}` : `R$ ${Number(order.price||0).toFixed(2)}`}
+                        <span class="font-medium">${group.paidWithTokens ? 'Consumo:' : 'Valor:'}</span> 
+                        ${group.paidWithTokens 
+                            ? `${group.totalTokens} token${group.totalTokens !== 1 ? 's' : ''}` 
+                            : `R$ ${Number(group.price || 0).toFixed(2)}`}
                     </div>
                     <div>
-                        <span class="font-medium">Time:</span> ${order.teamName ? order.teamName : (order.email ? order.email : '-')}<br/>
-                        <span class="text-gray-500">${order.contact || ''}</span>
+                        <span class="font-medium">Data da compra:</span> ${formatDate(group.date)}
                     </div>
                 </div>
-                ${whatsappButton}
+                <div class="space-y-2">
+                    ${itemsHTML.join('')}
+                </div>
             </div>
         `;
     }));
 
-    // Generate pagination HTML
     const paginationHTML = generatePaginationHTML(currentPage, totalPages);
-
     container.innerHTML = ordersHTML.join('') + paginationHTML;
 }
 
@@ -1245,12 +1322,17 @@ async function getOrderActionButton(order) {
     const whatsappLink = await getWhatsAppLinkForOrder(order);
     console.log('🔍 Link obtido:', whatsappLink);
     
-    // Calcular janela de disponibilidade
+    // Se não houver link, não exibe nada (nem botão, nem span)
+    const hasLink = typeof whatsappLink === 'string' && whatsappLink.trim() && whatsappLink.startsWith('http');
+    if (!hasLink) {
+        console.log('⚠️ Sem link do WhatsApp - não exibindo botão');
+        return '';
+    }
+    
+    // Calcular janela de disponibilidade (agora que sabemos que existe link)
     let isAvailable = false;
     let buttonText = 'Aguardando liberação';
     let buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
-    const hasLink = typeof whatsappLink === 'string' && whatsappLink.trim() && whatsappLink.startsWith('http');
-    let linkDisplay = whatsappLink;
     
     // Verificar se temos data do evento (OBRIGATÓRIO)
     const hasEventDate = order.eventDate && order.eventDate !== '' && order.eventDate !== 'undefined' && order.eventDate !== 'null';
@@ -1261,7 +1343,7 @@ async function getOrderActionButton(order) {
     
     // SE NÃO HOUVER DATA DO EVENTO, LINK SEMPRE INDISPONÍVEL
     if (!hasEventDate) {
-        console.log('❌ Sem data do evento - link sempre indisponível');
+        console.log('❌ Sem data do evento - link indisponível');
         buttonText = 'Data do evento não disponível';
         buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
         isAvailable = false;
@@ -1279,7 +1361,6 @@ async function getOrderActionButton(order) {
             buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
             isAvailable = false;
         } else {
-          
             const now = new Date();
             const ymd = now.toISOString().split('T')[0];            
             const eventTime = order.eventDate;           
@@ -1300,35 +1381,12 @@ async function getOrderActionButton(order) {
         }
     }
     
-    // Garantir que se não há link, o botão seja sempre cinza e não disponível
-    if (!hasLink) {
-        buttonClass = 'text-gray-500 bg-gray-100 cursor-not-allowed';
-        buttonText = 'Link indisponível';
-        isAvailable = false;
-        console.log('⚠️ Sem link do WhatsApp - marcando como indisponível');
-    }
-    
     // Debug final
     console.log('🔍 Estado final - isAvailable:', isAvailable, 'hasLink:', hasLink, 'buttonText:', buttonText, 'buttonClass:', buttonClass);
     
+    // Retorna o botão (ativo ou desabilitado) apenas se houver link
     return `
         <div class="mt-3 space-y-2">
-            <!-- Link do WhatsApp -->
-            
-            <!--
-            
-               ${isAvailable && hasLink ? `
-            <div class="text-xs text-gray-600">
-                <strong>Link:</strong> <a href="${whatsappLink}" target="_blank" rel="noopener" class="font-mono text-xs break-all text-blue-700 underline">${linkDisplay}</a>
-            </div>
-            ` : `
-            <div class="text-xs text-gray-400">
-                <strong>Link:</strong> ${buttonText}
-            </div>
-            `}
-            -->
-            
-            <!-- Botão de ação -->
             ${isAvailable && hasLink ? `
                 <a href="${whatsappLink}" target="_blank" rel="noopener" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md ${buttonClass}">
                     <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
@@ -1336,14 +1394,14 @@ async function getOrderActionButton(order) {
                     </svg>
                     ${buttonText}
                 </a>
-            ` : `
+            ` : (hasLink ? `
                 <span class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md ${buttonClass}">
                     <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.488"/>
                     </svg>
                     ${buttonText}
                 </span>
-            `}
+            ` : '')}
         </div>
     `;
 }
