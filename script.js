@@ -2754,6 +2754,7 @@ function initCarousel() {
 if (window.firebaseReady) {
     loadHighlightsFromFirestore();
     loadNewsFromFirestore();
+    loadProductsFromFirestore();
 
     // Initialize smooth animations
     initSmoothAnimations();
@@ -2763,6 +2764,7 @@ if (window.firebaseReady) {
         setTimeout(() => {
             loadHighlightsFromFirestore();
             loadNewsFromFirestore();
+            loadProductsFromFirestore();
             initChat();
         }, 1000);
     });
@@ -4648,14 +4650,28 @@ function addSelectedDate() {
         renderSelectedDatesList();
     }
 }
+
 function removeSelectedDate(dateStr) {
     selectedDates = selectedDates.filter(d => d !== dateStr);
+    // Remove os horários associados a essa data
+    selectedTimes = selectedTimes.filter(item => item.date !== dateStr);
     renderSelectedDatesList();
+    updateReservationsSummary();
+    // Se a data removida for a data atualmente exibida, re-renderiza os horários
+    const currentDate = document.getElementById('schedDate')?.value;
+    if (currentDate === dateStr) {
+        renderScheduleTimes();
+    }
 }
+
 function clearSelectedDates() {
     selectedDates = [];
+    selectedTimes = []; // Remove todos os horários, pois não têm mais data associada
     renderSelectedDatesList();
+    updateReservationsSummary();
+    renderScheduleTimes();
 }
+
 function initScheduleDate() {
     const input = document.getElementById('schedDate');
     const today = new Date();
@@ -5204,6 +5220,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
   }
 }
 
+
 async function updateOccupiedAndRefreshButtons(day, date, eventType, container) {
     // IMPORTANTE: Sempre invalidar cache ao mudar de data para evitar dados antigos
     // Garantir que a data está no formato correto (YYYY-MM-DD)
@@ -5349,6 +5366,11 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
             btn.onclick = () => {
                 selectTime(schedule, btn);
             };
+            // Destaque se já estiver selecionado para esta data
+            if (isTimeSelected(date, schedule)) {
+                btn.classList.add('bg-blue-600', 'text-white');
+                btn.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
+            }
         }
         // Diagnostic log for debugging remaining seats issues (only for camp/camp-final)
         try {
@@ -5414,7 +5436,6 @@ function updateTeam(teamId, field, value) {
     }
 }
 
-// Function to update reservations summary
 async function updateReservationsSummary() {
     const summaryContainer = document.getElementById('reservationsSummary');
     const totalPriceElement = document.getElementById('totalPrice');
@@ -5432,22 +5453,29 @@ async function updateReservationsSummary() {
     const eventType = modal?.dataset?.eventType || 'modo-liga';
     const cfg = scheduleConfig[eventType];
 
+    // Agrupa horários por data
+    const timesByDate = {};
+    selectedTimes.forEach(item => {
+        if (!timesByDate[item.date]) timesByDate[item.date] = [];
+        timesByDate[item.date].push(item.schedule);
+    });
+
+    // Determina quais datas usar (selecionadas ou a data atual)
+    const datesToUse = (selectedDates && selectedDates.length > 0)
+        ? [...selectedDates]
+        : [document.getElementById('schedDate')?.value].filter(Boolean);
+
     let summaryHTML = '';
-    let totalReservations = 0;
-
-    // Calculate total reservations (times × selected times × datas)
-    const datesFactor = (selectedDates && selectedDates.length > 0) ? selectedDates.length : 1;
-    totalReservations = teams.length * selectedTimes.length * datesFactor;
-
-    // Verificar disponibilidade e mostrar avisos
-    const date = document.getElementById('schedDate')?.value;
+    let computedTotal = 0;
     let availabilityWarning = '';
 
+    // Verificação de disponibilidade (mantida)
     if (eventType && window.firebaseReady) {
         try {
-            const datesToCheck = (selectedDates && selectedDates.length > 0) ? selectedDates : (date ? [date] : []);
-            for (const d of datesToCheck) {
-                const availabilityCheck = await checkMultipleSlotAvailability(d, selectedTimes, eventType, teams.length);
+            for (const d of datesToUse) {
+                const times = timesByDate[d] || [];
+                if (times.length === 0) continue;
+                const availabilityCheck = await checkMultipleSlotAvailability(d, times, eventType, teams.length);
                 if (!availabilityCheck.available) {
                     availabilityWarning = `
                         <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
@@ -5468,27 +5496,24 @@ async function updateReservationsSummary() {
         }
     }
 
-    // Build summary
-    let computedTotal = 0;
-    // Montar por data×horário (preços podem variar por data)
-    const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [document.getElementById('schedDate')?.value];
-    datesToUse.forEach(d => {
-        selectedTimes.forEach(time => {
-            const hour = (time.split(' - ')[1] || '').trim();
+    // Monta resumo e calcula total
+    for (const d of datesToUse) {
+        const times = timesByDate[d] || [];
+        if (times.length === 0) continue;
+
+        for (const schedule of times) {
+            const hour = (schedule.split(' - ')[1] || '').trim();
             const pricePerReservation = getEventPrice(eventType, hour, d);
             const lineTotal = pricePerReservation * teams.length;
             computedTotal += lineTotal;
-        });
-        // Exibição consolidada por horário (com nota de datas)
-        selectedTimes.forEach(time => {
-            const hour = (time.split(' - ')[1] || '').trim();
-            const pricePerReservation = getEventPrice(eventType, hour, d);
+
+            const formattedDate = new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
             summaryHTML += `<div class="flex justify-between items-center py-1">
-                <span class="text-gray-700">${time} (${new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')}) × ${teams.length} time(s)</span>
+                <span class="text-gray-700">${schedule} (${formattedDate}) × ${teams.length} time(s)</span>
                 <span class="font-semibold">R$ ${(pricePerReservation * teams.length).toFixed(2)}</span>
             </div>`;
-        });
-    });
+        }
+    }
 
     summaryContainer.innerHTML = availabilityWarning + summaryHTML;
 
@@ -5500,51 +5525,54 @@ async function updateReservationsSummary() {
     }
 }
 
-// Function to handle time selection (multiple)
-function selectTime(timeValue, element) {
-    const isSelected = selectedTimes.includes(timeValue);
+function isTimeSelected(date, schedule) {
+    return selectedTimes.some(item => item.date === date && item.schedule === schedule);
+}
+function selectTime(schedule, element) {
+    const date = document.getElementById('schedDate').value;
+    const index = selectedTimes.findIndex(item => item.date === date && item.schedule === schedule);
 
-    if (isSelected) {
-        // Remove from selection
-        selectedTimes = selectedTimes.filter(t => t !== timeValue);
+    if (index !== -1) {
+        // Remove
+        selectedTimes.splice(index, 1);
         element.classList.remove('bg-blue-600', 'text-white');
         element.classList.add('bg-white', 'text-gray-700', 'border-gray-300');
     } else {
-        // Add to selection
-        selectedTimes.push(timeValue);
+        // Adiciona
+        selectedTimes.push({ date, schedule });
         element.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
         element.classList.add('bg-blue-600', 'text-white');
     }
 
+    // Atualiza campos ocultos (opcional)
     const hiddenField = document.getElementById('schedSelectedTime');
     const displayField = document.getElementById('schedSelectedTimeDisplay');
-    if (hiddenField) {
-        hiddenField.value = timeValue;
-    }
+    if (hiddenField) hiddenField.value = schedule;
     if (displayField) {
-        const hour = timeValue.split(' - ')[1] || timeValue;
+        const hour = schedule.split(' - ')[1] || schedule;
         displayField.textContent = hour;
     }
 
     updateReservationsSummary();
-    // Atualizar o preço em Detalhes do Evento conforme o horário selecionado
+
+    // Atualiza o preço exibido nos detalhes do evento
     try {
         const modal = document.getElementById('scheduleModal');
         const eventType = modal?.dataset?.eventType || '';
         const dateStr = document.getElementById('schedDate')?.value || null;
         const priceEl = document.getElementById('schedPrice');
         if (priceEl) {
-            if (selectedTimes.length === 1) {
-                const hour = (selectedTimes[0].split(' - ')[1] || '').trim();
+            const timesForCurrentDate = selectedTimes.filter(item => item.date === dateStr).map(item => item.schedule);
+            if (timesForCurrentDate.length === 1) {
+                const hour = (timesForCurrentDate[0].split(' - ')[1] || '').trim();
                 const p = getEventPrice(eventType, hour, dateStr);
                 priceEl.textContent = p.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            } else if (selectedTimes.length === 0) {
+            } else if (timesForCurrentDate.length === 0) {
                 const cfg = scheduleConfig[eventType] || {};
                 priceEl.textContent = Number(cfg.price || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             } else {
-                // Múltiplos horários: exibir a partir do menor preço
                 let min = Infinity;
-                for (const t of selectedTimes) {
+                for (const t of timesForCurrentDate) {
                     const h = (t.split(' - ')[1] || '').trim();
                     const p = getEventPrice(eventType, h, dateStr);
                     if (p < min) min = p;
@@ -5585,7 +5613,6 @@ async function fetchWithTimeout(url, opts = {}, ms = 15000) {
 }
 
 // End helpers
-
 async function handleProductPurchase(productId, cfg) {
     try {
         // Coletar dados do formulário (apenas se existirem)
@@ -5884,7 +5911,6 @@ async function handleProductPurchaseWithTokens(productId, cfg) {
         showError(e, 'TOKEN_002');
     }
 }
-
 async function submitSchedule(e, useTokens = false) {
     e.preventDefault();
     const submitBtn = document.getElementById('schedSubmit');
@@ -5960,9 +5986,18 @@ async function submitSchedule(e, useTokens = false) {
             }
         }
 
+        // Agrupar horários por data
+        const timesByDate = {};
+        selectedTimes.forEach(item => {
+            if (!timesByDate[item.date]) timesByDate[item.date] = [];
+            timesByDate[item.date].push(item.schedule);
+        });
+        console.log(selectedTimes, timesByDate,'ESSA PORRA DEVE MOSTRAR OS HORÁRIOS AGRUPADOS POR DATA AQUI');
         // Verificar disponibilidade
         for (const d of datesToUse) {
-            const availabilityCheck = await checkMultipleSlotAvailability(d, selectedTimes, eventType, teamsData.length);
+            const times = timesByDate[d] || [];
+            if (times.length === 0) continue;
+            const availabilityCheck = await checkMultipleSlotAvailability(d, times, eventType, teamsData.length);
             if (!availabilityCheck.available) {
                 alert(availabilityCheck.message || 'Não há vagas suficientes.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
@@ -5970,11 +6005,12 @@ async function submitSchedule(e, useTokens = false) {
             }
         }
 
-        // Calcular total
+        // Calcular total original
         let originalTotal = 0;
         for (const d of datesToUse) {
-            for (const t of selectedTimes) {
-                const hour = (t.split(' - ')[1] || '').trim();
+            const times = timesByDate[d] || [];
+            for (const schedule of times) {
+                const hour = (schedule.split(' - ')[1] || '').trim();
                 const price = getEventPrice(eventType, hour, d);
                 originalTotal += price * teamsData.length;
             }
@@ -5999,12 +6035,20 @@ async function submitSchedule(e, useTokens = false) {
             };
         }
 
-        const totalReservations = teamsData.length * selectedTimes.length * datesToUse.length;
+        const totalReservations = teamsData.length * selectedTimes.length; // selectedTimes já inclui a multiplicação por datas
+
+        // Se for pagamento com tokens
+        // if (useTokens || (cfg && cfg.payWithToken)) {
+        //     // Passa os dados dos times para a função de tokens
+        //     await useTokensForEvent(eventType, totalReservations, finalPrice, teamsData);
+        //     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+        //     return;
+        // }
+
 
         // Se for pagamento com tokens
         if (useTokens || (cfg && cfg.payWithToken)) {
-            // Passa os dados dos times para a função de tokens
-            await useTokensForEvent(eventType, totalReservations, finalPrice, teamsData);
+            await useTokensForEvent(eventType, totalReservations, finalPrice, teamsData, selectedTimes, datesToUse);
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
@@ -6019,8 +6063,9 @@ async function submitSchedule(e, useTokens = false) {
             const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
 
             for (const d of datesToUse) {
+                const times = timesByDate[d] || [];
                 for (let team of teamsData) {
-                    for (let schedule of selectedTimes) {
+                    for (let schedule of times) {
                         const hour = (schedule.split(' - ')[1] || '').trim();
                         const normalizedHour = normalizeHour(hour);
                         const price = getEventPrice(eventType, hour, d);
@@ -6078,7 +6123,7 @@ async function submitSchedule(e, useTokens = false) {
                     external_reference: externalRef,
                     multiple_reservations: {
                         teams: teamsData.map(t => t.name),
-                        schedules: selectedTimes,
+                        schedules: selectedTimes.map(item => item.schedule), // apenas os horários
                         dates: datesToUse,
                         eventType: eventType
                     }
@@ -6108,6 +6153,14 @@ async function submitSchedule(e, useTokens = false) {
         alert('Ocorreu um erro inesperado. Atualize a página e tente novamente.');
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
     }
+}
+
+
+function normalizeHour(h) {
+    if (!h) return null;
+    const s = String(h).toLowerCase().trim();
+    const m = s.match(/(\d{1,2})/);
+    return m ? `${parseInt(m[1], 10)}h` : s;
 }
 
 // XTreino Gratuito: abrir WhatsApp com mensagem
@@ -6317,133 +6370,54 @@ function closeTokensModal() {
     if (window.innerWidth <= 767) maybeClearMobileModalState();
 }
 
-// Compra de tokens removida (somente usuários recebem tokens)
-async function useTokensForEvent(eventType, quantity = 1, explicitTotalCost = null, teamsData = null) {
-    const eventCosts = {
-        'treino': 1.00,
-        'modoLiga': 3.00,
-        'semanal': 3.50,
-        'finalSemanal': 7.00,
-        'campFases': 5.00,
-        'xtreino-tokens': 1.00
-    };
-
-    // Resolve possíveis variações no nome do evento
-    const resolveCostKey = (t) => {
-        if (!t) return null;
-        if (eventCosts[t]) return t;
-        let s = String(t).replace(/^evt[-_]?/i, '').replace(/\s+/g,'-').trim();
-        if (eventCosts[s]) return s;
-        const camel = s.split('-').map((p,i)=> i===0? p : (p.charAt(0).toUpperCase()+p.slice(1)) ).join('');
-        if (eventCosts[camel]) return camel;
-        return null;
-    };
-
-    const key = resolveCostKey(eventType) || eventType;
-    const unitCost = (typeof eventCosts[key] !== 'undefined') ? eventCosts[key] : null;
-    const costPerUnit = (explicitTotalCost !== null && explicitTotalCost !== undefined) ? Number(explicitTotalCost) : (unitCost !== null ? Number(unitCost) : null);
-    const qty = Number(quantity || 1);
-    const totalCost = (costPerUnit !== null) ? Number((costPerUnit * qty).toFixed(2)) : null;
-
-    if (totalCost === null) {
-        console.error('Event type/cost not found:', eventType, { key, unitCost });
-        alert('Não foi possível determinar o valor do evento. Contate o suporte.');
+async function useTokensForEvent(eventType, totalReservations, finalPrice, teamsData, selectedTimes, datesToUse) {
+    // Verificar saldo (redundante, mas seguro)
+    if (!canSpendTokens(finalPrice)) {
+        showErrorToast('Saldo insuficiente', 'TOKEN_001');
         return;
     }
 
-    // Verificar se tem tokens suficientes
-    const profile = window.currentUserProfile || {};
-    if (!profile || profile.tokens === undefined || profile.tokens === null || Number(profile.tokens) < Number(totalCost)) {
-        alert(`Saldo insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
-        return;
-    }
+    // Construir timesByDate a partir de selectedTimes
+    const timesByDate = {};
+    selectedTimes.forEach(item => {
+        if (!timesByDate[item.date]) timesByDate[item.date] = [];
+        timesByDate[item.date].push(item.schedule);
+    });
 
-    if (!canSpendTokens(totalCost)) {
-        alert(`Saldo insuficiente. Você precisa de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens.`);
-        return;
-    }
-    
-    const eventNames = {
-        'treino': 'Treino Normal',
-        'modoLiga': 'Modo Liga',
-        'semanal': 'Semanal',
-        'finalSemanal': 'Final Semanal',
-        'campFases': 'Camp de Fases',
-        'xtreino-tokens': 'XTreino Tokens'
-    };
-    
-    // Verificar disponibilidade do horário selecionado ANTES de debitar tokens
-    try{
-        const date = document.getElementById('schedDate')?.value || new Date().toISOString().split('T')[0];
-        const rawSchedule = document.getElementById('schedSelectedTime')?.value || document.querySelector('#schedTimes .selected')?.textContent || '';
-        const normalizeHour = (h)=>{ if (!h) return null; const m=String(h).match(/(\d{1,2})/); return m? `${parseInt(m[1],10)}h` : null; };
-        const hour = normalizeHour(rawSchedule);
-        const weekday = (()=>{
-            try{ const d = new Date(`${date}T00:00:00`); const wd = d.toLocaleDateString('pt-BR',{ weekday:'long' }); return wd.charAt(0).toUpperCase()+wd.slice(1); }catch(_){ return ''; }
-        })();
-        const schedule = (weekday && hour) ? `${weekday} - ${hour}` : null;
-        const mapTokenToSite = (t)=>{
-            switch(String(t||'')){
-                case 'modoLiga': return 'modo-liga';
-                case 'semanal':
-                case 'finalSemanal': return 'semanal-freitas';
-                case 'campFases': return 'camp-freitas';
-                case 'treino': return 'xtreino-tokens';
-                default: return t;
-            }
-        };
-        const siteEventType = mapTokenToSite(eventType);
-        if (schedule && siteEventType){
-            const canBook = await checkSlotAvailability(date, schedule, siteEventType);
-            if (!canBook){
-                showToast('error', 'Horário indisponível para este evento (lotado ou travado). Escolha outro horário.', 'Horário indisponível');
-                return;
-            }
+    // Verificar disponibilidade
+    for (const d of datesToUse) {
+        const times = timesByDate[d] || [];
+        if (times.length === 0) continue;
+        const availabilityCheck = await checkMultipleSlotAvailability(d, times, eventType, teamsData.length);
+        if (!availabilityCheck.available) {
+            showErrorToast(availabilityCheck.message || 'Horário indisponível', 'EVENT_001');
+            return;
         }
-    }catch(_){ /* se falhar checagem prévia, deixa seguir */ }
-    
-    const labelName = eventNames[key] || eventNames[eventType] || eventType;
-    if (confirm(`Confirmar uso de ${totalCost.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} em tokens para ${labelName}?`)) {
-        // Tenta debitar
-        const debitSuccess = await spendTokens(totalCost);
-        
-        if (debitSuccess) {
-            // Tenta agendar, passando os dados dos times
-            try {
-                await createTokenSchedule(key, totalCost, teamsData);
-                
-                closeTokensModal();
-                renderClientArea();
-                showToast('success', 'Token usado com sucesso! Agendamento criado. Verifique na sua área do cliente.', 'Sucesso');
-                
-                setTimeout(() => {
-                    try {
-                        window.location.href = 'client.html?tab=orders';
-                    } catch (_) { }
-                }, 4500);
-            } catch (scheduleError) {
-                console.error('❌ Erro crítico: Token debitado mas agendamento falhou. Iniciando reembolso.', scheduleError);
-                
-                // REEMBOLSO AUTOMÁTICO
-                try {
-                    const { doc, updateDoc, increment } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                    const userRef = doc(window.firebaseDb, 'users', window.firebaseAuth.currentUser.uid);
-                    await updateDoc(userRef, { tokens: increment(totalCost) });
-                    
-                    if (window.currentUserProfile) {
-                        window.currentUserProfile.tokens = (Number(window.currentUserProfile.tokens) + Number(totalCost));
-                        updateHeaderTokenBadges();
-                    }
-                    
-                    alert('Houve um erro de conexão ao criar o agendamento. Seus tokens foram devolvidos para sua conta. Tente novamente.');
-                } catch (refundError) {
-                    console.error('❌ FALHA NO REEMBOLSO:', refundError);
-                    alert(`Erro grave: O agendamento falhou e não conseguimos restaurar seus tokens automaticamente. Tire um print desta tela e contate o suporte. Tokens perdidos: ${totalCost}`);
-                }
-            }
-        } else {
-            showToast('error', 'Erro ao processar o resgate de tokens. Tente novamente.', 'Erro');
-        }
+    }
+
+    // Debitar tokens
+    const debitSuccess = await spendTokens(finalPrice);
+    if (!debitSuccess) {
+        showErrorToast('Erro ao debitar tokens', 'TOKEN_002');
+        return;
+    }
+
+    // Criar registros com status 'confirmed'
+    const externalRef = `tokens_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    try {
+        const regIds = await createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, 'confirmed', appliedScheduleCoupon);
+        console.log('✅ Registros criados com tokens:', regIds);
+
+        closeScheduleModal();
+        showSuccessToast('Pagamento com tokens confirmado! Verifique seus pedidos.', 'Sucesso');
+        setTimeout(() => {
+            window.location.href = 'client.html?tab=orders';
+        }, 2000);
+    } catch (error) {
+        console.error('❌ Erro ao criar registros após debitar tokens:', error);
+        // Reembolsar tokens
+        await grantTokens(finalPrice);
+        showErrorToast('Erro ao criar agendamento. Tokens devolvidos.', 'ERRO');
     }
 }
 
@@ -6577,133 +6551,51 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
 // Expor função globalmente
 window.getWhatsAppLink = getWhatsAppLink;
 
-// Função para criar agendamento quando usar tokens
-async function createTokenSchedule(eventType, cost, teamsData = null) {
-    try {
-        // Se teamsData não foi passado (chamada antiga), ler do DOM
-        let teamName = '';
-        let teamEmail = '';
-        let teamPhone = '';
 
-        if (teamsData && teamsData.length > 0) {
-            // Usar o primeiro time (assumindo que é um único time)
-            teamName = teamsData[0].name;
-            teamEmail = teamsData[0].email;
-            teamPhone = teamsData[0].phone;
-        } else {
-            // Fallback: ler dos inputs individuais (para compatibilidade)
-            const teamInput = document.getElementById('schedTeam');
-            const emailInput = document.getElementById('schedEmail');
-            const phoneInput = document.getElementById('schedPhone');
-            teamName = teamInput ? teamInput.value.trim() : '';
-            teamEmail = emailInput ? emailInput.value.trim() : (window.firebaseAuth.currentUser?.email || '');
-            teamPhone = phoneInput ? phoneInput.value.trim() : '';
+async function createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, status = 'pending', couponInfo = null) {
+    const cfg = scheduleConfig[eventType] || {};
+    const regIds = [];
+    const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+
+    for (const d of datesToUse) {
+        const times = timesByDate[d] || [];
+        for (let team of teamsData) {
+            for (let schedule of times) {
+                const hour = (schedule.split(' - ')[1] || '').trim();
+                const normalizedHour = normalizeHour(hour);
+                const price = getEventPrice(eventType, hour, d);
+                const whatsappLink = await getWhatsAppLink(eventType, normalizedHour, d);
+
+                const docRef = await addDoc(collection(window.firebaseDb, 'registrations'), {
+                    userId: window.firebaseAuth.currentUser.uid,
+                    teamName: team.name,
+                    email: team.email,
+                    phone: team.phone,
+                    schedule: schedule,
+                    date: d,
+                    eventType: eventType,
+                    title: `${cfg.label} - ${schedule}`,
+                    price: price,
+                    status: status,
+                    createdAt: serverTimestamp(),
+                    external_reference: externalRef,
+                    groupLink: whatsappLink || null,
+                    whatsappLink: whatsappLink || null,
+                    hour: normalizedHour || null,
+                    affiliateCode: getActiveAffiliateCode(couponInfo?.affiliateId || null),
+                    // Se for pagamento com tokens, adicionar campos específicos
+                    ...(status === 'confirmed' || status === 'paid' ? {
+                        paidWithTokens: true,
+                        tokensUsed: price, // cada registro usa o preço unitário
+                    } : {})
+                });
+                regIds.push(docRef.id);
+            }
         }
-
-        const date = document.getElementById('schedDate')?.value || new Date().toISOString().split('T')[0];
-        const rawSchedule = document.getElementById('schedSelectedTime')?.value || document.querySelector('#schedTimes .selected')?.textContent || '';
-        const normalizeHour = (h) => { if (!h) return null; const s = String(h).toLowerCase().trim(); const m = s.match(/(\d{1,2})/); return m ? `${parseInt(m[1],10)}h` : s; };
-        const hour = normalizeHour(rawSchedule);
-        const weekday = (() => {
-            try {
-                const d = new Date(`${date}T00:00:00`);
-                const wd = d.toLocaleDateString('pt-BR', { weekday: 'long' });
-                return wd.charAt(0).toUpperCase() + wd.slice(1);
-            } catch (_) { return ''; }
-        })();
-        const schedule = weekday && hour ? `${weekday} - ${hour}` : (hour || null);
-
-        const eventNames = {
-            'treino': 'Treino Normal',
-            'modoLiga': 'Modo Liga',
-            'semanal': 'Semanal',
-            'finalSemanal': 'Final Semanal',
-            'campFases': 'Camp de Fases',
-            'xtreino-tokens': 'XTreino Tokens'
-        };
-
-        // Verificar disponibilidade (código existente...)
-        // ... (mantenha a verificação de horário)
-
-        // Obter link do WhatsApp
-        let whatsappLink = await getWhatsAppLink(eventType, schedule, date);
-        whatsappLink = (whatsappLink && String(whatsappLink).trim()) ? String(whatsappLink).trim() : null;
-
-        const safeEventName = eventNames[eventType] || scheduleConfig[eventType]?.label || eventType;
-
-        const scheduleData = {
-            teamName: teamName,
-            contact: teamEmail,
-            email: teamEmail,
-            phone: teamPhone,
-            date: date,
-            schedule: schedule || null,
-            hour: hour || null,
-            eventType: eventType,
-            status: 'confirmed',
-            paidWithTokens: true,
-            tokenCost: cost,
-            tokensUsed: cost,
-            eventName: safeEventName,
-            title: safeEventName,
-            whatsappLink: whatsappLink,
-            groupLink: whatsappLink || null,
-            userId: window.firebaseAuth.currentUser?.uid,
-            uid: window.firebaseAuth.currentUser?.uid,
-            createdAt: new Date(),
-            timestamp: Date.now()
-        };
-
-        console.log('🔍 Creating token schedule:', scheduleData);
-
-        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
-        // Salvar na coleção 'registrations'
-        const regRef = await addDoc(collection(window.firebaseDb, 'registrations'), {
-            ...scheduleData,
-            createdAt: serverTimestamp()
-        });
-        console.log('✅ Token schedule created with ID:', regRef.id);
-
-        // Também criar em 'orders' (código existente)
-        try {
-            await addDoc(collection(window.firebaseDb, 'orders'), {
-                userId: window.firebaseAuth.currentUser?.uid,
-                uid: window.firebaseAuth.currentUser?.uid,
-                customer: teamEmail,
-                buyerEmail: teamEmail,
-                title: scheduleData.title,
-                item: scheduleData.title,
-                eventType: eventType,
-                schedule: schedule || hour || null,
-                hour: hour || null,
-                date: date,
-                teamName: teamName,
-                email: teamEmail,
-                phone: teamPhone,
-                contact: teamEmail,
-                amount: 0,
-                total: 0,
-                currency: 'BRL',
-                status: 'approved',
-                paidWithTokens: true,
-                tokensUsed: cost,
-                whatsappLink: whatsappLink || null,
-                groupLink: whatsappLink || null,
-                createdAt: serverTimestamp(),
-                timestamp: Date.now()
-            });
-        } catch (orderErr) {
-            console.warn('⚠️ Falha ao criar ordem leve para tokens:', orderErr);
-        }
-
-        closeScheduleModal();
-
-    } catch (error) {
-        console.error('❌ Error creating token schedule:', error);
-        alert('Erro ao criar agendamento. Tente novamente.');
     }
+    return regIds;
 }
+
 // --- Edição de Perfil ---
 function loadProfileData() {
     const p = window.currentUserProfile || {};
@@ -7067,6 +6959,92 @@ async function updateCouponUsageCount(couponId) {
     }
 }
 
+// ==================== CARREGAMENTO DINÂMICO DOS PRODUTOS DA LOJA ====================
+
+async function loadProductsFromFirestore() {
+    try {
+        if (!window.firebaseDb) {
+            console.warn('Firebase não disponível para carregar produtos');
+            return;
+        }
+
+        const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const productsRef = collection(window.firebaseDb, 'products');
+        // Busca apenas produtos ativos (campo active = true)
+        const q = query(productsRef, where('active', '==', true));
+        const snapshot = await getDocs(q);
+
+        const container = document.getElementById('productsContainer');
+        if (!container) return;
+
+        if (snapshot.empty) {
+            container.innerHTML = '<p class="col-span-full text-center text-gray-500">Nenhum produto disponível no momento.</p>';
+            return;
+        }
+
+        let html = '';
+        snapshot.forEach(doc => {
+            const product = doc.data();
+            const productId = doc.id;
+
+            // Define badge (destaque) se existir
+            let badgeHtml = '';
+            if (product.badge) {
+                const badgeColor = product.badgeColor || 'bg-yellow-400 text-black';
+                badgeHtml = `<div class="absolute top-4 right-4 ${badgeColor} text-xs font-bold px-2 py-1 rounded">${product.badge}</div>`;
+            }
+
+            // Define ícone/indicador de categoria (físico/digital)
+            const categoryIcon = product.category === 'physical' 
+                ? '<span class="text-sm text-gray-500">Físico</span>' 
+                : '<span class="text-sm text-gray-500">Digital</span>';
+
+            // Monta a descrição resumida (primeiras linhas)
+            const descriptionLines = (product.description || '').split('\n').slice(0, 3).join('<br>');
+
+            // Imagem (usa imagem padrão se não houver)
+            const imageUrl = product.imageUrl || 'assets/images/Logo - Xtreino Freitas.png';
+
+            html += `
+                <div class="product-card relative">
+                    ${badgeHtml}
+                    <div class="product-media">
+                        <img src="${imageUrl}" alt="${product.name}" loading="lazy" onerror="this.src='assets/images/products/placeholder.jpg'">
+                    </div>
+                    <div class="product-title">${product.name}</div>
+                    <div class="product-desc">
+                        <div class="space-y-1">
+                            <div><strong>Valor:</strong> R$ ${product.price.toFixed(2)}</div>
+                            ${descriptionLines ? `<div>${descriptionLines}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="product-meta flex justify-between items-center mb-3">
+                        <span class="text-2xl font-bold text-blue-matte">R$ ${product.price.toFixed(2)}</span>
+                        ${categoryIcon}
+                    </div>
+                    <button onclick="openScheduleModal('${productId}')" class="w-full btn-primary py-2 rounded-lg font-semibold transition-colors">
+                        COMPRAR
+                    </button>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+
+        // Reaplica animações se necessário
+        if (typeof reinitAnimations === 'function') {
+            reinitAnimations(container);
+        }
+
+    } catch (error) {
+        console.error('Erro ao carregar produtos:', error);
+        const container = document.getElementById('productsContainer');
+        if (container) {
+            container.innerHTML = '<p class="col-span-full text-center text-red-500">Erro ao carregar produtos. Tente novamente mais tarde.</p>';
+        }
+    }
+}
+
 window.applyCoupon = applyCoupon;
 window.applyScheduleCoupon = applyScheduleCoupon;
 window.removeScheduleCoupon = removeScheduleCoupon;
@@ -7080,5 +7058,3 @@ window.openTokensModal = openTokensModal;
 window.closeTokensModal = closeTokensModal;
 window.openFreeWhatsModal = openFreeWhatsModal;
 window.closeFreeWhatsModal = closeFreeWhatsModal;
-
-
