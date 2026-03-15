@@ -1567,20 +1567,35 @@ let appliedCoupon = null;
 let appliedScheduleCoupon = null;
 let originalPrice = 0;
 let scheduleOriginalTotal = 0;
+
 const products = {
-    'passe-booyah': { name: 'Passe de Elite', price: 'R$ 11,00', description: 'Passe de Elite para desbloqueio de recompensas, trajes e itens no jogo' },
-    'aim-training': { name: 'XTreino - Aim Training', price: 'R$ 49,90', description: 'Sessão de 2 horas de treinamento' },
-    'estrategia': { name: 'XTreino - Estratégia', price: 'R$ 79,90', description: 'Sessão de 3 horas de treinamento' },
-    'mentalidade': { name: 'XTreino - Mentalidade', price: 'R$ 39,90', description: 'Sessão de 1.5 horas de treinamento' },
-    'camisa': { name: 'Camisa Oficial Org Freitas', price: 'R$ 89,90', description: 'Camisa de manga curta com design exclusivo da Org Freitas' },
-    'planilhas': { name: 'Planilha de Análise de Times', price: 'R$ 19,00', description: 'Planilha para Coach e Analista com análise detalhada de jogadores' },
-    'imagens': { name: 'Imagens Aéreas', price: 'R$ 2,00', description: 'Mapas do Free Fire com visão aérea para estudo de calls e estratégias' },
-    'sensibilidades': { name: 'Sensibilidade no Free Fire', price: 'R$ 8,00', description: 'Passo a passo para configurar sensibilidade Android, PC e iOS' },
+    // 'passe-booyah': { name: 'Passe de Elite', price: 'R$ 11,00', description: 'Passe de Elite para desbloqueio de recompensas, trajes e itens no jogo' },
+    // 'aim-training': { name: 'XTreino - Aim Training', price: 'R$ 49,90', description: 'Sessão de 2 horas de treinamento' },
+    // 'estrategia': { name: 'XTreino - Estratégia', price: 'R$ 79,90', description: 'Sessão de 3 horas de treinamento' },
+    // 'mentalidade': { name: 'XTreino - Mentalidade', price: 'R$ 39,90', description: 'Sessão de 1.5 horas de treinamento' },
+    // 'camisa': { name: 'Camisa Oficial Org Freitas', price: 'R$ 89,90', description: 'Camisa de manga curta com design exclusivo da Org Freitas' },
+    // 'planilhas': { name: 'Planilha de Análise de Times', price: 'R$ 19,00', description: 'Planilha para Coach e Analista com análise detalhada de jogadores' },
+    // 'imagens': { name: 'Imagens Aéreas', price: 'R$ 2,00', description: 'Mapas do Free Fire com visão aérea para estudo de calls e estratégias' },
+    // 'sensibilidades': { name: 'Sensibilidade no Free Fire', price: 'R$ 8,00', description: 'Passo a passo para configurar sensibilidade Android, PC e iOS' },
     // Eventos e Reservas (cupom ADMFALL = 5% off)
     'evt-xtreino-tokens': { name: 'XTreino Freitas', price: 'R$ 1,00', description: '1 token — 10 horários diários (14h-23h) — Misto | Squad | 2 quedas' },
     'evt-modo-liga': { name: 'XTreino Modo Liga', price: 'R$ 3,00', description: '4 horários (14h, 15h, 17h, 18h) — 15 slots — Transmissão ao vivo' },
     'evt-camp-freitas': { name: 'Campeonato Freitas Season¹', price: 'R$ 8,00', description: 'Horários: 19h - 20h - 21h - 22h - 23h — Modalidade: Misto | Squad | 2 quedas por fase — Premiação R$ 4.000,00 + Troféu. Funcionamento: Segunda a Sexta-feira. Promoção: R$ 8,00 (antes R$ 10,00).' },
     'evt-semanal-freitas': { name: 'Semanal Freitas', price: 'R$ 3,50', description: '3 fases (20h, 21h, 22h) — Premiação R$ 65,00 — Termina no mesmo dia' }
+};
+
+const imgMap = {
+    // 'sensibilidades': { image: 'assets/images/products/SENSIBILIDADE ORG FREITAS FORMATO YOUTUBE.png' },
+    // 'imagens': { image: 'assets/images/products/IMAGENS AÉREAS ORG FREITAS FORMATO YOUTUBE.png' },
+    // 'planilhas': { image: 'assets/images/products/PLANILHAS ORG FREITAS FORMATO YOUTUBE.png' },
+    // 'passe-booyah': { image: 'assets/images/products/PASSE ORG FREITAS FEED.png' },
+    // 'camisa': { image: 'assets/images/products/MANTO ORG FREITAS FORMATO YOUTUBE.png' },
+
+    // imagens dos eventos (JPGs no projeto)
+    'evt-xtreino-gratuito': { image: 'assets/images/events/XTREINO TOKENS.jpeg' },
+    'evt-modo-liga': { image: 'assets/images/events/Modo Liga.jpeg' },
+    'evt-camp-freitas': { image: 'assets/images/events/CAMP.jpeg' },
+    'evt-semanal-freitas': { image: 'assets/images/events/SEMANAL FREITAS.jpg' }
 };
 
 function openPurchaseModal(productId) {
@@ -1621,22 +1636,10 @@ function showProductModal(productId) {
     document.getElementById('purchaseTitle').textContent = product.name;
     document.getElementById('purchaseDescription').textContent = details.desc;
     document.getElementById('purchasePrice').textContent = product.price;
+ 
 
-    // imagem do produto
-    const imgMap = {
-        'sensibilidades': 'assets/images/products/SENSIBILIDADE ORG FREITAS FORMATO YOUTUBE.png',
-        'imagens': 'assets/images/products/IMAGENS AÉREAS ORG FREITAS FORMATO YOUTUBE.png',
-        'planilhas': 'assets/images/products/PLANILHAS ORG FREITAS FORMATO YOUTUBE.png',
-        'passe-booyah': 'assets/images/products/PASSE ORG FREITAS FEED.png',
-        'camisa': 'assets/images/products/MANTO ORG FREITAS FORMATO YOUTUBE.png',
-        // imagens dos eventos (JPGs no projeto)
-        'evt-xtreino-gratuito': 'assets/images/events/XTREINO TOKENS.jpeg',
-        'evt-modo-liga': 'assets/images/events/Modo Liga.jpeg',
-        'evt-camp-freitas': 'assets/images/events/CAMP.jpeg',
-        'evt-semanal-freitas': 'assets/images/events/SEMANAL FREITAS.jpg'
-    };
     const imgEl = document.getElementById('purchaseImage');
-    if (imgEl) imgEl.src = imgMap[productId] || '';
+    if (imgEl) imgEl.src = imgMap[productId].image || '';   
 
     // opções dinâmicas
     const optContainer = document.getElementById('purchaseOptions');
@@ -4000,18 +4003,19 @@ window.reinitAnimations = reinitAnimations;
 window.initSmoothAnimations = initSmoothAnimations;
 
 // --- Agendamento nativo (Firestore + Netlify Function) ---
-const scheduleConfig = {
+const scheduleConfig =
+{
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00 },
     'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2026-01-12', allowedWeekdays: [1, 2, 3, 4, 5], slots: ['19h', '20h', '21h', '22h', '23h'] },
     'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
     // Produtos da loja virtual
-    'sensibilidades': { label: 'Sensibilidade no Free Fire – PC / Android / iOS', price: 8.00, isProduct: true },
-    'imagens': { label: 'Imagens Aéreas dos Mapas', price: 2.00, isProduct: true },
-    'planilhas': { label: 'Planilha de Análise de Times', price: 19.00, isProduct: true },
-    'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
-    'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
+    // 'sensibilidades': { label: 'Sensibilidade no Free Fire – PC / Android / iOS', price: 8.00, isProduct: true },
+    // 'imagens': { label: 'Imagens Aéreas dos Mapas', price: 2.00, isProduct: true },
+    // 'planilhas': { label: 'Planilha de Análise de Times', price: 19.00, isProduct: true },
+    // 'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
+    // 'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
 };
 
 // Função para controlar a exibição da seleção de marcas Android
@@ -6959,7 +6963,58 @@ async function updateCouponUsageCount(couponId) {
     }
 }
 
-// ==================== CARREGAMENTO DINÂMICO DOS PRODUTOS DA LOJA ====================
+function setImageProducts(productId, product){
+    if (imgMap[productId]) {               
+            imgMap[productId].image = product.image;             
+            
+    } else {        
+        imgMap[productId] = {                   
+            image: product.image
+        };
+    }
+    
+}
+
+
+function setScheduleConfig(productId,product){
+            if (scheduleConfig[productId]) {               
+                scheduleConfig[productId].label = product.name || scheduleConfig[productId].label;
+                scheduleConfig[productId].price = product.price || scheduleConfig[productId].price;
+                scheduleConfig[productId].isProduct = true;               
+                scheduleConfig[productId].description = product.description;
+                scheduleConfig[productId].image = product.image;                
+               
+            } else {
+               
+                scheduleConfig[productId] = {
+                    label: product.name,
+                    price: product.price,
+                    isProduct: true,
+                    description: product.description,
+                    image: product.image
+                };
+            }
+}
+
+function setProducts(productId, product){
+    if (products[productId]) {               
+        products[productId].name = product.name || products[productId].name;
+        products[productId].price = product.price || products[productId].price;
+        products[productId].isProduct = true;               
+        products[productId].description = product.description;
+        products[productId].image = product.image;
+        
+            
+    } else {        
+        products[productId] = {
+            name: product.name,
+            price: product.price,
+            isProduct: true,
+            description: product.description,
+            image: product.image
+        };
+    }
+}
 
 async function loadProductsFromFirestore() {
     try {
@@ -6986,6 +7041,9 @@ async function loadProductsFromFirestore() {
         snapshot.forEach(doc => {
             const product = doc.data();
             const productId = doc.id;
+ 
+            setScheduleConfig(productId, product);
+            setProducts(productId, product);
 
             // Define badge (destaque) se existir
             let badgeHtml = '';
@@ -7003,13 +7061,13 @@ async function loadProductsFromFirestore() {
             const descriptionLines = (product.description || '').split('\n').slice(0, 3).join('<br>');
 
             // Imagem (usa imagem padrão se não houver)
-            const imageUrl = product.imageUrl || 'assets/images/Logo - Xtreino Freitas.png';
+            const imageUrl = product.image || 'assets/images/Logo - Xtreino Freitas.png';
 
             html += `
                 <div class="product-card relative">
                     ${badgeHtml}
                     <div class="product-media">
-                        <img src="${imageUrl}" alt="${product.name}" loading="lazy" onerror="this.src='assets/images/products/placeholder.jpg'">
+                        <img src="${imageUrl}" alt="${product.name}" loading="lazy"">
                     </div>
                     <div class="product-title">${product.name}</div>
                     <div class="product-desc">
