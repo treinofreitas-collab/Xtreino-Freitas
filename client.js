@@ -3077,6 +3077,7 @@ function getStatusColor(status, orderData = null) {
     switch(status) {
         case 'paid':
         case 'approved':
+        case 'confirmed':
             return 'bg-green-100 text-green-800';
         case 'pending':
             return 'bg-yellow-100 text-yellow-800';
@@ -3122,19 +3123,20 @@ function getStatusText(status, orderData = null) {
                 return 'Processando';
             }
         }
-    }
-    
+    }    
+   
     switch(status) {
         case 'paid':
         case 'approved':
+        case 'confirmed':
             return 'Pago';
         case 'pending':
             return 'Pendente';
         case 'rejected':
         case 'failed':
-            return 'Rejeitado';
+            return 'Rejeitado';       
         default:
-            return 'Desconhecido';
+            return 'Em análise';
     }
 }
 
