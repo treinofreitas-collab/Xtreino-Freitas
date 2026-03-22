@@ -6283,10 +6283,11 @@ async function checkPaymentStatus(preferenceId) {
 }
 
 // Processar pagamento bem-sucedido
-function processSuccessfulPayment() {
+async function processSuccessfulPayment() {
+    console.log('🔄 processSuccessfulPayment iniciada');
     const regId = sessionStorage.getItem('lastRegId');
     const extRef = sessionStorage.getItem('lastExternalRef');
-    console.log('Processing successful payment, regId:', regId);
+    console.log('🔍 Dados de pagamento:', { regId, extRef });
 
     // Limpar dados de pagamento após processar com sucesso
     sessionStorage.removeItem('lastExternalRef');
@@ -6295,51 +6296,120 @@ function processSuccessfulPayment() {
     try { sessionStorage.removeItem('lastCheckoutUrl'); } catch (_) { }
 
     if (extRef) {
-        // Atualizar TODAS as reservas desta compra pela external_reference
-        import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js')
-            .then(({ collection, query, where, getDocs, doc, updateDoc }) => {
-                const regs = collection(window.firebaseDb, 'registrations');
-                return getDocs(query(regs, where('external_reference', '==', extRef))).then(async (snap) => {
-                    let link = null;
-                    const updates = [];
-                    snap.forEach(d => {
-                        updates.push(updateDoc(doc(collection(window.firebaseDb, 'registrations'), d.id), { status: 'paid', paidAt: Date.now() }));
-                        const data = d.data();
-                        if (!link && data && data.groupLink) link = data.groupLink;
-                    });
-                    return Promise.allSettled(updates).then(() => link);
-                });
-            }).then((groupLink) => {
-                openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.', groupLink);
-            }).catch((e) => {
-                console.error('Error updating registrations by external_reference:', e);
-                openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
+        try {
+            const { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+
+            // 1) Atualizar todas as registrations com este external_reference
+            const regsRef = collection(window.firebaseDb, 'registrations');
+            const q = query(regsRef, where('external_reference', '==', extRef));
+            const snap = await getDocs(q);
+            let groupLink = null;
+
+            const updates = [];
+            snap.forEach(d => {
+                updates.push(updateDoc(doc(window.firebaseDb, 'registrations', d.id), { status: 'paid', paidAt: serverTimestamp() }));
+                const data = d.data();
+                if (!groupLink && data && data.groupLink) groupLink = data.groupLink;
             });
+
+            await Promise.allSettled(updates);
+
+            // 2) Garantir que exista um pedido correspondente em orders para exibição
+            if (!snap.empty) {
+                const firstReg = snap.docs[0].data();
+                const ordersRef = collection(window.firebaseDb, 'orders');
+                const orderQ = query(ordersRef, where('external_reference', '==', extRef));
+                const orderSnap = await getDocs(orderQ);
+                if (orderSnap.empty) {
+                    const totalAmount = firstReg.price || 0;
+                    const orderData = {
+                        title: firstReg.title || firstReg.eventType || 'Evento',
+                        description: firstReg.title || firstReg.eventType || 'Evento',
+                        item: firstReg.title || firstReg.eventType || 'Evento',
+                        amount: totalAmount,
+                        total: totalAmount,
+                        quantity: 1,
+                        currency: 'BRL',
+                        status: 'paid',
+                        customer: firstReg.email || firstReg.contact || '',
+                        customerName: firstReg.teamName || '',
+                        buyerEmail: firstReg.email || '',
+                        userId: firstReg.userId || null,
+                        uid: firstReg.userId || null,
+                        external_reference: extRef,
+                        createdAt: serverTimestamp(),
+                        timestamp: Date.now(),
+                        type: 'event'
+                    };
+                    await addDoc(ordersRef, orderData);
+                    console.log('✅ Order criado automaticamente para external_reference:', extRef);
+                } else {
+                    const existingOrder = orderSnap.docs[0];
+                    if (existingOrder.data().status !== 'paid') {
+                        await updateDoc(doc(window.firebaseDb, 'orders', existingOrder.id), { status: 'paid', paidAt: serverTimestamp() });
+                    }
+                }
+            }
+
+            openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.', groupLink);
+        } catch (e) {
+            console.error('Erro ao processar pagamento por external_reference:', e);
+            openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
+        }
     } else if (regId) {
-        // Fallback: atualizar apenas o primeiro registro conhecido
-        import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js')
-            .then(({ doc, setDoc, getDoc, collection }) => {
-                const ref = doc(collection(window.firebaseDb, 'registrations'), regId);
-                return setDoc(ref, { status: 'paid', paidAt: Date.now() }, { merge: true })
-                    .then(() => getDoc(ref))
-                    .then(snap => { const d = snap.exists() ? snap.data() : {}; return d.groupLink || null; });
-            }).then((groupLink) => {
-                console.log('Registration updated, showing modal');
-                openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.', groupLink);
-            }).catch((e) => {
-                console.error('Error updating registration:', e);
-                openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
-            });
+        try {
+            const { doc, setDoc, getDoc, collection, updateDoc, serverTimestamp, addDoc, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const ref = doc(collection(window.firebaseDb, 'registrations'), regId);
+            await updateDoc(ref, { status: 'paid', paidAt: serverTimestamp() });
+
+            const regSnap = await getDoc(ref);
+            if (regSnap.exists()) {
+                const r = regSnap.data();
+                const ordersRef = collection(window.firebaseDb, 'orders');
+                const q = query(ordersRef, where('external_reference', '==', r.external_reference));
+                const orderSnap = await getDocs(q);
+                if (orderSnap.empty) {
+                    const totalAmount = r.price || 0;
+                    const orderData = {
+                        title: r.title || r.eventType || 'Evento',
+                        description: r.title || r.eventType || 'Evento',
+                        item: r.title || r.eventType || 'Evento',
+                        amount: totalAmount,
+                        total: totalAmount,
+                        quantity: 1,
+                        currency: 'BRL',
+                        status: 'paid',
+                        customer: r.email || r.contact || '',
+                        customerName: r.teamName || '',
+                        buyerEmail: r.email || '',
+                        userId: r.userId || null,
+                        uid: r.userId || null,
+                        external_reference: r.external_reference,
+                        createdAt: serverTimestamp(),
+                        timestamp: Date.now(),
+                        type: 'event'
+                    };
+                    await addDoc(ordersRef, orderData);
+                } else {
+                    const existingOrder = orderSnap.docs[0];
+                    if (existingOrder.data().status !== 'paid') {
+                        await updateDoc(doc(window.firebaseDb, 'orders', existingOrder.id), { status: 'paid', paidAt: serverTimestamp() });
+                    }
+                }
+            }
+            openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.', null);
+        } catch (e) {
+            console.error('Erro ao processar pagamento por regId:', e);
+            openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
+        }
     } else {
-        console.log('No regId, creating local order');
-        // Fallback: cria registro local para exibir na aba pedidos
+        console.log('Nenhum regId, criando registro local');
         try {
             const info = JSON.parse(sessionStorage.getItem('lastRegInfo') || '{}');
             const orders = JSON.parse(localStorage.getItem('localOrders') || '[]');
             orders.unshift({ title: info.title || 'Reserva', amount: info.price || 0, status: 'paid', date: new Date().toISOString() });
             localStorage.setItem('localOrders', JSON.stringify(orders));
-            console.log('Local order created:', orders[0]);
-        } catch (e) { console.error('Error creating local order:', e); }
+        } catch (e) { console.error('Erro ao criar local order:', e); }
         openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento foi aprovado. Confira seus acessos na área Minha Conta.');
     }
 }
