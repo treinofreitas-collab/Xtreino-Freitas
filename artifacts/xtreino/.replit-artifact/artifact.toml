@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "XTreino Freitas"
+version = "1.0.0"
+id = "artifacts/xtreino"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24841
+
+[services.development]
+run = "pnpm --filter @workspace/xtreino run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/xtreino", "run", "build" ]
+publicDir = "artifacts/xtreino/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24841"
+BASE_PATH = "/"

@@ -1,0 +1,42 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Fotos de perfil: usuários podem ler/escrever apenas suas próprias fotos
+    match /profile-photos/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Imagens de eventos: leitura pública (usada nos cards do site);
+    // upload apenas para usuários autenticados (admin via painel);
+    // deleção restrita a admins autorizados.
+    match /events/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+      allow delete: if request.auth != null &&
+        request.auth.token.email in [
+          'cleitondouglass@gmail.com',
+          'cleitondouglass123@hotmail.com',
+          'gilmariofreitas378@gmail.com',
+          'gilmariofreitas387@gmail.com',
+          'flavetyr@gmail.com',
+          'admin@xtreino.dev'
+        ];
+    }
+
+    // Logos de times: qualquer membro autenticado pode ler/escrever
+    // Inclui times cadastrados (teams/) e logos de inscrições (teams/{event}/logos/)
+    match /teams/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Outros arquivos: leitura pública, escrita bloqueada
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
+

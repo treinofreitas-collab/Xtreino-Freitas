@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evento - PLATAFORMA FREITAS</title>
+    <link rel="icon" type="image/png" href="assets/images/Logo - Xtreino Freitas.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { background: #0f172a; }
+        .tab-btn { transition: all .2s; border: none; cursor: pointer; }
+        .tab-btn.active { background: #ea580c; color: #fff; }
+        .tab-btn:not(.active) { background: #1e293b; color: #94a3b8; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .badge { display:inline-block; font-size:.7rem; font-weight:700; padding:.2rem .6rem; border-radius:4px; }
+        .yt-iframe { width:100%; aspect-ratio:16/9; border-radius:12px; border:none; }
+        pre.regras-text { white-space: pre-wrap; word-break: break-word; font-family: inherit; }
+    </style>
+    <script src="js/site-hardening.js" defer></script>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<header class="sticky top-0 z-50 bg-slate-900 border-b border-slate-700 shadow-xl">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
+        <a href="index.html" class="flex items-center gap-2 text-slate-300 hover:text-white transition-colors">
+            <i class="fas fa-arrow-left"></i>
+            <img src="assets/images/Logo - Xtreino Freitas.png" alt="Logo" class="h-9 w-9 rounded-lg object-contain">
+            <span class="font-bold text-sm hidden sm:block">PLATAFORMA FREITAS</span>
+        </a>
+        <div class="flex-1"></div>
+        <button onclick="goRegister()" id="headerRegBtn" class="hidden bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors">
+            <i class="fas fa-ticket-alt mr-1"></i> INSCREVER
+        </button>
+    </div>
+</header>
+
+<!-- Loading -->
+<div id="pageLoading" class="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+    <i class="fas fa-spinner fa-spin text-orange-500 text-4xl"></i>
+    <p class="text-slate-400">Carregando evento...</p>
+</div>
+
+<!-- Error state -->
+<div id="pageError" class="hidden flex-col items-center justify-center min-h-[60vh] gap-4 p-8 text-center">
+    <i class="fas fa-exclamation-triangle text-red-400 text-4xl"></i>
+    <h2 class="text-white text-xl font-bold">Evento não encontrado</h2>
+    <p class="text-slate-400" id="errMsg">Este evento pode ter sido removido ou o link está incorreto.</p>
+    <a href="index.html" class="bg-orange-600 hover:bg-orange-700 text-white font-bold px-6 py-3 rounded-xl">Voltar ao início</a>
+</div>
+
+<!-- Event Content -->
+<div id="pageContent" class="hidden max-w-4xl mx-auto pb-28">
+
+    <!-- Banner -->
+    <div class="relative">
+        <img id="evBanner" src="" alt="" class="w-full object-cover max-h-72 md:max-h-96 bg-slate-800" style="min-height:160px;">
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+    </div>
+
+    <!-- Event header -->
+    <div class="px-4 md:px-6 -mt-16 relative z-10">
+        <div id="evBadges" class="flex flex-wrap gap-2 mb-3"></div>
+        <h1 id="evName" class="text-2xl md:text-3xl font-black text-white mb-2 leading-tight"></h1>
+        <div id="evMeta" class="flex flex-wrap gap-3 text-sm text-slate-400 mb-4"></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="px-4 md:px-6 mt-2">
+        <div id="tabNav" class="flex flex-wrap gap-2 mb-6"></div>
+
+        <div id="panelInfo" class="tab-panel">
+            <div id="evDesc" class="text-slate-300 leading-relaxed whitespace-pre-line mb-4"></div>
+            <div id="evInfoGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6"></div>
+            <!-- Regras dentro da aba Informações -->
+            <div id="evRegrasBlock" class="hidden">
+                <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                    <h3 class="text-orange-400 font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <i class="fas fa-gavel"></i> Regras do Evento
+                    </h3>
+                    <pre class="regras-text text-slate-200 text-sm leading-relaxed" id="evRegras"></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="panelRegras" class="tab-panel">
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                <h3 class="text-orange-400 font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i class="fas fa-gavel"></i> Regras do Evento
+                </h3>
+                <pre class="regras-text text-slate-200 text-sm leading-relaxed" id="evRegrasTab"></pre>
+            </div>
+        </div>
+
+        <div id="panelRodadas" class="tab-panel">
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                <h3 class="text-blue-400 font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i class="fas fa-layer-group"></i> Rodadas
+                </h3>
+                <pre class="regras-text text-slate-200 text-sm leading-relaxed" id="evRodadas"></pre>
+            </div>
+        </div>
+
+        <div id="panelPontuacao" class="tab-panel">
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                <h3 class="text-green-400 font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i class="fas fa-trophy"></i> Tabela de Pontuação
+                </h3>
+                <pre class="regras-text text-slate-200 text-sm leading-relaxed" id="evPontuacao"></pre>
+            </div>
+        </div>
+
+        <div id="panelLive" class="tab-panel">
+            <h3 class="text-red-400 font-bold text-sm uppercase tracking-wider mb-3 flex items-center gap-2">
+                <i class="fab fa-youtube"></i> Transmissão ao Vivo
+            </h3>
+            <div id="evYoutube"></div>
+            <p class="text-slate-500 text-xs mt-3 text-center">A transmissão será ativada durante o evento.</p>
+        </div>
+
+        <div id="panelInscritos" class="tab-panel">
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                <h3 class="text-orange-400 font-bold text-sm uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <i class="fas fa-list-ol"></i> Equipes Inscritas por Horário
+                </h3>
+                <div id="inscritosContent">
+                    <div class="text-center py-8 text-slate-500">
+                        <i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>
+                        <p class="text-sm">Carregando inscritos...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aba Classificação — Campeonato Semanal -->
+        <div id="panelClassificacao" class="tab-panel">
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                <h3 class="text-orange-400 font-bold text-sm uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <i class="fas fa-trophy"></i> Classificação ao Vivo
+                </h3>
+                <!-- Filtro de fase -->
+                <div class="flex gap-2 mb-5 flex-wrap" id="classifFaseNav">
+                    <button onclick="window.loadClassificacao('19h')" id="classBtnSemiA"
+                        class="class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white">Semifinal A — 19h</button>
+                    <button onclick="window.loadClassificacao('20h')" id="classBtnSemiB"
+                        class="class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300">Semifinal B — 20h</button>
+                    <button onclick="window.loadClassificacao('21h')" id="classBtnSemiC"
+                        class="class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300">Semifinal C — 21h</button>
+                    <button onclick="window.loadClassificacao('22h')" id="classBtnFinal"
+                        class="class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300">🏆 Final — 22h</button>
+                </div>
+                <!-- Banner (exibido se configurado) -->
+                <div id="classifBanner" class="hidden mb-4"></div>
+                <!-- Tabela de pontuação -->
+                <div id="classifTabela">
+                    <div class="text-center py-8 text-slate-500">
+                        <i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>
+                        <p class="text-sm">Carregando classificação...</p>
+                    </div>
+                </div>
+                <!-- Atualização automática -->
+                <p class="text-xs text-slate-600 text-right mt-3 flex items-center gap-1 justify-end">
+                    <span class="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    Atualização automática em tempo real
+                </p>
+            </div>
+        </div>
+
+        <div id="panelGrupos" class="tab-panel">
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                <h3 class="text-purple-400 font-bold text-sm uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <i class="fas fa-users"></i> Divisão de Grupos
+                </h3>
+                <div class="flex gap-2 mb-5 flex-wrap">
+                    <button onclick="loadPublicGroups('classificatoria')" id="pubPhaseBtn_classificatoria"
+                        class="pub-phase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white">
+                        CLASSIFICATÓRIA
+                    </button>
+                    <button onclick="loadPublicGroups('semifinal')" id="pubPhaseBtn_semifinal"
+                        class="pub-phase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300">
+                        SEMIFINAL
+                    </button>
+                    <button onclick="loadPublicGroups('final')" id="pubPhaseBtn_final"
+                        class="pub-phase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300">
+                        FINAL
+                    </button>
+                </div>
+                <div id="publicGroupsContent">
+                    <div class="text-center py-8 text-slate-500">
+                        <i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>Carregando grupos...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating CTA -->
+<div id="floatingCta" class="hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-2 bg-gradient-to-t from-slate-900">
+    <div class="max-w-4xl mx-auto">
+        <button onclick="goRegister()" class="w-full bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-base font-black py-4 rounded-2xl shadow-2xl transition-all">
+            <i class="fas fa-ticket-alt mr-2"></i>FAZER INSCRIÇÃO
+        </button>
+    </div>
+</div>
+
+<script type="module">
+import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
+import { getFirestore, doc, getDoc, deleteDoc, collection, query, where, getDocs, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
+
+const _fk = ["AIzaSyBzD0iWNI","fZwuzWN-Xhjbg2","2OfCHv1Qwjo"].join("");
+const FIREBASE_CONFIG = {
+    apiKey: _fk,
+    authDomain: "orgfreitas-ofc.firebaseapp.com",
+    projectId: "orgfreitas-ofc",
+    storageBucket: "orgfreitas-ofc.firebasestorage.app",
+    messagingSenderId: "493859004030",
+    appId: "1:493859004030:web:a1cba415344e4a7567822f"
+};
+
+let _db = null;
+let _auth = null;
+
+function initFirebase() {
+    const existing = getApps().find(a => a.name === '[DEFAULT]') || (getApps().length > 0 ? getApps()[0] : null);
+    const app = existing || initializeApp(FIREBASE_CONFIG);
+    _db = getFirestore(app);
+    _auth = getAuth(app);
+    window.firebaseDb = _db;
+    return _db;
+}
+
+// Mapa de slugs de URL → eventType interno (URLs limpas como /treinofreitas)
+const URL_SLUG_MAP = {
+    '/treinofreitas': 'xtreino-tokens',
+    '/modoliga':      'modo-liga',
+    '/semanal':       'semanal-freitas',
+    '/campeonato':    'camp-freitas',
+    '/acesso':        'acesso',
+};
+
+// Suporte a: /treinofreitas (clean URL), ?event=type, ?id=docId, #docId
+const _searchParams = new URLSearchParams(location.search);
+// Strip any ?mp_status=... suffix que MP pode adicionar após o hash
+const _rawHash = location.hash.replace('#', '').split('?')[0];
+// URL limpa: Firebase Hosting serve evento.html em /treinofreitas, pathname fica como slug
+const _pathEventType = URL_SLUG_MAP[location.pathname] || null;
+// ?event=eventType (gerado pelos links novos)
+const _queryEventType = _searchParams.get('event') || null;
+// Tipo resolvido — path tem prioridade
+const _resolvedEventType = _pathEventType || _queryEventType || null;
+// ID legado (doc ID ou hash) — mantido para retrocompatibilidade
+const eventId = _searchParams.get('id') || _rawHash || '';
+let _currentEventId = '';
+
+function showError(msg) {
+    document.getElementById('pageLoading').classList.add('hidden');
+    const errEl = document.getElementById('pageError');
+    errEl.classList.remove('hidden');
+    errEl.classList.add('flex');
+    if (msg) document.getElementById('errMsg').textContent = msg;
+}
+
+function showContent() {
+    document.getElementById('pageLoading').classList.add('hidden');
+    document.getElementById('pageContent').classList.remove('hidden');
+    // CTA shown by default; checkUserRegistration() can hide it
+    document.getElementById('floatingCta').classList.remove('hidden');
+    document.getElementById('headerRegBtn').classList.remove('hidden');
+}
+
+function hideCtaRegistered() {
+    const cta = document.getElementById('floatingCta');
+    if (cta) cta.innerHTML = `<div class="max-w-4xl mx-auto">
+        <div class="w-full flex items-center justify-center gap-3 bg-green-700 text-white text-base font-black py-4 rounded-2xl shadow-2xl">
+            <i class="fas fa-check-circle text-xl"></i>Você já está inscrito neste evento!
+        </div>
+    </div>`;
+    const hBtn = document.getElementById('headerRegBtn');
+    if (hBtn) { hBtn.textContent = '✓ INSCRITO'; hBtn.disabled = true; hBtn.className = 'bg-green-700 text-white text-sm font-bold px-4 py-2 rounded-lg cursor-default'; }
+}
+
+async function checkUserRegistration(evId) {
+    if (!_auth || !_db) return;
+    const user = _auth.currentUser;
+    if (!user) return;
+    try {
+        const snap = await getDocs(query(
+            collection(_db, 'registrations'),
+            where('eventType', '==', evId),
+            where('userId', '==', user.uid),
+            where('status', 'in', ['confirmed', 'paid', 'approved', 'pending'])
+        ));
+        if (!snap.empty) hideCtaRegistered();
+    } catch (_) { /* sem permissão ou sem dados — manter CTA */ }
+}
+
+let _classifUnsubscribe = null;
+
+function setTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    const btn = document.getElementById('tabBtn_' + tabId);
+    const capId = tabId.charAt(0).toUpperCase() + tabId.slice(1);
+    const panel = document.getElementById('panel' + capId);
+    if (btn) btn.classList.add('active');
+    if (panel) panel.classList.add('active');
+    if (tabId === 'inscritos' && window._currentEventId) {
+        loadInscritos(window._currentEventId);
+    }
+    if (tabId === 'classificacao') {
+        // cancelar listener anterior se houver
+        if (_classifUnsubscribe) { _classifUnsubscribe(); _classifUnsubscribe = null; }
+        window.loadClassificacao('19h');
+    } else {
+        // cancelar listener ao sair da aba
+        if (_classifUnsubscribe) { _classifUnsubscribe(); _classifUnsubscribe = null; }
+    }
+}
+window.setTab = setTab;
+
+function buildTabs(ev) {
+    const isSemanal = (ev.eventType || ev.id || '').includes('semanal') ||
+                      (window._currentEventId || '').includes('semanal') ||
+                      (location.search + location.pathname).includes('semanal');
+    const tabs = [{ id:'info', icon:'fa-info-circle', label:'INFORMAÇÕES' }];
+    if (ev.regras) tabs.push({ id:'regras', icon:'fa-gavel', label:'REGRAS' });
+    if (ev.rodadas) tabs.push({ id:'rodadas', icon:'fa-layer-group', label:'RODADAS' });
+    if (ev.pontuacao) tabs.push({ id:'pontuacao', icon:'fa-trophy', label:'PONTUAÇÃO' });
+    if (ev.youtubeUrl) tabs.push({ id:'live', icon:'fa-play-circle', label:'AO VIVO' });
+    if (isSemanal) tabs.push({ id:'classificacao', icon:'fa-medal', label:'CLASSIFICAÇÃO' });
+    if (ev.category === 'camp') tabs.push({ id:'grupos', icon:'fa-users', label:'GRUPOS' });
+    document.getElementById('tabNav').innerHTML = tabs.map(t =>
+        `<button id="tabBtn_${t.id}" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold" onclick="setTab('${t.id}')">
+            <i class="fas ${t.icon} mr-1"></i>${t.label}
+        </button>`
+    ).join('');
+    setTab('info');
+}
+
+function buildInfoGrid(ev) {
+    const items = [];
+    if (ev.tipo) items.push({ icon:'fa-gamepad', label:'Tipo', val: ev.tipo });
+    if (ev.modo) items.push({ icon:'fa-sliders-h', label:'Modo', val: ev.modo });
+    if (ev.formato) items.push({ icon:'fa-stream', label:'Formato', val: ev.formato });
+    if (ev.vagas) items.push({ icon:'fa-users', label:'Vagas/Horário', val: ev.vagas });
+    if (ev.quedas) items.push({ icon:'fa-skull', label:'Quedas', val: ev.quedas + 'x' });
+    if (ev.preco) items.push({ icon:'fa-tag', label:'Entrada', val:'R$ ' + Number(ev.preco).toFixed(2) });
+    else if (ev.entrada) items.push({ icon:'fa-tag', label:'Entrada', val: ev.entrada });
+    if (ev.premiado === 'SIM') items.push({ icon:'fa-medal', label:'Premiado', val:'SIM 🏆' });
+    if (ev.premiacao) items.push({ icon:'fa-trophy', label:'Premiação', val: ev.premiacao });
+    if (Array.isArray(ev.mapas) && ev.mapas.length) items.push({ icon:'fa-map', label:'Mapas', val: ev.mapas.join(' · ') });
+    if (ev.eventDate) items.push({ icon:'fa-calendar', label:'Data', val: new Date(ev.eventDate).toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'}) });
+    document.getElementById('evInfoGrid').innerHTML = items.map(i =>
+        `<div class="bg-slate-800 rounded-xl p-3 border border-slate-700">
+            <div class="text-slate-500 text-xs mb-1"><i class="fas ${i.icon} mr-1"></i>${i.label}</div>
+            <div class="text-white font-bold text-sm">${i.val}</div>
+        </div>`
+    ).join('');
+}
+
+function extractYoutubeId(url) {
+    if (!url) return null;
+    const m = url.match(/(?:youtube\.com\/(?:watch\?v=|live\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+    return m ? m[1] : null;
+}
+
+async function loadEvent() {
+    if (!_resolvedEventType && !eventId) { showError('Nenhum evento selecionado. Volte à página inicial e abra um evento.'); return; }
+
+    // Timeout de 12s caso Firebase demore muito
+    const timeout = setTimeout(() => showError('Tempo esgotado ao carregar o evento. Verifique sua conexão e tente novamente.'), 12000);
+
+    try {
+        const db = initFirebase();
+        if (!db) { clearTimeout(timeout); showError('Erro ao conectar ao banco de dados.'); return; }
+
+        let snap;
+        if (_resolvedEventType) {
+            // URL limpa (/treinofreitas) ou ?event= → buscar por campo eventType
+            const qSnap = await getDocs(query(collection(db, 'adminEvents'), where('eventType', '==', _resolvedEventType)));
+            if (!qSnap.empty) {
+                snap = qSnap.docs[0];
+            } else {
+                // Fallback: tentar como doc ID direto (retrocompatibilidade)
+                snap = await getDoc(doc(db, 'adminEvents', _resolvedEventType));
+            }
+        } else {
+            snap = await getDoc(doc(db, 'adminEvents', eventId));
+        }
+
+        clearTimeout(timeout);
+        if (!snap || !snap.exists()) {
+            showError('Evento não encontrado. Verifique o link ou volte para a home.');
+            return;
+        }
+        const ev = snap.data();
+        _currentEventId = snap.id;
+        window._currentEventId = snap.id;
+        window._evDb = db;
+        window._currentEventPreco = ev.preco || 0;
+        window._currentEventEntrada = ev.entrada || '';
+
+        // Banner
+        const banner = document.getElementById('evBanner');
+        if (ev.imageUrl) {
+            banner.src = ev.imageUrl;
+        } else {
+            banner.style.display = 'none';
+            document.querySelector('.relative').style.marginTop = '4rem';
+        }
+        banner.alt = ev.name || 'Evento';
+
+        // Title & meta
+        document.getElementById('evName').textContent = ev.name || 'Evento';
+        document.title = (ev.name || 'Evento') + ' — PLATAFORMA FREITAS';
+
+        const catColors = { camp:'bg-orange-600', xtreino:'bg-blue-600', diario:'bg-green-600' };
+        const badges = [];
+        if (ev.category) badges.push(`<span class="badge ${catColors[ev.category]||'bg-slate-600'} text-white">${ev.category.toUpperCase()}</span>`);
+        const scMap = {Aberto:'bg-green-500',Fechado:'bg-red-500','Em andamento':'bg-blue-500'};
+        if (ev.status) badges.push(`<span class="badge ${scMap[ev.status]||'bg-gray-500'} text-white">${ev.status}</span>`);
+        if (ev.quedas) badges.push(`<span class="badge bg-purple-600 text-white">${ev.quedas}x QUEDAS</span>`);
+        document.getElementById('evBadges').innerHTML = badges.join(' ');
+
+        const meta = [];
+        if (ev.tipo) meta.push(`<span><i class="fas fa-gamepad mr-1"></i>${ev.tipo}</span>`);
+        if (ev.modo) meta.push(`<span><i class="fas fa-sliders-h mr-1"></i>${ev.modo}</span>`);
+        if (ev.vagas) meta.push(`<span><i class="fas fa-users mr-1"></i>${ev.vagas} vagas</span>`);
+        document.getElementById('evMeta').innerHTML = meta.join('<span class="text-slate-600 mx-1">·</span>');
+
+        if (ev.descricao) document.getElementById('evDesc').textContent = ev.descricao;
+        buildInfoGrid(ev);
+        if (ev.regras) {
+            document.getElementById('evRegras').textContent = ev.regras;
+            document.getElementById('evRegrasBlock').classList.remove('hidden');
+            const _regrasTab = document.getElementById('evRegrasTab');
+            if (_regrasTab) _regrasTab.textContent = ev.regras;
+        }
+        if (ev.rodadas) document.getElementById('evRodadas').textContent = ev.rodadas;
+        if (ev.pontuacao) document.getElementById('evPontuacao').textContent = ev.pontuacao;
+
+        if (ev.youtubeUrl) {
+            const yid = extractYoutubeId(ev.youtubeUrl);
+            document.getElementById('evYoutube').innerHTML = yid
+                ? `<iframe class="yt-iframe" src="https://www.youtube.com/embed/${yid}?autoplay=0" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>`
+                : `<a href="${ev.youtubeUrl}" target="_blank" rel="noopener" class="block text-center bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl"><i class="fab fa-youtube mr-2"></i>Assistir no YouTube</a>`;
+        }
+
+        buildTabs(ev);
+        showContent();
+
+        // Garantir autenticação (pelo menos anônima) para poder consultar inscrições
+        await new Promise(resolve => {
+            const unsub = onAuthStateChanged(_auth, (u) => { window.currentUser = u || null; unsub(); resolve(); });
+        });
+        if (!_auth.currentUser) {
+            try { await signInAnonymously(_auth); } catch(_e) {}
+        }
+        checkAndUnlockInscritosTab(window._currentEventId || eventId);
+
+        if (ev.status === 'Fechado') {
+            const cta = document.getElementById('floatingCta');
+            if (cta) cta.innerHTML = '<div class="max-w-4xl mx-auto"><div class="w-full text-center bg-slate-700 text-slate-400 text-base font-bold py-4 rounded-2xl">Inscrições Encerradas</div></div>';
+            const hBtn = document.getElementById('headerRegBtn');
+            if (hBtn) hBtn.classList.add('hidden');
+        } else {
+            // Verificar se usuário já está inscrito (aguarda auth resolver)
+            onAuthStateChanged(_auth, (user) => {
+                window.currentUser = user || null;
+                if (user) checkUserRegistration(eventId);
+            });
+        }
+
+        if (ev.category === 'camp') loadPublicGroups('classificatoria');
+
+    } catch (err) {
+        console.error('Erro ao carregar evento:', err);
+        showError('Erro ao carregar dados do evento: ' + (err.message || ''));
+    }
+}
+
+window.loadPublicGroups = async function(phase) {
+    const db = window._evDb;
+    const evId = window._currentEventId;
+    ['classificatoria','semifinal','final'].forEach(p => {
+        const btn = document.getElementById('pubPhaseBtn_' + p);
+        if (btn) btn.className = p === phase
+            ? 'pub-phase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white'
+            : 'pub-phase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300';
+    });
+    const container = document.getElementById('publicGroupsContent');
+    if (!container) return;
+    if (!db || !evId) {
+        container.innerHTML = '<div class="text-center py-8 text-slate-500 text-sm">Dados ainda carregando, aguarde...</div>';
+        return;
+    }
+    container.innerHTML = '<div class="text-center py-8 text-slate-500"><i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>Carregando...</div>';
+    try {
+        const snap = await getDoc(doc(db, 'camp_groups', `${evId}_${phase}`));
+        if (!snap.exists()) {
+            const phaseNames = {classificatoria:'Classificatória',semifinal:'Semifinal',final:'Final'};
+            container.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Grupos da ${phaseNames[phase]} ainda não foram divulgados.</div>`;
+            return;
+        }
+        const { groups, advancingPerGroup } = snap.data();
+        if (!groups || !groups.length) {
+            container.innerHTML = '<div class="text-center py-8 text-slate-500">Nenhum grupo gerado.</div>';
+            return;
+        }
+        container.innerHTML = (advancingPerGroup
+            ? `<p class="text-sm text-green-400 mb-4"><i class="fas fa-arrow-up mr-1"></i>${advancingPerGroup} time(s) avançam por grupo</p>` : '')
+            + groups.map(g => `
+            <div class="border border-slate-600 rounded-xl overflow-hidden mb-3">
+                <div class="bg-slate-700 border-b border-slate-600 px-4 py-2 flex justify-between items-center">
+                    <span class="font-bold text-orange-400">${g.name}</span>
+                    <span class="text-xs text-slate-400">${g.teams.length} time(s)</span>
+                </div>
+                <ul class="divide-y divide-slate-700">
+                    ${g.teams.map((t, j) => `
+                    <li class="flex items-center gap-3 px-4 py-2.5">
+                        <span class="w-6 h-6 rounded-full bg-slate-600 text-slate-300 text-xs font-bold flex items-center justify-center flex-shrink-0">${j+1}</span>
+                        <span class="text-sm font-medium text-slate-100">${t}</span>
+                        ${advancingPerGroup && j < advancingPerGroup ? '<span class="ml-auto text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded-full font-semibold">Avança ↑</span>' : ''}
+                    </li>`).join('')}
+                </ul>
+            </div>`).join('');
+    } catch (err) {
+        container.innerHTML = '<div class="text-center py-4 text-red-400 text-sm">Erro ao carregar grupos.</div>';
+    }
+};
+
+async function checkAndUnlockInscritosTab(evId) {
+    const _db = window._evDb;
+    const _currentUid = window.currentUser?.uid;
+    const _isAnon = window.currentUser?.isAnonymous;
+    if (!_db || !_currentUid || _isAnon) return;
+
+    const _validStatuses = new Set(['confirmed', 'paid', 'approved']);
+    const _normalizedEvId = String(evId || '').toLowerCase().trim().replace(/[\s_]+/g, '-');
+    const _aliasMap = {
+        'xtreino-tokens': ['xtreino-tokens','xtreino-freitas','xtreino freitas','XTreino Freitas','xtreino tokens'],
+        'modo-liga': ['modo-liga','xtreino-modo-liga','xtreino modo liga','XTreino Modo Liga'],
+        'semanal-freitas': ['semanal-freitas','semanal freitas','Semanal Freitas'],
+        'camp-freitas': ['camp-freitas','campeonato-freitas','campeonato freitas','Campeonato Freitas'],
+    };
+    const _evTypesSet = new Set([evId, _normalizedEvId, _resolvedEventType].filter(Boolean));
+    Object.entries(_aliasMap).forEach(([canon, aliases]) => {
+        const normAliases = aliases.map(a => a.toLowerCase().replace(/[\s_]+/g, '-'));
+        if (normAliases.includes(_normalizedEvId) || aliases.includes(evId) || canon === _resolvedEventType) {
+            aliases.forEach(a => _evTypesSet.add(a));
+            _evTypesSet.add(canon);
+        }
+    });
+
+    let _hasConfirmed = false;
+    for (const _evType of _evTypesSet) {
+        if (_hasConfirmed) break;
+        try {
+            const _snap = await getDocs(query(collection(_db, 'registrations'),
+                where('userId', '==', _currentUid),
+                where('eventType', '==', _evType)
+            ));
+            _hasConfirmed = _snap.docs.some(d => _validStatuses.has(d.data().status));
+        } catch(_) {}
+    }
+
+    if (_hasConfirmed) {
+        const tabNav = document.getElementById('tabNav');
+        if (tabNav && !document.getElementById('tabBtn_inscritos')) {
+            const btn = document.createElement('button');
+            btn.id = 'tabBtn_inscritos';
+            btn.className = 'tab-btn px-4 py-2 rounded-lg text-xs font-bold';
+            btn.innerHTML = '<i class="fas fa-list-ol mr-1"></i>INSCRITOS';
+            btn.onclick = () => setTab('inscritos');
+            tabNav.appendChild(btn);
+        }
+    }
+}
+
+async function loadInscritos(evId) {
+    const container = document.getElementById('inscritosContent');
+    if (!container) return;
+    if (!_db) { container.innerHTML = '<div class="text-center py-6 text-slate-500 text-sm">Banco de dados não disponível.</div>'; return; }
+    container.innerHTML = '<div class="text-center py-6 text-slate-500"><i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>Carregando inscritos...</div>';
+
+    // Verificar se usuário possui vaga confirmada neste evento
+    const _currentUid = window.currentUser?.uid;
+    const _isAnon = window.currentUser?.isAnonymous;
+    if (!_currentUid || _isAnon) {
+        container.innerHTML = '<div class="text-center py-10 px-4"><div style="font-size:2rem;margin-bottom:10px">🔒</div><p class="text-slate-300 font-semibold text-sm mb-1">Conteúdo Exclusivo</p><p class="text-slate-400 text-xs">Faça login e garanta sua vaga para visualizar os times inscritos.</p></div>';
+        return;
+    }
+    try {
+        // Checa se o usuário tem registro confirmado/pago neste evento
+        const _validStatuses = new Set(['confirmed', 'paid', 'approved']);
+        const _normalizedEvId = String(evId || '').toLowerCase().trim().replace(/[\s_]+/g, '-');
+        const _aliasMap = {
+            'xtreino-tokens': ['xtreino-tokens','xtreino-freitas','xtreino freitas','XTreino Freitas','xtreino tokens'],
+            'modo-liga': ['modo-liga','xtreino-modo-liga','xtreino modo liga','XTreino Modo Liga'],
+            'semanal-freitas': ['semanal-freitas','semanal freitas','Semanal Freitas'],
+            'camp-freitas': ['camp-freitas','campeonato-freitas','campeonato freitas','Campeonato Freitas'],
+        };
+        const _evTypesSet = new Set([evId, _normalizedEvId, _resolvedEventType].filter(Boolean));
+        Object.entries(_aliasMap).forEach(([canon, aliases]) => {
+            const normAliases = aliases.map(a => a.toLowerCase().replace(/[\s_]+/g, '-'));
+            if (normAliases.includes(_normalizedEvId) || aliases.includes(evId) || canon === _resolvedEventType) {
+                aliases.forEach(a => _evTypesSet.add(a));
+                _evTypesSet.add(canon);
+            }
+        });
+        let _hasConfirmedVaga = false;
+        for (const _evType of _evTypesSet) {
+            if (_hasConfirmedVaga) break;
+            try {
+                const _q = query(collection(_db, 'registrations'),
+                    where('userId', '==', _currentUid),
+                    where('eventType', '==', _evType)
+                );
+                const _snap = await getDocs(_q);
+                _hasConfirmedVaga = _snap.docs.some(d => _validStatuses.has(d.data().status));
+            } catch(_) {}
+        }
+        if (!_hasConfirmedVaga) {
+            container.innerHTML = `<div class="text-center py-10 px-4">
+                <div style="font-size:2.2rem;margin-bottom:12px">🔐</div>
+                <p class="text-white font-bold text-sm mb-2">Acesso Restrito</p>
+                <p class="text-slate-400 text-xs leading-relaxed">Os inscritos serão liberados após a confirmação da sua vaga.</p>
+                <button onclick="goRegister()" class="mt-4 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-5 py-2 rounded-full transition-colors">
+                    <i class="fas fa-ticket-alt mr-1"></i> GARANTIR VAGA
+                </button>
+            </div>`;
+            return;
+        }
+    } catch(_e) {
+        // Em caso de erro (ex: permissão Firestore), bloquear por segurança
+        container.innerHTML = `<div class="text-center py-10 px-4">
+            <div style="font-size:2.2rem;margin-bottom:12px">🔐</div>
+            <p class="text-white font-bold text-sm mb-2">Acesso Restrito</p>
+            <p class="text-slate-400 text-xs leading-relaxed">Os inscritos serão liberados após a confirmação da sua vaga.</p>
+            <button onclick="goRegister()" class="mt-4 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-5 py-2 rounded-full transition-colors">
+                <i class="fas fa-ticket-alt mr-1"></i> GARANTIR VAGA
+            </button>
+        </div>`;
+        return;
+    }
+
+    try {
+        // Mesmas variantes de tipo da fonte de verdade (Gerenciamento)
+        // Inclui: tipo canônico da URL (_resolvedEventType), ID bruto do doc e variações normalizadas
+        const normalizedId = String(evId || '').toLowerCase().trim().replace(/[\s_]+/g, '-');
+        const _knownAliases = {
+            'xtreino-tokens': ['xtreino-tokens','xtreino-freitas','xtreino freitas','XTreino Freitas','xtreino tokens'],
+            'modo-liga': ['modo-liga','xtreino-modo-liga','xtreino modo liga','XTreino Modo Liga'],
+            'semanal-freitas': ['semanal-freitas','semanal freitas','Semanal Freitas'],
+            'camp-freitas': ['camp-freitas','campeonato-freitas','campeonato freitas','Campeonato Freitas'],
+        };
+        // Sempre incluir o tipo canônico resolvido pela URL (mais confiável)
+        const _typesSet = new Set([evId, normalizedId, _resolvedEventType].filter(Boolean));
+        Object.entries(_knownAliases).forEach(([canon, aliases]) => {
+            // Normaliza cada alias antes de comparar (espaço → traço)
+            const normAliases = aliases.map(a => a.toLowerCase().replace(/[\s_]+/g, '-'));
+            if (normAliases.includes(normalizedId) || aliases.includes(evId) || canon === _resolvedEventType) {
+                aliases.forEach(a => _typesSet.add(a));
+                _typesSet.add(canon);
+            }
+        });
+        const promises = [..._typesSet].filter(Boolean).map(t =>
+            getDocs(query(collection(_db, 'registrations'), where('eventType', '==', t))).catch(() => ({ docs: [] }))
+        );
+        const snaps = await Promise.all(promises);
+        const seen = new Set();
+        const allDocs = [];
+        snaps.forEach(snap => snap.docs.forEach(d => { if (!seen.has(d.id)) { seen.add(d.id); allDocs.push(d); } }));
+
+        // Buscar logos dos times direto do Firestore (fallback para inscrições antigas sem teamLogoUrl)
+        const teamsLogoMap = {};
+        try {
+            const teamsSnap = await getDocs(collection(_db, 'teams'));
+            teamsSnap.docs.forEach(td => {
+                const t = td.data();
+                if (t.nome && t.logoUrl) teamsLogoMap[t.nome.toLowerCase().trim()] = t.logoUrl;
+            });
+        } catch(_) {}
+
+        // Data de hoje em horário de Brasília (UTC-3)
+        const _brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+        const todayStr = _brNow.toISOString().split('T')[0];
+        const _diasSemana = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+        const fmtDate = d => d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.split('-').reverse().join('/') : (d || '');
+        const dayNameOf = dateStr => {
+            if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return '';
+            return _diasSemana[new Date(dateStr + 'T12:00:00').getDay()];
+        };
+
+        // Apenas inscrições confirmadas/pagas (sem pendentes)
+        const validStatuses = new Set(['confirmed', 'paid', 'approved']);
+        const valid = allDocs.filter(d => validStatuses.has(d.data().status));
+
+        if (valid.length === 0) {
+            container.innerHTML = '<div class="text-center py-6 text-slate-500 text-sm">Nenhuma equipe inscrita.</div>';
+            return;
+        }
+
+        // Normaliza schedule → "21h"
+        const normSched = s => {
+            if (!s || s === '—') return s || '—';
+            const str = String(s).trim();
+            const mColon = str.match(/(\d{1,2}):(\d{2})/);
+            if (mColon) return `${parseInt(mColon[1], 10)}h`;
+            const mH = str.match(/(\d{1,2})\s*h/i);
+            if (mH) return `${parseInt(mH[1], 10)}h`;
+            const mNum = str.match(/(\d{1,2})\s*$/);
+            if (mNum) return `${parseInt(mNum[1], 10)}h`;
+            return str;
+        };
+
+        // ── Mesma lógica do Gerenciamento: agrupar por DATA + HORÁRIO ──
+        // Mantém registros sem data válida em grupo "sem-data"
+        const bySchedule = {};
+        valid.forEach(d => {
+            const r = { ...d.data(), _dbId: d.id };
+            const sched = normSched(r.schedule || '—');
+            const dateKey = (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) ? r.date : 'sem-data';
+            const key = `${dateKey}||${sched}`;
+            if (!bySchedule[key]) bySchedule[key] = { date: dateKey, sched, regs: [] };
+            bySchedule[key].regs.push(r);
+        });
+
+        // Ordena dentro de cada grupo por createdAt (chegada) — slotNumber como fallback
+        Object.values(bySchedule).forEach(group => {
+            group.regs.sort((a, b) => {
+                const ta = a.createdAt?.seconds ?? null;
+                const tb = b.createdAt?.seconds ?? null;
+                if (ta !== null && tb !== null) return ta - tb;
+                const sa = a.slot != null ? Number(a.slot) : (a.slotNumber != null ? Number(a.slotNumber) : null);
+                const sb = b.slot != null ? Number(b.slot) : (b.slotNumber != null ? Number(b.slotNumber) : null);
+                if (sa !== null && sb !== null) return sa - sb;
+                if (sa !== null) return -1;
+                if (sb !== null) return 1;
+                return 0;
+            });
+            // Deduplicação por ID de documento
+            const seenIds = new Set();
+            group.regs = group.regs.filter(r => {
+                if (r._dbId && seenIds.has(r._dbId)) return false;
+                if (r._dbId) seenIds.add(r._dbId);
+                return true;
+            });
+        });
+
+        // Filtra APENAS o dia de hoje (sem futuro); sem-data como fallback
+        const todayKeys = Object.keys(bySchedule)
+            .filter(k => bySchedule[k].date === todayStr)
+            .sort((a, b) => bySchedule[a].sched.localeCompare(bySchedule[b].sched));
+
+        // Se não há nada hoje, usa sem-data como fallback
+        const semDataKeys = Object.keys(bySchedule)
+            .filter(k => bySchedule[k].date === 'sem-data')
+            .sort((a, b) => bySchedule[a].sched.localeCompare(bySchedule[b].sched));
+
+        const finalSchedKeys = todayKeys.length > 0 ? todayKeys : semDataKeys;
+
+        // ── Função para renderizar cards de um grupo ──
+        const _isModoLiga = normalizedId === 'modo-liga' || _resolvedEventType === 'modo-liga';
+        const renderCards = (regs) => {
+            if (!regs || regs.length === 0)
+                return '<div class="text-center py-6 text-slate-500 text-sm">Nenhuma equipe neste horário.</div>';
+            let slotNum = 0;
+            return `<div class="space-y-2">${regs.map(r => {
+                slotNum++;
+                const teamName = r.teamName || r.email || '—';
+                const leaderName = r.leaderName && r.leaderName !== r.teamName ? r.leaderName : null;
+                const _logoUrl = r.teamLogoUrl || r.teamLogoThumb || teamsLogoMap[(teamName||'').toLowerCase().trim()] || null;
+                const logoHtml = _logoUrl
+                    ? `<img src="${_logoUrl}" alt="logo" class="w-9 h-9 rounded-lg object-cover flex-shrink-0 border border-slate-500">`
+                    : `<span class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-600 text-slate-400 flex-shrink-0 text-xs"><i class="fas fa-shield-alt"></i></span>`;
+                // Modo Liga: exibir letra no badge (A, B, C...) em vez de #1, #2...
+                const _badge = _isModoLiga
+                    ? String.fromCharCode(64 + slotNum)
+                    : `#${slotNum}`;
+                return `<div class="bg-slate-700 rounded-xl px-4 py-3 border border-slate-600">
+                    <div class="flex items-center gap-3">
+                        <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-orange-600 text-white text-xs font-black flex-shrink-0">${_badge}</span>
+                        ${logoHtml}
+                        <div class="flex-1 min-w-0">
+                            <p class="font-bold text-slate-100 text-sm leading-tight truncate">${teamName}</p>
+                            ${leaderName ? `<p class="text-xs text-slate-400 mt-0.5">Líder: ${leaderName}</p>` : ''}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('')}</div>`;
+        };
+
+        if (finalSchedKeys.length === 0) {
+            container.innerHTML = '<div class="text-center py-6 text-slate-500 text-sm">Nenhuma equipe inscrita hoje.</div>';
+            return;
+        }
+
+        // ── Menu de pills de horários ──
+        const pillsHtml = finalSchedKeys.map((sk, i) => {
+            const { sched, regs } = bySchedule[sk];
+            const isActive = i === 0;
+            return `<button
+                class="ins-pill flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${isActive ? 'bg-orange-600 border-orange-600 text-white' : 'bg-transparent border-slate-600 text-slate-400 hover:border-orange-500 hover:text-orange-400'}"
+                data-sk="${sk}"
+                onclick="window._insSelectSlot('${sk}')"
+            >${sched}<span class="ml-1 opacity-70">${regs.length}</span></button>`;
+        }).join('');
+
+        // ── Painel do slot ativo (primeiro por padrão) ──
+        const firstKey = finalSchedKeys[0];
+        const { sched: firstSched, regs: firstRegs, date: firstDate } = bySchedule[firstKey];
+        const firstDateLabel = firstDate !== 'sem-data' ? `<span class="text-xs text-slate-400">${_diasSemana[new Date(firstDate + 'T12:00:00').getDay()]} ${fmtDate(firstDate)}</span>` : '';
+
+        container.innerHTML = `
+            <div class="mb-4">
+                <div class="flex gap-2 overflow-x-auto pb-2 scrollbar-none" id="insSlotPills">${pillsHtml}</div>
+            </div>
+            <div id="insSlotDateLabel" class="mb-2 text-xs text-slate-400">${firstDateLabel}</div>
+            <div id="insSlotPanel">${renderCards(firstRegs)}</div>
+        `;
+
+        // ── Handler de seleção de slot ──
+        window._insSelectSlot = (sk) => {
+            const _byScheduleSnapshot = window._insScheduleData;
+            if (!_byScheduleSnapshot || !_byScheduleSnapshot[sk]) return;
+            const { sched, regs, date } = _byScheduleSnapshot[sk];
+            // Atualiza pills
+            document.querySelectorAll('.ins-pill').forEach(btn => {
+                const active = btn.dataset.sk === sk;
+                btn.className = `ins-pill flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${active ? 'bg-orange-600 border-orange-600 text-white' : 'bg-transparent border-slate-600 text-slate-400 hover:border-orange-500 hover:text-orange-400'}`;
+            });
+            // Atualiza label de data
+            const dl = document.getElementById('insSlotDateLabel');
+            if (dl) dl.innerHTML = date !== 'sem-data' ? `<span class="text-xs text-slate-400">${_diasSemana[new Date(date + 'T12:00:00').getDay()]} ${fmtDate(date)}</span>` : '';
+            // Atualiza painel
+            const panel = document.getElementById('insSlotPanel');
+            if (panel) panel.innerHTML = renderCards(regs);
+        };
+        // Guarda dados para o handler
+        window._insScheduleData = bySchedule;
+
+    } catch(e) {
+        console.error('[loadInscritos] erro ao carregar inscritos:', e?.message || e);
+        const isPermission = e?.code === 'permission-denied' || String(e).includes('permission');
+        if (isPermission) {
+            container.innerHTML = '<div class="text-center py-6 text-slate-400 text-sm"><i class="fas fa-lock mr-1"></i>Faça login para ver os times inscritos.</div>';
+        } else {
+            container.innerHTML = '<div class="text-center py-6 text-slate-400 text-sm">Dados de inscritos não disponíveis.</div>';
+        }
+    }
+}
+
+window.goRegister = function() {
+    const eid = window._currentEventId;
+    if (_resolvedEventType) {
+        // Sempre redireciona para index.html com o tipo canônico do evento.
+        // O modal de agendamento está em index.html (script.js) e é aberto via ?openEvent=
+        window.location.href = `index.html?openEvent=${encodeURIComponent(_resolvedEventType)}#eventos`;
+        return;
+    }
+    window.location.href = eid ? `index.html?openEvent=${encodeURIComponent(eid)}#eventos` : 'index.html#eventos';
+};
+
+loadEvent();
+
+// ── Classificação ao Vivo (aba Classificação — Semanal Freitas) ──────────────
+window.loadClassificacao = async function(hora) {
+    const db = window._evDb || _db;
+    const tabelaEl = document.getElementById('classifTabela');
+    const bannerEl = document.getElementById('classifBanner');
+    if (!tabelaEl) return;
+
+    // Destacar botão ativo
+    document.querySelectorAll('.class-fase-btn').forEach(b => {
+        b.className = 'class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300';
+    });
+    const btnMap = { '19h':'classBtnSemiA','20h':'classBtnSemiB','21h':'classBtnSemiC','22h':'classBtnFinal' };
+    const activeBtn = document.getElementById(btnMap[hora]);
+    if (activeBtn) activeBtn.className = 'class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white';
+
+    tabelaEl.innerHTML = '<div class="text-center py-8 text-slate-500"><i class="fas fa-spinner fa-spin text-xl mb-2 block"></i><p class="text-sm">Carregando...</p></div>';
+
+    // Cancelar listener anterior
+    if (_classifUnsubscribe) { _classifUnsubscribe(); _classifUnsubscribe = null; }
+
+    // Buscar data mais recente/relevante
+    // Usar hoje como padrão, depois buscar o resultado mais recente
+    const hoje = new Date().toISOString().slice(0, 10);
+    const docIdStr = `semanal-freitas_${hoje}_${hora}`;
+
+    const isFinal = hora === '22h';
+    const faseFmt = { '19h':'Semifinal A', '20h':'Semifinal B', '21h':'Semifinal C', '22h':'Final 🏆' }[hora] || hora;
+
+    try {
+        // Carregar banner em paralelo (sem bloquear se falhar)
+        if (bannerEl) {
+            try {
+                const cfgSnap = await getDocs(query(collection(db, 'championship_config')));
+                let bannerBase64 = null;
+                cfgSnap.forEach(d => { if (d.id === 'semanal_lbff') bannerBase64 = d.data().bannerBase64; });
+                if (bannerBase64) {
+                    bannerEl.innerHTML = `<img src="${bannerBase64}" class="w-full max-h-40 object-cover rounded-xl border border-slate-600">`;
+                    bannerEl.classList.remove('hidden');
+                } else {
+                    bannerEl.classList.add('hidden');
+                }
+            } catch (_) { bannerEl.classList.add('hidden'); }
+        }
+
+        // Listener em tempo real para o documento de resultado
+        _classifUnsubscribe = onSnapshot(
+            doc(db, 'championship_results', docIdStr),
+            (snap) => {
+                if (!snap.exists() || !snap.data().teams?.length) {
+                    // Tentar buscar data mais recente
+                    _classifUnsubscribe2(db, hora, faseFmt, isFinal, tabelaEl);
+                    return;
+                }
+                _renderClassifTabela(snap.data(), faseFmt, isFinal, tabelaEl);
+            },
+            (err) => {
+                console.warn('[classificacao] erro snapshot:', err.message);
+                tabelaEl.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Dados não disponíveis no momento.</div>`;
+            }
+        );
+    } catch (e) {
+        tabelaEl.innerHTML = `<div class="text-center py-8 text-red-400 text-sm">Erro ao carregar: ${e.message}</div>`;
+    }
+};
+
+// Fallback: buscar última data disponível
+async function _classifUnsubscribe2(db, hora, faseFmt, isFinal, tabelaEl) {
+    try {
+        const snaps = await getDocs(
+            query(collection(db, 'championship_results'), where('hour', '==', hora))
+        );
+        if (snaps.empty) {
+            tabelaEl.innerHTML = `
+                <div class="text-center py-10">
+                    <i class="fas fa-hourglass-start text-2xl text-slate-600 mb-3 block"></i>
+                    <p class="text-slate-400 text-sm">Nenhum resultado disponível ainda.</p>
+                    <p class="text-slate-600 text-xs mt-1">Os resultados aparecerão aqui assim que o admin iniciar a apuração.</p>
+                </div>`;
+            return;
+        }
+        // Pegar o mais recente por data
+        let melhor = null;
+        snaps.forEach(d => { if (!melhor || d.data().date > melhor.date) melhor = d.data(); });
+        if (melhor) _renderClassifTabela(melhor, faseFmt, isFinal, tabelaEl);
+    } catch (_) {
+        tabelaEl.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Sem resultados ainda.</div>`;
+    }
+}
+
+function _renderClassifTabela(dados, faseFmt, isFinal, tabelaEl) {
+    const teams = dados.teams || [];
+    const statusMap = { aberto:'🟡 Aguardando', em_apuracao:'🟠 Apuração em andamento', finalizado:'✅ Finalizado' };
+    const statusLabel = statusMap[dados.status] || dados.status || '';
+
+    if (teams.length === 0) {
+        tabelaEl.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Nenhuma equipe registrada ainda.</div>`;
+        return;
+    }
+
+    tabelaEl.innerHTML = `
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <span class="text-xs text-slate-400">${dados.date ? `Data: ${dados.date}` : ''}</span>
+            <span class="text-xs font-semibold ${dados.status === 'finalizado' ? 'text-green-400' : 'text-yellow-400'}">${statusLabel}</span>
+        </div>
+        <div class="overflow-x-auto -mx-1">
+            <table class="w-full text-sm min-w-max">
+                <thead>
+                    <tr class="text-xs text-slate-500 border-b border-slate-700">
+                        <th class="text-left py-2 px-2">#</th>
+                        <th class="text-left py-2 px-2">Equipe</th>
+                        <th class="text-center py-2 px-3">Abates</th>
+                        <th class="text-center py-2 px-3 text-orange-400 font-bold">Pontos</th>
+                        <th class="text-center py-2 px-2">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${teams.map((t, i) => {
+                        const isClass = !isFinal && i < 4;
+                        const rowBg = isClass ? 'bg-green-900/20 border-l-2 border-green-500' : '';
+                        let statusBadge;
+                        if (isFinal) {
+                            statusBadge = i === 0 ? '<span class="text-yellow-400 font-bold">🏆 CAMPEÃO</span>' :
+                                         i === 1 ? '<span class="text-slate-300">🥈 Vice</span>' :
+                                         i === 2 ? '<span class="text-amber-600">🥉 3º</span>' :
+                                                   `<span class="text-slate-600 text-xs">${i+1}º</span>`;
+                        } else {
+                            statusBadge = isClass
+                                ? '<span class="text-xs font-bold text-green-400 bg-green-900/40 px-2 py-0.5 rounded-full">🟢 CLASSIFICADO</span>'
+                                : '<span class="text-xs text-slate-600">—</span>';
+                        }
+                        const rankColor = i === 0 ? 'text-yellow-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-600' : 'text-slate-500';
+                        return `
+                            <tr class="border-b border-slate-700/50 ${rowBg} hover:bg-slate-700/30 transition-colors">
+                                <td class="py-2.5 px-2 font-bold ${rankColor}">${i + 1}º</td>
+                                <td class="py-2.5 px-2 text-white font-medium text-xs whitespace-nowrap">
+                                    ${t.deSemifinal ? `<span class="text-xs text-slate-500 mr-1">[${t.deSemifinal}]</span>` : ''}
+                                    ${t.nome}
+                                </td>
+                                <td class="py-2.5 px-3 text-center text-slate-400">${t.abates || 0}</td>
+                                <td class="py-2.5 px-3 text-center font-bold text-orange-400">${t.pontos || 0}</td>
+                                <td class="py-2.5 px-2 text-center">${statusBadge}</td>
+                            </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+</script>
+
+<!-- ==================== MODAL DE EQUIPE ==================== -->
+<div id="modalEquipe" class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+  <div class="bg-white rounded-3xl w-full max-w-md relative shadow-2xl mx-auto my-auto">
+    <div class="rounded-t-3xl text-white relative" style="background:linear-gradient(135deg,#1d4ed8 0%,#7c3aed 100%);padding:1.25rem 1.25rem 1rem;">
+      <button onclick="fecharModalEquipe()" class="absolute top-4 right-4 text-white opacity-70 hover:opacity-100 transition-opacity">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 bg-white bg-opacity-20 rounded-xl flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-users text-white text-lg"></i>
+        </div>
+        <div>
+          <h3 id="equipeModalTitulo" class="text-lg font-bold leading-tight">Registro de Equipe</h3>
+          <p class="text-white text-xs mt-0.5" style="opacity:.8;">Free Fire · Treino Gratuito</p>
+        </div>
+      </div>
+      <div class="flex justify-center gap-1.5 mt-3">
+        <div class="equipe-dot w-5 h-1.5 rounded-full bg-white" data-step="0" style="transition:all .25s;"></div>
+        <div class="equipe-dot w-2 h-1.5 rounded-full bg-white" data-step="1" style="opacity:.4;transition:all .25s;"></div>
+        <div class="equipe-dot w-2 h-1.5 rounded-full bg-white" data-step="2" style="opacity:.4;transition:all .25s;"></div>
+      </div>
+    </div>
+    <div class="p-5">
+      <!-- STEP 0 -->
+      <div id="equipeStep0" class="equipe-step">
+        <div id="equipeTimeExistente" class="hidden mb-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
+          <p class="text-xs text-blue-600 font-semibold mb-2"><i class="fas fa-shield-alt mr-1"></i>Seu time atual</p>
+          <div class="flex items-center gap-3">
+            <div id="equipeLogoExistente" class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center overflow-hidden flex-shrink-0"><i class="fas fa-shield-alt text-blue-300 text-xl"></i></div>
+            <div class="flex-1 min-w-0">
+              <p id="equipeNomeExistente" class="font-bold text-gray-800 truncate text-sm"></p>
+              <p id="equipeMembrosExistente" class="text-xs text-gray-500 mt-0.5"></p>
+            </div>
+            <span id="equipeStatusBadge" class="text-xs font-bold px-2 py-1 rounded-full flex-shrink-0"></span>
+          </div>
+          <button onclick="usarTimeExistente()" class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl transition-colors text-sm"><i class="fas fa-check mr-1.5"></i>Usar Este Time</button>
+          <button onclick="document.getElementById('equipeTimeExistente').classList.add('hidden')" class="mt-1.5 w-full text-xs text-gray-400 hover:text-gray-600 py-1 transition-colors">Criar ou entrar em outro time</button>
+        </div>
+        <p class="text-gray-500 text-sm text-center mb-4">Como você quer continuar?</p>
+        <div class="grid grid-cols-2 gap-3">
+          <button onclick="irParaStep(1,'criar')" class="flex flex-col items-center gap-2.5 p-4 rounded-2xl text-white transition-all" style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);">
+            <div class="w-11 h-11 bg-white bg-opacity-20 rounded-xl flex items-center justify-center"><i class="fas fa-plus text-lg"></i></div>
+            <div class="text-center"><p class="font-bold text-sm">Criar Time</p><p class="text-white text-xs opacity-75 mt-0.5">Você é capitão</p></div>
+          </button>
+          <button onclick="irParaStep(1,'entrar')" class="flex flex-col items-center gap-2.5 p-4 bg-white border-2 border-gray-200 rounded-2xl hover:border-purple-400 transition-all">
+            <div class="w-11 h-11 bg-gray-100 rounded-xl flex items-center justify-center"><i class="fas fa-ticket-alt text-gray-500 text-lg"></i></div>
+            <div class="text-center"><p class="text-gray-700 font-bold text-sm">Tenho Código</p><p class="text-gray-400 text-xs mt-0.5">Entrar no time</p></div>
+          </button>
+        </div>
+      </div>
+      <!-- STEP 1A: Criar -->
+      <div id="equipeStep1Criar" class="equipe-step hidden">
+        <h4 class="font-bold text-gray-800 mb-1 text-center">Configure seu time</h4>
+        <p class="text-xs text-gray-400 text-center mb-4">Nome obrigatório · Logo opcional</p>
+        <div class="flex justify-center mb-3">
+          <label for="equipeLogo" class="cursor-pointer group block">
+            <div id="equipeLogoPreview" class="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-dashed border-blue-300 flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-blue-500">
+              <i class="fas fa-camera text-blue-300 text-xl"></i><span class="text-xs text-blue-300 mt-1 font-medium">Logo</span>
+            </div>
+            <input type="file" id="equipeLogo" accept="image/*" class="hidden" onchange="previewLogoEquipe(this)">
+          </label>
+        </div>
+        <div class="mb-3">
+          <label class="text-xs font-semibold text-gray-600 mb-1.5 block">NOME DO TIME <span class="text-red-500">*</span></label>
+          <input type="text" id="equipeNomeInput" maxlength="30" placeholder="Ex: Team Freitas, Alpha Squad…"
+            class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-blue-500 focus:outline-none transition-colors text-gray-800 font-semibold text-sm">
+          <p class="text-xs text-gray-400 mt-1 text-right"><span id="equipeNomeCount">0</span>/30</p>
+        </div>
+        <div class="mb-3">
+          <label class="text-xs font-semibold text-gray-600 mb-1.5 block">E-MAIL DE CONTATO <span class="text-red-500">*</span></label>
+          <input type="email" id="equipeEmailInput" placeholder="Ex: meuclan@gmail.com"
+            class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-blue-500 focus:outline-none transition-colors text-gray-800 text-sm">
+        </div>
+        <div class="mb-4">
+          <label class="text-xs font-semibold text-gray-600 mb-1.5 block">WHATSAPP <span class="text-red-500">*</span></label>
+          <input type="tel" id="equipePhoneInput" placeholder="(11) 99999-9999"
+            class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-blue-500 focus:outline-none transition-colors text-gray-800 text-sm">
+        </div>
+        <div class="flex gap-2">
+          <button onclick="irParaStep(0)" class="flex-1 py-2.5 border border-gray-200 rounded-xl text-gray-500 font-semibold text-sm hover:bg-gray-50 transition-colors"><i class="fas fa-arrow-left mr-1"></i>Voltar</button>
+          <button onclick="confirmarCriarTime()" id="btnCriarTime" class="flex-[2] py-2.5 text-white font-bold rounded-xl text-sm" style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);">Criar Time <i class="fas fa-arrow-right ml-1"></i></button>
+        </div>
+      </div>
+      <!-- STEP 1B: Entrar -->
+      <div id="equipeStep1Entrar" class="equipe-step hidden">
+        <h4 class="font-bold text-gray-800 mb-1 text-center">Entrar no Time</h4>
+        <p class="text-sm text-gray-500 text-center mb-4">Digite o código de 6 dígitos do seu capitão</p>
+        <div class="mb-3">
+          <input type="text" id="equipeCodigoInput" maxlength="6" placeholder="XXXXXX"
+            class="w-full border-2 border-gray-200 rounded-2xl px-4 py-4 text-center text-3xl font-black tracking-[.35em] uppercase focus:border-purple-500 focus:outline-none transition-colors"
+            oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,''); equipeOnCodigoInput(this.value)">
+        </div>
+        <div id="equipePreviewConvite" class="hidden mb-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+          <div class="flex items-center gap-3">
+            <div id="equipeConviteLogoPreview" class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center overflow-hidden flex-shrink-0"><i class="fas fa-shield-alt text-blue-300"></i></div>
+            <div class="flex-1 min-w-0">
+              <p id="equipeConviteNome" class="font-bold text-gray-800 text-sm truncate"></p>
+              <p id="equipeConviteMembros" class="text-xs text-gray-500"></p>
+            </div>
+            <i class="fas fa-check-circle text-green-500"></i>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="irParaStep(0)" class="flex-1 py-2.5 border border-gray-200 rounded-xl text-gray-500 font-semibold text-sm hover:bg-gray-50 transition-colors"><i class="fas fa-arrow-left mr-1"></i>Voltar</button>
+          <button onclick="confirmarEntrarTime()" class="flex-[2] py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition-colors">Entrar no Time <i class="fas fa-sign-in-alt ml-1"></i></button>
+        </div>
+      </div>
+      <!-- STEP 2: Sala do time -->
+      <div id="equipeStep2" class="equipe-step hidden">
+        <div id="equipeCodigoSection" class="hidden mb-4 rounded-2xl p-4 border" style="background:linear-gradient(135deg,#eff6ff,#f5f3ff);border-color:#c7d2fe;">
+          <p class="text-xs font-bold text-indigo-600 mb-2"><i class="fas fa-key mr-1.5"></i>Código de Convite — Compartilhe com seu time</p>
+          <div class="flex items-center gap-2 mb-3">
+            <div class="flex-1 bg-white border-2 border-indigo-200 rounded-xl py-2.5 text-center text-2xl font-black tracking-[.35em] text-indigo-800 select-all" id="equipeCodigoDisplay"></div>
+            <button onclick="copiarCodigo()" class="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors flex-shrink-0"><i class="fas fa-copy"></i></button>
+          </div>
+          <button onclick="compartilharConvite()" class="w-full flex items-center justify-center gap-2 text-white font-bold py-2.5 rounded-xl text-sm" style="background:#25d366;">
+            <i class="fab fa-whatsapp text-base"></i>Compartilhar no WhatsApp
+          </button>
+        </div>
+        <div class="flex items-center gap-3 mb-4">
+          <div id="equipeTimeLogo" class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center overflow-hidden flex-shrink-0"><i class="fas fa-shield-alt text-indigo-300 text-xl"></i></div>
+          <div class="flex-1 min-w-0">
+            <p id="equipeTimeNomeDisplay" class="font-black text-gray-800 truncate"></p>
+            <div class="flex items-center gap-1 mt-0.5">
+              <span id="equipeContadorMembros" class="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">0/4</span>
+              <span id="equipeStatusTexto" class="text-xs text-gray-400"></span>
+            </div>
+          </div>
+        </div>
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Titulares</p>
+        <div id="equipeMembrosGrid" class="grid grid-cols-2 gap-2 mb-3"></div>
+        <div id="equipeReservasSection" class="hidden">
+          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Reservas <span class="normal-case text-gray-300">(opcional)</span></p>
+          <div id="equipeReservasGrid" class="grid grid-cols-2 gap-2 mb-3"></div>
+        </div>
+        <div id="equipeAguardandoInfo" class="text-center py-2">
+          <div class="inline-flex items-center gap-2 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full px-4 py-2 text-xs font-semibold">
+            <span class="w-2 h-2 rounded-full bg-yellow-400 inline-block" style="animation:pulse 2s infinite;"></span>Aguardando jogadores…
+          </div>
+        </div>
+        <div id="equipeCompletoInfo" class="hidden">
+          <div class="text-center mb-3"><div class="inline-flex items-center gap-2 bg-green-50 text-green-700 border border-green-200 rounded-full px-4 py-2 text-xs font-semibold"><i class="fas fa-check-circle text-green-500"></i>Time Completo!</div></div>
+          <button onclick="confirmarInscricaoEquipe()" id="btnConfirmarInscricao" class="w-full text-white font-bold py-3 rounded-xl text-sm shadow-lg" style="background:linear-gradient(135deg,#1d4ed8,#7c3aed);">
+            <i class="fas fa-shield-alt mr-2"></i>Confirmar Inscrição do Time
+          </button>
+        </div>
+        <!-- Ações secundárias -->
+        <div class="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
+          <button id="btnApagarTime" class="hidden w-full py-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl text-xs font-semibold transition-colors" onclick="apagarTime()">
+            <i class="fas fa-trash mr-1.5"></i>Apagar Time
+          </button>
+          <button id="btnSairTime" class="hidden w-full py-2 border border-orange-200 text-orange-500 hover:bg-orange-50 rounded-xl text-xs font-semibold transition-colors" onclick="sairDoTime()">
+            <i class="fas fa-sign-out-alt mr-1.5"></i>Sair do Time
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+.equipe-step { animation: eqFade .2s ease; }
+@keyframes eqFade { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.equipe-membro-card { display:flex; align-items:center; gap:.6rem; padding:.6rem .75rem; border-radius:.875rem; border:2px solid transparent; min-width:0; }
+.equipe-membro-card.preenchido { background:#f0f9ff; border-color:#bae6fd; }
+.equipe-membro-card.preenchido.reserva { background:#fff7ed; border-color:#fed7aa; }
+.equipe-membro-card.vazio { background:#f9fafb; border-color:#e5e7eb; border-style:dashed; }
+.equipe-avatar { width:2.25rem; height:2.25rem; border-radius:50%; background:linear-gradient(135deg,#1d4ed8,#7c3aed); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; }
+.equipe-avatar.vazio { background:#e5e7eb; }
+.equipe-avatar.reserva { background:linear-gradient(135deg,#f97316,#ef4444); }
+.equipe-membro-info { min-width:0; flex:1; }
+@media (max-width: 767px) {
+  #modalEquipe { align-items: flex-end !important; padding: 0 !important; overflow-y: hidden !important; }
+  #modalEquipe > div { border-radius: 1.5rem 1.5rem 0 0 !important; max-height: 92dvh !important; overflow-y: auto !important; width: 100% !important; max-width: 100% !important; }
+}
+</style>
+
+<script>
+// ===== SISTEMA DE TIMES — evento.html =====
+
+// Toast simples (fallback para evento.html sem script.js)
+function showToast(type, msg) {
+    const c = document.getElementById('toastContainer') || (() => {
+        const el = document.createElement('div');
+        el.id = 'toastContainer';
+        el.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;max-width:320px;';
+        document.body.appendChild(el);
+        return el;
+    })();
+    const colors = { success:'#16a34a', error:'#dc2626', warning:'#d97706', info:'#2563eb' };
+    const t = document.createElement('div');
+    t.style.cssText = `background:${colors[type]||'#374151'};color:#fff;padding:.75rem 1rem;border-radius:.875rem;font-size:.875rem;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2);display:flex;align-items:center;gap:.5rem;`;
+    t.innerHTML = `<span style="flex:1">${msg}</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,.8);cursor:pointer;font-size:1rem;padding:0;line-height:1;">&times;</button>`;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+}
+
+let _equipeAtual = null, _equipeListenerUnsubscribe = null, _equipeModo = 'criar';
+
+// Verificar URL para convite automático
+(function() {
+    const p = new URLSearchParams(location.search);
+    const conv = p.get('convite') || p.get('invite');
+    if (!conv) return;
+    window.addEventListener('load', () => setTimeout(() => abrirModalEquipe(null, conv), 1600));
+})();
+
+window.abrirModalEquipe = function(slotInfo, codigoPreenchido) {
+    const modal = document.getElementById('modalEquipe');
+    if (!modal) return;
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    document.body.style.overflow = 'hidden';
+    if (codigoPreenchido) {
+        irParaStep(1, 'entrar');
+        const inp = document.getElementById('equipeCodigoInput');
+        if (inp) { inp.value = codigoPreenchido.toUpperCase(); buscarPreviewTime(inp.value); }
+    } else {
+        irParaStep(0);
+        _carregarTimeExistente();
+    }
+};
+
+window.fecharModalEquipe = function() {
+    const modal = document.getElementById('modalEquipe');
+    if (!modal) return;
+    modal.classList.add('hidden'); modal.classList.remove('flex');
+    document.body.style.overflow = '';
+    if (_equipeListenerUnsubscribe) { _equipeListenerUnsubscribe(); _equipeListenerUnsubscribe = null; }
+};
+
+window.irParaStep = function(step, modo) {
+    if (modo) _equipeModo = modo;
+    document.querySelectorAll('.equipe-step').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.equipe-dot').forEach((d, i) => {
+        d.style.opacity = i === step ? '1' : '0.4';
+        d.style.width = i === step ? '1.25rem' : '0.5rem';
+    });
+    if (step === 0) { document.getElementById('equipeStep0').classList.remove('hidden'); document.getElementById('equipeModalTitulo').textContent = 'Registro de Equipe'; }
+    else if (step === 1) {
+        if (_equipeModo === 'criar') { document.getElementById('equipeStep1Criar').classList.remove('hidden'); document.getElementById('equipeModalTitulo').textContent = 'Criar Novo Time'; }
+        else { document.getElementById('equipeStep1Entrar').classList.remove('hidden'); document.getElementById('equipeModalTitulo').textContent = 'Entrar no Time'; }
+    } else if (step === 2) { document.getElementById('equipeStep2').classList.remove('hidden'); document.getElementById('equipeModalTitulo').textContent = _equipeAtual?.nome || 'Seu Time'; }
+};
+
+async function _carregarTimeExistente() {
+    const user = window.currentUser;
+    if (!user) return;
+    try {
+        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db = window.firebaseDb; if (!db) return;
+        const snap = await getDocs(query(collection(db, 'teams'), where('membrosUids', 'array-contains', user.uid)));
+        if (!snap.empty) {
+            // Ir direto para step 2 sem passar pelo card intermediário
+            const time = { id: snap.docs[0].id, ...snap.docs[0].data() };
+            _equipeAtual = time;
+            const ehCap = time.capitaoId === user.uid;
+            const sec = document.getElementById('equipeCodigoSection');
+            if (sec) {
+                sec.classList.toggle('hidden', !ehCap);
+                if (ehCap) { const d = document.getElementById('equipeCodigoDisplay'); if(d) d.textContent = time.codigoConvite||''; }
+            }
+            _renderInfoTime(time);
+            await _iniciarEscuta(time.id);
+            irParaStep(2);
+        }
+    } catch(_) {}
+}
+
+function _mostrarTimeExistente(time) {
+    const div = document.getElementById('equipeTimeExistente'); if (!div) return;
+    div.classList.remove('hidden');
+    document.getElementById('equipeNomeExistente').textContent = time.nome;
+    const t = (time.membros||[]).filter(m=>m.role!=='reserva').length;
+    document.getElementById('equipeMembrosExistente').textContent = `${t} de 4 titulares confirmados`;
+    const badge = document.getElementById('equipeStatusBadge');
+    badge.textContent = time.status === 'completo' ? '✓ Completo' : '⏳ Aguardando';
+    badge.className = 'text-xs font-bold px-2 py-1 rounded-full flex-shrink-0 ' + (time.status==='completo' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700');
+    if (time.logoUrl) { const _el=document.getElementById('equipeLogoExistente'); if(_el){_el.style.background='transparent'; _el.innerHTML=`<img src="${time.logoUrl}" class="w-full h-full object-contain p-0.5">`;} }
+    _equipeAtual = time;
+}
+
+window.usarTimeExistente = async function() {
+    if (!_equipeAtual) return;
+    const ehCap = _equipeAtual.capitaoId === window.currentUser?.uid;
+    const sec = document.getElementById('equipeCodigoSection');
+    if (sec) { sec.classList.toggle('hidden', !ehCap); if (ehCap) document.getElementById('equipeCodigoDisplay').textContent = _equipeAtual.codigoConvite||''; }
+    _renderInfoTime(_equipeAtual);
+    await _iniciarEscuta(_equipeAtual.id);
+    irParaStep(2);
+};
+
+window.previewLogoEquipe = function(input) {
+    const file = input.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => { const el = document.getElementById('equipeLogoPreview'); if (el) el.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`; };
+    reader.readAsDataURL(file);
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.getElementById('equipeNomeInput');
+    if (inp) inp.addEventListener('input', function() { const ct=document.getElementById('equipeNomeCount'); if(ct) ct.textContent=this.value.length; });
+    // Fechar clicando fora
+    document.getElementById('modalEquipe')?.addEventListener('click', function(e) { if(e.target===this) fecharModalEquipe(); });
+});
+
+function _gerarCodigo() { const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let r=''; for(let i=0;i<6;i++) r+=c[Math.floor(Math.random()*c.length)]; return r; }
+
+window.confirmarCriarTime = async function() {
+    const nome = document.getElementById('equipeNomeInput')?.value?.trim();
+    const email = document.getElementById('equipeEmailInput')?.value?.trim();
+    const phone = document.getElementById('equipePhoneInput')?.value?.trim();
+    if (!nome) { showToast('warning','Digite o nome do time'); return; }
+    if (!email) { showToast('warning','Digite o e-mail de contato do time'); return; }
+    if (!phone) { showToast('warning','Digite o WhatsApp do time'); return; }
+    const user = window.currentUser;
+    if (!user || user.isAnonymous) { showToast('error','Faça login para criar um time'); return; }
+    const btn = document.getElementById('btnCriarTime');
+    btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Criando…';
+    try {
+        const { collection, doc, setDoc, query, where, getDocs, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db = window.firebaseDb; if (!db) throw new Error('Firebase não conectado');
+        let codigo = _gerarCodigo();
+        const existSnap = await getDocs(query(collection(db,'teams'),where('codigoConvite','==',codigo)));
+        if (!existSnap.empty) codigo = _gerarCodigo();
+        const nomeUs = window.currentUserProfile?.name || user.displayName || 'Capitão';
+        const teamRef = doc(collection(db,'teams'));
+        const membro = { uid:user.uid, nome:nomeUs, role:'capitao', fotoUrl:user.photoURL||null, entradaEm:Date.now() };
+        // Redimensionar logo para base64 (visível a todos via listener em tempo real)
+        let logoBase64 = null;
+        const logoFile = document.getElementById('equipeLogo')?.files[0];
+        if (logoFile) { try { logoBase64 = await _resizeLogoParaBase64(logoFile); } catch(_) {} }
+        await setDoc(teamRef, { nome, email, phone, logoUrl:logoBase64, capitaoId:user.uid, capitaoNome:nomeUs, codigoConvite:codigo, membros:[membro], membrosUids:[user.uid], status:'aguardando', criadoEm:serverTimestamp() });
+        _equipeAtual = { id:teamRef.id, nome, email, phone, logoUrl:logoBase64, capitaoId:user.uid, codigoConvite:codigo, membros:[membro], membrosUids:[user.uid], status:'aguardando' };
+        document.getElementById('equipeCodigoDisplay').textContent = codigo;
+        document.getElementById('equipeCodigoSection').classList.remove('hidden');
+        _renderInfoTime(_equipeAtual);
+        await _iniciarEscuta(teamRef.id);
+        irParaStep(2);
+    } catch(e) { showToast('error','Erro ao criar time: '+(e.message||e)); }
+    finally { btn.disabled=false; btn.innerHTML='Criar Time <i class="fas fa-arrow-right ml-1"></i>'; }
+};
+
+window.equipeOnCodigoInput = function(v) {
+    clearTimeout(window._eqDebounce);
+    if (v.length===6) window._eqDebounce = setTimeout(()=>buscarPreviewTime(v), 400);
+    else document.getElementById('equipePreviewConvite')?.classList.add('hidden');
+};
+
+window.buscarPreviewTime = async function(codigo) {
+    if (!codigo||codigo.length<6) return;
+    try {
+        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db = window.firebaseDb; if (!db) return;
+        const snap = await getDocs(query(collection(db,'teams'),where('codigoConvite','==',codigo)));
+        const prev = document.getElementById('equipePreviewConvite');
+        if (snap.empty) { prev?.classList.add('hidden'); return; }
+        const t = { id:snap.docs[0].id, ...snap.docs[0].data() };
+        document.getElementById('equipeConviteNome').textContent = t.nome;
+        const cnt = (t.membros||[]).filter(m=>m.role!=='reserva').length;
+        document.getElementById('equipeConviteMembros').textContent = `${cnt}/4 titulares · ${t.status==='completo'?'Time completo':'Aguardando jogadores'}`;
+        if (t.logoUrl) { const _el=document.getElementById('equipeConviteLogoPreview'); if(_el){_el.style.background='transparent'; _el.innerHTML=`<img src="${t.logoUrl}" class="w-full h-full object-contain rounded-lg p-0.5">`;} }
+        prev?.classList.remove('hidden');
+    } catch(_) {}
+};
+
+window.confirmarEntrarTime = async function() {
+    const codigo = document.getElementById('equipeCodigoInput')?.value?.trim().toUpperCase();
+    if (!codigo||codigo.length!==6) { showToast('warning','Digite o código de 6 dígitos'); return; }
+    const user = window.currentUser;
+    if (!user||user.isAnonymous) { showToast('error','Faça login para entrar em um time'); return; }
+    try {
+        const { collection, query, where, getDocs, doc, updateDoc, arrayUnion } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db = window.firebaseDb; if (!db) throw new Error('Firebase não conectado');
+        const snap = await getDocs(query(collection(db,'teams'),where('codigoConvite','==',codigo)));
+        if (snap.empty) { showToast('error','Código inválido'); return; }
+        const time = { id:snap.docs[0].id, ...snap.docs[0].data() };
+        if ((time.membrosUids||[]).includes(user.uid)) {
+            _equipeAtual = time;
+            document.getElementById('equipeCodigoSection').classList.add('hidden');
+            _renderInfoTime(time); await _iniciarEscuta(time.id); irParaStep(2); return;
+        }
+        if ((time.membrosUids||[]).length>=6) { showToast('error','Time já está cheio'); return; }
+        const nomeUs = user.displayName || 'Jogador';
+        const titulares = (time.membros||[]).filter(m=>m.role!=='reserva').length;
+        const novoRole = titulares>=4 ? 'reserva' : 'titular';
+        const novoMembro = { uid:user.uid, nome:nomeUs, role:novoRole, fotoUrl:user.photoURL||null, entradaEm:Date.now() };
+        const novosTit = titulares+(novoRole!=='reserva'?1:0);
+        await updateDoc(doc(db,'teams',time.id), { membros:arrayUnion(novoMembro), membrosUids:arrayUnion(user.uid), status:novosTit>=4?'completo':'aguardando' });
+        _equipeAtual = { ...time };
+        document.getElementById('equipeCodigoSection').classList.add('hidden');
+        await _iniciarEscuta(time.id); irParaStep(2);
+        showToast('success',`Você entrou no time "${time.nome}"!`);
+    } catch(e) { showToast('error','Erro ao entrar no time: '+(e.message||e)); }
+};
+
+function _renderInfoTime(time) {
+    const n = document.getElementById('equipeTimeNomeDisplay'); if(n) n.textContent = time.nome||'';
+    if (time.logoUrl) { const l=document.getElementById('equipeTimeLogo'); if(l){l.style.background='transparent'; l.innerHTML=`<img src="${time.logoUrl}" class="w-full h-full object-contain p-0.5">`;} }
+}
+
+async function _iniciarEscuta(teamId) {
+    if (_equipeListenerUnsubscribe) _equipeListenerUnsubscribe();
+    try {
+        const { doc, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db = window.firebaseDb; if (!db) return;
+        _equipeListenerUnsubscribe = onSnapshot(doc(db,'teams',teamId), snap => {
+            if (!snap.exists()) return;
+            const t = { id:snap.id, ...snap.data() };
+            _equipeAtual = t; _renderMembros(t); _renderInfoTime(t);
+        });
+    } catch(_) {}
+}
+
+function _renderMembros(time) {
+    const membros = time.membros||[];
+    const titulares = membros.filter(m=>m.role!=='reserva');
+    const reservas = membros.filter(m=>m.role==='reserva');
+    const ehCpt = time.capitaoId === window.currentUser?.uid;
+    const grid = document.getElementById('equipeMembrosGrid'); if(!grid) return;
+    grid.innerHTML = '';
+    for (let i=0;i<4;i++) {
+        const m = titulares[i];
+        if (m) {
+            const isCpt = m.role==='capitao';
+            const btnRm = (ehCpt&&!isCpt)?`<button onclick="removerMembroTime('${m.uid}')" class="flex-shrink-0 w-5 h-5 rounded-full bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center transition-colors" title="Remover"><i class="fas fa-times text-xs"></i></button>`:'';
+            grid.innerHTML += `<div class="equipe-membro-card preenchido"><div class="equipe-avatar">${m.fotoUrl?`<img src="${m.fotoUrl}" class="w-full h-full object-cover">`:`<span class="text-white font-black text-sm">${(m.nome||'?').charAt(0).toUpperCase()}</span>`}</div><div class="equipe-membro-info flex-1 min-w-0"><p class="font-semibold text-gray-800 text-xs leading-tight truncate">${m.nome}</p><p class="text-xs mt-0.5 font-semibold ${isCpt?'text-indigo-500':'text-sky-500'}">${isCpt?'★ Capitão':'Titular'}</p></div>${btnRm}</div>`;
+        } else {
+            grid.innerHTML += `<div class="equipe-membro-card vazio"><div class="equipe-avatar vazio"><i class="fas fa-user-plus text-gray-300 text-sm"></i></div><div class="equipe-membro-info"><p class="text-xs text-gray-400 font-medium">Aguardando…</p><p class="text-xs text-gray-300">Slot ${i+1}</p></div></div>`;
+        }
+    }
+    const resSection = document.getElementById('equipeReservasSection');
+    const resGrid = document.getElementById('equipeReservasGrid');
+    if (titulares.length>=4&&resSection) {
+        resSection.classList.remove('hidden');
+        if (resGrid) { resGrid.innerHTML=''; for(let i=0;i<2;i++){const r=reservas[i]; const btnRmR=ehCpt?`<button onclick="removerMembroTime('${r?.uid}')" class="flex-shrink-0 w-5 h-5 rounded-full bg-red-100 hover:bg-red-200 text-red-500 flex items-center justify-center transition-colors"><i class="fas fa-times text-xs"></i></button>`:''; resGrid.innerHTML+=r?`<div class="equipe-membro-card preenchido reserva"><div class="equipe-avatar reserva">${r.fotoUrl?`<img src="${r.fotoUrl}" class="w-full h-full object-cover">`:`<span class="text-white font-black text-xs">${(r.nome||'?').charAt(0).toUpperCase()}</span>`}</div><div class="equipe-membro-info flex-1 min-w-0"><p class="font-semibold text-gray-800 text-xs leading-tight truncate">${r.nome}</p><p class="text-xs text-orange-500 font-semibold mt-0.5">Reserva</p></div>${btnRmR}</div>`:`<div class="equipe-membro-card vazio"><div class="equipe-avatar vazio"><i class="fas fa-user-plus text-gray-300 text-xs"></i></div><div class="equipe-membro-info"><p class="text-xs text-gray-400">Reserva ${i+1}</p><p class="text-xs text-gray-300">Opcional</p></div></div>`;} }
+    }
+    const cnt = titulares.length;
+    const cEl = document.getElementById('equipeContadorMembros'); if(cEl) cEl.textContent=`${cnt}/4`;
+    const stEl = document.getElementById('equipeStatusTexto'); if(stEl) stEl.textContent=cnt>=4?'Time completo ✓':`Faltam ${4-cnt} jogador${4-cnt!==1?'es':''}`;
+    const aw=document.getElementById('equipeAguardandoInfo'), co=document.getElementById('equipeCompletoInfo');
+    if(cnt>=4){
+        aw?.classList.add('hidden'); co?.classList.remove('hidden');
+        const btnConf=document.getElementById('btnConfirmarInscricao');
+        if(btnConf) btnConf.style.display=ehCpt?'':'none';
+    }else{aw?.classList.remove('hidden');co?.classList.add('hidden');}
+    // Botões Sair/Apagar
+    const btnAp=document.getElementById('btnApagarTime'), btnSr=document.getElementById('btnSairTime');
+    if(btnAp) btnAp.classList.toggle('hidden',!ehCpt);
+    if(btnSr) btnSr.classList.toggle('hidden',ehCpt);
+}
+
+// Redimensiona logo para 128×128px base64 — salvo no Firestore, visível a todos via listener
+async function _resizeLogoParaBase64(file) {
+    return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const img = new Image();
+            img.onload = () => {
+                const S=128, c=document.createElement('canvas'); c.width=S; c.height=S;
+                const ctx=c.getContext('2d'); const min=Math.min(img.width,img.height);
+                const sx=(img.width-min)/2, sy=(img.height-min)/2;
+                ctx.drawImage(img,sx,sy,min,min,0,0,S,S);
+                resolve(c.toDataURL('image/png'));
+            };
+            img.onerror=()=>resolve(null); img.src=e.target.result;
+        };
+        reader.onerror=()=>resolve(null); reader.readAsDataURL(file);
+    });
+}
+
+// ── Remover membro (capitão) ──
+window.removerMembroTime = async function(uid) {
+    if (!_equipeAtual||!window.currentUser||_equipeAtual.capitaoId!==window.currentUser.uid) return;
+    if (!confirm('Remover este jogador do time?')) return;
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db=window.firebaseDb; if(!db) return;
+        const nm=(_equipeAtual.membros||[]).filter(m=>m.uid!==uid);
+        const nu=(_equipeAtual.membrosUids||[]).filter(u=>u!==uid);
+        const tit=nm.filter(m=>m.role!=='reserva').length;
+        await updateDoc(doc(db,'teams',_equipeAtual.id),{membros:nm,membrosUids:nu,status:tit>=4?'completo':'aguardando'});
+        showToast('success','Jogador removido do time');
+    } catch(e){showToast('error','Erro: '+(e.message||e));}
+};
+
+// ── Sair do time (membro) ──
+window.sairDoTime = async function() {
+    if (!_equipeAtual||!window.currentUser||_equipeAtual.capitaoId===window.currentUser.uid) return;
+    if (!confirm(`Sair do time "${_equipeAtual.nome}"?`)) return;
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db=window.firebaseDb; if(!db) return;
+        const uid=window.currentUser.uid;
+        const nm=(_equipeAtual.membros||[]).filter(m=>m.uid!==uid);
+        const nu=(_equipeAtual.membrosUids||[]).filter(u=>u!==uid);
+        const tit=nm.filter(m=>m.role!=='reserva').length;
+        await updateDoc(doc(db,'teams',_equipeAtual.id),{membros:nm,membrosUids:nu,status:tit>=4?'completo':'aguardando'});
+        _equipeAtual=null;
+        if(_equipeListenerUnsubscribe){_equipeListenerUnsubscribe();_equipeListenerUnsubscribe=null;}
+        fecharModalEquipe(); showToast('success','Você saiu do time');
+    } catch(e){showToast('error','Erro: '+(e.message||e));}
+};
+
+// ── Apagar time (capitão) ──
+window.apagarTime = async function() {
+    if (!_equipeAtual||!window.currentUser||_equipeAtual.capitaoId!==window.currentUser.uid) return;
+    if (!confirm(`Apagar o time "${_equipeAtual.nome}" permanentemente?`)) return;
+    try {
+        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db=window.firebaseDb; if(!db) return;
+        await deleteDoc(doc(db,'teams',_equipeAtual.id));
+        _equipeAtual=null;
+        if(_equipeListenerUnsubscribe){_equipeListenerUnsubscribe();_equipeListenerUnsubscribe=null;}
+        fecharModalEquipe(); showToast('success','Time apagado com sucesso');
+    } catch(e){showToast('error','Erro: '+(e.message||e));}
+};
+
+window.copiarCodigo = function() {
+    const c = document.getElementById('equipeCodigoDisplay')?.textContent?.trim(); if(!c) return;
+    navigator.clipboard?.writeText(c).then(()=>showToast('success',`Código ${c} copiado!`)).catch(()=>{const el=document.createElement('textarea');el.value=c;document.body.appendChild(el);el.select();try{document.execCommand('copy');showToast('success',`Código ${c} copiado!`);}catch(_){}document.body.removeChild(el);});
+};
+
+window.compartilharConvite = function() {
+    const codigo = document.getElementById('equipeCodigoDisplay')?.textContent?.trim();
+    const nome = _equipeAtual?.nome||'Meu Time';
+    const link = `${location.origin}${location.pathname}?convite=${codigo}`;
+    const msg = `🎮 *${nome}* — XTreino Freitas\n\nEntrei no treino e preciso de você no time!\n\n🔑 Código: *${codigo}*\n🔗 Entre aqui: ${link}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+window.confirmarInscricaoEquipe = function() {
+    if (!_equipeAtual) { showToast('error','Nenhum time carregado'); return; }
+    const tit = (_equipeAtual.membros||[]).filter(m=>m.role!=='reserva').length;
+    if (tit<4) { showToast('warning','O time precisa de 4 titulares confirmados'); return; }
+    // Persistir dados do time para recuperar após redirect de página
+    try { sessionStorage.setItem('_equipeAtualPendente', JSON.stringify(_equipeAtual)); } catch(_) {}
+    fecharModalEquipe();
+    showToast('success',`Time "${_equipeAtual.nome}" confirmado! Redirecionando para escolher o horário…`);
+    const eid = window._currentEventId;
+    setTimeout(()=>{ window.location.href = eid ? `index.html?openEvent=${encodeURIComponent(eid)}&fromTeam=1#eventos` : 'index.html#eventos'; }, 1400);
+};
+</script>
+</body>
+</html>

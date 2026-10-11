@@ -1,0 +1,30 @@
+[build]
+  publish = "artifacts/xtreino/public"
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/treinofreitas"
+  to = "/evento.html"
+  status = 200
+
+[[redirects]]
+  from = "/modoliga"
+  to = "/evento.html"
+  status = 200
+
+[[redirects]]
+  from = "/semanal"
+  to = "/evento.html"
+  status = 200
+
+[[redirects]]
+  from = "/campeonato"
+  to = "/evento.html"
+  status = 200
+
+[[redirects]]
+  from = "/acesso"
+  to = "/evento.html"
+  status = 200

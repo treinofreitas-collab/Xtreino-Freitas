@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔥 Vaga Bônus — Org Freitas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: #111827; color: #f9fafb; min-height: 100vh; visibility: hidden; }
+        .card-glow { box-shadow: 0 0 40px rgba(251,146,60,0.2); }
+        .btn-participar { transition: transform 0.1s; }
+        .btn-participar:active { transform: scale(0.97); }
+    </style>
+    <script src="js/site-hardening.js" defer></script>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <!-- Estado: carregando -->
+    <div id="loadingState" class="text-center">
+        <div class="animate-spin w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p class="text-gray-400 text-sm">Carregando vaga bônus...</p>
+    </div>
+
+    <!-- Estado: erro -->
+    <div id="errorState" class="hidden text-center max-w-sm w-full">
+        <div class="text-6xl mb-4">❌</div>
+        <h2 id="errorTitle" class="text-xl font-bold mb-2 text-red-400"></h2>
+        <p id="errorMessage" class="text-gray-400 text-sm mb-6"></p>
+        <a href="/" class="text-orange-400 hover:text-orange-300 text-sm underline">← Voltar para a plataforma</a>
+    </div>
+
+    <!-- Estado: card principal -->
+    <div id="bonusCard" class="hidden w-full max-w-md">
+        <!-- Badge topo -->
+        <div class="text-center mb-6">
+            <span class="inline-flex items-center gap-2 px-5 py-2 bg-orange-600 text-white rounded-full font-bold text-sm tracking-wide shadow-lg">
+                🔥 VAGA BÔNUS DISPONÍVEL
+            </span>
+        </div>
+
+        <!-- Card do evento -->
+        <div class="bg-gray-800 border border-orange-500/30 rounded-2xl p-6 card-glow">
+            <!-- Ícone + Nome do evento -->
+            <div class="text-center mb-5">
+                <div class="w-16 h-16 bg-orange-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
+                    <i class="fas fa-gamepad text-2xl text-white"></i>
+                </div>
+                <h1 id="bonusEventName" class="text-2xl font-black text-white mb-1">—</h1>
+                <div class="flex items-center justify-center gap-2 text-orange-400 text-xl font-bold">
+                    <i class="fas fa-clock text-base"></i>
+                    <span id="bonusSchedule">—</span>
+                </div>
+                <div id="bonusDateRow" class="text-gray-400 text-sm mt-1 hidden">
+                    📅 <span id="bonusDate"></span>
+                </div>
+            </div>
+
+            <!-- Estatísticas -->
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-gray-700/60 rounded-xl p-3 text-center">
+                    <div id="bonusVagasRestantes" class="text-4xl font-black text-orange-400">—</div>
+                    <div class="text-xs text-gray-400 mt-1">vagas restantes</div>
+                </div>
+                <div class="bg-gray-700/60 rounded-xl p-3 text-center">
+                    <div class="text-2xl text-green-400"><i class="fas fa-shield-alt"></i></div>
+                    <div class="text-xs text-gray-400 mt-1">Evento Oficial</div>
+                </div>
+            </div>
+
+            <!-- Expiração (se houver) -->
+            <div id="bonusExpiryRow" class="hidden text-center text-xs text-gray-500 mb-4 bg-yellow-900/20 border border-yellow-700/30 rounded-lg py-2">
+                <i class="fas fa-hourglass-half text-yellow-400 mr-1"></i>
+                Inscrições encerram em: <span id="bonusExpiry" class="text-yellow-400 font-semibold"></span>
+            </div>
+
+            <!-- Área de participação (login / form / botão) -->
+            <div id="participacaoContainer" class="mt-4">
+                <div class="text-center text-gray-400 text-sm py-3">
+                    <i class="fas fa-circle-notch fa-spin mr-2"></i>Verificando autenticação...
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de times inscritos -->
+        <div id="slotsListContainer"></div>
+
+        <div class="text-center text-xs text-gray-600 mt-4">
+            🎮 Org Freitas — Free Fire Competitive
+        </div>
+    </div>
+
+    <!-- Estado: sucesso -->
+    <div id="successState" class="hidden w-full max-w-md text-center">
+        <div class="bg-gray-800 border border-green-500/30 rounded-2xl p-8 shadow-xl">
+            <div class="text-7xl mb-5">🎉</div>
+            <h2 class="text-3xl font-black text-green-400 mb-2">Inscrição Confirmada!</h2>
+            <p class="text-gray-300 mb-1 text-sm">Equipe: <strong id="successTeamName" class="text-white text-base"></strong></p>
+            <p class="text-gray-300 mb-6 text-sm">Evento: <strong id="successEventName" class="text-orange-400 text-base"></strong></p>
+            <!-- Problema 2: banner urgente na confirmação -->
+            <div style="background:linear-gradient(135deg,#7f1d1d,#991b1b);border:2px solid #ef4444;border-radius:14px;padding:14px 16px;margin-bottom:16px;text-align:center">
+                <p style="color:#fff;font-size:15px;font-weight:900;margin:0;letter-spacing:0.3px">🚨 ID E SENHA SÃO ENVIADOS AQUI</p>
+                <p style="color:#fca5a5;font-size:13px;font-weight:700;margin:6px 0 0">Faltando ~5 min antes do horário — salva este link! 🔥</p>
+                <p style="color:#fecaca;font-size:12px;font-weight:600;margin:5px 0 0">NÃO FALTE — honre sua vaga gratuita!</p>
+            </div>
+            <div class="bg-gray-700/50 rounded-xl p-4 mb-6 text-sm text-gray-300 text-left">
+                <p class="flex items-start gap-2"><i class="fas fa-bell text-orange-400 mt-0.5"></i> Você receberá o ID e senha da sala próximo ao horário do evento.</p>
+                <p class="flex items-start gap-2 mt-2"><i class="fas fa-bell text-orange-400 mt-0.5"></i> Fique atento às notificações do site! Você receberá o id e senha na área do cliente aqui na plataforma.</p>
+            </div>
+            <a href="/" class="inline-block bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-8 rounded-xl transition-colors shadow-md">
+                <i class="fas fa-home mr-2"></i>Ir para a Plataforma
+            </a>
+        </div>
+    </div>
+
+    <script>
+        var _fk = ["AIzaSyBzD0iWNI","fZwuzWN-Xhjbg2","2OfCHv1Qwjo"].join("");
+        window.FIREBASE_CONFIG = {
+            apiKey: _fk,
+            authDomain: "orgfreitas-ofc.firebaseapp.com",
+            projectId: "orgfreitas-ofc",
+            storageBucket: "orgfreitas-ofc.firebasestorage.app",
+            messagingSenderId: "493859004030",
+            appId: "1:493859004030:web:a1cba415344e4a7567822f",
+            measurementId: "G-WZCYZL5VC0"
+        };
+    </script>
+    <script type="module" src="config/firebase.js"></script>
+    <script type="module" src="bonus.js"></script>
+</body>
+</html>

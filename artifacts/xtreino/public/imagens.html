@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="product-id" content="imagens">
+    <title>Imagens Aéreas — PLATAFORMA FREITAS</title>
+    <link rel="icon" type="image/png" href="assets/images/Logo - Xtreino Freitas.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script>
+        var _fk = ["AIzaSyBzD0iWNI","fZwuzWN-Xhjbg2","2OfCHv1Qwjo"].join("");
+        window.FIREBASE_CONFIG = {
+            apiKey: _fk,
+            authDomain: "orgfreitas-ofc.firebaseapp.com",
+            projectId: "orgfreitas-ofc",
+            storageBucket: "orgfreitas-ofc.firebasestorage.app",
+            messagingSenderId: "493859004030",
+            appId: "1:493859004030:web:a1cba415344e4a7567822f",
+            measurementId: "G-WZCYZL5VC0"
+        };
+    </script>
+    <script type="module" src="config/firebase.js"></script>
+    <style>
+        body { background: #0f172a; visibility: hidden; }
+        body.ready { visibility: visible; }
+    </style>
+    <script src="js/site-hardening.js" defer></script>
+</head>
+<body>
+
+<header class="sticky top-0 z-50 bg-slate-900 border-b border-slate-700 shadow-xl">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center gap-4">
+        <a href="index.html" class="flex items-center gap-2 text-slate-300 hover:text-white transition-colors">
+            <i class="fas fa-arrow-left"></i>
+            <img src="assets/images/Logo - Xtreino Freitas.png" alt="Logo" class="h-9 w-9 rounded-lg object-contain" style="background:transparent">
+            <span class="font-bold text-sm hidden sm:block">PLATAFORMA FREITAS</span>
+        </a>
+        <div class="flex-1"></div>
+        <button id="headerBuyBtn" onclick="document.getElementById('prodBuyBtn').click()"
+            class="bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors hidden">
+            <i class="fas fa-shopping-cart mr-1"></i> COMPRAR
+        </button>
+    </div>
+</header>
+
+<div id="pageLoading" class="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+    <i class="fas fa-spinner fa-spin text-orange-500 text-4xl"></i>
+    <p class="text-slate-400">Carregando produto...</p>
+</div>
+
+<div id="pageError" class="hidden flex-col items-center justify-center min-h-[60vh] gap-4 p-8 text-center">
+    <i class="fas fa-exclamation-triangle text-red-400 text-4xl"></i>
+    <h2 class="text-white text-xl font-bold">Produto não encontrado</h2>
+    <p class="text-slate-400 text-sm" id="errMsg">Este produto pode não estar disponível no momento.</p>
+    <a href="index.html" class="bg-orange-600 hover:bg-orange-700 text-white font-bold px-6 py-3 rounded-xl transition-colors">
+        <i class="fas fa-home mr-2"></i>Voltar ao início
+    </a>
+</div>
+
+<div id="pageContent" class="hidden max-w-4xl mx-auto pb-32">
+    <div class="relative">
+        <img id="prodBannerImg" src="" alt="" class="w-full object-cover max-h-72 md:max-h-96 bg-slate-800" style="min-height:180px;">
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent"></div>
+        <div id="prodBadge" class="hidden absolute top-4 right-4 text-xs font-bold px-3 py-1 rounded-full"></div>
+    </div>
+    <div class="px-4 py-6">
+        <h1 id="prodName" class="text-2xl md:text-3xl font-black text-white mb-3 leading-tight"></h1>
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+            <span id="prodPrice" class="text-3xl font-black text-orange-400"></span>
+            <span id="prodCatBadge" class="text-xs font-bold px-3 py-1 rounded-full bg-emerald-900 text-emerald-300"></span>
+        </div>
+        <div id="prodExtras"></div>
+        <div class="mt-4 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-start gap-3">
+            <i class="fas fa-info-circle text-blue-400 mt-0.5 flex-shrink-0"></i>
+            <p class="text-xs text-slate-400 leading-relaxed">
+                Após a compra, o produto ficará disponível aqui no site em MEUS PRODUTOS, direto na sua área do cliente.
+            </p>
+        </div>
+    </div>
+</div>
+
+<div id="floatingCta" class="fixed bottom-0 left-0 right-0 z-40 px-4 py-4 bg-gradient-to-t from-slate-950 to-transparent">
+    <div class="max-w-4xl mx-auto">
+        <button id="prodBuyBtn"
+            class="w-full bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-black text-lg py-4 rounded-2xl shadow-2xl transition-all hidden">
+            <i class="fas fa-shopping-cart mr-2"></i>COMPRAR AGORA
+        </button>
+    </div>
+</div>
+
+<script>document.addEventListener('DOMContentLoaded', () => document.body.classList.add('ready'));</script>
+<script type="module">
+    await import('./js/produto-page.js').then(() => {
+        const buy = document.getElementById('prodBuyBtn');
+        const hdr = document.getElementById('headerBuyBtn');
+        if (buy) buy.classList.remove('hidden');
+        if (hdr) hdr.classList.remove('hidden');
+    }).catch(() => {
+        const buy = document.getElementById('prodBuyBtn');
+        const hdr = document.getElementById('headerBuyBtn');
+        if (buy) buy.classList.remove('hidden');
+        if (hdr) hdr.classList.remove('hidden');
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,375 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function isSelf(userId) { return isSignedIn() && request.auth.uid == userId; }
+
+    // CEO / super-admin (via email whitelist)
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN','Ceo','CEO','ceo'];
+    }
+
+    // VENDEDOR
+    function isVendedor() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['vendedor','Vendedor','VENDEDOR','operador','Operador','OPERADOR'];
+    }
+
+    // AFILIADO
+    function isAfiliado() {
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['afiliado','Afiliado','AFILIADO'] ||
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.affiliate == true) ||
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.affiliateStatus in ['active','pending','inactive'])
+      );
+    }
+
+    // STAFF / ADMIN-role / MODERADOR
+    function isStaff() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in
+        ['staff','Staff','STAFF','admin','Admin','ADMIN','moderador','Moderador','MODERADOR'];
+    }
+
+    // GERENTE (inclui ceo para herança)
+    function isGerente() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in
+        ['gerente','Gerente','GERENTE','Ceo','CEO','ceo'];
+    }
+
+    // CEO/ADMIN com email autorizado (whitelist para ações destrutivas)
+    function isAuthorizedAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN','Ceo','CEO','ceo'] &&
+        request.auth.token.email in [
+          'cleitondouglass@gmail.com',
+          'cleitondouglass123@hotmail.com',
+          'gilmariofreitas378@gmail.com',
+          'gilmariofreitas387@gmail.com',
+          'flavetyr@gmail.com',
+          'admin@xtreino.dev'
+        ];
+    }
+
+    // Admin autorizado OU designer (para conteúdo)
+    function isAuthorizedAdminOrDesign() {
+      return isSignedIn() && (
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN','Ceo','CEO','ceo'] &&
+         request.auth.token.email in [
+           'cleitondouglass@gmail.com',
+           'cleitondouglass123@hotmail.com',
+           'gilmariofreitas378@gmail.com',
+           'gilmariofreitas387@gmail.com',
+           'flavetyr@gmail.com',
+           'admin@xtreino.dev'
+         ]) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['design','Design','DESIGN','Designer','DESIGNER','designer','Desgin','DESGIN','desgin']
+      );
+    }
+
+    // DESIGNER
+    function isDesign() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in
+        ['design','Design','DESIGN','Designer','DESIGNER','designer','Desgin','DESGIN','desgin'];
+    }
+
+    // SOCIO
+    function isSocio() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in
+        ['socio','Socio','SOCIO','sócio','Sócio','SÓCIO','ceo','CEO','Ceo'];
+    }
+
+    // Quem pode ler tudo no painel
+    function canReadAll() {
+      return isAdmin() || isGerente() || isVendedor() || isDesign() || isSocio() || isStaff();
+    }
+
+    // Quem pode escrever conteúdo (highlights, news, products, events)
+    function canWriteContent() {
+      return isAuthorizedAdminOrDesign() || isGerente();
+    }
+
+    // Campos protegidos que usuários não podem auto-modificar
+    function hasNoProtectedFieldChanges() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'tokens', 'role', 'affiliate', 'affiliateStatus', 'affiliateBalance',
+        'affiliateCode', 'affiliateParent', 'affiliateSales', 'affiliateRef',
+        'affiliateCommission', 'affiliatePaidOut'
+      ]);
+    }
+
+    // users: leitura para staff; atualização por admin, gerente e vendedor (gestão de usuários)
+    match /users/{userId} {
+      allow read: if isSelf(userId) || canReadAll();
+      allow create: if isSelf(userId) || isAdmin();
+      allow update: if (isSelf(userId) && hasNoProtectedFieldChanges()) ||
+                       (isSelf(userId) &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tokens']) &&
+                        request.resource.data.tokens < resource.data.tokens &&
+                        request.resource.data.tokens >= 0) ||
+                       isAdmin() || isGerente() || isVendedor();
+      allow delete: if isAdmin() || isGerente();
+    }
+
+    // schedules
+    match /schedules/{scheduleId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || isGerente() || isStaff();
+      allow delete: if isAdmin() || isGerente();
+    }
+
+    // orders
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || canReadAll());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if canReadAll();
+      allow delete: if isAdmin() || isGerente();
+    }
+
+    // registrations
+    match /registrations/{registrationId} {
+      allow get: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        canReadAll() ||
+        (
+          isStaff() && (
+            ((resource.data.hour is number) && resource.data.hour >= 14 && resource.data.hour <= 18) ||
+            ((resource.data.schedule is string) && resource.data.schedule.matches('.*(\\b14\\b|\\b15\\b|\\b16\\b|\\b17\\b|\\b18\\b|14h|15h|16h|17h|18h|14:00|15:00|16:00|17:00|18:00).*'))
+          )
+        )
+      );
+      allow list: if true;
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || canReadAll());
+      allow update: if canReadAll() ||
+                    (isSignedIn() &&
+                     resource.data.userId == request.auth.uid &&
+                     resource.data.status == 'pending' &&
+                     request.resource.data.status == 'paid' &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAt']));
+      allow delete: if isAdmin() || isGerente();
+    }
+
+    // digital_deliveries
+    match /digital_deliveries/{deliveryId} {
+      allow read: if isSignedIn() && (resource.data.customerEmail == request.auth.token.email || canReadAll());
+      allow create: if isSignedIn() && request.resource.data.customerEmail == request.auth.token.email;
+      allow update, delete: if canReadAll();
+    }
+
+    // highlights: gerente e designer podem editar
+    match /highlights/{highlightId} {
+      allow read: if true;
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // news: gerente e designer podem editar
+    match /news/{newsId} {
+      allow read: if true;
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // config
+    match /config/{configId} {
+      allow read: if true;
+      allow create, update, delete: if isAuthorizedAdmin();
+    }
+
+    // products: gerente e designer podem editar
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // product_downloads
+    match /product_downloads/{downloadId} {
+      allow read: if isSignedIn() && (resource.data.customerEmail == request.auth.token.email || isAdmin() || isGerente());
+      allow create: if isSignedIn() && request.resource.data.customerEmail == request.auth.token.email && request.resource.data.status == 'delivered';
+      allow update, delete: if isAdmin() || isGerente();
+    }
+
+    // product_categories
+    match /product_categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // product_inventory
+    match /product_inventory/{inventoryId} {
+      allow read: if isAdmin() || isDesign() || isGerente();
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // product_reviews
+    match /product_reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() &&
+        request.resource.data.productId is string &&
+        request.resource.data.customerEmail == request.auth.token.email &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+        request.resource.data.comment.size() <= 500;
+      allow update, delete: if isAdmin() || isGerente();
+    }
+
+    // product_analytics
+    match /product_analytics/{analyticsId} {
+      allow read: if isAdmin() || isDesign() || isGerente();
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // product_discounts
+    match /product_discounts/{discountId} {
+      allow read: if true;
+      allow create: if canWriteContent() &&
+        request.resource.data.code is string &&
+        request.resource.data.discountType in ['percentage', 'fixed'] &&
+        request.resource.data.value > 0 &&
+        request.resource.data.active is bool;
+      allow update, delete: if canWriteContent();
+    }
+
+    // product_audit_logs
+    match /product_audit_logs/{logId} {
+      allow read: if isAdmin() || isDesign() || isGerente();
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // product_usage_stats
+    match /product_usage_stats/{statsId} {
+      allow read: if isAdmin() || isDesign() || isGerente();
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // product_backups
+    match /product_backups/{backupId} {
+      allow read: if isAdmin() || isDesign() || isGerente();
+      allow create, update, delete: if canWriteContent();
+    }
+
+    // adminHistory: gerente e sócio podem ler
+    match /adminHistory/{historyId} {
+      allow read: if isAdmin() || isGerente() || isSocio();
+      allow create, update, delete: if isAuthorizedAdmin() || isGerente();
+    }
+
+    // coupons: gerente pode gerenciar cupons
+    match /coupons/{couponId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAuthorizedAdmin() || isGerente();
+    }
+
+    // couponUsage
+    match /couponUsage/{usageId} {
+      allow read: if isAdmin() || isGerente() || isSocio() || isAfiliado() || isVendedor();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin() || isGerente();
+    }
+
+    // affiliate_sales
+    match /affiliate_sales/{saleId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || isGerente() || isStaff() || isVendedor() ||
+        (
+          isAfiliado() && (
+            resource.data.affiliateId == request.auth.uid ||
+            resource.data.affiliateUid == request.auth.uid ||
+            resource.data.affiliateEmail == request.auth.token.email
+          )
+        )
+      );
+      allow create: if isSignedIn() && (isAdmin() || isGerente() || isStaff() || isVendedor());
+      allow update: if isAdmin() || isGerente() || isStaff() || isVendedor();
+      allow delete: if isAdmin() || isGerente();
+    }
+
+    // affiliate_commissions
+    match /affiliate_commissions/{commissionId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || isGerente() || isStaff() || isVendedor() ||
+        (
+          isAfiliado() && (
+            resource.data.affiliateId == request.auth.uid ||
+            resource.data.affiliateUid == request.auth.uid ||
+            resource.data.affiliateEmail == request.auth.token.email
+          )
+        )
+      );
+      allow create: if isSignedIn() && (isAdmin() || isGerente() || isStaff() || isVendedor());
+      allow update: if isAdmin() || isGerente() || isStaff() || isVendedor();
+      allow delete: if isAdmin() || isGerente();
+    }
+
+    match /affiliate_payout_requests/{requestId} {
+      allow create: if isAfiliado() && request.auth.uid == request.resource.data.affiliateId
+                    && (request.resource.data.amount is number) && request.resource.data.amount >= 25
+                    && (request.resource.data.status == 'pending' || request.resource.data.status == 'requested');
+      allow read: if isSignedIn() && (resource.data.affiliateId == request.auth.uid || isAdmin() || isGerente());
+      allow update, delete: if isAdmin() || isGerente();
+    }
+
+    // affiliate_payouts: solicitações de saque de afiliados
+    match /affiliate_payouts/{payoutId} {
+      allow create: if isAfiliado() && request.auth.uid == request.resource.data.affiliateId
+                    && (request.resource.data.amount is number) && request.resource.data.amount >= 25
+                    && request.resource.data.status == 'pending';
+      allow get: if isSignedIn() && (resource.data.affiliateId == request.auth.uid || isAdmin() || isGerente() || isVendedor());
+      allow list: if isSignedIn() && (isAfiliado() || isAdmin() || isGerente() || isVendedor());
+      allow update, delete: if isAdmin() || isGerente();
+    }
+
+    // whatsapp_links
+    match /whatsapp_links/{linkId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAuthorizedAdminOrDesign() || isGerente();
+    }
+
+    // schedule_overrides
+    match /schedule_overrides/{overrideId} {
+      allow read: if true;
+      allow create, update, delete: if isAuthorizedAdminOrDesign() || isGerente();
+    }
+
+    // notifications: gerente, staff e admin podem criar/editar
+    match /notifications/{notifId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAuthorizedAdmin() || isGerente() || isStaff();
+    }
+
+    // notificationReads
+    match /notificationReads/{readId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || isAdmin() || isGerente()
+      );
+      allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin() || isGerente();
+    }
+
+    // slotCounters
+    match /slotCounters/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // adminEvents: gerente e designer podem criar/editar eventos
+    match /adminEvents/{eventId} {
+      allow read: if true;
+      allow create, update, delete: if isAuthorizedAdmin() || isGerente() || isDesign() || isStaff();
+    }
+
+    // camp_groups
+    match /camp_groups/{groupId} {
+      allow read: if true;
+      allow create, update, delete: if isAuthorizedAdmin() || isGerente();
+    }
+
+    // event_hour_locks
+    match /event_hour_locks/{lockId} {
+      allow read: if true;
+      allow create, update, delete: if isAuthorizedAdmin() || isGerente() || isStaff();
+    }
+
+    // event_global_locks
+    match /event_global_locks/{lockId} {
+      allow read: if true;
+      allow create, update, delete: if isAuthorizedAdmin() || isGerente() || isStaff();
+    }
+  }
+}
