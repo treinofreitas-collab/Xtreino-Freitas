@@ -317,25 +317,22 @@ window.showWarningToast = function(message, title = 'Atenção') {
           'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
           'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
           'sectionAffiliatePanel','sectionPasseBooyah','sectionHighlights','sectionNews',
-          'sectionProducts','sectionEvents','sectionBonusSlots','sectionShirtOrders',
-          'sectionSchedules','sectionNotificationsAdmin','sectionAdminHistory','sectionResetData',
-          'sectionChampResults','sectionChampConfig'],
+          'sectionProducts','sectionEvents','sectionShirtOrders',
+          'sectionSchedules','sectionNotificationsAdmin','sectionAdminHistory','sectionResetData'],
     // SOCIO: tudo, somente visualização (sem reset)
     socio: ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
             'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
             'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
             'sectionAffiliatePanel','sectionPasseBooyah','sectionHighlights','sectionNews',
-            'sectionProducts','sectionEvents','sectionBonusSlots','sectionShirtOrders',
-            'sectionSchedules','sectionNotificationsAdmin','sectionAdminHistory',
-            'sectionChampResults','sectionChampConfig'],
+          'sectionProducts','sectionEvents','sectionShirtOrders',
+            'sectionSchedules','sectionNotificationsAdmin','sectionAdminHistory'],
     // GERENTE: tudo, EXCETO aba principal completa (KPIs, filtros, gráficos, pedidos, tokenStats)
     gerente: ['sectionUsers','sectionUsersManagement',
               'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
               'sectionAffiliateSales','sectionAffiliatePayouts','sectionAffiliatePanel','sectionPasseBooyah',
-              'sectionHighlights','sectionNews','sectionProducts','sectionEvents','sectionBonusSlots',
+              'sectionHighlights','sectionNews','sectionProducts','sectionEvents',
               'sectionShirtOrders','sectionSchedules',
-              'sectionNotificationsAdmin','sectionAdminHistory',
-              'sectionChampResults','sectionChampConfig'],
+              'sectionNotificationsAdmin','sectionAdminHistory'],
     // DESIGNER: apenas conteúdo (destaques, notícias, produtos, eventos) — sem camisas, sem horários
     designer: ['sectionHighlights','sectionNews','sectionProducts','sectionEvents'],
     // VENDEDOR: usuários + financeiro (sem aba principal) + camisas + produtos + notificações
@@ -343,13 +340,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
                'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
                'sectionProducts','sectionNotificationsAdmin'],
-    // ADMIN: gerenciador de eventos + horários + notificações + campeonato
-    admin: ['sectionEvents','sectionSchedules','sectionNotificationsAdmin',
-            'sectionChampResults','sectionChampConfig'],
-    // STAFF: notificações, eventos e campeonato
-    staff: ['sectionEvents','sectionNotificationsAdmin','sectionChampResults'],
+    // ADMIN: gerenciador de eventos + horários + notificações
+    admin: ['sectionEvents','sectionSchedules','sectionNotificationsAdmin'],
+    // STAFF: notificações e eventos
+    staff: ['sectionEvents','sectionNotificationsAdmin'],
     // MODERADOR: igual ao staff
-    moderador: ['sectionEvents','sectionNotificationsAdmin','sectionChampResults'],
+    moderador: ['sectionEvents','sectionNotificationsAdmin'],
     // OPERADOR: mesmo acesso do vendedor (sem aba principal)
     operador: ['sectionUsers','sectionUsersManagement',
                'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
@@ -367,9 +363,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
   const ALL_SECTIONS = ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
     'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons','sectionCouponUsage',
     'sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts','sectionAffiliatePanel','sectionPasseBooyah',
-    'sectionHighlights','sectionNews','sectionProducts','sectionEvents','sectionBonusSlots','sectionShirtOrders',
+    'sectionHighlights','sectionNews','sectionProducts','sectionEvents','sectionShirtOrders',
     'sectionSchedules','sectionNotificationsAdmin','sectionAdminHistory','sectionResetData',
-    'sectionChampResults','sectionChampConfig'];
+  ];
 
   // Control section visibility based on role
   function controlSectionVisibility(userRole) {
@@ -12067,14 +12063,12 @@ let _notifyScheduleMap = {};
 let _notifySelectedSlotKey = 'all';
 let _notifySelectedType = 'credentials';
 let _notifyOtherDaysVisible = false;
-let _finalistUserIds = [];
-let _finalistTeams = [];
 
 function selectNotifyType(type) {
     _notifySelectedType = type;
-    const colorMap = { credentials: 'purple', tabela: 'green', custom: 'blue', finalists: 'yellow' };
-    const hexMap   = { purple: '#a855f7', green: '#22c55e', blue: '#3b82f6', yellow: '#eab308' };
-    const bgMap    = { purple: '#faf5ff', green: '#f0fdf4', blue: '#eff6ff', yellow: '#fefce8' };
+    const colorMap = { credentials: 'purple', tabela: 'green', custom: 'blue' };
+    const hexMap   = { purple: '#a855f7', green: '#22c55e', blue: '#3b82f6' };
+    const bgMap    = { purple: '#faf5ff', green: '#f0fdf4', blue: '#eff6ff' };
     document.querySelectorAll('.notify-type-card').forEach(card => {
         const t = card.dataset.type;
         const c = colorMap[t] || 'purple';
@@ -12084,27 +12078,18 @@ function selectNotifyType(type) {
     });
     const roomSec        = document.getElementById('eventNotifyRoomLinkSection');
     const tabSec         = document.getElementById('eventNotifyTabelaSection');
-    const finalistsSec   = document.getElementById('eventNotifyFinalistsSection');
     const msgEl          = document.getElementById('eventNotifyMessage');
     const optLabel       = document.getElementById('notifyMsgOptLabel');
-    const stepSchedule   = document.getElementById('notifyStepSchedule');
-    const stepContentLbl = document.getElementById('notifyStepContentLabel');
-    // Finalistas = credenciais enviadas apenas para os times da final
-    if (roomSec)      roomSec.classList.toggle('hidden', type !== 'credentials' && type !== 'finalists');
+    if (roomSec)      roomSec.classList.toggle('hidden', type !== 'credentials');
     if (tabSec)       tabSec.classList.toggle('hidden',  type !== 'tabela');
-    if (finalistsSec) finalistsSec.classList.toggle('hidden', type !== 'finalists');
     if (optLabel) optLabel.textContent = (type === 'custom') ? '(obrigatória)' : '(opcional)';
-    // Finalistas: oculta etapa de horário (data já está no card) e renumera Conteúdo
-    if (stepSchedule)   stepSchedule.classList.toggle('hidden', type === 'finalists');
-    if (stepContentLbl) stepContentLbl.textContent = (type === 'finalists') ? '2 · Conteúdo' : '3 · Conteúdo';
-    if (type === 'credentials' || type === 'finalists') {
+    if (type === 'credentials') {
         if (msgEl) msgEl.placeholder = 'Ex: Use as credenciais abaixo para entrar na sala. Boa sorte!';
     } else if (type === 'tabela') {
         if (msgEl) msgEl.placeholder = 'Ex: A tabela do evento já está disponível!';
     } else {
         if (msgEl) msgEl.placeholder = 'Digite sua mensagem para os participantes...';
     }
-    if (type === 'finalists') _updateNotifyCount();
 }
 
 function selectNotifySlot(key) {
@@ -12122,12 +12107,6 @@ function selectNotifySlot(key) {
 function _updateNotifyCount() {
     const countEl = document.getElementById('eventNotifyCount');
     if (!countEl) return;
-    if (_notifySelectedType === 'finalists') {
-        countEl.textContent = _finalistUserIds.length > 0
-            ? `Vai enviar para ${_finalistUserIds.length} finalista(s)`
-            : 'Carregue os finalistas acima';
-        return;
-    }
     if (_notifySelectedSlotKey === 'all') {
         const total = new Set(_notifyEventDocs.map(d => d.data().userId).filter(Boolean)).size;
         countEl.textContent = `Vai enviar para ${total} participante(s)`;
@@ -12159,111 +12138,6 @@ function _buildSlotButton(key, entry) {
     </button>`;
 }
 
-window.carregarFinalistas = async function () {
-    const data = document.getElementById('notifyFinalistsDate')?.value;
-    if (!data) { showToast('warning', 'Informe a data da final.', 'Atenção'); return; }
-
-    const loadingEl = document.getElementById('notifyFinalistsLoading');
-    const listEl    = document.getElementById('notifyFinalistsList');
-    const namesEl   = document.getElementById('notifyFinalistsNames');
-    const emptyEl   = document.getElementById('notifyFinalistsEmpty');
-
-    [listEl, emptyEl].forEach(el => el?.classList.add('hidden'));
-    loadingEl?.classList.remove('hidden');
-    _finalistUserIds = [];
-    _updateNotifyCount();
-
-    try {
-        const { doc, getDoc, collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
-        // Carregar resultado da final (22h) do championship_results
-        // Formato do docId: semanal-freitas_{data}_{hora} (igual ao usado em championship.js)
-        const docId = `semanal-freitas_${data}_22h`;
-        const snap = await getDoc(doc(window.firebaseDb, 'championship_results', docId));
-        if (!snap.exists() || !snap.data().teams?.length) {
-            loadingEl?.classList.add('hidden');
-            emptyEl?.classList.remove('hidden');
-            return;
-        }
-
-        const teams = snap.data().teams || [];
-        _finalistTeams = teams; // salvar para uso no slotList da notificação
-        // Obter registrationIds de cada time
-        const regIds = [...new Set(teams.map(t => t.registrationId).filter(Boolean))];
-        const nomes  = teams.map(t => t.nome || '').filter(Boolean);
-
-        const userIdsSet = new Set();
-
-        // Buscar userId por registrationId (inscrição na semifinal)
-        for (const rid of regIds) {
-            try {
-                const rSnap = await getDoc(doc(window.firebaseDb, 'registrations', rid));
-                if (rSnap.exists()) {
-                    const uid = rSnap.data().userId;
-                    if (uid) userIdsSet.add(uid);
-                }
-            } catch (_) {}
-        }
-
-        // Fallback: buscar inscrições pelo nome do time no evento semanal-freitas
-        if (nomes.length > 0 && userIdsSet.size < teams.length) {
-            try {
-                const regsSnap = await getDocs(query(
-                    collection(window.firebaseDb, 'registrations'),
-                    where('eventType', '==', 'semanal-freitas')
-                ));
-                regsSnap.docs.forEach(d => {
-                    const r = d.data();
-                    const tName = r.teamName || r.name || '';
-                    if (nomes.some(n => n && tName && n.toLowerCase() === tName.toLowerCase())) {
-                        if (r.userId) userIdsSet.add(r.userId);
-                    }
-                });
-            } catch (_) {}
-        }
-
-        // Expandir para membros do time se tiver teamId/teamName
-        try {
-            const teamNames = [...new Set(teams.map(t => t.nome).filter(Boolean))];
-            if (teamNames.length > 0) {
-                const teamsSnap = await getDocs(collection(window.firebaseDb, 'teams'));
-                teamsSnap.docs.forEach(td => {
-                    const t = td.data();
-                    if (t.nome && teamNames.some(n => n.toLowerCase() === (t.nome || '').toLowerCase())) {
-                        (t.membrosUids || []).forEach(uid => userIdsSet.add(uid));
-                    }
-                });
-            }
-        } catch (_) {}
-
-        _finalistUserIds = [...userIdsSet];
-
-        // Montar lista visual
-        loadingEl?.classList.add('hidden');
-        if (teams.length === 0) {
-            emptyEl?.classList.remove('hidden');
-        } else {
-            if (namesEl) {
-                namesEl.innerHTML = teams.map((t, i) => {
-                    const semi = t.deSemifinal ? ` <span class="text-gray-400">[${t.deSemifinal}]</span>` : '';
-                    return `<div class="flex items-center gap-2 text-xs py-1 border-b border-yellow-100">
-                        <span class="font-bold text-yellow-700 w-5 text-center">${i + 1}º</span>
-                        <span class="font-semibold text-gray-800">${t.nome || '?'}</span>${semi}
-                    </div>`;
-                }).join('');
-            }
-            listEl?.classList.remove('hidden');
-            if (_finalistUserIds.length === 0) {
-                showToast('warning', 'Times encontrados mas sem e-mails vinculados. Verifique as inscrições.', 'Atenção');
-            }
-        }
-        _updateNotifyCount();
-    } catch (err) {
-        loadingEl?.classList.add('hidden');
-        showToast('error', 'Erro ao carregar finalistas: ' + (err.message || err));
-    }
-};
-
 async function openEventNotifyModal(eventId, eventName) {
     const modal = document.getElementById('eventNotifyModal');
     if (!modal) return;
@@ -12272,8 +12146,6 @@ async function openEventNotifyModal(eventId, eventName) {
     _notifyScheduleMap = {};
     _notifySelectedSlotKey = 'all';
     _notifyOtherDaysVisible = false;
-    _finalistUserIds = [];
-    _finalistTeams = [];
 
     document.getElementById('eventNotifyEventId').value = eventId;
     document.getElementById('eventNotifyEventName').textContent = eventName;
@@ -12281,14 +12153,6 @@ async function openEventNotifyModal(eventId, eventName) {
     document.getElementById('eventNotifyMessage').value = '';
     ['eventNotifyRoomId','eventNotifyRoomPassword','eventNotifyRoomLink','eventNotifyTabelaLink']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-
-    // Pré-preencher data dos finalistas com hoje (fuso BR)
-    const _brHoje = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const _finDateEl = document.getElementById('notifyFinalistsDate');
-    if (_finDateEl) _finDateEl.value = _brHoje;
-    ['notifyFinalistsList','notifyFinalistsEmpty','notifyFinalistsLoading'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.classList.add('hidden');
-    });
 
     document.getElementById('eventNotifyCount').textContent = '—';
     document.getElementById('notifyLoadingSlots').classList.remove('hidden');
@@ -12300,14 +12164,6 @@ async function openEventNotifyModal(eventId, eventName) {
     document.getElementById('notifyOtherSlots').innerHTML = '';
 
     selectNotifyType('credentials');
-
-    // Mostrar card "Finalistas" apenas para o Campeonato Semanal — check rápido antes do async
-    const _finalistsBtn = document.getElementById('notifyTypeFinalistsBtn');
-    if (_finalistsBtn) {
-        const _quickSemanal = eventId.toLowerCase().includes('semanal') ||
-                              (eventName || '').toLowerCase().includes('semanal');
-        _finalistsBtn.style.display = _quickSemanal ? '' : 'none';
-    }
 
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -12329,14 +12185,6 @@ async function openEventNotifyModal(eventId, eventName) {
             }
         } catch(_) {}
 
-        // Confirmar visibilidade do card "Finalistas" com eventType real resolvido
-        if (_finalistsBtn) {
-            const _isSemanal = (_evEventType || '').toLowerCase().includes('semanal') ||
-                               eventId.toLowerCase().includes('semanal');
-            _finalistsBtn.style.display = _isSemanal ? '' : 'none';
-            // Se o tipo selecionado é 'finalists' mas o evento não é semanal, voltar p/ credentials
-            if (!_isSemanal && _notifySelectedType === 'finalists') selectNotifyType('credentials');
-        }
         // Aliases via resolveAliases apenas para o eventType canônico (não para o nome)
         if (_evEventType) {
             try { resolveAliases(_evEventType).forEach(a => { if (a) _notifyTypes.add(a); }); } catch(_) {}
@@ -12501,16 +12349,11 @@ async function sendEventNotification() {
     const notifyType = _notifySelectedType || 'custom';
 
     if (!title) { showToast('warning', 'Informe o título da notificação.', 'Atenção'); return; }
-    if (notifyType !== 'credentials' && notifyType !== 'tabela' && notifyType !== 'finalists' && !message) { showToast('warning', 'Informe a mensagem.', 'Atenção'); return; }
-
-    // Validação de finalistas
-    if (notifyType === 'finalists' && _finalistUserIds.length === 0) {
-        showToast('warning', 'Carregue os finalistas antes de enviar.', 'Atenção'); return;
-    }
+    if (notifyType !== 'credentials' && notifyType !== 'tabela' && !message) { showToast('warning', 'Informe a mensagem.', 'Atenção'); return; }
 
     // Validação de credenciais
     let roomId = null, roomPassword = null, roomLink = null;
-    if (notifyType === 'credentials' || notifyType === 'finalists') {
+    if (notifyType === 'credentials') {
         roomId = (document.getElementById('eventNotifyRoomId')?.value || '').trim();
         roomPassword = (document.getElementById('eventNotifyRoomPassword')?.value || '').trim();
         roomLink = (document.getElementById('eventNotifyRoomLink')?.value || '').trim() || null;
@@ -12578,31 +12421,25 @@ async function sendEventNotification() {
             }
         }
 
-        // Finalistas: usar lista já resolvida por carregarFinalistas()
-        let uniqueUsers;
-        if (notifyType === 'finalists') {
-            uniqueUsers = [..._finalistUserIds];
-        } else {
-            // Coletar usuários das inscrições e expandir para todos os membros do time
-            // Usa teamId (inscrições novas) OU teamName como fallback (inscrições antigas)
-            const regUsers = [...new Set(docsToNotify.map(d => d.data().userId).filter(Boolean))];
-            const allUsersSet = new Set(regUsers);
-            const teamIds   = [...new Set(docsToNotify.map(d => d.data().teamId).filter(Boolean))];
-            const teamNames = [...new Set(docsToNotify.map(d => d.data().teamName).filter(Boolean))];
-            if (teamIds.length > 0 || teamNames.length > 0) {
-                try {
-                    const { collection: _col2, getDocs: _gd2, query: _q2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                    const teamsSnap = await _gd2(_q2(_col2(window.firebaseDb, 'teams')));
-                    teamsSnap.docs.forEach(td => {
-                        const t = td.data();
-                        if (teamIds.includes(td.id) || (t.nome && teamNames.includes(t.nome))) {
-                            (t.membrosUids || []).forEach(u => allUsersSet.add(u));
-                        }
-                    });
-                } catch(_) {}
+        // Coletar usuários das inscrições e expandir para todos os membros do time
+        // Usa teamId (inscrições novas) OU teamName como fallback (inscrições antigas)
+        const regUsers = [...new Set(docsToNotify.map(d => d.data().userId).filter(Boolean))];
+        const allUsersSet = new Set(regUsers);
+        const teamIds   = [...new Set(docsToNotify.map(d => d.data().teamId).filter(Boolean))];
+        const teamNames = [...new Set(docsToNotify.map(d => d.data().teamName).filter(Boolean))];
+        if (teamIds.length > 0 || teamNames.length > 0) {
+            try {
+                const { collection: _col2, getDocs: _gd2, query: _q2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                const teamsSnap = await _gd2(_q2(_col2(window.firebaseDb, 'teams')));
+                teamsSnap.docs.forEach(td => {
+                    const t = td.data();
+                    if (teamIds.includes(td.id) || (t.nome && teamNames.includes(t.nome))) {
+                        (t.membrosUids || []).forEach(u => allUsersSet.add(u));
+                    }
+                });
+            } catch(_) {}
             }
-            uniqueUsers = [...allUsersSet];
-        }
+        const uniqueUsers = [...allUsersSet];
         if (uniqueUsers.length === 0) {
             showToast('warning', 'Nenhum participante encontrado para o dia/horário selecionado.', 'Atenção');
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Enviar'; }
@@ -12615,16 +12452,8 @@ async function sendEventNotification() {
         // batchId agrupa todas as notificações deste envio — evita duplicatas na listagem do admin
         const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-        // Para finalistas: montar slotList com os times classificados
         let slotList = null;
         let slotCapacity = null;
-        if (notifyType === 'finalists' && _finalistTeams.length > 0) {
-            slotList = _finalistTeams.map((t, i) => ({
-                slot: i + 1,
-                teamName: t.nome || ''
-            }));
-            slotCapacity = slotList.length;
-        }
 
         // Ao enviar credenciais para um horário específico, incluir lista de slots na notificação.
         // CRÍTICO: usar docsToNotify (já filtrado ao slot/evento correto) — evita re-query com docId
@@ -12662,10 +12491,7 @@ async function sendEventNotification() {
             } catch (_) {}
         }
 
-        // Para finalistas, usar título simplificado (sem o nome longo do evento)
-        const notifTitle = notifyType === 'finalists'
-            ? `Final Semanal - ${title}`
-            : `[${eventName}]${scheduleLabel} ${title}`;
+        const notifTitle = `[${eventName}]${scheduleLabel} ${title}`;
 
         await Promise.all(uniqueUsers.map(uid =>
             addDoc(collection(window.firebaseDb, 'notifications'), {
@@ -13136,7 +12962,6 @@ window.loadPageData = async function(page) {
         try { loadProducts(); } catch(e) {}
         try { loadEventsPreview(); } catch(e) {}
         try { loadShirtOrders(); } catch(e) {}
-        try { loadBonusSlots(); } catch(e) { console.warn('[page:conteudo] BonusSlots', e); }
 
     } else if (page === 'operacoes') {
         try { loadWhatsAppLinks(); } catch(e) {}
@@ -13466,299 +13291,3 @@ window.repairDateSlots = async function(eventType, targetDate) {
     }
 };
 
-// ===== VAGAS BÔNUS =====
-
-const _BONUS_EVENT_LABELS = {
-    'xtreino-tokens': 'XTreino Freitas',
-    'modo-liga': 'Modo Liga',
-    'semanal-freitas': 'Semanal Freitas',
-    'semanal': 'Semanal Freitas',
-    'camp-freitas': 'Campeonato Freitas'
-};
-
-function _gerarCodigoBonus() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
-
-// Popula o select de eventos do form bônus a partir do adminEvents no Firestore
-async function _popularSelectEventoBonus() {
-    const sel = document.getElementById('bonusFormEventType');
-    if (!sel || !window.firebaseDb) return;
-    try {
-        const { collection, getDocs, orderBy, query } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const snap = await getDocs(query(collection(window.firebaseDb, 'adminEvents'), orderBy('name')));
-        sel.innerHTML = '';
-        if (snap.empty) {
-            // Fallback para eventos fixos caso adminEvents esteja vazio
-            [['xtreino-tokens','XTreino Freitas'],['modo-liga','XTreino Modo Liga'],['semanal-freitas','Semanal Freitas'],['camp-freitas','Campeonato Freitas']]
-                .forEach(([v,t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); });
-            return;
-        }
-        snap.forEach(d => {
-            const ev = d.data();
-            const value = ev.eventType || d.id;
-            const label = ev.name || ev.eventType || d.id;
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = label;
-            sel.appendChild(opt);
-        });
-    } catch (err) {
-        console.warn('[BonusSlots] Erro ao carregar eventos:', err);
-    }
-}
-
-window.loadBonusSlots = async function() {
-    if (!window.firebaseDb) return;
-    const tbody = document.getElementById('bonusSlotsBody');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="py-4 text-center text-gray-400">Carregando...</td></tr>';
-
-    try {
-        const { collection, query, orderBy, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const snap = await getDocs(query(
-            collection(window.firebaseDb, 'bonus_links'),
-            orderBy('createdAt', 'desc')
-        ));
-
-        if (snap.empty) {
-            tbody.innerHTML = '<tr><td colspan="8" class="py-6 text-center text-gray-500">Nenhum link bônus criado ainda.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = snap.docs.map(docSnap => {
-            const d = { id: docSnap.id, ...docSnap.data() };
-            const statusClass = d.status === 'ativo'
-                ? 'bg-green-100 text-green-700'
-                : d.status === 'pausado' ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-red-100 text-red-700';
-            const vagasStr = `${d.usedCount || 0}/${d.quantity || 0}`;
-            const expiry = d.expiresAt
-                ? new Date(d.expiresAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                : '—';
-            const [ano, mes, dia] = (d.date || '').split('-');
-            const dataFmt = d.date ? `${dia}/${mes}/${ano}` : '—';
-            const eventLabel = _BONUS_EVENT_LABELS[d.eventType] || d.eventType;
-            const toggleTitle = d.status === 'ativo' ? 'Pausar' : 'Reativar';
-            const toggleIcon = d.status === 'ativo' ? 'pause' : 'play';
-            const toggleClass = d.status === 'ativo' ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-600 hover:bg-green-700';
-
-            return `
-            <tr class="border-b hover:bg-gray-50">
-                <td class="px-3 py-2 font-mono font-bold text-orange-600 text-sm">${d.code}</td>
-                <td class="px-3 py-2 text-xs">${eventLabel}</td>
-                <td class="px-3 py-2 text-xs">${dataFmt}</td>
-                <td class="px-3 py-2 text-xs font-medium">${d.schedule || '—'}</td>
-                <td class="px-3 py-2 text-xs font-medium">${vagasStr}</td>
-                <td class="px-3 py-2 text-xs">${expiry}</td>
-                <td class="px-3 py-2">
-                    <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${statusClass}">${d.status}</span>
-                </td>
-                <td class="px-3 py-2">
-                    <div class="flex gap-1 flex-wrap">
-                        <button onclick="copyBonusLink('${d.code}')"
-                            class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700" title="Copiar link">
-                            <i class="fas fa-copy"></i>
-                        </button>
-                        <button onclick="toggleBonusStatus('${d.id}','${d.status}')"
-                            class="px-2 py-1 text-xs ${toggleClass} text-white rounded" title="${toggleTitle}">
-                            <i class="fas fa-${toggleIcon}"></i>
-                        </button>
-                        <button onclick="deleteBonusLink('${d.id}')"
-                            class="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700" title="Excluir">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>`;
-        }).join('');
-
-    } catch (err) {
-        console.error('[BonusSlots] Erro:', err);
-        tbody.innerHTML = `<tr><td colspan="8" class="py-4 text-center text-red-500 text-xs">Erro: ${err.message}</td></tr>`;
-    }
-};
-
-window.createBonusLink = async function() {
-    if (!window.firebaseDb) { alert('Firebase não conectado.'); return; }
-
-    const eventType = document.getElementById('bonusFormEventType')?.value;
-    const schedule = document.getElementById('bonusFormSchedule')?.value;
-    const date = document.getElementById('bonusFormDate')?.value;
-    const quantity = parseInt(document.getElementById('bonusFormQuantity')?.value || '0', 10);
-    const limitPerTeam = parseInt(document.getElementById('bonusFormLimitPerTeam')?.value || '1', 10);
-    const expiresAtRaw = document.getElementById('bonusFormExpiresAt')?.value;
-
-    if (!eventType || !schedule || !date || !quantity || quantity < 1) {
-        alert('Preencha todos os campos obrigatórios: evento, horário, data e vagas disponíveis (mínimo 1).');
-        return;
-    }
-
-    const code = _gerarCodigoBonus();
-    // Pega o nome do evento do texto visível da opção selecionada (vem do adminEvents)
-    const selEl = document.getElementById('bonusFormEventType');
-    const eventName = selEl?.selectedOptions?.[0]?.textContent?.trim() || _BONUS_EVENT_LABELS[eventType] || eventType;
-
-    try {
-        const { collection, addDoc, serverTimestamp, getDocs, query: _bq, where: _bw } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
-        // Captura o offset de vagas regulares no momento da criação do link.
-        // Usado para fixar totalCap = initialOffset + quantity (não cresce com novas vendas).
-        let initialOffset = 0;
-        try {
-            const _snap = await getDocs(_bq(
-                collection(window.firebaseDb, 'registrations'),
-                _bw('eventType', '==', eventType),
-                _bw('date', '==', date)
-            ));
-            const _linkH = String(schedule || '').match(/(\d+)/)?.[1] || '';
-            const _validStInit = new Set(['paid', 'confirmed', 'approved']);
-            _snap.forEach(d => {
-                const r = d.data();
-                if (!_validStInit.has(r.status)) return; // ignorar pending no offset inicial
-                const _regH = String(r.schedule || r.hour || '').match(/(\d+)/)?.[1] || '';
-                if (!_linkH || _regH === _linkH) initialOffset++;
-            });
-        } catch (_) {}
-
-        await addDoc(collection(window.firebaseDb, 'bonus_links'), {
-            code,
-            eventType,
-            eventName,
-            schedule,
-            date,
-            quantity,
-            usedCount: 0,
-            initialOffset,
-            limitPerTeam: Math.max(1, limitPerTeam || 1),
-            expiresAt: expiresAtRaw ? new Date(expiresAtRaw).toISOString() : null,
-            status: 'ativo',
-            createdAt: serverTimestamp()
-        });
-
-        document.getElementById('bonusCreateForm').classList.add('hidden');
-
-        const linkUrl = `${window.location.origin}/bonus.html?code=${code}`;
-        const msg = `✅ Link bônus criado!\n\nCódigo: ${code}\nEvento: ${eventName}\nData: ${date} | ${schedule}\nVagas: ${quantity}\n\nLink:\n${linkUrl}`;
-        if (navigator.clipboard) {
-            await navigator.clipboard.writeText(linkUrl).catch(() => {});
-        }
-        alert(msg + '\n\n(Link copiado para a área de transferência)');
-        await loadBonusSlots();
-
-    } catch (err) {
-        console.error('[BonusSlots] Erro ao criar:', err);
-        alert('Erro ao criar link bônus: ' + err.message);
-    }
-};
-
-window.copyBonusLink = async function(code) {
-    const link = `${window.location.origin}/bonus.html?code=${code}`;
-    try {
-        await navigator.clipboard.writeText(link);
-        alert(`✅ Link copiado!\n\n${link}`);
-    } catch {
-        prompt('Copie o link abaixo:', link);
-    }
-};
-
-window.toggleBonusStatus = async function(id, currentStatus) {
-    if (!window.firebaseDb) return;
-    const novoStatus = currentStatus === 'ativo' ? 'pausado' : 'ativo';
-    const confirmar = confirm(`${novoStatus === 'pausado' ? 'Pausar' : 'Reativar'} este link bônus?`);
-    if (!confirmar) return;
-
-    try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        await updateDoc(doc(window.firebaseDb, 'bonus_links', id), { status: novoStatus });
-        await loadBonusSlots();
-    } catch (err) {
-        alert('Erro ao alterar status: ' + err.message);
-    }
-};
-
-window.deleteBonusLink = async function(id) {
-    if (!confirm('Excluir este link bônus permanentemente? Inscrições já realizadas NÃO serão afetadas.')) return;
-    if (!window.firebaseDb) return;
-
-    try {
-        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        await deleteDoc(doc(window.firebaseDb, 'bonus_links', id));
-        await loadBonusSlots();
-    } catch (err) {
-        alert('Erro ao excluir: ' + err.message);
-    }
-};
-
-// ── Migração: corrigir slots bônus corrompidos ────────────────────────────────
-// Uso: no console do navegador rode  fixarSlotsBonus('ID_DO_BONUS_LINK')
-// Corrige registrations bônus com slots inflados + redefine usedCount correto.
-window.fixarSlotsBonus = async function(bonusLinkId) {
-    if (!window.firebaseDb) { console.error('[Fix] firebaseDb não disponível.'); return; }
-    if (!bonusLinkId) { console.error('[Fix] Passe o ID do bonus_link como argumento.'); return; }
-
-    const FS = 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
-    const {
-        collection, doc, getDoc, getDocs, query, where, writeBatch, serverTimestamp
-    } = await import(FS);
-
-    const db = window.firebaseDb;
-
-    // 1. Ler o bonus_link
-    const blSnap = await getDoc(doc(db, 'bonus_links', bonusLinkId));
-    if (!blSnap.exists()) { console.error('[Fix] bonus_link não encontrado:', bonusLinkId); return; }
-    const bl = blSnap.data();
-    console.log('[Fix] bonus_link carregado:', bl.eventType, bl.date, bl.schedule, '| quantity:', bl.quantity, '| usedCount atual:', bl.usedCount);
-
-    // 2. Buscar inscrições bônus (pelo bonusCode)
-    const bonusSnap = await getDocs(query(
-        collection(db, 'registrations'),
-        where('bonusCode', '==', bl.code)
-    ));
-    const bonusRegs = bonusSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    bonusRegs.sort((a, b) => {
-        const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0;
-        const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0;
-        return ta - tb;
-    });
-    console.log('[Fix]', bonusRegs.length, 'inscrições bônus encontradas');
-
-    // 3. Contar vagas regulares no mesmo horário (para calcular offset)
-    let offsetRegulares = 0;
-    const regSnap = await getDocs(query(
-        collection(db, 'registrations'),
-        where('eventType', '==', bl.eventType),
-        where('date', '==', bl.date)
-    ));
-    const linkH = String(bl.schedule || '').match(/(\d+)/)?.[1] || '';
-    regSnap.forEach(d => {
-        const r = d.data();
-        if (r.bonusCode === bl.code) return; // pular as bônus desta vaga
-        const regH = String(r.schedule || r.hour || '').match(/(\d+)/)?.[1] || '';
-        if (!linkH || regH === linkH) offsetRegulares++;
-    });
-    console.log('[Fix] offset regulares:', offsetRegulares);
-
-    // 4. Re-atribuir slots: offset+1, offset+2, offset+3...
-    const batch = writeBatch(db);
-    bonusRegs.forEach((reg, i) => {
-        const novoSlot        = offsetRegulares + (i + 1);
-        const novoSlotDisplay = `Vaga #${novoSlot}`;
-        const regRef = doc(db, 'registrations', reg.id);
-        batch.update(regRef, { slot: novoSlot, slotDisplay: novoSlotDisplay, slotNumber: novoSlot });
-        console.log(`[Fix]  ${reg.teamName || reg.id}: slot ${reg.slot} → ${novoSlot} (${novoSlotDisplay})`);
-    });
-
-    // 5. Corrigir usedCount no bonus_link (= quantidade real de bônus inscritos)
-    const novoUsedCount = bonusRegs.length;
-    const novoStatus = novoUsedCount >= bl.quantity ? 'expirado' : 'ativo';
-    batch.update(doc(db, 'bonus_links', bonusLinkId), {
-        usedCount: novoUsedCount,
-        status: novoStatus
-    });
-    console.log(`[Fix] bonus_link usedCount: ${bl.usedCount} → ${novoUsedCount} | status: ${novoStatus}`);
-
-    await batch.commit();
-    console.log('[Fix] ✅ Migração concluída com sucesso!');
-};

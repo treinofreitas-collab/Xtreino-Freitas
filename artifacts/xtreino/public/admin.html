@@ -104,15 +104,8 @@
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionNews',this)"><i class="fas fa-newspaper"></i><span>Notícias</span></button></li>
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionProducts',this)"><i class="fas fa-box"></i><span>Produtos</span></button></li>
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionEvents',this)"><i class="fas fa-trophy"></i><span>Eventos</span></button></li>
-            <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionBonusSlots',this)"><i class="fas fa-gift"></i><span>Vagas Bônus</span></button></li>
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionSchedules',this)"><i class="fas fa-clock"></i><span>Horários</span></button></li>
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionShirtOrders',this)"><i class="fas fa-tshirt"></i><span>Camisas</span></button></li>
-        </ul>
-
-        <p class="sidebar-section-label">Campeonato</p>
-        <ul class="sidebar-menu">
-            <li><button class="sidebar-link" data-page="campeonato" onclick="adminNav('campeonato','sectionChampResults',this);setTimeout(function(){if(window.initChampionship)window.initChampionship();},100)"><i class="fas fa-gamepad"></i><span>Resultados Semanal</span></button></li>
-            <li><button class="sidebar-link" data-page="campeonato" onclick="adminNav('campeonato','sectionChampConfig',this);setTimeout(function(){if(window.initChampConfig)window.initChampConfig();},100)"><i class="fas fa-cog"></i><span>Tabela de Pontuação</span></button></li>
         </ul>
 
         <p class="sidebar-section-label">Operações</p>
@@ -1305,107 +1298,6 @@
                 </div>
             </div>
 
-            <!-- Seção: Vagas Bônus -->
-            <div id="sectionBonusSlots" class="bg-white border border-gray-200 rounded-xl p-6 mt-6" style="display:none">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="font-bold text-sm flex items-center gap-2">
-                        <i class="fas fa-gift text-orange-500"></i>
-                        Vagas Bônus
-                    </h3>
-                    <div class="flex gap-2">
-                        <button onclick="loadBonusSlots()" class="px-3 py-1 border rounded text-xs hover:bg-gray-50">
-                            <i class="fas fa-sync mr-1"></i>Atualizar
-                        </button>
-                        <button onclick="document.getElementById('bonusCreateForm').classList.toggle('hidden'); _popularSelectEventoBonus();"
-                            class="px-3 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700">
-                            <i class="fas fa-plus mr-1"></i>Novo Link Bônus
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Formulário de criação -->
-                <div id="bonusCreateForm" class="hidden bg-orange-50 border border-orange-200 rounded-xl p-4 mb-5">
-                    <h4 class="font-semibold text-sm mb-3 text-orange-800 flex items-center gap-2">
-                        <i class="fas fa-link"></i>Criar Link Bônus
-                    </h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Evento *</label>
-                            <select id="bonusFormEventType" class="w-full border rounded px-2 py-1.5 text-sm">
-                                <option value="">Carregando eventos...</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Horário *</label>
-                            <select id="bonusFormSchedule" class="w-full border rounded px-2 py-1.5 text-sm">
-                                <option value="14h">14h</option>
-                                <option value="15h">15h</option>
-                                <option value="16h">16h</option>
-                                <option value="17h">17h</option>
-                                <option value="18h">18h</option>
-                                <option value="19h">19h</option>
-                                <option value="20h" selected>20h</option>
-                                <option value="21h">21h</option>
-                                <option value="22h">22h</option>
-                                <option value="23h">23h</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Data *</label>
-                            <input type="date" id="bonusFormDate" class="w-full border rounded px-2 py-1.5 text-sm" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Vagas disponíveis *</label>
-                            <input type="number" id="bonusFormQuantity" min="1" max="12" value="3"
-                                class="w-full border rounded px-2 py-1.5 text-sm" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Limite por equipe</label>
-                            <input type="number" id="bonusFormLimitPerTeam" min="1" max="3" value="1"
-                                class="w-full border rounded px-2 py-1.5 text-sm" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Expirar em (data/hora)</label>
-                            <input type="datetime-local" id="bonusFormExpiresAt"
-                                class="w-full border rounded px-2 py-1.5 text-sm" />
-                        </div>
-                    </div>
-                    <div class="flex gap-2 mt-4">
-                        <button onclick="createBonusLink()"
-                            class="px-4 py-2 bg-orange-600 text-white rounded text-sm font-semibold hover:bg-orange-700">
-                            <i class="fas fa-link mr-1"></i>Gerar Link Bônus
-                        </button>
-                        <button onclick="document.getElementById('bonusCreateForm').classList.add('hidden')"
-                            class="px-4 py-2 border rounded text-sm hover:bg-gray-50">
-                            Cancelar
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Tabela de links existentes -->
-                <div class="overflow-x-auto">
-                    <table class="w-full text-xs">
-                        <thead>
-                            <tr class="text-left text-gray-600 bg-gray-50">
-                                <th class="px-3 py-2 font-medium">Código</th>
-                                <th class="px-3 py-2 font-medium">Evento</th>
-                                <th class="px-3 py-2 font-medium">Data</th>
-                                <th class="px-3 py-2 font-medium">Horário</th>
-                                <th class="px-3 py-2 font-medium">Vagas</th>
-                                <th class="px-3 py-2 font-medium">Expira</th>
-                                <th class="px-3 py-2 font-medium">Status</th>
-                                <th class="px-3 py-2 font-medium">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="bonusSlotsBody">
-                            <tr><td colspan="8" class="py-6 text-center text-gray-500">
-                                Clique em <strong>Atualizar</strong> para carregar os links bônus.
-                            </td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
             <!-- Seção: Camisas - Envios -->
             <div id="sectionShirtOrders" class="bg-white border border-gray-200 rounded-xl p-6 mt-6" style="display:none">
                 <div class="flex items-center justify-between mb-3">
@@ -1609,91 +1501,8 @@
             </div>
             </div><!-- /page-operacoes -->
 
-            <!-- ===== CAMPEONATO ===== -->
-            <div id="page-campeonato" class="admin-page hidden">
-
-            <!-- Seção: Resultados do Semanal -->
-            <div id="sectionChampResults" class="bg-white border border-gray-200 rounded-xl p-6 mt-6" style="display:none">
-                <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
-                    <h3 class="font-bold text-base flex items-center gap-2">
-                        <span class="w-8 h-8 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center"><i class="fas fa-gamepad text-sm"></i></span>
-                        Resultados — Campeonato Semanal
-                    </h3>
-                    <span id="champStatusLabel" class="text-sm font-medium text-gray-500"></span>
-                </div>
-
-                <!-- Filtros: Data e Fase -->
-                <div class="flex flex-wrap gap-3 mb-5 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Data do Evento</label>
-                        <input type="date" id="champDataInput" class="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-orange-400 focus:outline-none">
-                    </div>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fase</label>
-                        <select id="champHoraSelect" class="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-orange-400 focus:outline-none bg-white">
-                            <option value="19h">🔵 Semifinal A — 19h</option>
-                            <option value="20h">🟡 Semifinal B — 20h</option>
-                            <option value="21h">🟠 Semifinal C — 21h</option>
-                            <option value="22h">🏆 Final — 22h</option>
-                        </select>
-                    </div>
-                    <div class="flex items-end">
-                        <button onclick="window.champCarregarFase()" class="px-5 py-2 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 transition-colors flex items-center gap-2">
-                            <i class="fas fa-search"></i> Carregar
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Tabela de resultados (preenchida dinamicamente) -->
-                <div id="champResultsForm">
-                    <div class="text-center py-12 text-gray-400">
-                        <i class="fas fa-gamepad text-3xl mb-3 block"></i>
-                        <p class="text-sm">Selecione a data e a fase, depois clique em "Carregar".</p>
-                    </div>
-                </div>
-
-                <!-- Visão geral das semis -->
-                <div class="mt-6 pt-5 border-t border-gray-100">
-                    <h4 class="font-semibold text-sm text-gray-700 mb-3 flex items-center gap-2">
-                        <i class="fas fa-chart-bar text-orange-500"></i> Resumo das Semifinais
-                    </h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="champSemiResumo">
-                        <div class="bg-blue-50 rounded-xl p-4 border border-blue-100 text-center">
-                            <div class="text-xs font-bold text-blue-700 mb-1">Semifinal A — 19h</div>
-                            <div class="text-sm text-blue-600" id="champResumo19h">—</div>
-                        </div>
-                        <div class="bg-yellow-50 rounded-xl p-4 border border-yellow-100 text-center">
-                            <div class="text-xs font-bold text-yellow-700 mb-1">Semifinal B — 20h</div>
-                            <div class="text-sm text-yellow-600" id="champResumo20h">—</div>
-                        </div>
-                        <div class="bg-orange-50 rounded-xl p-4 border border-orange-100 text-center">
-                            <div class="text-xs font-bold text-orange-700 mb-1">Semifinal C — 21h</div>
-                            <div class="text-sm text-orange-600" id="champResumo21h">—</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Seção: Tabela de Pontuação (Configurações) -->
-            <div id="sectionChampConfig" class="bg-white border border-gray-200 rounded-xl p-6 mt-6" style="display:none">
-                <div class="flex items-center justify-between mb-5">
-                    <h3 class="font-bold text-base flex items-center gap-2">
-                        <span class="w-8 h-8 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center"><i class="fas fa-cog text-sm"></i></span>
-                        Tabela de Pontuação
-                    </h3>
-                </div>
-                <div id="champConfigContent">
-                    <div class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>
-                </div>
-            </div>
-
-            </div><!-- /page-campeonato -->
-
         </section>
     </main>
-
-    <!-- Canvas oculto para exportação de resultados -->
-    <div id="champExportCanvas" style="display:none;position:fixed;left:-9999px;top:0;z-index:-1;"></div>
 
     <!-- Modal: Reset de Dados -->
     <div id="resetDataModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
@@ -1901,7 +1710,6 @@
     <script type="module" src="config/firebase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="admin.js"></script>
-    <script src="championship.js"></script>
 
     <!-- Sidebar / Page Router -->
     <script>
@@ -2754,7 +2562,7 @@
             <!-- ETAPA 1: Tipo -->
             <div>
                 <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">1 · Tipo de mensagem</p>
-                <div class="grid grid-cols-2 gap-2">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <button onclick="selectNotifyType('credentials')" data-type="credentials"
                         class="notify-type-card flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 border-gray-200 hover:border-purple-400 transition-all cursor-pointer bg-white">
                         <span class="text-xl">🎮</span>
@@ -2772,12 +2580,6 @@
                         <span class="text-xl">✉️</span>
                         <span class="text-xs font-bold text-gray-700">Aviso</span>
                         <span class="text-xs text-gray-400">livre</span>
-                    </button>
-                    <button id="notifyTypeFinalistsBtn" onclick="selectNotifyType('finalists')" data-type="finalists"
-                        class="notify-type-card flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 border-gray-200 hover:border-yellow-400 transition-all cursor-pointer bg-white">
-                        <span class="text-xl">🏆</span>
-                        <span class="text-xs font-bold text-gray-700">Finalistas</span>
-                        <span class="text-xs text-gray-400">campeonato</span>
                     </button>
                 </div>
             </div>
@@ -2830,28 +2632,6 @@
                     <p class="text-xs font-bold text-green-700 flex items-center gap-1"><i class="fas fa-table"></i> Link da tabela de pontuação</p>
                     <input type="url" id="eventNotifyTabelaLink" placeholder="https://instagram.com/p/... ou link da planilha"
                         class="w-full border border-green-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-green-500">
-                </div>
-
-                <!-- Finalistas -->
-                <div id="eventNotifyFinalistsSection" class="hidden bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-3">
-                    <p class="text-xs font-bold text-yellow-700 flex items-center gap-1"><i class="fas fa-trophy"></i> Finalistas do Campeonato Semanal</p>
-                    <div class="flex gap-2 items-end">
-                        <div class="flex-1">
-                            <label class="text-xs font-medium text-gray-600 mb-1 block">Data da final</label>
-                            <input type="date" id="notifyFinalistsDate"
-                                class="w-full border border-yellow-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-yellow-500">
-                        </div>
-                        <button onclick="carregarFinalistas()"
-                            class="px-3 py-2 bg-yellow-500 text-white rounded-lg text-xs font-bold hover:bg-yellow-600 transition-colors whitespace-nowrap">
-                            Carregar
-                        </button>
-                    </div>
-                    <div id="notifyFinalistsList" class="hidden">
-                        <p class="text-xs font-semibold text-gray-600 mb-2">Times classificados para a final:</p>
-                        <div id="notifyFinalistsNames" class="space-y-1"></div>
-                    </div>
-                    <div id="notifyFinalistsEmpty" class="hidden text-xs text-gray-400">Nenhum finalista encontrado para esta data.</div>
-                    <div id="notifyFinalistsLoading" class="hidden text-xs text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>Carregando finalistas...</div>
                 </div>
 
                 <div>

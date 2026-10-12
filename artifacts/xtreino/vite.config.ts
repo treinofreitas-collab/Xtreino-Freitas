@@ -37,7 +37,6 @@ export default defineConfig({
         planilhas: path.resolve(import.meta.dirname, "public/planilhas.html"),
         passeBooyah: path.resolve(import.meta.dirname, "public/passe-booyah.html"),
         camisa: path.resolve(import.meta.dirname, "public/camisa.html"),
-        bonus: path.resolve(import.meta.dirname, "public/bonus.html"),
       },
     },
   },

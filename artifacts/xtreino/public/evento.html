@@ -134,40 +134,6 @@
             </div>
         </div>
 
-        <!-- Aba Classificação — Campeonato Semanal -->
-        <div id="panelClassificacao" class="tab-panel">
-            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
-                <h3 class="text-orange-400 font-bold text-sm uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <i class="fas fa-trophy"></i> Classificação ao Vivo
-                </h3>
-                <!-- Filtro de fase -->
-                <div class="flex gap-2 mb-5 flex-wrap" id="classifFaseNav">
-                    <button onclick="window.loadClassificacao('19h')" id="classBtnSemiA"
-                        class="class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white">Semifinal A — 19h</button>
-                    <button onclick="window.loadClassificacao('20h')" id="classBtnSemiB"
-                        class="class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300">Semifinal B — 20h</button>
-                    <button onclick="window.loadClassificacao('21h')" id="classBtnSemiC"
-                        class="class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300">Semifinal C — 21h</button>
-                    <button onclick="window.loadClassificacao('22h')" id="classBtnFinal"
-                        class="class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300">🏆 Final — 22h</button>
-                </div>
-                <!-- Banner (exibido se configurado) -->
-                <div id="classifBanner" class="hidden mb-4"></div>
-                <!-- Tabela de pontuação -->
-                <div id="classifTabela">
-                    <div class="text-center py-8 text-slate-500">
-                        <i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>
-                        <p class="text-sm">Carregando classificação...</p>
-                    </div>
-                </div>
-                <!-- Atualização automática -->
-                <p class="text-xs text-slate-600 text-right mt-3 flex items-center gap-1 justify-end">
-                    <span class="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                    Atualização automática em tempo real
-                </p>
-            </div>
-        </div>
-
         <div id="panelGrupos" class="tab-panel">
             <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700">
                 <h3 class="text-purple-400 font-bold text-sm uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -207,8 +173,8 @@
 </div>
 
 <script type="module">
-import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
-import { getFirestore, doc, getDoc, deleteDoc, collection, query, where, getDocs, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
+import { getFirestore, doc, getDoc, deleteDoc, collection, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
 
 const _fk = ["AIzaSyBzD0iWNI","fZwuzWN-Xhjbg2","2OfCHv1Qwjo"].join("");
@@ -298,8 +264,6 @@ async function checkUserRegistration(evId) {
     } catch (_) { /* sem permissão ou sem dados — manter CTA */ }
 }
 
-let _classifUnsubscribe = null;
-
 function setTab(tabId) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -311,27 +275,15 @@ function setTab(tabId) {
     if (tabId === 'inscritos' && window._currentEventId) {
         loadInscritos(window._currentEventId);
     }
-    if (tabId === 'classificacao') {
-        // cancelar listener anterior se houver
-        if (_classifUnsubscribe) { _classifUnsubscribe(); _classifUnsubscribe = null; }
-        window.loadClassificacao('19h');
-    } else {
-        // cancelar listener ao sair da aba
-        if (_classifUnsubscribe) { _classifUnsubscribe(); _classifUnsubscribe = null; }
-    }
 }
 window.setTab = setTab;
 
 function buildTabs(ev) {
-    const isSemanal = (ev.eventType || ev.id || '').includes('semanal') ||
-                      (window._currentEventId || '').includes('semanal') ||
-                      (location.search + location.pathname).includes('semanal');
     const tabs = [{ id:'info', icon:'fa-info-circle', label:'INFORMAÇÕES' }];
     if (ev.regras) tabs.push({ id:'regras', icon:'fa-gavel', label:'REGRAS' });
     if (ev.rodadas) tabs.push({ id:'rodadas', icon:'fa-layer-group', label:'RODADAS' });
     if (ev.pontuacao) tabs.push({ id:'pontuacao', icon:'fa-trophy', label:'PONTUAÇÃO' });
     if (ev.youtubeUrl) tabs.push({ id:'live', icon:'fa-play-circle', label:'AO VIVO' });
-    if (isSemanal) tabs.push({ id:'classificacao', icon:'fa-medal', label:'CLASSIFICAÇÃO' });
     if (ev.category === 'camp') tabs.push({ id:'grupos', icon:'fa-users', label:'GRUPOS' });
     document.getElementById('tabNav').innerHTML = tabs.map(t =>
         `<button id="tabBtn_${t.id}" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold" onclick="setTab('${t.id}')">
@@ -868,154 +820,6 @@ window.goRegister = function() {
 
 loadEvent();
 
-// ── Classificação ao Vivo (aba Classificação — Semanal Freitas) ──────────────
-window.loadClassificacao = async function(hora) {
-    const db = window._evDb || _db;
-    const tabelaEl = document.getElementById('classifTabela');
-    const bannerEl = document.getElementById('classifBanner');
-    if (!tabelaEl) return;
-
-    // Destacar botão ativo
-    document.querySelectorAll('.class-fase-btn').forEach(b => {
-        b.className = 'class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-slate-700 text-slate-300';
-    });
-    const btnMap = { '19h':'classBtnSemiA','20h':'classBtnSemiB','21h':'classBtnSemiC','22h':'classBtnFinal' };
-    const activeBtn = document.getElementById(btnMap[hora]);
-    if (activeBtn) activeBtn.className = 'class-fase-btn px-4 py-2 rounded-lg text-sm font-semibold bg-orange-600 text-white';
-
-    tabelaEl.innerHTML = '<div class="text-center py-8 text-slate-500"><i class="fas fa-spinner fa-spin text-xl mb-2 block"></i><p class="text-sm">Carregando...</p></div>';
-
-    // Cancelar listener anterior
-    if (_classifUnsubscribe) { _classifUnsubscribe(); _classifUnsubscribe = null; }
-
-    // Buscar data mais recente/relevante
-    // Usar hoje como padrão, depois buscar o resultado mais recente
-    const hoje = new Date().toISOString().slice(0, 10);
-    const docIdStr = `semanal-freitas_${hoje}_${hora}`;
-
-    const isFinal = hora === '22h';
-    const faseFmt = { '19h':'Semifinal A', '20h':'Semifinal B', '21h':'Semifinal C', '22h':'Final 🏆' }[hora] || hora;
-
-    try {
-        // Carregar banner em paralelo (sem bloquear se falhar)
-        if (bannerEl) {
-            try {
-                const cfgSnap = await getDocs(query(collection(db, 'championship_config')));
-                let bannerBase64 = null;
-                cfgSnap.forEach(d => { if (d.id === 'semanal_lbff') bannerBase64 = d.data().bannerBase64; });
-                if (bannerBase64) {
-                    bannerEl.innerHTML = `<img src="${bannerBase64}" class="w-full max-h-40 object-cover rounded-xl border border-slate-600">`;
-                    bannerEl.classList.remove('hidden');
-                } else {
-                    bannerEl.classList.add('hidden');
-                }
-            } catch (_) { bannerEl.classList.add('hidden'); }
-        }
-
-        // Listener em tempo real para o documento de resultado
-        _classifUnsubscribe = onSnapshot(
-            doc(db, 'championship_results', docIdStr),
-            (snap) => {
-                if (!snap.exists() || !snap.data().teams?.length) {
-                    // Tentar buscar data mais recente
-                    _classifUnsubscribe2(db, hora, faseFmt, isFinal, tabelaEl);
-                    return;
-                }
-                _renderClassifTabela(snap.data(), faseFmt, isFinal, tabelaEl);
-            },
-            (err) => {
-                console.warn('[classificacao] erro snapshot:', err.message);
-                tabelaEl.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Dados não disponíveis no momento.</div>`;
-            }
-        );
-    } catch (e) {
-        tabelaEl.innerHTML = `<div class="text-center py-8 text-red-400 text-sm">Erro ao carregar: ${e.message}</div>`;
-    }
-};
-
-// Fallback: buscar última data disponível
-async function _classifUnsubscribe2(db, hora, faseFmt, isFinal, tabelaEl) {
-    try {
-        const snaps = await getDocs(
-            query(collection(db, 'championship_results'), where('hour', '==', hora))
-        );
-        if (snaps.empty) {
-            tabelaEl.innerHTML = `
-                <div class="text-center py-10">
-                    <i class="fas fa-hourglass-start text-2xl text-slate-600 mb-3 block"></i>
-                    <p class="text-slate-400 text-sm">Nenhum resultado disponível ainda.</p>
-                    <p class="text-slate-600 text-xs mt-1">Os resultados aparecerão aqui assim que o admin iniciar a apuração.</p>
-                </div>`;
-            return;
-        }
-        // Pegar o mais recente por data
-        let melhor = null;
-        snaps.forEach(d => { if (!melhor || d.data().date > melhor.date) melhor = d.data(); });
-        if (melhor) _renderClassifTabela(melhor, faseFmt, isFinal, tabelaEl);
-    } catch (_) {
-        tabelaEl.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Sem resultados ainda.</div>`;
-    }
-}
-
-function _renderClassifTabela(dados, faseFmt, isFinal, tabelaEl) {
-    const teams = dados.teams || [];
-    const statusMap = { aberto:'🟡 Aguardando', em_apuracao:'🟠 Apuração em andamento', finalizado:'✅ Finalizado' };
-    const statusLabel = statusMap[dados.status] || dados.status || '';
-
-    if (teams.length === 0) {
-        tabelaEl.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">Nenhuma equipe registrada ainda.</div>`;
-        return;
-    }
-
-    tabelaEl.innerHTML = `
-        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <span class="text-xs text-slate-400">${dados.date ? `Data: ${dados.date}` : ''}</span>
-            <span class="text-xs font-semibold ${dados.status === 'finalizado' ? 'text-green-400' : 'text-yellow-400'}">${statusLabel}</span>
-        </div>
-        <div class="overflow-x-auto -mx-1">
-            <table class="w-full text-sm min-w-max">
-                <thead>
-                    <tr class="text-xs text-slate-500 border-b border-slate-700">
-                        <th class="text-left py-2 px-2">#</th>
-                        <th class="text-left py-2 px-2">Equipe</th>
-                        <th class="text-center py-2 px-3">Abates</th>
-                        <th class="text-center py-2 px-3 text-orange-400 font-bold">Pontos</th>
-                        <th class="text-center py-2 px-2">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${teams.map((t, i) => {
-                        const isClass = !isFinal && i < 4;
-                        const rowBg = isClass ? 'bg-green-900/20 border-l-2 border-green-500' : '';
-                        let statusBadge;
-                        if (isFinal) {
-                            statusBadge = i === 0 ? '<span class="text-yellow-400 font-bold">🏆 CAMPEÃO</span>' :
-                                         i === 1 ? '<span class="text-slate-300">🥈 Vice</span>' :
-                                         i === 2 ? '<span class="text-amber-600">🥉 3º</span>' :
-                                                   `<span class="text-slate-600 text-xs">${i+1}º</span>`;
-                        } else {
-                            statusBadge = isClass
-                                ? '<span class="text-xs font-bold text-green-400 bg-green-900/40 px-2 py-0.5 rounded-full">🟢 CLASSIFICADO</span>'
-                                : '<span class="text-xs text-slate-600">—</span>';
-                        }
-                        const rankColor = i === 0 ? 'text-yellow-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-600' : 'text-slate-500';
-                        return `
-                            <tr class="border-b border-slate-700/50 ${rowBg} hover:bg-slate-700/30 transition-colors">
-                                <td class="py-2.5 px-2 font-bold ${rankColor}">${i + 1}º</td>
-                                <td class="py-2.5 px-2 text-white font-medium text-xs whitespace-nowrap">
-                                    ${t.deSemifinal ? `<span class="text-xs text-slate-500 mr-1">[${t.deSemifinal}]</span>` : ''}
-                                    ${t.nome}
-                                </td>
-                                <td class="py-2.5 px-3 text-center text-slate-400">${t.abates || 0}</td>
-                                <td class="py-2.5 px-3 text-center font-bold text-orange-400">${t.pontos || 0}</td>
-                                <td class="py-2.5 px-2 text-center">${statusBadge}</td>
-                            </tr>`;
-                    }).join('')}
-                </tbody>
-            </table>
-        </div>
-    `;
-}
 </script>
 
 <!-- ==================== MODAL DE EQUIPE ==================== -->
