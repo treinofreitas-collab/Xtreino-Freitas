@@ -3861,11 +3861,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
   };
 
   async function openManageHourModal(date, eventType, hour, rawEventId = null, evFieldType = null){
+    const title         = document.getElementById('manageHourTitle');
+    const listConfirmed = document.getElementById('manageHourListConfirmed');
+    const listPending   = document.getElementById('manageHourListPending');
+    const modal         = document.getElementById('modalManageHour');
     try{
-      const title         = document.getElementById('manageHourTitle');
-      const listConfirmed = document.getElementById('manageHourListConfirmed');
-      const listPending   = document.getElementById('manageHourListPending');
-      const modal         = document.getElementById('modalManageHour');
       if (!listConfirmed || !modal) return;
 
       // Salvar contexto para uso pelo botão SPEC
@@ -3882,27 +3882,24 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (title) title.textContent = `Gerenciar ${hour} — ${date}`;
 
       // Reset: mostrar aba "Confirmados" por padrão
-      listConfirmed.innerHTML = '<div class="text-sm text-gray-500 py-4 text-center">Carregando...</div>';
-      if (listPending) listPending.innerHTML = '';
+      const loadingHtml = '<div class="text-sm text-gray-500 py-4 text-center"><i class="fas fa-spinner fa-spin mr-2"></i>Carregando inscrições...</div>';
+      listConfirmed.innerHTML = loadingHtml;
+      if (listPending) listPending.innerHTML = loadingHtml;
       switchManageHourTab('confirmed');
+      modal.classList.remove('hidden');
 
       const { collection, query, where, getDocs, doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const regs = collection(window.firebaseDb,'registrations');
-      // CRÍTICO: query por campo único (sem composite index) — igual ao fetchOccupiedForDate do script.js
-      // date e status filtrados em JS depois
+      // Consultar somente a data selecionada; tipo, status e horário seguem sendo
+      // filtrados localmente para preservar aliases sem exigir índice composto.
       const _validManageStatuses = new Set(['paid','confirmed','approved','pending','lisagem_gratis']);
-      const _typesToQuery = [...new Set([evFieldType, eventType, rawEventId].filter(Boolean))];
-      const _allRegDocs = new Map();
-      await Promise.all(_typesToQuery.map(async t => {
-        try {
-          const s = await getDocs(query(regs, where('eventType', '==', t)));
-          s.forEach(d => _allRegDocs.set(d.id, d));
-        } catch (_) {}
-      }));
-      // Filtrar por data e status em JS
-      const _filteredByDate = [..._allRegDocs.values()].filter(d => {
+      const registrationsForDate = await getDocs(query(regs, where('date', '==', date)));
+      const _filteredByDate = [];
+      registrationsForDate.forEach(d => {
         const r = d.data();
-        return r.date === date && _validManageStatuses.has(r.status);
+        if (r.date === date && _validManageStatuses.has(r.status)) {
+          _filteredByDate.push(d);
+        }
       });
       // Criar objeto snap compatível com código abaixo
       const snap = { forEach: cb => _filteredByDate.forEach(cb) };
@@ -4152,8 +4149,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
       listConfirmed.addEventListener('click', handleListClick);
       if (listPending) listPending.addEventListener('click', handleListClick);
 
-      modal.classList.remove('hidden');
-    }catch(e){ console.error('openManageHourModal error', e); }
+    }catch(e){
+      console.error('openManageHourModal error', e);
+      const errorHtml = '<div class="text-sm text-red-600 py-4 text-center">Não foi possível carregar as inscrições. Feche e tente novamente.</div>';
+      if (listConfirmed) listConfirmed.innerHTML = errorHtml;
+      if (listPending) listPending.innerHTML = errorHtml;
+    }
   }
 
   // Usuários ativos nos últimos 30 dias (baseado em lastLogin em users)
