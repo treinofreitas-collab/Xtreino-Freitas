@@ -1,13 +1,10 @@
 kind = "web"
 previewPath = "/"
-title = "XTreino Freitas"
+title = "X-Treino Freitas"
+description = "Portal da X-Treino Freitas para inscrições em treinos e campeonatos, área de clientes e administração, além de produtos digitais e itens da marca."
 version = "1.0.0"
 id = "artifacts/xtreino"
 router = "path"
-
-[[integratedSkills]]
-name = "react-vite"
-version = "1.0.0"
 
 [[services]]
 name = "web"
@@ -19,8 +16,8 @@ run = "pnpm --filter @workspace/xtreino run dev"
 
 [services.production]
 build = [ "pnpm", "--filter", "@workspace/xtreino", "run", "build" ]
-publicDir = "artifacts/xtreino/dist/public"
 serve = "static"
+publicDir = "artifacts/xtreino/dist/public"
 
 [[services.production.rewrites]]
 from = "/*"
