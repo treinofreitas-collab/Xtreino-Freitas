@@ -58,24 +58,32 @@ async function productPrice(db, order) {
   };
 }
 
-async function eventPrice(db, registration, forcePay = false) {
+async function eventPrice(db, registration, forcePay = false, reads = new Map()) {
   const type = validReference(registration.eventType);
-  let snap = await db.collection("adminEvents").doc(type).get();
-  if (!snap.exists) {
-    const found = await db.collection("adminEvents").where("eventType", "==", type).limit(1).get();
-    snap = found.empty ? null : found.docs[0];
-  }
-  const config = snap?.exists ? snap.data() : null;
-  const defaults = { "modo-liga": 3, "camp-freitas": 8, "camp-final": 100, "semanal-freitas": 3.5, "xtreino-tokens": 1 };
-  if (!config && !(type in defaults)) fail("Evento não encontrado.", 404);
-  if (config?.status && !["Aberto", "Em breve"].includes(config.status)) fail("Evento indisponível.");
   const hourMatch = String(registration.hour || registration.schedule || "").match(/(\d{1,2})(?:h|:|$)/);
   const hour = hourMatch ? Number(hourMatch[1]) : null;
   const date = registration.date || registration.eventDate;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) || hour == null || hour > 23) {
     fail("Data ou horário do evento inválido.", 400);
   }
-  const overrides = await db.collection("schedule_overrides").where("date", "==", date).get();
+  // Share only reads from this purchase, never a cross-request/stale price cache.
+  const readOnce = (key, read) => {
+    if (!reads.has(key)) reads.set(key, read());
+    return reads.get(key);
+  };
+  const [snap, overrides] = await Promise.all([
+    readOnce(`event:${type}`, async () => {
+      const direct = await db.collection("adminEvents").doc(type).get();
+      if (direct.exists) return direct;
+      const found = await db.collection("adminEvents").where("eventType", "==", type).limit(1).get();
+      return found.empty ? null : found.docs[0];
+    }),
+    readOnce(`overrides:${date}`, () => db.collection("schedule_overrides").where("date", "==", date).get()),
+  ]);
+  const config = snap?.exists ? snap.data() : null;
+  const defaults = { "modo-liga": 3, "camp-freitas": 8, "camp-final": 100, "semanal-freitas": 3.5, "xtreino-tokens": 1 };
+  if (!config && !(type in defaults)) fail("Evento não encontrado.", 404);
+  if (config?.status && !["Aberto", "Em breve"].includes(config.status)) fail("Evento indisponível.");
   const override = overrides.docs.map(d => d.data()).find(o =>
     (!o.eventType || o.eventType === type) && Number.parseInt(o.hour || o.hh, 10) === hour);
   if (override?.locked === true && !override?.freeUntil) fail("Horário indisponível.");
@@ -153,7 +161,8 @@ async function preparePurchase(uid, body, method) {
     if (source.data().status !== "pending") fail("Esta compra não está pendente.");
     if (source.data().type === "tokens_purchase") fail("Use o checkout de compra de tokens.");
   }
-  const prices = kind === "product" ? [product] : await Promise.all(sources.map(s => eventPrice(db, s.data(), body.forcePay === true)));
+  const reads = new Map();
+  const prices = kind === "product" ? [product] : await Promise.all(sources.map(s => eventPrice(db, s.data(), body.forcePay === true, reads)));
   const originalCents = prices.reduce((sum, p) => sum + p.cents, 0);
   const discount = await discountedPrice(db, originalCents, body.couponCode || body.coupon_info?.code || sources[0].data().couponCode, kind);
   if (method === "mercadopago" && discount.amountCents <= 0) fail("Para uma reserva gratuita, use a confirmação sem cobrança.");
@@ -168,20 +177,22 @@ async function preparePurchase(uid, body, method) {
     ...(product ? { downloadLink: product.downloadLink, productCategory: product.productCategory } : {}),
   };
   // Serialize concurrent attempts for the same reference.
-  await db.runTransaction(async transaction => {
-    const current = await transaction.get(checkoutRef);
-    const freshSources = await Promise.all(sources.map(s => transaction.get(s.ref)));
+  const saved = await db.runTransaction(async transaction => {
+    const [current, freshSources] = await Promise.all([
+      transaction.get(checkoutRef),
+      Promise.all(sources.map(s => transaction.get(s.ref))),
+    ]);
     if (current.exists) {
       if (current.data().userId !== uid || current.data().method !== method) fail("Referência já utilizada.");
-      return;
+      return current.data();
     }
     if (freshSources.some(s => !s.exists || s.data().userId !== uid || s.data().status !== "pending")) {
       fail("O pedido mudou. Tente novamente.");
     }
     transaction.create(checkoutRef, { ...checkout, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    return checkout;
   });
-  const saved = await checkoutRef.get();
-  return { db, checkoutRef, checkout: saved.data() };
+  return { db, checkoutRef, checkout: saved };
 }
 
 async function completePurchase(reference, { payment = null, uid = null } = {}) {
@@ -199,11 +210,13 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
       if (!validateApprovedPayment(payment, checkout).valid) return { status: "needs_review" };
     } else if (!uid || checkout.method !== "tokens") fail("Forma de pagamento inválida.", 403);
     const refs = checkout.sourcePaths.map(path => db.doc(path));
-    const sources = await Promise.all(refs.map(ref => transaction.get(ref)));
     const userRef = db.collection("users").doc(checkout.userId);
-    const user = await transaction.get(userRef);
     const receiptRef = db.collection("purchase_receipts").doc(payment ? `mp_${payment.id}` : `tokens_${reference}`);
-    const receipt = await transaction.get(receiptRef);
+    const [sources, user, receipt] = await Promise.all([
+      Promise.all(refs.map(ref => transaction.get(ref))),
+      transaction.get(userRef),
+      transaction.get(receiptRef),
+    ]);
     const balance = Number(user.data()?.tokens || 0);
     if (checkout.status === "paid") {
       if (payment && String(checkout.paymentId) !== String(payment.id)) return { status: "needs_review" };

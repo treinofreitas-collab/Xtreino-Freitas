@@ -521,21 +521,8 @@ async function loadTodayRegistrations() {
         container.innerHTML = todayRegs.map(r => {
             const icon = eventIcons[r.eventType] || '🎮';
             const s    = statusInfo[r.status] || statusInfo.pending;
-            // Problema 3: ignorar slot/slotDisplay que sejam timestamps (> 9999)
-            const slot = (() => {
-                const d = r.slotDisplay;
-                if (d && !/^\d{5,}/.test(String(d))) {
-                    // Normalizar formatos antigos e Liga para o padrão atual
-                    return String(d)
-                        .replace(/^Vaga\s*#?(\d+)$/, 'Slot $1')   // "Vaga #3" → "Slot 3"
-                        .replace(/^Vaga\s*([A-Za-z])$/, 'Letra $1') // "Vaga J" → "Letra J"
-                        .replace(/^Slot\s+([A-Za-z])$/, 'Letra $1'); // "Slot J" → "Letra J"
-                }
-                const n = Number(r.slot || r.slotNumber || 0);
-                return (n > 0 && n <= 9999) ? `Slot ${n}` : '';
-            })();
             const schedule = r.schedule || r.hour || '';
-            // Remover sufixo de slot/letra do título (já aparece na linha abaixo)
+            // Slot and league letters are internal; show only the customer's event/hour.
             const name = (r.title || r.eventType || r.teamName || 'Evento')
                 .replace(/\s*[-–]\s*(Slot\s*\d+|Letra\s*[A-Za-z]|Vaga\s*#?\d+|Vaga\s*[A-Za-z]|Grupo\s+\d+\s*[•·]\s*Slot\s*\d+)$/i, '');
             return `
@@ -543,7 +530,7 @@ async function loadTodayRegistrations() {
                 <div style="width:38px;height:38px;background:linear-gradient(135deg,#ede9fe,#dbeafe);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${icon}</div>
                 <div style="flex:1;min-width:0">
                     <div style="font-size:13px;font-weight:800;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
-                    <div style="font-size:11px;color:#6b7280;margin-top:2px">${r.date !== hoje ? String(r.date).split('-').reverse().join('/') + ' &bull; ' : ''}${schedule}${slot ? ' &bull; ' + slot : ''}</div>
+                    <div style="font-size:11px;color:#6b7280;margin-top:2px">${r.date !== hoje ? String(r.date).split('-').reverse().join('/') + ' &bull; ' : ''}${schedule}</div>
                     ${r.status !== 'pending' ? eventAccessPlaceholder(r.id) : ''}
                 </div>
                 <div style="flex-shrink:0">

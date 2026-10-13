@@ -7683,6 +7683,10 @@ async function submitSchedule(e, useTokens = false) {
             if (!timesByDate[item.date]) timesByDate[item.date] = [];
             timesByDate[item.date].push(item.schedule);
         });
+        const availabilitySelection = {
+            eventType: rawEventType, numberOfTeams: teamsData.length,
+            timesByDate: Object.fromEntries(Object.entries(timesByDate).map(([d, times]) => [d, [...times]]))
+        };
 
         // ── DISPARAR TUDO EM PARALELO ─────────────────────────────────────────
         // 1) waitForFirebase começa AGORA (não espera os checks terminarem)
@@ -7884,7 +7888,8 @@ async function submitSchedule(e, useTokens = false) {
 
         // Se for pagamento com tokens
         if (useTokens || (cfg && cfg.payWithToken)) {
-            await useTokensForEvent(rawEventType, totalReservations, finalPrice, teamsData, selectedTimes, datesToUse);
+            // Reuse the successful checks from this submission, not a previous modal/cache.
+            await useTokensForEvent(rawEventType, totalReservations, finalPrice, teamsData, selectedTimes, datesToUse, availabilitySelection);
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
@@ -8229,7 +8234,7 @@ async function fetchRegistrationDocsForDates(eventType, dates, firestoreApi) {
 // Retorna: { "schedule_key": firstSlotNumber } ou null se ambos os métodos falharem
 // Nível 1: transação atômica via slotCounters
 // Nível 2: fallback com seeding atômico — elimina race condition entre compradores simultâneos
-async function allocateSlotsFromDB(rawEventType, scheduleCounts, targetDates = null) {
+async function allocateSlotsFromDB(rawEventType, scheduleCounts, targetDates = null, existingDocsPromise = null) {
     const { doc, runTransaction, collection, query, where, getDocs } =
         await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const counterRef = doc(window.firebaseDb, 'slotCounters', rawEventType);
@@ -8248,7 +8253,7 @@ async function allocateSlotsFromDB(rawEventType, scheduleCounts, targetDates = n
     // Para reservas com datas definidas, consulta somente essas datas em vez do histórico inteiro.
     const regSlotCount = {};
     try {
-        const registrationDocs = Array.isArray(targetDates)
+        const registrationDocs = existingDocsPromise ? await existingDocsPromise : Array.isArray(targetDates)
             ? await fetchRegistrationDocsForDates(rawEventType, targetDates, { collection, query, where, getDocs })
             : (await getDocs(query(
                 collection(window.firebaseDb, 'registrations'),
@@ -9037,7 +9042,7 @@ function closeTokensModal() {
     if (window.innerWidth <= 767) maybeClearMobileModalState();
 }
 
-async function useTokensForEvent(eventType, totalReservations, finalPrice, teamsData, selectedTimes, datesToUse) {
+async function useTokensForEvent(eventType, totalReservations, finalPrice, teamsData, selectedTimes, datesToUse, availabilitySelection = null) {
     // Capturar cupom IMEDIATAMENTE (appliedScheduleCoupon pode ser zerado por closeScheduleModal)
     const _capturedTokenCoupon = appliedScheduleCoupon ? { ...appliedScheduleCoupon, _origPrice: scheduleOriginalTotal || finalPrice } : null;
 
@@ -9054,14 +9059,19 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
         timesByDate[item.date].push(item.schedule);
     });
 
-    // Verificar disponibilidade
-    for (const d of datesToUse) {
-        const times = timesByDate[d] || [];
-        if (times.length === 0) continue;
-        const availabilityCheck = await checkMultipleSlotAvailability(d, times, eventType, teamsData.length);
-        if (!availabilityCheck.available) {
-            showErrorToast(availabilityCheck.message || 'Horário indisponível', 'EVENT_001');
-            return;
+    // Direct calls still check availability. The normal submit has just checked it.
+    const availabilityVerified = availabilitySelection?.eventType === eventType
+        && availabilitySelection.numberOfTeams === teamsData.length
+        && datesToUse.every(d => (timesByDate[d] || []).every(schedule =>
+            availabilitySelection.timesByDate?.[d]?.includes(schedule)));
+    if (!availabilityVerified) {
+        const checks = await Promise.all(datesToUse.filter(d => (timesByDate[d] || []).length)
+            .map(d => checkMultipleSlotAvailability(d, timesByDate[d], eventType, teamsData.length)));
+        for (const check of checks) {
+            if (!check.available) {
+                showErrorToast(check.message || 'Horário indisponível', 'EVENT_001');
+                return;
+            }
         }
     }
 
@@ -9071,9 +9081,9 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
         const { regIds, assignedSlots: assignedSlotsTokens } = await createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, 'pending', appliedScheduleCoupon);
         await payOrderWithTokens(externalRef, _capturedTokenCoupon?.code || null, finalPrice);
 
-        // Registrar uso de cupom de evento (tokens) se aplicado
+        // Coupon reporting must not delay an already committed payment.
         if (_capturedTokenCoupon) {
-            try {
+            void (async () => { try {
                 const origPriceTokens = scheduleOriginalTotal || (_capturedTokenCoupon._origPrice || finalPrice);
                 const discountAmtTokens = Math.max(0, origPriceTokens - finalPrice);
                 const cfgTokensLabel = (scheduleConfig[eventType] || {}).label || eventType;
@@ -9086,7 +9096,7 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
                     externalRef,
                     { productId: eventType, name: cfgTokensLabel }
                 );
-            } catch (_) {}
+            } catch (error) { console.warn('[Cupom tokens] Falha no relatório:', error?.code || error?.message); } })();
         }
 
         closeScheduleModal();
@@ -9098,14 +9108,7 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
         const isLigaTokens = cfgTokens.isLiga || false;
 
         if (typeof showSlotConfirmationModal === 'function' && assignedSlotsTokens.length > 0) {
-            // Buscar link do WhatsApp para exibir no modal
-            let tokensGroupLink = null;
-            try {
-                if (typeof getWhatsAppLink === 'function') {
-                    const firstSched = assignedSlotsTokens[0]?.schedule || null;
-                    tokensGroupLink = await getWhatsAppLink(eventType, firstSched, datesToUse?.[0] || null);
-                }
-            } catch (_) {}
+            // Access links load independently inside the confirmation modal.
             showSlotConfirmationModal(assignedSlotsTokens, cfgTokens.label || eventType, isLigaTokens, eventType, null, externalRef);
         } else {
             showSuccessToast('Pagamento com tokens confirmado! Verifique seus pedidos.', 'Sucesso');
@@ -9255,17 +9258,16 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
     const grupos = Math.max(1, cfg.grupos || 1);
     const regIds = [];
     const assignedSlots = [];
+    const pendingWrites = [];
     const { collection, addDoc, serverTimestamp, query: _fsQuery, where: _fsWhere, getDocs: _fsGetDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
 
-    // Pré-carregar registrations existentes para detectar duplicatas nome+e-mail
-    // Chave: `${nomeBase}|${email}` → contagem de registros já gravados
+    // Read only booked dates, sharing this read with slot allocation.
+    const existingDocsPromise = fetchRegistrationDocsForDates(eventType, datesToUse, {
+        collection, query: _fsQuery, where: _fsWhere, getDocs: _fsGetDocs
+    });
     const _dupExistMap = {};
-    try {
-        const _existSnap = await _fsGetDocs(_fsQuery(
-            collection(window.firebaseDb, 'registrations'),
-            _fsWhere('eventType', '==', eventType)
-        ));
-        _existSnap.forEach(d => {
+    const collectDuplicates = docs => {
+        docs.forEach(d => {
             const rd = d.data();
             const rdEmail = (rd.email || '').trim().toLowerCase();
             // Remove sufixo " B", " C"... para encontrar o nome base
@@ -9282,7 +9284,7 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                 _dupExistMap[k] = (_dupExistMap[k] || 0) + 1;
             }
         });
-    } catch(_) {}
+    };
     // Contador em memória para esta compra (evita conflito quando múltiplas datas compradas de uma vez)
     const _dupBatchCount = {};
 
@@ -9295,9 +9297,9 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
     }
 
     // ── Alocar slots (transação) + upload logos em PARALELO ──────────────
-    const [_slotAlloc, _logoMap] = await Promise.all([
+    const [_slotAlloc, _logoMap, existingDocs] = await Promise.all([
         Object.keys(_sc).length > 0
-            ? allocateSlotsFromDB(eventType, _sc, datesToUse)
+            ? allocateSlotsFromDB(eventType, _sc, datesToUse, existingDocsPromise)
             : Promise.resolve({}),
         (async () => {
             const _map = {};
@@ -9311,8 +9313,10 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                 }
             }));
             return _map;
-        })()
+        })(),
+        existingDocsPromise
     ]);
+    collectDuplicates(existingDocs);
 
     const slotCount = {};
     for (const [_k, _v] of Object.entries(_slotAlloc)) slotCount[_k] = _v - 1;
@@ -9323,7 +9327,7 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
             const hour = (schedule.split(' - ')[1] || '').trim();
             const normalizedHour = normalizeHour(hour);
             const price = getEventPrice(eventType, hour, d);
-            const whatsappLink = await getWhatsAppLink(eventType, normalizedHour, d);
+            const whatsappLink = null; // Private access is resolved only after server confirmation.
 
             for (let team of teamsData) {
                 slotCount[schedule] = (slotCount[schedule] || 0) + 1;
@@ -9346,7 +9350,7 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                 const teamLogoUrl = _logoData?.url || null;
                 const teamLogoThumb = _logoData?.thumb || _equipeAtual?.logoUrl || null;
 
-                const docRef = await addDoc(collection(window.firebaseDb, 'registrations'), {
+                const payload = {
                     userId: window.firebaseAuth.currentUser.uid,
                     teamName: finalTeamName,
                     teamLogoUrl: teamLogoUrl,
@@ -9372,20 +9376,27 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                     hour: normalizedHour || null,
                     affiliateCode: getActiveAffiliateCode(couponInfo?.affiliateId || null),
                     // Dados de pagamento são gravados somente pelo servidor.
-                });
-                regIds.push(docRef.id);
+                };
                 assignedSlots.push({ team: finalTeamName, slot: slotDisplay, schedule, isLiga });
-
-                // fire-and-forget — não bloqueia o fluxo de confirmação
-                createPendingAffiliateSale(docRef.id, getActiveAffiliateCode(couponInfo?.affiliateId || null), {
+                pendingWrites.push({ payload, affiliate: {
                     amount: price,
                     title: `${cfg.label} - ${schedule}`,
                     customer: team.email,
                     customerName: team.name
-                }, 'event').catch(e => console.warn('[Afiliado token] erro:', e?.code || e?.message));
+                } });
             }
         }
     }
+    // Persist every pending reservation before requesting any debit.
+    const refs = await Promise.all(pendingWrites.map(({ payload }) =>
+        addDoc(collection(window.firebaseDb, 'registrations'), payload)));
+    refs.forEach((ref, index) => {
+        regIds.push(ref.id);
+        assignedSlots[index].regId = ref.id;
+        createPendingAffiliateSale(ref.id, getActiveAffiliateCode(couponInfo?.affiliateId || null),
+            pendingWrites[index].affiliate, 'event')
+            .catch(e => console.warn('[Afiliado token] erro:', e?.code || e?.message));
+    });
     return { regIds, assignedSlots };
 }
 

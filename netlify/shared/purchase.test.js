@@ -2,13 +2,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const firebase = require("./firebase-admin");
 
-function fakeDatabase(seed) {
+function fakeDatabase(seed, reads = []) {
   let records = new Map(Object.entries(structuredClone(seed)));
   let queue = Promise.resolve();
   function doc(path) {
     return {
       path, id: path.split("/").pop(),
-      get: async () => snapshot(path),
+      get: async () => { reads.push(path); return snapshot(path); },
       update: async patch => { records.set(path, { ...records.get(path), ...patch }); },
     };
   }
@@ -24,6 +24,7 @@ function fakeDatabase(seed) {
       },
       limit: value => collection(name, filters, value),
       get: async () => {
+        reads.push({ collection: name, filters });
         const docs = [...records.keys()].filter(path =>
           path.startsWith(`${name}/`) && filters.every(([key, value]) => records.get(path)[key] === value)
         ).slice(0, limit).map(snapshot);
@@ -81,6 +82,31 @@ test("product checkout rejects forged prices and wrong owners", async () => {
   await assert.rejects(preparePurchase("buyer", { external_reference: "digital_one", unit_price: 0.01 }, "mercadopago"), /preço mudou/);
   assert.equal(currentDb.read("purchase_checkouts/digital_one"), undefined);
   assert.equal(currentDb.read("users/buyer").tokens, 20);
+});
+
+test("one purchase shares catalog/date reads but the next purchase reloads current prices", async () => {
+  const reads = [];
+  const seed = {
+    "adminEvents/modo-liga": { name: "Modo Liga", preco: 3, status: "Aberto" },
+  };
+  for (let i = 1; i <= 3; i++) seed[`registrations/r${i}`] = {
+    userId: "buyer", status: "pending", external_reference: "schedule_read_test",
+    eventType: "modo-liga", date: "2026-10-13", schedule: `${18 + i}h`,
+  };
+  currentDb = fakeDatabase(seed, reads);
+  const result = await preparePurchase("buyer", { external_reference: "schedule_read_test", unit_price: 9 }, "mercadopago");
+  assert.equal(result.checkout.amountCents, 900);
+  assert.equal(reads.filter(r => r === "adminEvents/modo-liga").length, 1);
+  assert.equal(reads.filter(r => r?.collection === "schedule_overrides").length, 1);
+  assert.equal(reads.filter(r => r === "purchase_checkouts/schedule_read_test").length, 1);
+  const secondSeed = {
+    "adminEvents/modo-liga": { name: "Modo Liga", preco: 5, status: "Aberto" },
+    "registrations/new": { ...seed["registrations/r1"], external_reference: "schedule_new" },
+  };
+  currentDb = fakeDatabase(secondSeed, reads);
+  await assert.rejects(preparePurchase("buyer", { external_reference: "schedule_new", unit_price: 3 }, "mercadopago"), /preço mudou/);
+  assert.equal(currentDb.read("purchase_checkouts/schedule_new"), undefined);
+  assert.equal(reads.filter(r => r === "adminEvents/modo-liga").length, 2);
 });
 
 test("approved product is delivered by webhook without any browser return; repeated webhook is safe", async () => {

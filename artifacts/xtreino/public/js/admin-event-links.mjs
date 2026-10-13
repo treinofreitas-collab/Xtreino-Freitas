@@ -7,7 +7,7 @@ const VIEWER_ROLES = ['socio', 'sócio'];
 
 const state = {
   uid: null, links: [], events: [], canManage: false,
-  loadedAt: 0, loading: false, busy: false, editingId: null, error: '', filter: ''
+  loadedAt: 0, loading: false, busy: false, editingId: null, error: '', filter: '', eventId: ''
 };
 let authHooked = false;
 
@@ -20,7 +20,7 @@ function canEdit() { return state.canManage && MANAGER_ROLES.includes(currentRol
 function sectionVisible() { const el = $('sectionEventLinks'); return !!el && el.style.display !== 'none'; }
 
 function resetState() {
-  Object.assign(state, { uid: null, links: [], events: [], canManage: false, loadedAt: 0, editingId: null, error: '', filter: '', loading: false, busy: false });
+  Object.assign(state, { uid: null, links: [], events: [], canManage: false, loadedAt: 0, editingId: null, error: '', filter: '', eventId: '', loading: false, busy: false });
 }
 
 function hookAuth() {
@@ -92,12 +92,13 @@ async function load(force = false) {
 function fillForm(link) {
   const sel = $('eventLinksEvent'); if (!sel) return;
   state.editingId = link ? link.id : null;
-  let evId = '';
+  let evId = state.eventId;
   if (link) {
     const ev = state.events.find(e => e.id === link.eventType || e.eventType === link.eventType);
     evId = ev ? ev.id : '';
   }
   sel.value = evId;
+  state.eventId = evId;
   $('eventLinksSchedule').value = link ? link.schedule : '';
   $('eventLinksUrl').value = link ? link.url : '';
   $('eventLinksActive').checked = link ? link.active !== false : true;
@@ -189,6 +190,12 @@ function render() {
   sel.innerHTML = `<option value="">${prompt}</option>` +
     state.events.map(e => `<option value="${esc(e.id)}">${esc(e.label || e.id)}</option>`).join('');
   sel.value = cur;
+  const scope = $('eventLinksScope');
+  scope.innerHTML = `<option value="">Selecione um evento para ver os links</option>` +
+    state.events.map(e => `<option value="${esc(e.id)}">${esc(e.label || e.id)}</option>`).join('');
+  if (!state.events.some(e => e.id === state.eventId)) state.eventId = '';
+  scope.value = state.eventId;
+  scope.disabled = state.loading || state.busy;
   root.querySelectorAll('#eventLinksForm input, #eventLinksForm select, #eventLinksForm button').forEach(el => {
     el.disabled = state.busy || state.loading || !state.events.length; el.style.pointerEvents = ''; el.style.opacity = '';
   });
@@ -199,8 +206,6 @@ function render() {
   filterEl.disabled = false; filterEl.readOnly = false; filterEl.style.pointerEvents = 'auto'; filterEl.style.opacity = '1';
 
   const list = $('eventLinksList');
-  const active = state.links.filter(l => l.active !== false).length;
-  $('eventLinksCount').textContent = state.loadedAt ? `${state.links.length} links, ${active} ativos` : '';
 
   if (state.error) {
     $('eventLinksLoadError').classList.remove('hidden');
@@ -213,14 +218,22 @@ function render() {
     return;
   }
   if (!state.loadedAt) { list.innerHTML = ''; return; }
+  if (!state.eventId) {
+    $('eventLinksCount').textContent = '';
+    list.innerHTML = '<p class="border border-dashed border-gray-300 rounded-xl p-6 text-center text-sm text-gray-500">Selecione um evento acima. Apenas os links desse evento serão exibidos.</p>';
+    return;
+  }
+  const selectedEvent = state.events.find(e => e.id === state.eventId);
   const f = state.filter.trim().toLowerCase();
   const rows = state.links
+    .filter(l => l.eventType === selectedEvent.id || l.eventType === selectedEvent.eventType)
     .filter(l => !f || `${eventLabel(l)} ${l.schedule} ${l.url}`.toLowerCase().includes(f))
     .sort((a, b) => eventLabel(a).localeCompare(eventLabel(b)) || scheduleSortKey(a.schedule) - scheduleSortKey(b.schedule));
+  $('eventLinksCount').textContent = `${rows.length} links, ${rows.filter(l => l.active !== false).length} ativos`;
   if (!rows.length) {
     list.innerHTML = `<div class="border border-dashed border-gray-300 rounded-xl p-8 text-center">
       <i class="fas fa-link text-gray-300 text-2xl mb-2"></i>
-      <p class="text-sm font-semibold text-gray-700">${f ? 'Nenhum link corresponde à busca.' : 'Nenhum link cadastrado ainda.'}</p>
+      <p class="text-sm font-semibold text-gray-700">${f ? 'Nenhum link corresponde à busca neste evento.' : 'Nenhum link cadastrado para este evento.'}</p>
       <p class="text-xs text-gray-500 mt-1">${f ? 'Ajuste o filtro para ver outros resultados.' : (editable ? 'Use o formulário acima para vincular um link a um evento e horário.' : 'Quando a equipe cadastrar links, eles aparecem aqui.')}</p></div>`;
     return;
   }
@@ -275,16 +288,23 @@ function build(root) {
       <p class="text-[11px] text-gray-500 mt-2">O link vale para todas as datas do evento naquele horário. Aceita qualquer URL http ou https.</p>
       <div id="eventLinksFormError" class="hidden mt-2 text-xs text-red-600"></div>
     </div>
-    <div class="flex items-center justify-between gap-3 mb-3">
-      <input id="eventLinksFilter" type="search" placeholder="Filtrar por evento, horário ou URL" class="w-full md:w-72 border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+    <div class="flex flex-wrap items-end gap-3 mb-3">
+      <label class="flex-1 min-w-[200px] text-xs font-medium text-gray-600">Links do evento
+        <select id="eventLinksScope" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"></select>
+      </label>
+      <label class="flex-1 min-w-[180px] text-xs font-medium text-gray-600">Buscar neste evento
+        <input id="eventLinksFilter" type="search" placeholder="Horário ou URL" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+      </label>
       <span id="eventLinksCount" class="text-xs text-gray-500 whitespace-nowrap"></span>
     </div>
-    <div id="eventLinksList" class="space-y-2"></div>`;
+    <div id="eventLinksList" class="space-y-2 max-h-[28rem] overflow-y-auto pr-1"></div>`;
   $('eventLinksForm').addEventListener('submit', submitForm);
   $('eventLinksCancel').addEventListener('click', () => { fillForm(null); render(); });
   $('eventLinksRetry').addEventListener('click', () => load(true));
   $('eventLinksRefresh').addEventListener('click', () => load(true));
   $('eventLinksFilter').addEventListener('input', (e) => { state.filter = e.target.value; render(); });
+  $('eventLinksEvent').addEventListener('change', (e) => { state.eventId = e.target.value; state.filter = ''; $('eventLinksFilter').value = ''; render(); });
+  $('eventLinksScope').addEventListener('change', (e) => { state.eventId = e.target.value; state.filter = ''; $('eventLinksFilter').value = ''; fillForm(null); render(); });
   $('eventLinksList').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-act]'); if (!b) return;
     const id = b.dataset.id;
