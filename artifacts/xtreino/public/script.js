@@ -8464,10 +8464,7 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
                     const slotNumber = scheduleSlotCount[schedKey];
 
                     if (!isLiga && vagas > 0 && slotNumber > vagas) {
-                        alert('Evento lotado durante o processamento. Algumas inscrições não foram concluídas.');
-                        closeScheduleModal();
-                        showSlotConfirmationModal(assignedSlots, cfg.label, isLiga, rawEventType);
-                        return;
+                        throw new Error('Não há vagas suficientes para confirmar todas as reservas. Nenhuma vaga foi confirmada. Reabra a reserva e escolha outro horário.');
                     }
 
                     let slotDisplay = null;
@@ -8537,7 +8534,7 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
         } catch (_) {}
 
         closeScheduleModal();
-        showSlotConfirmationModal(assignedSlots, cfg.label, isLiga, rawEventType, freeGroupLink);
+        showSlotConfirmationModal(assignedSlots, cfg.label, isLiga, rawEventType, null, externalRef);
 
     } catch (err) {
         console.error('Erro ao registrar inscrição gratuita:', err);
@@ -8563,10 +8560,12 @@ function playNotificationSound() {
     } catch (_) {}
 }
 
-function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink) {
+function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink, accessReference = null) {
     const existing = document.getElementById('slotConfirmModal');
     if (existing) existing.remove();
     playNotificationSound();
+    const teamLabel = slot => String(slot.team || slot.teamName || slot.name || 'Seu time')
+        .replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 
     // Agrupar por horário
     const bySchedule = {};
@@ -8585,13 +8584,13 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink)
         <div class="p-4 bg-yellow-50 border-2 border-yellow-400 rounded-xl text-center">
             <div class="text-3xl mb-2">🏆</div>
             <div class="font-bold text-yellow-800 text-base mb-1">Modo Liga — Acesso à Sala</div>
-            <div class="text-sm text-yellow-700 leading-relaxed">Salas no modo Liga não possuem slots numerados.<br>Aguarde o link da sala ser enviado pelo admin nas notificações.<br>Fique de olho no sininho 🔔!</div>
+            <div class="text-sm text-yellow-700 leading-relaxed">Salas no modo Liga não possuem slots numerados.<br>Consulte abaixo o link personalizado do seu horário.<br>O ID e a senha continuam nas notificações.</div>
         </div>
         ${schedules.map(sched => `
         <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl">
             <div class="text-xs font-bold text-blue-600 uppercase mb-1">⏰ Horário</div>
             <div class="font-semibold text-blue-900">${sched}</div>
-            ${bySchedule[sched].map(s => `<div class="text-xs text-gray-600 mt-0.5">✅ ${s.team}</div>`).join('')}
+            ${bySchedule[sched].map(s => `<div class="text-xs text-gray-600 mt-0.5">✅ ${teamLabel(s)}</div>`).join('')}
         </div>`).join('')}`;
     } else {
         slotsHtml = schedules.map(sched => {
@@ -8599,7 +8598,7 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink)
                 let innerHtml;
                 if (eventId === 'modo-liga') {
                     // Modo Liga: exibir letra em destaque — suporta "Letra A", "Slot A", "Vaga A"
-                    const _raw = s.slot ? s.slot.replace(/^(Letra|Slot|Vaga)\s*/i, '').trim() : '';
+                    const _raw = String(s.slot || s.slotNumber || '').replace(/^(Letra|Slot|Vaga)\s*/i, '').trim();
                     let letra;
                     if (/^[A-Za-z]$/.test(_raw)) {
                         letra = _raw.toUpperCase();
@@ -8607,16 +8606,16 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink)
                         const n = parseInt(_raw, 10);
                         letra = (!isNaN(n) && n > 0) ? String.fromCharCode(64 + n) : '?';
                     }
-                    innerHtml = `<div class="font-bold text-orange-600 text-sm">SUA LETRA É ${letra} — EQUIPE: ${s.team}</div><div class="text-sm font-semibold text-green-700 mt-0.5">Inscrição confirmada!</div>`;
+                    innerHtml = `<div class="font-bold text-orange-600 text-sm">SUA LETRA É ${letra} — EQUIPE: ${teamLabel(s)}</div><div class="text-sm font-semibold text-green-700 mt-0.5">Inscrição confirmada!</div>`;
                 } else {
                     // Extrair número do slot (suporta "Slot 3", "Vaga #3" ou número puro)
-                    const _rawSlot = String(s.slot || '');
+                    const _rawSlot = String(s.slot || s.slotNumber || '');
                     const _matchSlot = _rawSlot.match(/(\d+)\s*$/);
-                    const _slotN = _matchSlot ? parseInt(_matchSlot[1], 10) : Number(s.slot);
+                    const _slotN = _matchSlot ? parseInt(_matchSlot[1], 10) : Number(s.slot || s.slotNumber);
                     const slotSection = (_slotN > 0 && _slotN <= 9999)
                         ? `<div class="mt-1"><span class="inline-flex items-center gap-1 bg-orange-100 border-2 border-orange-400 rounded-lg px-3 py-1"><span class="text-xs font-black text-orange-600 uppercase tracking-widest">SLOT</span><span class="text-base font-black text-orange-500 mx-0.5">—</span><span class="text-2xl font-black text-orange-700">${_slotN}</span></span></div>`
                         : `<div class="text-sm font-semibold text-green-700">Inscrição confirmada!</div>`;
-                    innerHtml = `<div class="font-semibold text-gray-800 text-sm">${s.team}</div>${slotSection}`;
+                    innerHtml = `<div class="font-semibold text-gray-800 text-sm">${teamLabel(s)}</div>${slotSection}`;
                 }
                 return `<div class="flex items-center gap-3 p-2 bg-green-50 border border-green-200 rounded-lg mb-1"><span class="text-xl">✅</span><div class="flex-1">${innerHtml}</div></div>`;
             }).join('');
@@ -8631,7 +8630,7 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink)
         <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="text-center mb-5">
                 <div class="text-5xl mb-2">🎉</div>
-                <h3 class="text-xl font-bold text-gray-900">Inscrição Confirmada!</h3>
+                <h3 class="text-xl font-bold text-gray-900">Vaga confirmada</h3>
                 <p class="text-gray-500 text-sm mt-1">${eventName}</p>
             </div>
             <div class="space-y-3 mb-6">${slotsHtml}</div>
@@ -8643,10 +8642,7 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink)
                 💡 Você receberá a lista de Slots junto com o ID E SENHA!
             </div>` : ''}
             <div class="flex flex-col gap-2">
-                ${groupLink ? `<a href="${groupLink}" target="_blank" rel="noopener noreferrer"
-                        class="w-full bg-[#25D366] hover:bg-[#1ebe5b] text-white py-3 rounded-xl font-bold text-base transition-colors flex items-center justify-center gap-2">
-                    <i class="fab fa-whatsapp text-xl"></i> Entrar no Grupo WhatsApp
-                </a>` : ''}
+                ${accessReference ? '<div id="confirmedEventAccessLinks" class="flex flex-col gap-2 p-3 rounded-xl bg-teal-50 border border-teal-200" role="status" aria-live="polite">Consultando os links dos horários confirmados...</div>' : ''}
                 ${eventId ? `<button onclick="window.location.href='${_eventoUrl(eventId)}'"
                         class="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-bold text-base transition-colors">
                     <i class="fas fa-external-link-alt mr-2"></i>VER PÁGINA DO EVENTO
@@ -8658,6 +8654,14 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink)
             </div>
         </div>`;
     document.body.appendChild(div);
+    if (accessReference) {
+        const target = div.querySelector('#confirmedEventAccessLinks');
+        import('./js/event-access-client.mjs')
+            .then(({ mountReferenceAccess }) => mountReferenceAccess(target, accessReference))
+            .catch(() => {
+                if (target?.isConnected) target.textContent = 'Sua vaga está confirmada. Consulte o link em Minha conta > Pedidos.';
+            });
+    }
 }
 
 
@@ -9065,7 +9069,7 @@ async function processSuccessfulPayment(externalRef = null) {
             try { paidGroupLink = await getWhatsAppLink(regEventType, assignedSlots[0]?.schedule || null, null); } catch (_) {}
         }
         setTimeout(() => {
-            showSlotConfirmationModal(assignedSlots, regEventName, regIsLiga, regEventType, paidGroupLink);
+            showSlotConfirmationModal(assignedSlots, regEventName, regIsLiga, regEventType, null, extRef);
         }, 400);
     }
 
@@ -9147,7 +9151,7 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
                     tokensGroupLink = await getWhatsAppLink(eventType, firstSched, datesToUse?.[0] || null);
                 }
             } catch (_) {}
-            showSlotConfirmationModal(assignedSlotsTokens, cfgTokens.label || eventType, isLigaTokens, eventType, tokensGroupLink);
+            showSlotConfirmationModal(assignedSlotsTokens, cfgTokens.label || eventType, isLigaTokens, eventType, null, externalRef);
         } else {
             showSuccessToast('Pagamento com tokens confirmado! Verifique seus pedidos.', 'Sucesso');
         }

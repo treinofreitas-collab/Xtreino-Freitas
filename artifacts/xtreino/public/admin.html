@@ -105,6 +105,7 @@
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionProducts',this)"><i class="fas fa-box"></i><span>Produtos</span></button></li>
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionEvents',this)"><i class="fas fa-trophy"></i><span>Eventos</span></button></li>
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionSchedules',this)"><i class="fas fa-clock"></i><span>Horários</span></button></li>
+            <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionEventLinks',this)"><i class="fas fa-link"></i><span>Links dos eventos</span></button></li>
             <li><button class="sidebar-link" data-page="conteudo" onclick="adminNav('conteudo','sectionShirtOrders',this)"><i class="fas fa-tshirt"></i><span>Camisas</span></button></li>
         </ul>
 
@@ -1409,6 +1410,17 @@
                 </div>
             </div>
 
+            <div id="sectionEventLinks" class="bg-white border border-gray-200 rounded-xl p-6 mt-6" style="display:none">
+                <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                    <div>
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-link text-blue-600"></i> Links dos eventos</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Link de acesso fixo por evento e horário, entregue aos inscritos.</p>
+                    </div>
+                    <button id="eventLinksRefresh" type="button" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-50 flex items-center gap-1.5"><i class="fas fa-sync-alt"></i><span>Atualizar</span></button>
+                </div>
+                <div id="eventLinksRoot"></div>
+            </div>
+
             </div><!-- /page-conteudo -->
 
             <!-- ===== PAGE: OPERAÇÕES ===== -->
@@ -1784,6 +1796,23 @@
                 window.location.hash = page;
             }
         };
+
+        /* Links dos eventos: carregamento sob demanda (somente ao navegar) */
+        window.openEventLinksAdmin = function(opts) {
+            return import('./js/admin-event-links.mjs')
+                .then(function(m) { return m.openEventLinksAdmin(opts); })
+                .catch(function(e) {
+                    console.error('Falha ao carregar Links dos eventos:', e);
+                    if (window.showErrorToast) window.showErrorToast('Não foi possível carregar Links dos eventos.');
+                });
+        };
+        (function() {
+            var baseNav = window.adminNav;
+            window.adminNav = function(page, sectionId, btn) {
+                baseNav(page, sectionId, btn);
+                if (sectionId === 'sectionEventLinks') window.openEventLinksAdmin();
+            };
+        })();
 
         /* Scroll to a specific section within the active page */
         function scrollToSection(id) {

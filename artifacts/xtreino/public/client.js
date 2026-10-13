@@ -1,4 +1,5 @@
 import { paymentFetch, confirmPayment, paymentCompleted } from './js/payment-client.js';
+import { clearEventAccessCache, eventAccessPlaceholder, hydrateEventAccessLinks } from './js/event-access-client.mjs';
 
 // ==================== TOAST NOTIFICATION SYSTEM ====================
 let confirmResolve = null;
@@ -247,6 +248,7 @@ async function checkAuthState() {
     }
     onAuthStateChanged(auth, async (user) => {
         if (userDocsStore.setUser(user)) {
+            clearEventAccessCache();
             userDocsAdapter.reset();
             _stopOrdersAutoRefresh();
             _ordersLoadGeneration++;
@@ -472,7 +474,7 @@ async function loadTodayRegistrations() {
     const hoje = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0];
     if (dateLabel) {
         const [, m, d] = hoje.split('-');
-        dateLabel.textContent = `${d}/${m}`;
+        dateLabel.textContent = `A partir de ${d}/${m}`;
     }
 
     if (!currentUser?.uid) {
@@ -484,7 +486,7 @@ async function loadTodayRegistrations() {
         const allRegs = await fetchUserDocs('registrations', 200, false);
         const validStatuses = new Set(['paid', 'confirmed', 'approved', 'pending', 'lisagem_gratis']);
         const todayRegs = allRegs
-            .filter(d => d.data.date === hoje && validStatuses.has(d.data.status || ''))
+            .filter(d => d.data.date >= hoje && validStatuses.has(d.data.status || ''))
             .map(d => ({ id: d.id, ...d.data }));
 
         // Ordenar por hora do schedule ("14h" → 14)
@@ -492,7 +494,7 @@ async function loadTodayRegistrations() {
             const m2 = String(s || '').match(/(\d{1,2})\s*h/i);
             return m2 ? parseInt(m2[1], 10) : 99;
         };
-        todayRegs.sort((a, b) => getHour(a.schedule) - getHour(b.schedule));
+        todayRegs.sort((a, b) => String(a.date).localeCompare(String(b.date)) || getHour(a.schedule) - getHour(b.schedule));
 
         if (badge) {
             badge.textContent = todayRegs.length;
@@ -500,7 +502,7 @@ async function loadTodayRegistrations() {
         }
 
         if (todayRegs.length === 0) {
-            container.innerHTML = '<p style="color:#9ca3af;text-align:center;font-size:13px;padding:4px 0">Nenhuma inscrição para hoje 🎮</p>';
+            container.innerHTML = '<p style="color:#9ca3af;text-align:center;font-size:13px;padding:4px 0">Nenhuma inscrição nos próximos horários.</p>';
             return;
         }
 
@@ -541,13 +543,15 @@ async function loadTodayRegistrations() {
                 <div style="width:38px;height:38px;background:linear-gradient(135deg,#ede9fe,#dbeafe);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${icon}</div>
                 <div style="flex:1;min-width:0">
                     <div style="font-size:13px;font-weight:800;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
-                    <div style="font-size:11px;color:#6b7280;margin-top:2px">${schedule}${slot ? ' &bull; ' + slot : ''}</div>
+                    <div style="font-size:11px;color:#6b7280;margin-top:2px">${r.date !== hoje ? String(r.date).split('-').reverse().join('/') + ' &bull; ' : ''}${schedule}${slot ? ' &bull; ' + slot : ''}</div>
+                    ${r.status !== 'pending' ? eventAccessPlaceholder(r.id) : ''}
                 </div>
                 <div style="flex-shrink:0">
                     <span style="font-size:10px;font-weight:700;color:${s.color};background:${s.bg};border-radius:6px;padding:3px 8px;white-space:nowrap">${s.label}</span>
                 </div>
             </div>`;
         }).join('');
+        await hydrateEventAccessLinks(container);
     } catch (err) {
         container.innerHTML = '<p style="color:#9ca3af;text-align:center;font-size:13px;padding:4px 0">Erro ao carregar inscrições.</p>';
     }
@@ -687,7 +691,7 @@ async function loadOrders() {
 
         // Incluir eventos das registrations: tokens e pagamentos aprovados (paid/confirmed/approved)
         const mappedRegs = regsData
-            .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed' || d.data.status === 'approved')
+            .filter(d => d.data.paidWithTokens === true || ['paid', 'confirmed', 'approved', 'lisagem_gratis'].includes(d.data.status))
             .map(d => ({
                 id: d.id,
                 source: 'registration', // <-- ADICIONADO
@@ -816,7 +820,7 @@ async function displayAllOrdersPaginated() {
         const paidWithTokens = order.paidWithTokens === true;
         
         // Para registrations, considerar apenas se estiver pago/confirmado
-        return (status === 'paid' || status === 'confirmed' || status === 'approved') || paidWithTokens;
+        return ['paid', 'confirmed', 'approved', 'lisagem_gratis'].includes(status) || paidWithTokens;
     });
     
     if (allOrders.length === 0) {
@@ -875,18 +879,7 @@ async function displayAllOrdersPaginated() {
 
     const ordersHTML = await Promise.all(currentGroups.map(async group => {
         const itemsHTML = await Promise.all(group.items.map(async item => {
-            const tempOrder = {
-                ...item,
-                eventDate: group.eventDate,
-                teamName: group.teamName,
-                email: group.email,
-                contact: group.contact,
-                price: group.price,
-                tokensUsed: item.tokensUsed,
-                paidWithTokens: group.paidWithTokens,
-                status: group.status
-            };
-            const whatsappButton = await getOrderActionButton(tempOrder);
+            const whatsappButton = eventAccessPlaceholder(item.id);
             const hourDisplay = item.schedule ? (item.schedule.split(' - ')[1] || item.schedule) : (item.hour || '');
             return `
                 <div class="border-t border-gray-200 pt-2 mt-2 first:border-t-0 first:pt-0 first:mt-0">
@@ -931,6 +924,7 @@ async function displayAllOrdersPaginated() {
 
     const paginationHTML = generatePaginationHTML(currentPage, totalPages);
     container.innerHTML = ordersHTML.join('') + paginationHTML;
+    await hydrateEventAccessLinks(container);
 }
 
 // Generate pagination HTML
@@ -3316,6 +3310,7 @@ async function processSuccessfulPayment(externalRef = null, { refresh = true } =
             if (result.status === 'needs_review') showToast('warning', result.message || 'Solicite conferência deste pedido ao suporte.', 'Verificação necessária');
             return;
         }
+        clearEventAccessCache();
         userDocsStore.invalidate();
         if (Number.isFinite(Number(result.balance))) {
             if (userProfile) userProfile.tokens = Number(result.balance);
