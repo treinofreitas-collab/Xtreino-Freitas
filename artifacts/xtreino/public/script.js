@@ -1887,7 +1887,7 @@ async function ensureUserProfile(user) {
         teamName: '',
         orgName: '',
         age: '',
-        role: window.AssocConfig.roles.VENDEDOR, // padrão mínimo
+        role: 'Usuario', // uma nova conta não recebe permissões de vendedor
         level: undefined,
         tokens: 0
     };
@@ -2435,6 +2435,30 @@ function closePurchaseModal() {
 }
 
 // Pagar produto atual com Tokens
+async function authenticatedPaymentFetch(url, options = {}) {
+    const { paymentFetch } = await import('./js/payment-client.js');
+    return paymentFetch(window.firebaseAuth?.currentUser, url, options);
+}
+
+async function payOrderWithTokens(reference, couponCode, expectedTotal) {
+    const payload = { external_reference: reference, couponCode, unit_price: expectedTotal };
+    sessionStorage.setItem('_pendingTokenPurchase', JSON.stringify(payload));
+    const response = await authenticatedPaymentFetch('/.netlify/functions/pay-with-tokens', {
+        method: 'POST', body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !['paid', 'already_paid'].includes(data.status)) {
+        throw new Error(data.error || 'Não foi possível concluir. Confira Meus Pedidos antes de tentar novamente.');
+    }
+    sessionStorage.removeItem('_pendingTokenPurchase');
+    if (window.currentUserProfile && Number.isFinite(Number(data.balance))) {
+        window.currentUserProfile.tokens = Number(data.balance);
+        localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile));
+        updateHeaderTokenBadges();
+    }
+    return data;
+}
+
 async function payCurrentProductWithTokens() {
     try {
         if (!window.isLoggedIn) {
@@ -2495,9 +2519,7 @@ async function payCurrentProductWithTokens() {
             productOptions.name = nameOnShirt;
             productOptions.delivery = { nome, cpf, cep, address: rua, number: numero, complement: complemento, district: bairro, city: cidade, state: estado };
         }
-        // Debitar tokens
-        const ok = await spendTokens(total);
-        if (!ok) { alert('Não foi possível debitar os tokens.'); return; }
+        // O servidor debita e confirma o pedido na mesma transação.
         // Capturar código de afiliado ativo
         const _tokenAffCode = getActiveAffiliateCode(appliedCoupon?.affiliateId || null);
         console.log('[Afiliado DEBUG tokens] affiliateId do cupom:', appliedCoupon?.affiliateId, '| localStorage ref:', localStorage.getItem('xf_affiliate_ref'), '| _tokenAffCode:', _tokenAffCode);
@@ -2511,9 +2533,7 @@ async function payCurrentProductWithTokens() {
             total: total,
             quantity: 1,
             currency: 'BRL',
-            status: 'paid',
-            paidWithTokens: true,
-            tokensUsed: total,
+            status: 'pending',
             customer: window.firebaseAuth?.currentUser?.email || '',
             customerName: window.currentUserProfile?.name || '',
             buyerEmail: window.firebaseAuth?.currentUser?.email || '',
@@ -2522,12 +2542,13 @@ async function payCurrentProductWithTokens() {
             productId: productId,
             productOptions: productOptions,
             affiliateCode: _tokenAffCode || null,
-            shippingStatus: (productId === 'camisa') ? 'pending' : undefined,
+            shippingStatus: (productId === 'camisa') ? 'pending' : null,
             createdAt: new Date(),
             timestamp: Date.now(),
             type: 'digital_product'
         };
         const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
+        await payOrderWithTokens(`digital_${docRef.id}`, appliedCoupon?.code || null, total);
         if (_tokenAffCode) {
             try { await createPendingAffiliateSale(docRef.id, _tokenAffCode, orderData, 'product'); } catch (_) {}
         }
@@ -3083,7 +3104,7 @@ async function handlePurchase(event) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
 
-        const response = await fetch('/.netlify/functions/create-preference', {
+        const response = await authenticatedPaymentFetch('/.netlify/functions/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(preferencePayload),
@@ -3615,64 +3636,30 @@ function closeHeroTokensModal() { const m = document.getElementById('heroTokensM
 function heroSetTokensQty(qty) { heroSelectedQty = qty; updateHeroTokensSummary(); }
 async function heroPurchaseTokens() {
     try {
-        if (!window.firebaseAuth?.currentUser) { openLoginModal(); return; }
+        const user = window.firebaseAuth?.currentUser;
+        if (!user) { openLoginModal(); return; }
         const qty = heroSelectedQty || 0; if (!qty) { alert('Selecione a quantidade'); return; }
-        const basePrice = qty; let price = basePrice;
-        if (heroAppliedCoupon) { const d = heroAppliedCoupon.discountType === 'percentage' ? basePrice * (heroAppliedCoupon.discountValue / 100) : heroAppliedCoupon.discountValue; price = Math.max(0, basePrice - d); }
-
-        // Criar ordem no Firestore para associar external_reference e permitir confirmação automática
-        let externalRef;
-        try {
-            const { addDoc, updateDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            const activeAffiliateCode = getActiveAffiliateCode();
-            const orderData = {
-                title: `${qty} Token${qty > 1 ? 's' : ''} XTreino`,
-                amount: price,
+        const idToken = await user.getIdToken();
+        const response = await fetch('/.netlify/functions/create-token-preference', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({
                 quantity: qty,
-                currency: 'BRL',
-                customer: window.firebaseAuth.currentUser?.email || null,
-                customerName: window.firebaseAuth.currentUser?.displayName || null,
-                uid: window.firebaseAuth.currentUser?.uid || null,
-                type: 'tokens_purchase',
-                createdAt: new Date(),
-                timestamp: Date.now(),
-                affiliateCode: activeAffiliateCode || null
-            };
-            const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
-            externalRef = `tokens_${docRef.id}`;
-            await updateDoc(docRef, { external_reference: externalRef });
-            try { sessionStorage.setItem('lastExternalRef', externalRef); } catch (_) { }
-        } catch (e) {
-            console.warn('Aviso: não foi possível salvar pedido de tokens no Firestore antes do pagamento. Continuando para o checkout.', e);
-            // Continua com externalRef gerado acima — o webhook cria/atualiza o pedido após pagamento confirmado
-        }
-
-        const prefBody = {
-            title: `${qty} Token${qty > 1 ? 's' : ''} XTreino`,
-            // For tokens, Mercado Pago should receive unit_price = 1.00 and quantity = number of tokens
-            unit_price: 1.00,
-            currency_id: 'BRL',
-            quantity: qty,
-            back_url: window.location.origin,
-            external_reference: externalRef,
-            type: 'tokens_purchase'
-        };
-        if (heroAppliedCoupon) prefBody.coupon_info = { id: heroAppliedCoupon.id, code: heroAppliedCoupon.code, discountType: heroAppliedCoupon.discountType, discountValue: heroAppliedCoupon.discountValue, context: 'tokens' };
-        
-        const response = await fetch('/.netlify/functions/create-preference', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prefBody) });
+                couponCode: heroAppliedCoupon?.code || null,
+                affiliateCode: getActiveAffiliateCode() || null
+            })
+        });
         if (response.status === 404) { showToast('info', 'Checkout disponível apenas na versão publicada do site.', 'Dev'); return; }
-        if (!response.ok) throw new Error('Erro ao comunicar com Mercado Pago');
-        const data = await response.json();
-        if (data.init_point) {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Erro ao comunicar com Mercado Pago');
+        if (data.init_point && data.external_reference) {
             try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch (_) { }
+            try { sessionStorage.setItem('lastExternalRef', data.external_reference); } catch (_) { }
             closeHeroTokensModal();
-            try {
-                window.open(data.init_point, '_blank');
-                showToast('success', 'Checkout aberto em nova aba. Finalize o pagamento no Mercado Pago.', 'Checkout');
-            } catch (e) {
-                
-                window.location.href = data.init_point;
-            }
+            window.location.href = data.init_point;
         } else { showToast('error', 'Erro ao iniciar pagamento. Tente novamente.', 'Erro'); }
     } catch (e) {  showToast('error', `Erro ao comprar tokens: ${e && e.message ? e.message : String(e)}`, 'Erro'); }
 }
@@ -3739,7 +3726,11 @@ async function heroApplyTokenCoupon() {
             }
         }
 
-        if (coupon.context && coupon.context !== 'tokens' && coupon.context !== 'all') {
+        const usageType = String(coupon.usageType || 'both').toLowerCase();
+        if (
+            !['both', 'store', 'tokens'].includes(usageType)
+            || (coupon.context && coupon.context !== 'tokens' && coupon.context !== 'all')
+        ) {
             showToast('error', 'Este cupom não é válido para compra de tokens', 'Cupom');
             return;
         }
@@ -7164,7 +7155,7 @@ async function fetchWithTimeout(url, opts = {}, ms = 15000) {
 }
 
 // End helpers
-async function handleProductPurchase(productId, cfg) {
+async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopago') {
     try {
         // Coletar dados do formulário (apenas se existirem)
         const teamElement = document.getElementById('schedTeam');
@@ -7372,6 +7363,13 @@ async function handleProductPurchase(productId, cfg) {
             }
         }
 
+        if (!docRef) throw new Error('Pedido não salvo. Nenhuma cobrança foi iniciada. Tente novamente.');
+        if (paymentMethod === 'tokens') {
+            await payOrderWithTokens(externalRef, _prodCoupon?.code || null, finalPrice);
+            closeScheduleModal();
+            showToast('success', 'Pagamento com tokens confirmado. Confira Meus Produtos.', 'Compra confirmada');
+            return;
+        }
         // Chamar function segura (Netlify) para criar Preference
         const preferencePayload = {
             title: cfg.label || 'Produto',
@@ -7379,17 +7377,18 @@ async function handleProductPurchase(productId, cfg) {
             currency_id: 'BRL',
             quantity: 1,
             back_url: window.location.origin,
-            external_reference: externalRef
+            external_reference: externalRef,
+            couponCode: _prodCoupon?.code || null
         };
 
         
         let response;
         try {
-            response = await fetchWithTimeout('/.netlify/functions/create-preference', {
+            response = await authenticatedPaymentFetch('/.netlify/functions/create-preference', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(preferencePayload)
-            }, 15000);
+            });
         } catch (fetchErr) {
             
             storeCheckoutFailure({ location: 'product', payload: preferencePayload, errorMessage: String(fetchErr) });
@@ -7446,115 +7445,7 @@ async function handleProductPurchase(productId, cfg) {
 
 // Compra de produtos da loja usando Tokens (no modal de agendamento)
 async function handleProductPurchaseWithTokens(productId, cfg) {
-    try {
-        // Resolver dados do perfil/usuário
-        const authUser = window.firebaseAuth?.currentUser || {};
-        const profile = window.currentUserProfile || {};
-        const resolvedEmail = authUser.email || profile.email || '';
-        const resolvedName = profile.name || authUser.displayName || '';
-
-        // Coletar opções e calcular preço final
-        let productOptions = {};
-        let finalPrice = cfg.price;
-        if (productId === 'sensibilidades') {
-            const platform = document.getElementById('platformSelect')?.value;
-            if (!platform) { showError('PRODUCT_008', 'PRODUCT_008'); return; }
-            productOptions.platform = platform;
-            if (platform === 'android') {
-                const brand = document.getElementById('androidBrandSelect')?.value;
-                if (!brand) { showError('PRODUCT_009', 'PRODUCT_009'); return; }
-                productOptions.brand = brand;
-            }
-        } else if (productId === 'imagens') {
-            const selected = Array.from(document.querySelectorAll('input[name="mapOption"]:checked')).map(i => i.value);
-            productOptions.maps = selected;
-            productOptions.quantity = selected.length || 1;
-            const prices = { 1: 2, 2: 4, 3: 5, 4: 6, 5: 7 };
-            finalPrice = prices[productOptions.quantity] || 2;
-        } else if (productId === 'passe-booyah') {
-            productOptions.playerId = document.getElementById('playerId')?.value || '';
-        } else if (productId === 'camisa') {
-            const shirtSize = document.getElementById('shirtSize')?.value || 'M';
-            const nameOnShirt = document.getElementById('shirtName')?.value || '';
-            const nome = document.getElementById('addrNome')?.value || '';
-            const cpf = document.getElementById('customerCPF')?.value || '';
-            const cep = document.getElementById('addrCEP')?.value || '';
-            const rua = document.getElementById('addrRua')?.value || '';
-            const numero = document.getElementById('addrNumero')?.value || '';
-            const complemento = document.getElementById('addrComplemento')?.value || '';
-            const bairro = document.getElementById('addrBairro')?.value || '';
-            const cidade = document.getElementById('addrCidade')?.value || '';
-            const estado = document.getElementById('addrEstado')?.value || '';
-            const cpfRegex = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
-            if (!cpf || !cpfRegex.test(cpf)) { alert('CPF inválido. Use o formato 000.000.000-00.'); return; }
-            productOptions.size = shirtSize;
-            productOptions.name = nameOnShirt;
-            productOptions.delivery = { nome, cpf, cep, address: rua, number: numero, complement: complemento, district: bairro, city: cidade, state: estado };
-        }
-
-        // Aplicar cupom do schedule se houver
-        if (typeof appliedScheduleCoupon !== 'undefined' && appliedScheduleCoupon) {
-            let discountAmount = 0;
-            if (appliedScheduleCoupon.discountType === 'percentage') {
-                discountAmount = finalPrice * (appliedScheduleCoupon.discountValue / 100);
-            } else {
-                discountAmount = appliedScheduleCoupon.discountValue;
-            }
-            finalPrice = Math.max(0, finalPrice - discountAmount);
-        }
-
-        // Validar saldo
-        if (!canSpendTokens(finalPrice)) {
-            showError('TOKEN_001', 'TOKEN_001');
-            return;
-        }
-        const ok = await spendTokens(finalPrice);
-        if (!ok) {
-            showError('TOKEN_002', 'TOKEN_002');
-            return;
-        }
-
-        // Criar pedido pago
-        const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const orderData = {
-            title: cfg.label,
-            description: cfg.label,
-            item: cfg.label,
-            amount: finalPrice,
-            total: finalPrice,
-            quantity: 1,
-            currency: 'BRL',
-            status: 'paid',
-            paidWithTokens: true,
-            tokensUsed: finalPrice,
-            customer: resolvedEmail,
-            customerName: resolvedName,
-            buyerEmail: resolvedEmail,
-            userId: window.firebaseAuth?.currentUser?.uid,
-            uid: window.firebaseAuth?.currentUser?.uid,
-            productId: productId,
-            productOptions: productOptions,
-            createdAt: new Date(),
-            timestamp: Date.now(),
-            type: 'digital_product',
-            // Incluir affiliateId do cupom se houver
-            affiliateCode: getActiveAffiliateCode(appliedScheduleCoupon?.affiliateId || null)
-        };
-        // Firestore não aceita campos undefined. Adicionar shippingStatus apenas quando aplicável
-        if (productId === 'camisa') {
-            orderData.shippingStatus = 'pending';
-        }
-        await addDoc(collection(window.firebaseDb, 'orders'), orderData);
-        closeScheduleModal();
-        if (typeof openPaymentConfirmModal === 'function') {
-            openPaymentConfirmModal('Pagamento confirmado', 'Seu pagamento em tokens foi aprovado. Confira em Minha Conta.');
-        } else {
-            alert('Pagamento confirmado com tokens!');
-        }
-    } catch (e) {
-        
-        showError(e, 'TOKEN_002');
-    }
+    return handleProductPurchase(productId, cfg, 'tokens');
 }
 async function submitSchedule(e, useTokens = false) {
     e.preventDefault();
@@ -7986,6 +7877,7 @@ async function submitSchedule(e, useTokens = false) {
                     back_url: `${_earlyHost}/${_earlyAffParam}`,
                     coupon_info: couponInfo,
                     external_reference: externalRef,
+                    forcePay: window._freeSlotForcePay === true,
                     multiple_reservations: {
                         teams: teamsData.map(t => t.name),
                         schedules: selectedTimes.map(item => item.schedule),
@@ -7993,7 +7885,8 @@ async function submitSchedule(e, useTokens = false) {
                         eventType: rawEventType
                     }
                 };
-                _prefFetchPromise = fetch('/.netlify/functions/create-preference', {
+                // Só enviar após as reservas serem persistidas; o servidor precisa lê-las.
+                _prefFetchPromise = () => authenticatedPaymentFetch('/.netlify/functions/create-preference', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(_earlyPrefPayload)
@@ -8071,7 +7964,7 @@ async function submitSchedule(e, useTokens = false) {
             // Fetch já foi iniciado em paralelo com o addDoc — apenas aguardar
             let resp;
             try {
-                resp = await _prefFetchPromise;
+                resp = await _prefFetchPromise();
             } catch (fetchErr) {
                 await _cleanupPendingRegs();
                 alert('Não foi possível conectar ao servidor de pagamento. Verifique sua internet e tente novamente.');
@@ -8451,10 +8344,11 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
                             slot: slotNumber,
                             slotNumber: slotNumber,
                             slotDisplay: slotDisplay,
-                            status: overrideStatus || 'confirmed',
+                            status: 'pending',
                             createdAt: serverTimestamp(),
                             external_reference: externalRef,
                             isFreeEvent: true,
+                            freeParticipationStatus: overrideStatus || 'confirmed',
                             ...(overrideStatus === 'lisagem_gratis' ? { lisagemGratis: true } : {}),
                             isLiga,
                         });
@@ -8471,6 +8365,8 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
             }
         }
 
+        // Até as inscrições gratuitas são conferidas no servidor antes da liberação.
+        await payOrderWithTokens(externalRef, null, 0);
         // Invalidar cache de ocupação para que a barra atualize na próxima abertura
         Object.keys(scheduleCache).forEach(k => delete scheduleCache[k]);
 
@@ -8724,7 +8620,7 @@ async function checkPaymentStatus(preferenceId) {
     // Se o Netlify estiver indisponível (créditos esgotados, timeout, etc.),
     // apenas agenda novo polling via Firestore — nunca interrompe o fluxo.
     try {
-        const response = await fetch('/.netlify/functions/check-pix-status', {
+        const response = await authenticatedPaymentFetch('/.netlify/functions/confirm-purchase', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ external_reference: extRef }),
@@ -8733,7 +8629,7 @@ async function checkPaymentStatus(preferenceId) {
 
         if (response.ok) {
             const data = await response.json();
-            if (data.status === 'approved') {
+            if (data.status === 'paid' || data.status === 'already_paid') {
                 try { localStorage.removeItem('_pendingPagamento'); } catch(_) {}
                 processSuccessfulPayment(extRef);
                 return;
@@ -8757,9 +8653,67 @@ async function checkPaymentStatus(preferenceId) {
     setTimeout(() => checkPaymentStatus(preferenceId), 12000);
 }
 
+async function confirmTokenPurchaseWithBackend(externalReference) {
+    const user = window.firebaseAuth?.currentUser;
+    if (!user || typeof user.getIdToken !== 'function') {
+        return { status: 'auth_required' };
+    }
+
+    try {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/.netlify/functions/confirm-token-purchase', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ external_reference: externalReference })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 404) return { status: 'not_found' };
+        if (!response.ok && data.status !== 'needs_review') {
+            return { status: 'unavailable', message: data.error };
+        }
+        return data;
+    } catch (_) {
+        return { status: 'unavailable' };
+    }
+}
+
 async function processSuccessfulPayment(externalRef = null) {
     const extRef = externalRef || sessionStorage.getItem('lastExternalRef');
     if (!extRef) return;
+    // A URL de retorno é apenas um aviso. O servidor consulta o Mercado Pago.
+    try {
+        const { confirmPayment, paymentCompleted } = await import('./js/payment-client.js');
+        const result = await confirmPayment(window.firebaseAuth?.currentUser, extRef);
+        if (!paymentCompleted(result)) {
+            sessionStorage.setItem('lastExternalRef', extRef);
+            showToast(result.status === 'needs_review' ? 'warning' : 'info',
+                result.message || 'Pagamento ainda em confirmação. O pedido só será liberado após a conferência do servidor.',
+                'Confirmando pagamento', 8000);
+            return;
+        }
+        if (result.status === 'credited' || result.status === 'already_credited') {
+            if (window.currentUserProfile && Number.isFinite(Number(result.balance))) {
+                window.currentUserProfile.tokens = Number(result.balance);
+                updateHeaderTokenBadges();
+            }
+            sessionStorage.removeItem('lastExternalRef');
+            showToast('success', 'Tokens creditados no saldo da sua conta.', 'Compra confirmada', 8000);
+            return;
+        }
+        if (extRef.startsWith('digital_')) {
+            sessionStorage.removeItem('lastExternalRef');
+            localStorage.removeItem('_pendingPagamento');
+            showToast('success', 'Pagamento confirmado. Confira seu pedido e os arquivos em Minha Conta.', 'Compra confirmada', 8000);
+            return;
+        }
+    } catch (error) {
+        sessionStorage.setItem('lastExternalRef', extRef);
+        showToast('info', error.message || 'Não foi possível confirmar agora. Tente novamente.', 'Confirmando pagamento', 8000);
+        return;
+    }
 
     // Limpar sessão imediatamente para não reprocessar em futuras visitas
     try {
@@ -8816,6 +8770,49 @@ async function processSuccessfulPayment(externalRef = null) {
             }
 
             if (orderDoc && orderData2) {
+                const isTokenOrder = orderData2.type === 'tokens_purchase'
+                    || String(orderData2.title || '').toLowerCase().includes('token')
+                    || String(orderData2.item || '').toLowerCase().includes('token');
+                if (isTokenOrder) {
+                    const result = await confirmTokenPurchaseWithBackend(extRef);
+                    if (result.status === 'credited' || result.status === 'already_credited') {
+                        const balance = Number(result.balance);
+                        if (Number.isFinite(balance) && window.currentUserProfile) {
+                            window.currentUserProfile.tokens = balance;
+                            try {
+                                localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile));
+                            } catch (_) {}
+                        }
+                        if (typeof updateHeaderTokenBadges === 'function') updateHeaderTokenBadges();
+                        if (typeof showToast === 'function') {
+                            showToast(
+                                'success',
+                                `${result.quantity || orderData2.quantity || 0} tokens confirmados. Saldo: ${result.balance}`,
+                                'Tokens creditados',
+                                8000
+                            );
+                        }
+                    } else if (result.status === 'pending' || result.status === 'unavailable' || result.status === 'auth_required') {
+                        try { sessionStorage.setItem('lastExternalRef', extRef); } catch (_) {}
+                        if (typeof showToast === 'function') {
+                            showToast('info', 'O pagamento ainda está sendo confirmado. O saldo será atualizado automaticamente.', 'Pagamento em processamento', 8000);
+                        }
+                    } else if (result.status === 'needs_review') {
+                        try { sessionStorage.setItem('lastExternalRef', extRef); } catch (_) {}
+                        if (typeof showToast === 'function') {
+                            showToast('warning', result.message || 'O pagamento precisa de conferência antes de liberar os tokens.', 'Verificação necessária', 9000);
+                        }
+                    } else if (result.status === 'not_found') {
+                        if (typeof showToast === 'function') {
+                            showToast('warning', 'Este pedido antigo não está vinculado ao checkout seguro. O saldo não foi alterado; entre em contato com o suporte.', 'Compra em verificação', 10000);
+                        }
+                    } else if (typeof showToast === 'function') {
+                        try { sessionStorage.setItem('lastExternalRef', extRef); } catch (_) {}
+                        showToast('info', 'Não foi possível confirmar o pagamento agora. Tente novamente em instantes.', 'Pagamento em processamento', 8000);
+                    }
+                    return;
+                }
+
                 // Registrar comissão e cupom ANTES de tentar atualizar status
                 // Fallback: se a order não tem affiliateCode, tenta sessionStorage → localStorage
                 const _orderAff = orderData2.affiliateCode
@@ -8854,39 +8851,6 @@ async function processSuccessfulPayment(externalRef = null) {
                         }
                         return;
                     }
-                }
-                // Creditar tokens se for compra de tokens
-                if (orderData2.type === 'tokens_purchase' || String(orderData2.title || '').toLowerCase().includes('token')) {
-                    const _tokenQty = Number(orderData2.quantity || orderData2.total || orderData2.amount || 0);
-                    if (_tokenQty > 0 && window.firebaseAuth?.currentUser) {
-                        try {
-                            const _uid = window.firebaseAuth.currentUser.uid;
-                            const { doc: _docFn, getDoc: _getFn, updateDoc: _updFn } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                            const _uRef = _docFn(window.firebaseDb, 'users', _uid);
-                            const _uSnap = await _getFn(_uRef);
-                            if (_uSnap.exists()) {
-                                const _saldoAtual = Number(_uSnap.data().tokens || 0);
-                                const _novoSaldo = Number((_saldoAtual + _tokenQty).toFixed(2));
-                                await _updFn(_uRef, { tokens: _novoSaldo });
-                                // Atualizar em memória para refletir imediatamente
-                                if (window.currentUserProfile) {
-                                    window.currentUserProfile.tokens = _novoSaldo;
-                                    try { localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile)); } catch(_) {}
-                                }
-                                if (typeof updateHeaderTokenBadges === 'function') updateHeaderTokenBadges();
-                                if (typeof showToast === 'function') {
-                                    showToast('success', `${_tokenQty} token${_tokenQty > 1 ? 's' : ''} creditado${_tokenQty > 1 ? 's' : ''} na sua conta! Saldo: ${_novoSaldo}`, 'Tokens Creditados 🎮', 8000);
-                                }
-                                return;
-                            }
-                        } catch (_tokErr) {
-                            console.warn('[processSuccessfulPayment] Erro ao creditar tokens:', _tokErr?.message);
-                        }
-                    }
-                    if (typeof showToast === 'function') {
-                        showToast('success', 'Pagamento de tokens confirmado! Seu saldo será atualizado em instantes.', 'Tokens em Processamento 🎮', 8000);
-                    }
-                    return;
                 }
                 // Notificar admin para pedidos de Passe Booyah
                 if (orderData2.productId === 'passe-booyah') {
@@ -8949,63 +8913,7 @@ async function processSuccessfulPayment(externalRef = null) {
         }, 400);
     }
 
-    // ── PASSO 4: Atualizar status das registrations para 'paid' ──
-    try {
-        const batch = writeBatch(window.firebaseDb);
-        let hasBatch = false;
-        snap.forEach(d => {
-            const data = d.data();
-            if (currentUid && data.userId && data.userId !== currentUid) return;
-            if (data.status === 'paid') return; // já pago, não reescrever
-            batch.update(doc(window.firebaseDb, 'registrations', d.id), {
-                status: 'paid',
-                paidAt: serverTimestamp()
-            });
-            hasBatch = true;
-        });
-        if (hasBatch) await batch.commit();
-    } catch (updErr) {
-        // Pode falhar por regra Firestore — o webhook do MP trata isso no backend
-        console.warn('[processSuccessfulPayment] Não foi possível atualizar registration (webhook tratará):', updErr?.code || updErr?.message);
-    }
-
-    // ── PASSO 5: Garantir entrada em orders (visível em Meus Pedidos) ──
-    try {
-        const firstReg = snap.docs[0].data();
-        const ordersRef = collection(window.firebaseDb, 'orders');
-        const orderSnap = await getDocs(query(ordersRef, where('external_reference', '==', extRef)));
-        if (orderSnap.empty) {
-            await addDoc(ordersRef, {
-                title:          firstReg.title || firstReg.eventType || 'Evento',
-                description:    firstReg.title || firstReg.eventType || 'Evento',
-                item:           firstReg.title || firstReg.eventType || 'Evento',
-                amount:         firstReg.price || 0,
-                total:          firstReg.price || 0,
-                quantity:       1,
-                currency:       'BRL',
-                status:         'paid',
-                customer:       firstReg.email || firstReg.contact || '',
-                customerName:   firstReg.teamName || '',
-                buyerEmail:     firstReg.email || '',
-                userId:         firstReg.userId || currentUid || null,
-                uid:            firstReg.userId || currentUid || null,
-                external_reference: extRef,
-                eventType:      firstReg.eventType || '',
-                slotDisplay:    firstReg.slotDisplay || null,
-                schedule:       firstReg.schedule || '',
-                type:           'event',
-                createdAt:      serverTimestamp(),
-                timestamp:      Date.now()
-            });
-        } else if (orderSnap.docs[0].data().status !== 'paid') {
-            await updateDoc(doc(window.firebaseDb, 'orders', orderSnap.docs[0].id), {
-                status: 'paid',
-                paidAt: serverTimestamp()
-            });
-        }
-    } catch (orderErr) {
-        console.warn('[processSuccessfulPayment] Erro ao criar/atualizar order:', orderErr?.code || orderErr?.message);
-    }
+    showToast('success', 'Pagamento confirmado no servidor. Confira Meus Pedidos.', 'Compra confirmada');
 }
 
 function closeTokensModal() {
@@ -9042,17 +8950,11 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
         }
     }
 
-    // Debitar tokens
-    const debitSuccess = await spendTokens(finalPrice);
-    if (!debitSuccess) {
-        showErrorToast('Erro ao debitar tokens', 'TOKEN_002');
-        return;
-    }
-
-    // Criar registros com status 'confirmed'
+    // Criar reservas pendentes; débito e confirmação são uma única transação.
     const externalRef = `tokens_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     try {
-        const { regIds, assignedSlots: assignedSlotsTokens } = await createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, 'confirmed', appliedScheduleCoupon);
+        const { regIds, assignedSlots: assignedSlotsTokens } = await createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, 'pending', appliedScheduleCoupon);
+        await payOrderWithTokens(externalRef, _capturedTokenCoupon?.code || null, finalPrice);
 
         // Registrar uso de cupom de evento (tokens) se aplicado
         if (_capturedTokenCoupon) {
@@ -9094,9 +8996,7 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
             showSuccessToast('Pagamento com tokens confirmado! Verifique seus pedidos.', 'Sucesso');
         }
     } catch (error) {
-        // Reembolsar tokens
-        await grantTokens(finalPrice);
-        showErrorToast('Erro ao criar agendamento. Tokens devolvidos.', 'ERRO');
+        showErrorToast(error.message || 'Não foi possível concluir. Confira Meus Pedidos antes de tentar novamente.', 'ERRO');
     }
 }
 
@@ -9356,10 +9256,7 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                     whatsappLink: whatsappLink || null,
                     hour: normalizedHour || null,
                     affiliateCode: getActiveAffiliateCode(couponInfo?.affiliateId || null),
-                    ...(status === 'confirmed' || status === 'paid' ? {
-                        paidWithTokens: true,
-                        tokensUsed: price,
-                    } : {})
+                    // Dados de pagamento são gravados somente pelo servidor.
                 });
                 regIds.push(docRef.id);
                 assignedSlots.push({ team: finalTeamName, slot: slotDisplay, schedule, isLiga });
@@ -10219,7 +10116,7 @@ async function openEventPayment(eventId, eventName, preco) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-        const response = await fetch('/.netlify/functions/create-preference', {
+        const response = await authenticatedPaymentFetch('/.netlify/functions/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -10376,12 +10273,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     _pixConfirmFn = async () => {
         clearInterval(_pixPollingInterval);
         clearInterval(_pixCountdownInterval);
-        if (regIds && regIds.length) {
-            try {
-                const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                await Promise.all(regIds.map(id => updateDoc(doc(window.firebaseDb, 'registrations', id), { status: 'confirmed' })));
-            } catch (e) { console.warn('[PIX] Erro ao confirmar registros:', e && e.message); }
-        }
+        // A consulta autenticada já confirmou as reservas no servidor.
         const pixContentEl = document.getElementById('pixContent');
         const pixConfirmedEl = document.getElementById('pixConfirmed');
         if (pixContentEl) pixContentEl.classList.add('hidden');
@@ -10422,14 +10314,14 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     clearInterval(_pixPollingInterval);
     _pixPollingInterval = setInterval(async function() {
         try {
-            const r = await fetch('/.netlify/functions/check-pix-status', {
+            const r = await authenticatedPaymentFetch('/.netlify/functions/confirm-purchase', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ external_reference: externalRef }),
             });
             if (!r.ok) return;
             const d = await r.json();
-            if (d.status === 'approved') {
+            if (d.status === 'paid' || d.status === 'already_paid') {
                 if (typeof _pixConfirmFn === 'function') await _pixConfirmFn();
             } else if (d.status === 'rejected' || d.status === 'cancelled') {
                 clearInterval(_pixPollingInterval);

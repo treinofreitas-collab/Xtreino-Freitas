@@ -2695,12 +2695,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const ts = r.createdAt?.toDate?.()?.getTime?.() || r.timestamp || 0;
         if ((r.external_reference || r.external_reference) && ts >= since){
           checked++;
-          const res = await fetch('/.netlify/functions/check-payment-status', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ external_reference: r.external_reference }) });
-          if (res.ok){
-            const data = await res.json();
+          {
+            const { confirmPayment } = await import('./js/payment-client.js');
+            const data = await confirmPayment(window.firebaseAuth.currentUser, r.external_reference);
             const st = String(data?.status||'').toLowerCase();
-            if (['approved','paid','accredited'].includes(st)){
-              await updateDoc(doc(window.firebaseDb,'registrations', d.id), { status:'paid', paidAt: Date.now() });
+            if (['paid','already_paid'].includes(st)){
               approved++;
             }
           }
@@ -2714,33 +2713,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const ts = o.createdAt?.toDate?.()?.getTime?.() || o.timestamp || 0;
         if ((o.external_reference || o.preference_id) && ts >= since){
           ordersChecked++;
-          const payload = o.external_reference ? { external_reference: o.external_reference } : { preference_id: o.preference_id };
-          const res = await fetch('/.netlify/functions/check-payment-status', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
-          if (res.ok){
-            const data = await res.json();
+          {
+            const { confirmPayment } = await import('./js/payment-client.js');
+            const data = await confirmPayment(window.firebaseAuth.currentUser, o.external_reference || d.id);
             const st = String(data?.status||'').toLowerCase();
-            if (['approved','paid','accredited'].includes(st)){
-              await updateDoc(doc(window.firebaseDb,'orders', d.id), { status:'paid', paidAt: Date.now(), paymentStatus: 'approved' });
+            if (['paid','already_paid','credited','already_credited'].includes(st)){
               ordersApproved++;
-              // Se for compra de tokens, creditar saldo
-              const isTokens = /token/i.test(String(o.title||'')) || /token/i.test(String(o.item||'')) || /token/i.test(String(o.description||''));
-              if (isTokens){
-                try{
-                  const email = o.customer || o.buyerEmail;
-                  if (email){
-                    const { getDocs: g2, query: q2, where: w2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                    const usersRef = collection(window.firebaseDb,'users');
-                    const userSnap = await g2(q2(usersRef, w2('email','==', email)));
-                    if (!userSnap.empty){
-                      const u = userSnap.docs[0];
-                      const current = Number(u.data().tokens||0);
-                      const qty = parseInt(String(o.title||'').match(/(\\d+)/)?.[1] || '1', 10);
-                      await updateDoc(doc(window.firebaseDb,'users', u.id), { tokens: current + qty });
-                      tokensCredited += qty;
-                    }
-                  }
-                }catch(_){}
-              }
+              // O saldo já foi creditado pelo servidor com proteção contra duplicidade.
+              if (st === 'credited') tokensCredited += Number(data.quantity || 0);
             }
           }
         }
@@ -4103,25 +4083,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
         verifyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
         try {
-          const resp = await fetch('/.netlify/functions/check-pix-status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ external_reference: extRef })
-          });
+          const { confirmPayment } = await import('./js/payment-client.js');
+          const data = await confirmPayment(window.firebaseAuth.currentUser, extRef);
 
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
-          const data = await resp.json();
-
-          if (data.status === 'approved') {
-            // Atualizar status no Firestore
-            const { doc: _doc, updateDoc: _upd, serverTimestamp: _sts } =
-              await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            await _upd(_doc(window.firebaseDb, 'registrations', regId), {
-              status: 'paid',
-              paidAt: _sts(),
-              confirmedByAdmin: true,
-              confirmedAt: _sts()
-            });
+          if (data.status === 'paid' || data.status === 'already_paid') {
             showToast('success', '✅ Pagamento confirmado! Status atualizado para Pago.', 'Confirmado');
             // Reabrir o modal atualizado
             try{ await loadBoard(); }catch(_){}
@@ -5071,13 +5036,7 @@ async function approveOrder(orderId) {
         // Montar patch base
         const patch = { status: 'approved', approvedAt: Date.now() };
 
-        // Se for Passe Booyah/Elite, marcar como enviado automaticamente
-        const titleLow = (orderData.title || orderData.item || '').toLowerCase();
-        const pidLow = (orderData.productId || '').toLowerCase();
-        if (titleLow.includes('passe') || titleLow.includes('booyah') || titleLow.includes('elite') || pidLow.includes('passe') || pidLow.includes('booyah')) {
-            patch.booyahConfirmed = true;
-            patch.booyahConfirmedAt = new Date();
-        }
+        // Aprovar um pagamento não significa que o Passe Booyah foi enviado.
 
         await updateDoc(orderRef, patch);
 

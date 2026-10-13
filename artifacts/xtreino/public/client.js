@@ -1,3 +1,5 @@
+import { paymentFetch, confirmPayment, paymentCompleted } from './js/payment-client.js';
+
 // ==================== TOAST NOTIFICATION SYSTEM ====================
 let confirmResolve = null;
 
@@ -3208,6 +3210,57 @@ function getStatusText(status, orderData = null) {
  * Varre todos os seus registrations e orders com status pending
  * e que tenham external_reference, e tenta confirmá-los via API.
  */
+function isTokenPurchaseOrder(order) {
+    const data = order?.data || order || {};
+    return data.type === 'tokens_purchase'
+        || String(data.title || '').toLowerCase().includes('token')
+        || String(data.item || '').toLowerCase().includes('token');
+}
+
+async function confirmTokenPurchaseOnServer(externalReference) {
+    const user = auth?.currentUser || currentUser;
+    if (!user || typeof user.getIdToken !== 'function') {
+        return { handled: true, status: 'auth_required' };
+    }
+
+    const idToken = await user.getIdToken();
+    const response = await fetch('/.netlify/functions/confirm-token-purchase', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ external_reference: externalReference })
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (response.status === 404) return { handled: true, status: 'not_found' };
+    if (!response.ok && data.status !== 'needs_review') {
+        return { handled: true, status: 'unavailable', message: data.error };
+    }
+
+    if (data.status === 'credited' || data.status === 'already_credited') {
+        const balance = Number(data.balance);
+        if (Number.isFinite(balance)) {
+            if (userProfile) userProfile.tokens = balance;
+            if (window.currentUserProfile) window.currentUserProfile.tokens = balance;
+            try {
+                localStorage.setItem(
+                    'assoc_profile',
+                    JSON.stringify(window.currentUserProfile || userProfile)
+                );
+            } catch (_) {}
+            const balanceEl = document.getElementById('myTokenBalance');
+            if (balanceEl) balanceEl.textContent = `${balance} Tokens`;
+            const availableEl = document.getElementById('availableTokens');
+            if (availableEl) availableEl.textContent = balance;
+            if (typeof updateHeaderTokenBadges === 'function') updateHeaderTokenBadges();
+        }
+    }
+
+    return { handled: true, ...data };
+}
+
 async function reconcilePendingPayments() {
     if (!currentUser || !currentUser.uid) return;
 
@@ -3234,17 +3287,15 @@ async function reconcilePendingPayments() {
 
         for (const ref of uniqueRefs) {
             try {
-                // Usa /api/check-payment-status (API Server interno) em vez da Netlify function
-                const response = await fetch('/api/check-payment-status', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ external_reference: ref })
-                });
-                if (!response.ok) continue;
-                const data = await response.json();
-                if (data.status === 'approved') {
+                const tokenOrder = pendingOrders.find(order =>
+                    order.data.external_reference === ref && isTokenPurchaseOrder(order)
+                );
+                if (tokenOrder) {
                     await processSuccessfulPayment(ref);
+                    continue;
                 }
+
+                await processSuccessfulPayment(ref);
             } catch (_) { /* ignora erros por ref */ }
             await new Promise(r => setTimeout(r, 200));
         }
@@ -3264,166 +3315,36 @@ async function processSuccessfulPayment(externalRef = null) {
     const extRef = externalRef || sessionStorage.getItem('lastExternalRef');
     
     if (!extRef) return;
-
-    // Recuperar IDs salvos (se houver)
-    let regIds = [];
     try {
-        const storedIds = sessionStorage.getItem('lastRegIds');
-        if (storedIds) regIds = JSON.parse(storedIds);
-    } catch(e) {}
-
-    try {
-        const { collection, query, where, getDocs, doc, getDoc, updateDoc, addDoc, serverTimestamp, writeBatch } =
-            await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
-        // ── COMPRA DE TOKENS ──
-        // Busca direta por ID do documento (external_reference === docId)
-        const _uid = auth?.currentUser?.uid || currentUser?.uid;
-        const _fdb = window.firebaseDb || db;
-        if (_uid && _fdb && extRef) {
-            try {
-                // Tenta busca direta por doc ID primeiro (sem índice, mais confiável)
-                let _oData = null;
-                let _oDocId = null;
-                try {
-                    const _directSnap = await getDoc(doc(_fdb, 'orders', extRef));
-                    if (_directSnap.exists()) {
-                        _oData = _directSnap.data();
-                        _oDocId = _directSnap.id;
-                    }
-                } catch(_) {}
-
-                // Fallback: query por external_reference (caso external_reference != docId)
-                if (!_oData) {
-                    try {
-                        const _qSnap = await getDocs(query(
-                            collection(_fdb, 'orders'),
-                            where('external_reference', '==', extRef),
-                            where('userId', '==', _uid)
-                        ));
-                        if (!_qSnap.empty) {
-                            _oData = _qSnap.docs[0].data();
-                            _oDocId = _qSnap.docs[0].id;
-                        }
-                    } catch(_) {}
-                }
-
-                if (_oData) {
-                    const _isTokenOrder = _oData.type === 'tokens_purchase'
-                        || String(_oData.title || '').toLowerCase().includes('token')
-                        || String(_oData.item || '').toLowerCase().includes('token');
-                    if (_isTokenOrder) {
-                        const _qty = Number(_oData.quantity || _oData.total || _oData.amount || 0);
-                        // Marcar pedido como pago
-                        if (_oData.status !== 'paid' && _oDocId) {
-                            try { await updateDoc(doc(_fdb, 'orders', _oDocId), { status: 'paid', paidAt: serverTimestamp(), external_reference: extRef }); } catch(_) {}
-                        }
-                        // Creditar tokens
-                        if (_qty > 0) {
-                            const _uRef = doc(_fdb, 'users', _uid);
-                            const _uSnap = await getDoc(_uRef);
-                            const _saldoAtual = Number(_uSnap.exists() ? (_uSnap.data().tokens || 0) : 0);
-                            const _novoSaldo = Number((_saldoAtual + _qty).toFixed(2));
-                            await updateDoc(_uRef, { tokens: _novoSaldo });
-                            if (userProfile) userProfile.tokens = _novoSaldo;
-                            if (window.currentUserProfile) window.currentUserProfile.tokens = _novoSaldo;
-                            try { localStorage.setItem('assoc_profile', JSON.stringify(window.currentUserProfile || userProfile)); } catch(_) {}
-                            const balEl = document.getElementById('myTokenBalance');
-                            if (balEl) balEl.textContent = `${_novoSaldo} Tokens`;
-                            const avEl = document.getElementById('availableTokens');
-                            if (avEl) avEl.textContent = _novoSaldo;
-                            showToast('success', `${_qty} token${_qty > 1 ? 's' : ''} creditado${_qty > 1 ? 's' : ''} na sua conta! Saldo: ${_novoSaldo}`, 'Tokens Creditados 🎮', 8000);
-                        }
-                        try { sessionStorage.removeItem('lastExternalRef'); } catch(_) {}
-                        return;
-                    }
-                }
-            } catch(_tokErr) {
-                showToast('info', 'Pagamento confirmado! Tokens serão creditados em instantes.', 'Pagamento OK 🎮', 8000);
-            }
-        }
-
-        // ── PRODUTO DIGITAL (external_reference = "digital_<orderId>") ──
-        if (extRef && extRef.startsWith('digital_')) {
-            const orderId = extRef.replace('digital_', '');
-            const orderRef = doc(window.firebaseDb, 'orders', orderId);
-            const orderSnap = await getDoc(orderRef);
-            if (orderSnap.exists() && orderSnap.data().status !== 'paid') {
-                const orderData = orderSnap.data();
-                await updateDoc(orderRef, { status: 'paid', paidAt: serverTimestamp() });
-                // Notificar admin se for Passe Booyah
-                if (orderData.productId === 'passe-booyah') {
-                    try {
-                        await addDoc(collection(window.firebaseDb, 'notifications'), {
-                            title: '🎮 Novo pedido — Passe Booyah',
-                            message: `Cliente: ${orderData.customerName || orderData.customer || 'Desconhecido'} (${orderData.buyerEmail || orderData.customer || ''})\nPlayer ID: ${orderData.productOptions?.playerId || 'Não informado'}\nPedido #${orderId}`,
-                            type: 'admin_booyah',
-                            createdAt: serverTimestamp()
-                        });
-                    } catch (_) {}
-                }
-            }
-            // Recarregar pedidos se estiver na aba correta
-            const activeTab = document.querySelector('.tab-content:not(.hidden)')?.id;
-            if (activeTab === 'ordersContent') loadOrders();
+        const result = await confirmPayment(auth?.currentUser || currentUser, extRef);
+        if (!paymentCompleted(result)) {
+            sessionStorage.setItem('lastExternalRef', extRef);
+            if (result.status === 'needs_review') showToast('warning', result.message || 'Solicite conferência deste pedido ao suporte.', 'Verificação necessária');
             return;
         }
-
-        // ── EVENTO (registrations) ──
-        const regsRef = collection(window.firebaseDb, 'registrations');
-        const q = query(
-            regsRef,
-            where('external_reference', '==', extRef),
-            where('userId', '==', auth.currentUser.uid)
-        );
-        const snap = await getDocs(q);
-
-        const batch = writeBatch(window.firebaseDb);
-        snap.forEach(d => {
-            const ref = doc(window.firebaseDb, 'registrations', d.id);
-            batch.update(ref, { status: 'paid', paidAt: serverTimestamp() });
-        });
-        if (!snap.empty) await batch.commit();
-
-        // Garantir entrada em orders para eventos
-        if (!snap.empty) {
-            const firstReg = snap.docs[0].data();
-            const ordersRef = collection(window.firebaseDb, 'orders');
-            const orderQ = query(ordersRef,
-                where('external_reference', '==', extRef),
-                where('userId', '==', auth.currentUser.uid)
-            );
-            const orderSnap2 = await getDocs(orderQ);
-            if (orderSnap2.empty) {
-                await addDoc(ordersRef, {
-                    title: firstReg.title || firstReg.eventType || 'Evento',
-                    description: firstReg.title || firstReg.eventType || 'Evento',
-                    item: firstReg.title || firstReg.eventType || 'Evento',
-                    amount: firstReg.price || 0,
-                    total: firstReg.price || 0,
-                    quantity: 1,
-                    currency: 'BRL',
-                    status: 'paid',
-                    customer: firstReg.email || firstReg.contact || '',
-                    customerName: firstReg.teamName || '',
-                    buyerEmail: firstReg.email || '',
-                    userId: firstReg.userId || auth.currentUser.uid || null,
-                    uid: firstReg.userId || auth.currentUser.uid || null,
-                    external_reference: extRef,
-                    createdAt: serverTimestamp(),
-                    timestamp: Date.now(),
-                    type: 'event'
-                });
-            } else {
-                const existingOrder = orderSnap2.docs[0];
-                if (existingOrder.data().status !== 'paid') {
-                    await updateDoc(doc(window.firebaseDb, 'orders', existingOrder.id), {
-                        status: 'paid', paidAt: serverTimestamp()
-                    });
-                }
-            }
+        if (Number.isFinite(Number(result.balance))) {
+            if (userProfile) userProfile.tokens = Number(result.balance);
+            if (window.currentUserProfile) window.currentUserProfile.tokens = Number(result.balance);
+            const balanceEl = document.getElementById('myTokenBalance');
+            if (balanceEl) balanceEl.textContent = `${result.balance} Tokens`;
         }
-    } catch (_) { /* ignora */ }
+        sessionStorage.removeItem('lastExternalRef');
+        sessionStorage.removeItem('mp_pending_ref');
+        sessionStorage.removeItem('mp_pending_status');
+        sessionStorage.removeItem('lastRegIds');
+        localStorage.removeItem('_pendingPagamento');
+        showToast('success', 'Pagamento confirmado no servidor. Seu pedido está disponível.', 'Compra confirmada');
+        const active = document.querySelector('.tab-content:not(.hidden)')?.id;
+        if (active === 'ordersContent') await loadOrders();
+        if (active === 'productsContent') await loadProducts();
+        if (active === 'dashboardContent') await loadDashboard();
+        return;
+    } catch (error) {
+        sessionStorage.setItem('lastExternalRef', extRef);
+        showToast('info', error.message || 'Confirmação temporariamente indisponível.', 'Pagamento em confirmação');
+        return;
+    }
+
 }
 
 // Token purchase functions - expostas globalmente
@@ -3462,7 +3383,10 @@ window.applyTokenCoupon = async function(){
     if (!data.isActive){ msgEl.textContent='Cupom inativo'; msgEl.className='text-xs mt-1 text-red-600'; return; }
     if (data.expirationDate){ const exp = data.expirationDate.toDate ? data.expirationDate.toDate() : new Date(data.expirationDate); if (exp < new Date()){ msgEl.textContent='Cupom expirado'; msgEl.className='text-xs mt-1 text-red-600'; return; } }
     const usage = (data.usageType||'both').toLowerCase();
-    if (!(usage==='both' || usage==='tokens' || usage==='store')){ /* allow by default */ }
+    if (!(usage==='both' || usage==='tokens' || usage==='store')){
+      if(msgEl){ msgEl.textContent='Este cupom não é válido para compra de tokens'; msgEl.className='text-xs mt-1 text-red-600'; }
+      return;
+    }
     // salvar
     appliedTokenCoupon = {
       id: data.id,
@@ -3512,121 +3436,40 @@ window.setSelectedTokensQty = function(qty){
 
 window.purchaseTokens = async function(quantity) {
     try {
-        // Re-initialize Firebase if needed
         if (!db) {
-            
             initializeFirebase();
             if (!db) { alert('Erro: Firebase não foi inicializado. Recarregue a página.'); return; }
         }
 
-        // Determine base quantity and price (R$1 per token)
         const baseQty = Number(quantity || selectedTokensQty || 0);
         if (!baseQty || baseQty <= 0) { alert('Selecione a quantidade de tokens'); return; }
-        let price = baseQty * 1.00;
-        if (appliedTokenCoupon) {
-            const discount = appliedTokenCoupon.discountType === 'percentage'
-                ? price * (appliedTokenCoupon.discountValue / 100)
-                : appliedTokenCoupon.discountValue;
-            price = Math.max(0, Number((price - discount).toFixed(2)));
-        }
 
-        // Ensure authenticated
-        const currentUser = auth?.currentUser;
-        if (!currentUser) { alert('Você precisa estar logado para comprar tokens'); return; }
+        const user = auth?.currentUser;
+        if (!user) { alert('Você precisa estar logado para comprar tokens'); return; }
 
-        const activeAffiliateCode = getActiveAffiliateCode(); // sem parâmetro, usa stored ou null       
-
-        // 1) Create order in Firestore before requesting preference
-        const orderData = {
-            title: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
-            description: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
-            item: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
-            type: 'tokens_purchase',
-            amount: price,
-            total: price,
-            quantity: baseQty,
-            currency: 'BRL',
-            status: 'pending',
-            customer: currentUser.email,
-            buyerEmail: currentUser.email,
-            userId: currentUser.uid,
-            uid: currentUser.uid,
-            createdAt: new Date(),
-            timestamp: Date.now(),
-            affiliateCode: activeAffiliateCode || null
-        };
-
-        let savedOrderId = null;
-        try {
-            const docRef = await addDoc(collection(db, 'orders'), orderData);
-            savedOrderId = docRef.id;
-            // Gravar external_reference imediatamente (antes de chamar a Netlify function)
-            try {
-                await updateDoc(doc(db, 'orders', savedOrderId), {
-                    external_reference: savedOrderId,
-                    type: 'tokens_purchase'
-                });
-            } catch(_) {}
-        } catch (err) {
-            savedOrderId = `tokens_${currentUser.uid}_${Date.now()}`;
-        }
-
-        // 2) Request server-side to create Mercado Pago preference and pass external_reference as order id
-        
-        const payload = {
-        title: `${baseQty} Token${baseQty > 1 ? 's' : ''} XTreino`,
-        quantity: baseQty, // COMO ESTAVA ANTES quantity: 1 isso faz que a quantidade de tokens sempre seja 1 independente do selecionado
-        unit_price: 1,
-        currency_id: 'BRL',
-        back_url: window.location.origin + window.location.pathname,
-        external_reference: savedOrderId,
-        // Identificação do usuário para o fallback do create-preference e webhook
-        userId: currentUser.uid,
-        customerEmail: currentUser.email,
-        coupon_info: appliedTokenCoupon ? {
-                id: appliedTokenCoupon.id,
-                code: appliedTokenCoupon.code,
-                discountType: appliedTokenCoupon.discountType,
-                discountValue: appliedTokenCoupon.discountValue,
-                context: 'tokens',
-                // Redundância de identificação também dentro do coupon_info
-                userId: currentUser.uid,
-                email: currentUser.email
-            } : undefined
-        };
-
-        // Mark this as tokens purchase to help webhook/server-side handling
-        payload.type = 'tokens_purchase';
-        
-        const response = await fetch('/.netlify/functions/create-preference', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        const idToken = await user.getIdToken();
+        const response = await fetch('/.netlify/functions/create-token-preference', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({
+                quantity: baseQty,
+                couponCode: appliedTokenCoupon?.code || null,
+                affiliateCode: getActiveAffiliateCode() || null
+            })
         });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Não foi possível iniciar o pagamento.');
 
-        if (!response.ok) throw new Error('Erro ao criar preferência');
-        const data = await response.json();
-
-        if (!data || !data.init_point) {
-            // mark order as error
-            if (savedOrderId && db) {
-                try { const ordRef = doc(db, 'orders', savedOrderId); await updateDoc(ordRef, { status: 'error' }); } catch(_) {}
-            }
+        if (!data || !data.init_point || !data.external_reference) {
             showToast('error', 'Erro ao iniciar pagamento. Tente novamente.', 'Erro');
             return;
         }
 
-        // 3) Save preference metadata into order and redirect
-        try {
-            if (savedOrderId && db) {
-                const ordRef = doc(db, 'orders', savedOrderId);
-                await updateDoc(ordRef, { external_reference: data.external_reference || savedOrderId, preference_id: data.id, paymentUrl: data.init_point });
-            }
-        } catch (updErr) {
-            
-        }
-
         closeTokensPurchaseModal();
-        // Salvar referência para processar o retorno do MP
-        const _finalExtRef = data.external_reference || savedOrderId;
+        const _finalExtRef = data.external_reference;
         try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
         try { sessionStorage.setItem('lastExternalRef', _finalExtRef); } catch(_) {}
         // Redirecionar na mesma aba (evita popup bloqueado / card branco)
@@ -3684,101 +3527,16 @@ window.changeWhatsAppPage = function(page) {
 // Compra rápida de tokens (botões diretos) - exposta globalmente
 window.purchaseTokensQuick = async function(quantity) {
     try {
-        // Verificar se Firebase está inicializado
-        if (!db) {
-            
-            initializeFirebase();
-            if (!db) {
-                alert('Erro: Firebase não foi inicializado. Recarregue a página.');
-                return;
-            }
-        }
-        
-        const currentUser = auth.currentUser;
+        const currentUser = auth?.currentUser;
         if (!currentUser) {
             alert('Você precisa estar logado para comprar tokens');
             return;
         }
-
-        const price = quantity * 1.00; // R$ 1,00 por token
-        
-        // Confirmar compra
+        const price = Number(quantity) * 1;
         const confirmMessage = `Confirmar compra de ${quantity} token${quantity > 1 ? 's' : ''} por R$ ${price.toFixed(2)}?`;
-        if (!confirm(confirmMessage)) {
-            return;
-        }
-
-        // Criar preferência de pagamento
-        const prefPayload = {
-            items: [{ title: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`, quantity, unit_price: 1.00 }],
-            external_reference: `tokens_${currentUser.uid}_${Date.now()}`,
-            type: 'tokens_purchase',
-            // Garantir que o backend saiba quem é o dono do pedido mesmo em fallback
-            userId: currentUser.uid,
-            customerEmail: currentUser.email
-        };
-        
-        const response = await fetch('/.netlify/functions/create-preference', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prefPayload)
-        });
-
-        const data = await response.json();
-        
-        if (data.init_point) {
-            // Salvar order no Firestore ANTES de redirecionar
-            try {
-                     
-                if (currentUser && db) {
-                    const activeAffiliateCode = getActiveAffiliateCode(); // sem parâmetro, usa stored ou null
-
-                    const orderData = {
-                    title: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
-                    description: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
-                    item: `${quantity} Token${quantity > 1 ? 's' : ''} XTreino`,
-                    amount: price,
-                    total: price,
-                    quantity: quantity,
-                    currency: 'BRL',
-                    status: 'pending',
-                    external_reference: data.external_reference,
-                    preference_id: data.id,
-                    customer: currentUser.email,
-                    buyerEmail: currentUser.email,
-                    userId: currentUser.uid,
-                    uid: currentUser.uid,
-                    createdAt: new Date(),
-                    timestamp: Date.now(),
-                    affiliateCode: activeAffiliateCode || null
-                };
-                
-                    
-                    const docRef = await addDoc(collection(db, 'orders'), orderData);
-                    
-                } else {
-                    
-                    
-                    
-                }
-            } catch (firestoreError) {
-                
-                console.error('❌ Error details:', {
-                    message: firestoreError.message,
-                    code: firestoreError.code,
-                    stack: firestoreError.stack
-                });
-                showToast('error', `Erro ao salvar pedido antes do pagamento: ${firestoreError && firestoreError.message ? firestoreError.message : String(firestoreError)}`, 'Erro');
-                // Continuar mesmo se der erro no Firestore
-            }
-            
-            // Redirecionar na mesma aba (evita popup bloqueado / card branco)
-            try { sessionStorage.setItem('lastCheckoutUrl', data.init_point); } catch(_) {}
-            try { sessionStorage.setItem('lastExternalRef', data.external_reference || prefPayload.external_reference); } catch(_) {}
-            window.location.href = data.init_point;
-        } else {
-            showToast('error', 'Erro ao iniciar pagamento. Tente novamente.', 'Erro');
-        }
+        if (!confirm(confirmMessage)) return;
+        return window.purchaseTokens(quantity);
     } catch (error) {
-        
         showToast('error', `Erro ao processar compra rápida: ${error && error.message ? error.message : String(error)}`, 'Erro');
     }
 }

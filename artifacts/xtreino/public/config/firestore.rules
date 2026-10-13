@@ -45,7 +45,8 @@ service cloud.firestore {
           'gilmariofreitas378@gmail.com',
           'gilmariofreitas387@gmail.com',
           'flavetyr@gmail.com',
-          'admin@xtreino.dev'
+          'admin@xtreino.dev',
+          'admin.local@xtreino.dev'
         ];
     }
 
@@ -59,7 +60,8 @@ service cloud.firestore {
            'gilmariofreitas378@gmail.com',
            'gilmariofreitas387@gmail.com',
            'flavetyr@gmail.com',
-           'admin@xtreino.dev'
+           'admin@xtreino.dev',
+           'admin.local@xtreino.dev'
          ]) ||
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['design','Design','DESIGN','Designer','DESIGNER','designer','Desgin','DESGIN','desgin']
       );
@@ -100,7 +102,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSelf(userId) || canReadAll() ||
         (isSignedIn() && resource.data.affiliateStatus in ['active', 'pending', 'inactive']);
-      allow create: if isSelf(userId) || isAdmin();
+      allow create: if
+        (isSelf(userId) && request.resource.data.tokens == 0 &&
+         request.resource.data.role in ['Usuario', 'Usuário', 'usuario', 'Associado', 'Associado Treino', 'Cliente', 'cliente']) ||
+        isAdmin();
       allow update: if (isSelf(userId) && hasNoProtectedFieldChanges()) ||
                        (isSelf(userId) &&
                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tokens']) &&
@@ -121,13 +126,16 @@ service cloud.firestore {
     // orders
     match /orders/{orderId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || canReadAll());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if canReadAll() || (isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.type != 'tokens_purchase' &&
+        !request.resource.data.keys().hasAny(['paidWithTokens', 'tokensCredited', 'paymentId', 'paidAt', 'verifiedOnServer']));
       allow update: if canReadAll() ||
-                    (isSignedIn() &&
-                     resource.data.userId == request.auth.uid &&
-                     resource.data.status == 'pending' &&
-                     request.resource.data.status == 'paid' &&
-                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAt']));
+        (isSignedIn() && resource.data.userId == request.auth.uid &&
+         resource.data.status == 'pending' &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['external_reference']) &&
+         request.resource.data.external_reference == 'digital_' + orderId);
       allow delete: if isAdmin() || isGerente();
     }
 
@@ -144,13 +152,11 @@ service cloud.firestore {
         )
       );
       allow list: if true;
-      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || canReadAll());
-      allow update: if canReadAll() ||
-                    (isSignedIn() &&
-                     resource.data.userId == request.auth.uid &&
-                     resource.data.status == 'pending' &&
-                     request.resource.data.status == 'paid' &&
-                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'paidAt']));
+      allow create: if canReadAll() || (isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        !request.resource.data.keys().hasAny(['paidWithTokens', 'tokensUsed', 'paidAt', 'paymentId', 'verifiedOnServer']));
+      allow update: if canReadAll();
       allow delete: if isAdmin() || isGerente();
     }
 
@@ -160,6 +166,12 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.customerEmail == request.auth.token.email;
       allow update, delete: if canReadAll();
     }
+
+    // Checkout snapshots, receipts and token ledgers are server-only.
+    match /purchase_checkouts/{id} { allow read, write: if false; }
+    match /purchase_receipts/{id} { allow read, write: if false; }
+    match /token_checkouts/{id} { allow read, write: if false; }
+    match /token_credits/{id} { allow read, write: if false; }
 
     // highlights: gerente e designer podem editar
     match /highlights/{highlightId} {

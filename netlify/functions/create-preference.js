@@ -1,115 +1,40 @@
-exports.handler = async (event) => {
-    const headers = {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
-    };
+const { verifyFirebaseUser } = require("../shared/firebase-admin");
+const { preparePurchase, safeBackUrl, siteBaseUrl } = require("../shared/purchase");
+const { jsonResponse, parseJsonBody } = require("../shared/token-purchase");
 
-    if (event.httpMethod === 'OPTIONS') {
-        return { statusCode: 200, headers, body: '' };
-    }
-
-    if (event.httpMethod !== 'POST') {
-        return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
-    }
-
-    const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-    if (!MP_ACCESS_TOKEN) {
-        console.error('Missing MP_ACCESS_TOKEN environment variable');
-        return { statusCode: 500, headers, body: 'Missing MP_ACCESS_TOKEN' };
-    }
-
-    let body;
-    try {
-        body = JSON.parse(event.body || '{}');
-    } catch (e) {
-        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
-    }
-
-    const {
-        title,
-        unit_price,
-        currency_id = 'BRL',
-        quantity = 1,
-        back_url,
-        external_reference,
-    } = body;
-
-    if (!title || unit_price == null || !back_url) {
-        return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ error: 'Campos obrigatórios: title, unit_price, back_url' })
-        };
-    }
-
-    const priceNum = Number(unit_price);
-    if (isNaN(priceNum) || priceNum <= 0) {
-        return {
-            statusCode: 400,
-            headers,
-            body: JSON.stringify({ error: `unit_price inválido: ${unit_price}` })
-        };
-    }
-
-    const siteUrl = process.env.URL || 'https://orgfreitas.com.br';
-    const notificationUrl = `${siteUrl}/.netlify/functions/mp-webhook`;
-
-    const preference = {
-        items: [{
-            title: String(title).slice(0, 256),
-            unit_price: priceNum,
-            currency_id: currency_id,
-            quantity: Number(quantity) || 1
-        }],
-        back_urls: {
-            success: back_url,
-            failure: back_url,
-            pending: back_url
-        },
-        auto_return: 'approved',
-        notification_url: notificationUrl,
-        ...(external_reference ? { external_reference: String(external_reference) } : {})
-    };
-
-    try {
-        const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
-                'Content-Type': 'application/json',
-                'X-Idempotency-Key': external_reference || `req_${Date.now()}`
-            },
-            body: JSON.stringify(preference)
-        });
-
-        const mpData = await mpRes.json();
-
-        if (!mpRes.ok) {
-            console.error('Mercado Pago API error:', JSON.stringify(mpData));
-            return {
-                statusCode: mpRes.status,
-                headers,
-                body: JSON.stringify({ error: mpData?.message || mpData?.cause?.[0]?.description || 'Erro no Mercado Pago', details: mpData })
-            };
-        }
-
-        return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({
-                id: mpData.id,
-                init_point: mpData.init_point,
-                sandbox_init_point: mpData.sandbox_init_point
-            })
-        };
-    } catch (err) {
-        console.error('create-preference handler error:', err);
-        return {
-            statusCode: 500,
-            headers,
-            body: JSON.stringify({ error: err.message || 'Erro interno ao criar preferência' })
-        };
-    }
+exports.handler = async event => {
+  if (event.httpMethod === "OPTIONS") return jsonResponse(200, {});
+  if (event.httpMethod !== "POST") return jsonResponse(405, { error: "Método não permitido." });
+  try {
+    const user = await verifyFirebaseUser(event);
+    if (!process.env.MP_ACCESS_TOKEN) return jsonResponse(503, { error: "Pagamento ainda não configurado." });
+    const body = parseJsonBody(event);
+    const { checkoutRef, checkout } = await preparePurchase(user.uid, body, "mercadopago");
+    if (checkout.status === "paid") return jsonResponse(409, { error: "Pedido já pago." });
+    if (checkout.paymentUrl) return jsonResponse(200, { init_point: checkout.paymentUrl, external_reference: checkout.externalReference });
+    const backUrl = safeBackUrl(body.back_url);
+    const response = await fetch("https://api.mercadopago.com/checkout/preferences", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": checkout.externalReference,
+      },
+      body: JSON.stringify({
+        items: [{ title: checkout.title, quantity: 1, unit_price: checkout.amountCents / 100, currency_id: "BRL" }],
+        external_reference: checkout.externalReference,
+        notification_url: `${siteBaseUrl()}/.netlify/functions/mp-webhook`,
+        back_urls: { success: backUrl, failure: backUrl, pending: backUrl },
+        auto_return: "approved",
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.init_point) return jsonResponse(502, { error: "Não foi possível iniciar o pagamento." });
+    await checkoutRef.update({ preferenceId: data.id, paymentUrl: data.init_point });
+    return jsonResponse(200, { id: data.id, init_point: data.init_point, external_reference: checkout.externalReference });
+  } catch (error) {
+    const status = Number(error.statusCode) || 500;
+    if (status >= 500) console.error("Unable to create purchase", error.code || "server_error");
+    return jsonResponse(status, { error: status >= 500 ? "Pagamento indisponível. Nenhuma cobrança foi iniciada." : error.message });
+  }
 };
