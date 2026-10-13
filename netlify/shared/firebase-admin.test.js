@@ -5,6 +5,18 @@ const path = require("node:path");
 const { initializeApp, deleteApp } = require("firebase-admin/app");
 const { getAdmin, verifyFirebaseUser } = require("./firebase-admin");
 
+test("Firebase's bundled HTTP parser is available to Netlify's root-level dependency resolver", () => {
+  const dependencies = require("../../package.json").dependencies;
+  assert.ok(dependencies["@fastify/busboy"], "declare the SDK's externalized parser as a production dependency");
+  assert.equal(typeof require("@fastify/busboy"), "function");
+});
+
+test("Netlify uses the pnpm-compatible function bundler", () => {
+  const config = require("node:fs").readFileSync(path.resolve(__dirname, "../../netlify.toml"), "utf8");
+  const functions = config.split("[functions]")[1]?.split(/\n\[/)[0] || "";
+  assert.match(functions, /node_bundler\s*=\s*"esbuild"/);
+});
+
 test("payment adapter uses the real Firebase Admin modular SDK without legacy namespaces", async () => {
   // Initialization and client construction are local; no database query,
   // authentication request, production credential, or payment is used.

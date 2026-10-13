@@ -154,6 +154,9 @@ importers:
 
   .:
     dependencies:
+      '@fastify/busboy':
+        specifier: 3.2.3
+        version: 3.2.3
       firebase-admin:
         specifier: 13.10.0
         version: 13.10.0
