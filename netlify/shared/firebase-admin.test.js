@@ -140,7 +140,7 @@ test("all Netlify payment handlers load with Lambda's ESM require restriction", 
     for (const name of [
       "create-preference", "create-token-preference", "confirm-purchase",
       "confirm-token-purchase", "pay-with-tokens", "mp-webhook",
-      "check-payment-status", "check-pix-status"
+      "check-payment-status", "check-pix-status", "check-availability"
     ]) {
       assert.equal(typeof require(path.join(process.argv[1], name + ".js")).handler, "function");
     }
