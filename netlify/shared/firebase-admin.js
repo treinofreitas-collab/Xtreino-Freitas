@@ -1,7 +1,14 @@
-const admin = require("firebase-admin");
+const { getApps, initializeApp, cert } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+
+// Keep the shared payment interface while using the modular Admin SDK.
+// Firebase Admin 14 no longer exports apps, auth, or firestore namespaces.
+const firestore = Object.assign(() => getFirestore(), { FieldValue });
+const admin = { firestore, auth: () => getAuth() };
 
 function getAdmin() {
-  if (admin.apps.length) return admin;
+  if (getApps().some(app => app.name === "[DEFAULT]")) return admin;
 
   const rawCredentials = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!rawCredentials) {
@@ -26,8 +33,8 @@ function getAdmin() {
   }
 
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert(credentials),
+    initializeApp({
+      credential: cert(credentials),
       projectId: credentials.project_id,
     });
   } catch {
