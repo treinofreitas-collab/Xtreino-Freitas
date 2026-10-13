@@ -130,8 +130,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
 // Client Area JavaScript
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, limit, addDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, or, getDocs, orderBy, limit, addDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
+import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-docs-store.mjs';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
 let app = null;
@@ -176,6 +177,16 @@ function initializeFirebase() {
 // Inicializar Firebase
 const firebaseInitialized = initializeFirebase();
 
+const userDocsAdapter = createUserDocsFirestoreAdapter({
+    collection, query, where, or, getDocs, onSnapshot, getDb: () => db
+});
+const userDocsStore = createUserDocsStore({
+    read: userDocsAdapter.read, watch: userDocsAdapter.watch
+});
+let _ordersLoadGeneration = 0;
+let _ordersRenderTimer = null;
+let _pendingReconcilePromise = null;
+let _pendingReconciledAt = 0;
 
 // Ensure local persistence for auth session
 if (auth && auth.setPersistence) {
@@ -235,11 +246,26 @@ async function checkAuthState() {
         return;
     }
     onAuthStateChanged(auth, async (user) => {
-        
+        if (userDocsStore.setUser(user)) {
+            userDocsAdapter.reset();
+            _stopOrdersAutoRefresh();
+            _ordersLoadGeneration++;
+            _pendingReconcilePromise = null;
+            _pendingReconciledAt = 0;
+            allOrdersData = [];
+            userProfile = null;
+            const list = document.getElementById('allOrders');
+            if (list) list.innerHTML = '<p class="text-gray-500 text-center">Carregando pedidos...</p>';
+        }
+        currentUser = user || null;
         if (user) {
             currentUser = user;
             
             await loadUserProfile();
+            if (isOrdersVisible()) {
+                _startOrdersAutoRefresh();
+                await loadOrders();
+            }
             await loadDashboard();
             await reconcilePendingPayments();
 
@@ -330,9 +356,9 @@ async function switchTab(tabName) {
             loadDashboard();
             break;
         case 'orders':
+            _startOrdersAutoRefresh();
             loadOrders();
             reconcilePendingPayments().catch(console.error);
-            _startOrdersAutoRefresh();
             break;
         case 'products':
             loadProducts();
@@ -631,10 +657,14 @@ let allOrdersData = [];
 
 // Load all orders with pagination
 async function loadOrders() {
+    const generation = ++_ordersLoadGeneration;
+    const uid = currentUser?.uid;
     try {
-        
-        const ordersData = await fetchUserDocs('orders', 200, true);
-        
+        const [ordersData, regsData] = await Promise.all([
+            fetchUserDocs('orders', 200, true),
+            fetchUserDocs('registrations', 200, true)
+        ]);
+        if (generation !== _ordersLoadGeneration || uid !== currentUser?.uid) return;
         
         const mappedOrders = ordersData.map(d => ({
             id: d.id,
@@ -656,9 +686,6 @@ async function loadOrders() {
         
 
         // Incluir eventos das registrations: tokens e pagamentos aprovados (paid/confirmed/approved)
-        const regsData = await fetchUserDocs('registrations', 200, true);
-        
-        
         const mappedRegs = regsData
             .filter(d => d.data.paidWithTokens === true || d.data.status === 'paid' || d.data.status === 'confirmed' || d.data.status === 'approved')
             .map(d => ({
@@ -686,9 +713,14 @@ async function loadOrders() {
         
 
         await displayAllOrdersPaginated();
+        const status = document.getElementById('ordersSyncStatus');
+        if (status) status.textContent = 'Pedidos carregados. Atualização automática quando houver mudanças.';
     } catch (error) {
-        
-        document.getElementById('allOrders').innerHTML = '<p class="text-gray-500 text-center">Erro ao carregar pedidos</p>';
+        if (generation !== _ordersLoadGeneration || uid !== currentUser?.uid) return;
+        const list = document.getElementById('allOrders');
+        if (list) list.innerHTML = '<p class="text-red-600 text-center">Não foi possível carregar seus pedidos. Use “Atualizar pedidos” para tentar novamente.</p>';
+        const status = document.getElementById('ordersSyncStatus');
+        if (status) status.textContent = 'Atualização indisponível. Tente novamente.';
     }
 }
 
@@ -2078,64 +2110,8 @@ async function loadStats() {
 
 // Helper to fetch user docs handling different owner field names and rule variations
 async function fetchUserDocs(colName, max = 50, sortDesc = false){
-    // Verificar se o usuário está autenticado
-    if (!currentUser || !currentUser.uid) {
-        
-        return [];
-    }
-    
-    const colRef = collection(db, colName);
-    
-    // Campos de busca por coleção
-    let candidates;
-    if (colName === 'orders') {
-        candidates = [
-            where('customer','==', currentUser.email),
-            where('buyerEmail','==', currentUser.email),
-            where('userId','==', currentUser.uid),
-            where('uid','==', currentUser.uid)
-        ];
-    } else if (colName === 'registrations') {
-        candidates = [
-            where('contact','==', currentUser.email),
-            where('email','==', currentUser.email),
-            where('userId','==', currentUser.uid),
-            where('uid','==', currentUser.uid),
-            where('membrosUids','array-contains', currentUser.uid)
-        ];
-    } else {
-        candidates = [
-            where('userId','==', currentUser.uid),
-            where('uid','==', currentUser.uid),
-            where('ownerId','==', currentUser.uid)
-        ];
-    }
-    
-    
-    const resultMap = new Map();
-    for (const cond of candidates){
-        try{
-            const qy = query(colRef, cond);
-            const snap = await getDocs(qy);
-            
-            snap.forEach(d => {
-                const data = d.data();
-                resultMap.set(d.id, { id: d.id, data });
-            });
-        }catch(e){
-            
-        }
-    }
-    const results = Array.from(resultMap.values());
-    const limited = results
-        .sort((a,b)=>{
-            const at = a.data.createdAt?.toMillis?.() || 0;
-            const bt = b.data.createdAt?.toMillis?.() || 0;
-            return sortDesc ? bt - at : at - bt;
-        })
-        .slice(0, max);
-    
-    return limited;
+    if (userDocsStore.setUser(currentUser)) userDocsAdapter.reset();
+    return userDocsStore.fetch(colName, max, sortDesc);
 }
 
 // Load profile
@@ -3262,7 +3238,19 @@ async function confirmTokenPurchaseOnServer(externalReference) {
 }
 
 async function reconcilePendingPayments() {
+    if (!currentUser?.uid || _pendingReconcilePromise || Date.now() - _pendingReconciledAt < 60000) {
+        return _pendingReconcilePromise;
+    }
+    _pendingReconciledAt = Date.now();
+    const pending = performPendingPaymentReconciliation();
+    _pendingReconcilePromise = pending;
+    try { return await pending; }
+    finally { if (_pendingReconcilePromise === pending) _pendingReconcilePromise = null; }
+}
+
+async function performPendingPaymentReconciliation() {
     if (!currentUser || !currentUser.uid) return;
+    const uid = currentUser.uid;
 
     try {
         // Buscar registrations e orders pendentes do usuário
@@ -3285,22 +3273,26 @@ async function reconcilePendingPayments() {
         const uniqueRefs = [...new Set(allRefs)];
         if (uniqueRefs.length === 0) return;
 
+        let confirmedAny = false;
         for (const ref of uniqueRefs) {
+            if (uid !== currentUser?.uid) return;
             try {
                 const tokenOrder = pendingOrders.find(order =>
                     order.data.external_reference === ref && isTokenPurchaseOrder(order)
                 );
                 if (tokenOrder) {
-                    await processSuccessfulPayment(ref);
+                    confirmedAny = (await processSuccessfulPayment(ref, { refresh: false })) || confirmedAny;
                     continue;
                 }
 
-                await processSuccessfulPayment(ref);
+                confirmedAny = (await processSuccessfulPayment(ref, { refresh: false })) || confirmedAny;
             } catch (_) { /* ignora erros por ref */ }
             await new Promise(r => setTimeout(r, 200));
         }
 
-        // Recarregar aba atual após reconciliação
+        if (!confirmedAny) return;
+        if (uid !== currentUser?.uid) return;
+        // Uma atualização após o lote, não uma nova consulta por pedido.
         const activeTab = document.querySelector('.tab-content:not(.hidden)')?.id;
         if (activeTab === 'ordersContent') {
             loadOrders();
@@ -3311,17 +3303,20 @@ async function reconcilePendingPayments() {
     } catch (_) { /* ignora */ }
 }
 
-async function processSuccessfulPayment(externalRef = null) {
+async function processSuccessfulPayment(externalRef = null, { refresh = true } = {}) {
+    const uid = currentUser?.uid;
     const extRef = externalRef || sessionStorage.getItem('lastExternalRef');
     
     if (!extRef) return;
     try {
         const result = await confirmPayment(auth?.currentUser || currentUser, extRef);
+        if (uid !== currentUser?.uid) return false;
         if (!paymentCompleted(result)) {
             sessionStorage.setItem('lastExternalRef', extRef);
             if (result.status === 'needs_review') showToast('warning', result.message || 'Solicite conferência deste pedido ao suporte.', 'Verificação necessária');
             return;
         }
+        userDocsStore.invalidate();
         if (Number.isFinite(Number(result.balance))) {
             if (userProfile) userProfile.tokens = Number(result.balance);
             if (window.currentUserProfile) window.currentUserProfile.tokens = Number(result.balance);
@@ -3335,11 +3330,12 @@ async function processSuccessfulPayment(externalRef = null) {
         localStorage.removeItem('_pendingPagamento');
         showToast('success', 'Pagamento confirmado no servidor. Seu pedido está disponível.', 'Compra confirmada');
         const active = document.querySelector('.tab-content:not(.hidden)')?.id;
-        if (active === 'ordersContent') await loadOrders();
-        if (active === 'productsContent') await loadProducts();
-        if (active === 'dashboardContent') await loadDashboard();
-        return;
+        if (refresh && active === 'ordersContent') await loadOrders();
+        if (refresh && active === 'productsContent') await loadProducts();
+        if (refresh && active === 'dashboardContent') await loadDashboard();
+        return true;
     } catch (error) {
+        if (uid !== currentUser?.uid) return false;
         sessionStorage.setItem('lastExternalRef', extRef);
         showToast('info', error.message || 'Confirmação temporariamente indisponível.', 'Pagamento em confirmação');
         return;
@@ -3809,32 +3805,56 @@ window.markNotificationRead = markNotificationRead;
 window.markAllNotificationsRead = markAllNotificationsRead;
 window.switchTab = switchTab;
 
-// Auto-refresh de pedidos quando o usuário retorna à aba (ex: veio do admin e voltou)
-let _ordersAutoRefreshInterval = null;
+// Atualizações por mudanças reais, sem reler o histórico a cada 45 segundos.
+function isOrdersVisible() {
+    const section = document.getElementById('ordersContent');
+    return document.visibilityState === 'visible'
+        && !!section && !section.classList.contains('hidden');
+}
 
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        const activeTab = document.querySelector('[data-tab].border-blue-600');
-        const tabName = activeTab ? activeTab.getAttribute('data-tab') : '';
-        if (tabName === 'orders') {
-            loadOrders().catch(console.error);
-        }
+    if (!isOrdersVisible()) _stopOrdersAutoRefresh();
+    else {
+        _startOrdersAutoRefresh();
+        loadOrders().catch(console.error);
     }
 });
 
-// Mantém refresh a cada 45s enquanto a aba "pedidos" está aberta
 function _startOrdersAutoRefresh() {
-    _stopOrdersAutoRefresh();
-    _ordersAutoRefreshInterval = setInterval(() => {
-        if (document.visibilityState === 'visible') {
-            loadOrders().catch(console.error);
-        }
-    }, 45000);
+    if (!isOrdersVisible() || !currentUser?.uid) return;
+    userDocsStore.startLive(() => {
+        clearTimeout(_ordersRenderTimer);
+        _ordersRenderTimer = setTimeout(() => {
+            if (isOrdersVisible()) loadOrders().catch(console.error);
+        }, 150);
+    }, () => {
+        const status = document.getElementById('ordersSyncStatus');
+        if (status) status.textContent = 'Não foi possível manter os pedidos atualizados. Clique em “Atualizar pedidos”.';
+    });
 }
 function _stopOrdersAutoRefresh() {
-    if (_ordersAutoRefreshInterval) { clearInterval(_ordersAutoRefreshInterval); _ordersAutoRefreshInterval = null; }
+    clearTimeout(_ordersRenderTimer);
+    _ordersRenderTimer = null;
+    userDocsStore.stopLive();
 }
 
+window.addEventListener('pagehide', _stopOrdersAutoRefresh);
+window.addEventListener('pageshow', () => {
+    if (isOrdersVisible()) _startOrdersAutoRefresh();
+});
+window.refreshMyOrders = async function() {
+    const button = document.getElementById('refreshOrdersBtn');
+    if (button) { button.disabled = true; button.textContent = 'Atualizando...'; }
+    try {
+        _stopOrdersAutoRefresh();
+        userDocsStore.invalidate();
+        _startOrdersAutoRefresh();
+        await loadOrders();
+        await reconcilePendingPayments();
+    } finally {
+        if (button) { button.disabled = false; button.textContent = 'Atualizar pedidos'; }
+    }
+};
 // ============================================================
 // SISTEMA DE SAQUES DE AFILIADOS
 // ============================================================
