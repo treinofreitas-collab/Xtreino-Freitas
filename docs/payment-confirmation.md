@@ -21,8 +21,16 @@ Nenhuma publicação ou mudança no Firebase é feita por estes arquivos automat
 Antes de liberar as compras:
 
 1. Conferir as variáveis do Netlify com escopo Functions (All scopes também inclui Functions):
-   `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_JSON` e
-   `PUBLIC_SITE_URL`. O JSON é da conta de serviço do mesmo projeto Firebase do site.
+   `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` e `PUBLIC_SITE_URL`.
+   Para o Firebase Admin, usar uma destas configurações, da conta de serviço do
+   mesmo projeto Firebase do site:
+   - `FIREBASE_SERVICE_ACCOUNT_JSON`: JSON completo da conta de serviço; ou
+   - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY`:
+     as três variáveis separadas já utilizadas em produção. Não é preciso
+     converter essa configuração em JSON. A chave aceita quebras de linha reais
+     ou escapadas como `\n`, sem aspas extras ao redor do valor.
+   Quando o JSON está definido, ele tem prioridade; um JSON inválido falha
+   explicitamente, sem trocar de conta de serviço automaticamente.
    Nunca colocar os valores no frontend, no Git ou em mensagens.
    Configurar também na interface do Netlify, com All scopes:
    - `NODE_VERSION=24` para o build.

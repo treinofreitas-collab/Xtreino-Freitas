@@ -11,21 +11,37 @@ function getAdmin() {
   if (getApps().some(app => app.name === "[DEFAULT]")) return admin;
 
   const rawCredentials = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!rawCredentials) {
-    const error = new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON");
-    error.code = "missing_firebase_service_account";
-    error.statusCode = 503;
-    throw error;
-  }
-
   let credentials;
-  try {
-    credentials = JSON.parse(rawCredentials);
-  } catch {
-    const error = new Error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON");
-    error.code = "invalid_firebase_service_account";
-    error.statusCode = 503;
-    throw error;
+  if (rawCredentials) {
+    // An explicitly configured JSON takes precedence; never hide invalid JSON
+    // by silently switching to a different service account.
+    try {
+      credentials = JSON.parse(rawCredentials);
+      if (!credentials || typeof credentials !== "object" || Array.isArray(credentials)) {
+        throw new Error("Invalid service account object");
+      }
+    } catch {
+      const error = new Error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON");
+      error.code = "invalid_firebase_service_account";
+      error.statusCode = 503;
+      throw error;
+    }
+  } else {
+    // Preserve existing Netlify configuration without moving private keys.
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (!projectId?.trim() || !clientEmail?.trim() || !privateKey?.trim()) {
+      const error = new Error("Missing Firebase service account credentials");
+      error.code = "missing_firebase_service_account";
+      error.statusCode = 503;
+      throw error;
+    }
+    credentials = {
+      project_id: projectId.trim(),
+      client_email: clientEmail.trim(),
+      private_key: privateKey,
+    };
   }
 
   if (typeof credentials.private_key === "string") {
