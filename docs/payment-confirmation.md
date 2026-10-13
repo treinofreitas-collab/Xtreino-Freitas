@@ -24,6 +24,19 @@ Antes de liberar as compras:
    `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_JSON` e
    `PUBLIC_SITE_URL`. O JSON é da conta de serviço do mesmo projeto Firebase do site.
    Nunca colocar os valores no frontend, no Git ou em mensagens.
+   Configurar também na interface do Netlify, com All scopes:
+   - `NODE_VERSION=24` para o build.
+   - `AWS_LAMBDA_JS_RUNTIME=nodejs24.x` para as funções.
+   O projeto fixa Firebase Admin 13.10.0 e não exige
+   `NODE_OPTIONS=--experimental-require-module`. Se essa opção foi adicionada
+   durante o diagnóstico, ela pode ser retirada; preservar outras opções existentes.
+   As configurações de runtime não são segredos. O AWS Lambda desativa o carregamento
+   ESM por `require` por padrão; a linha 13 usa dependências compatíveis com essa
+   restrição, sem habilitar recursos experimentais. O override de runtime deve ser
+   definido na interface/API do Netlify, não apenas em `netlify.toml`.
+   Referências: https://docs.netlify.com/build/functions/configuration/ e
+   https://docs.aws.amazon.com/lambda/latest/dg/lambda-nodejs.html#nodejs-experimental-features.
+   Alterações dessas variáveis exigem um novo deploy.
 2. Publicar as funções e o frontend juntos no Netlify.
 3. Aplicar `artifacts/xtreino/public/config/firestore.rules` no Firebase Console,
    Firestore → Regras → Publicar, coordenado com a atualização do site.
@@ -47,9 +60,14 @@ não implementa a reversão automática de serviços já usados.
 
 ```sh
 node --test netlify/shared/*.test.js
+node --no-experimental-require-module --test netlify/shared/*.test.js
 pnpm --filter @workspace/api-server run typecheck
 PORT=5173 BASE_PATH=/ pnpm --filter @workspace/xtreino run build
 ```
 
-Os testes usam banco e respostas do Mercado Pago simulados. A API de preview usa
+Os testes de pagamento usam banco e respostas do Mercado Pago simulados. O smoke
+test do Firebase usa o SDK instalado de verdade, sem consultas de rede ou credenciais.
+O comando com flags e o teste de carregamento dos handlers verificam a restrição
+padrão de módulos usada no Lambda, sem habilitar o recurso experimental.
+A API de preview usa
 os mesmos handlers do Netlify e falha explicitamente quando faltam credenciais.
