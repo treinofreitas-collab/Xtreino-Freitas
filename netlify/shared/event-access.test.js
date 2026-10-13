@@ -7,8 +7,8 @@ function setup(overrides = {}) {
     "users/ceo": { role: "Ceo" }, "users/admin": { role: "Admin" },
     "users/gerente": { role: "Gerente" }, "users/socio": { role: "Sócio" },
     "users/buyer": { role: "Usuario" }, "users/staff": { role: "Staff" },
-    "schedules/modo-liga": { label: "Treino Modo Liga" },
-    "schedules/xtreino-tokens": { label: "Treino Freitas" },
+    "adminEvents/modo-liga": { name: "Treino Modo Liga", eventType: "modo-liga" },
+    "adminEvents/xtreino-tokens": { name: "Treino Freitas", eventType: "xtreino-tokens" },
     "event_access_links/modo-liga__19h": { eventType: "modo-liga", schedule: "19h", label: "Modo Liga", url: "https://example.test/liga19", active: true },
     "event_access_links/modo-liga__20h": { eventType: "modo-liga", schedule: "20h", label: "Modo Liga", url: "https://example.test/liga20", active: true },
     "registrations/a": { userId: "buyer", eventType: "modo-liga", schedule: "Quarta - 19h", status: "paid", external_reference: "event_one", membrosUids: ["member"] },
@@ -82,6 +82,35 @@ test("CEO, admin and gerente manage; socio only views; catalog reads never leak 
   const env = setup();
   assert.equal((await env.call({ action: "save", eventType: "modo-liga", schedule: "19h", url: "https://example.test", active: true }, "socio")).status, 403);
   assert.equal((await env.call({ action: "remove", id: "modo-liga__19h" }, "socio")).status, 403);
+});
+
+test("the selector lists actual adminEvents without needing any legacy schedules", async () => {
+  const env = setup({
+    "adminEvents/EventDocumentAa": { name: "TREINO FREITAS", eventType: "xtreino-tokens", status: "Aberto" },
+  });
+  const result = await env.call({ action: "list" }, "ceo");
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.events.find(event => event.id === "EventDocumentAa"), {
+    id: "EventDocumentAa", eventType: "xtreino-tokens", label: "TREINO FREITAS",
+  });
+  assert.ok(env.reads.includes("adminEvents/*"));
+  assert.ok(!env.reads.some(path => path.startsWith("schedules/")));
+});
+
+test("a random event document ID saves under its booking eventType and resolves after confirmation", async () => {
+  const env = setup({
+    "adminEvents/EventDocumentAa": { name: "TREINO MODO LIGA", eventType: "modo-liga", status: "Aberto" },
+    "adminEvents/CustomDocumentBb": { name: "Evento próprio", status: "Aberto" },
+  });
+  const saved = await env.call({ action: "save", eventType: "EventDocumentAa", schedule: "19h",
+    url: "https://example.test/correct", active: true }, "ceo");
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.link.id, "modo-liga__19h");
+  assert.equal(saved.body.link.label, "TREINO MODO LIGA");
+  assert.equal((await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0].url, "https://example.test/correct");
+  const custom = await env.call({ action: "save", eventType: "CustomDocumentBb", schedule: "20h",
+    url: "https://example.test/custom", active: true }, "admin");
+  assert.equal(custom.body.link.eventType, "customdocumentbb");
 });
 
 test("create/edit is one recurring document per event/hour; deactivate and delete revoke subsequent resolves", async () => {

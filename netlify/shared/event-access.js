@@ -47,6 +47,16 @@ function serializeLink(doc) {
     label: data.label || data.eventType, url: data.url, active: data.active === true };
 }
 
+function catalogEvent(doc) {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    // Booking uses the configured eventType, not necessarily the Firestore document ID.
+    eventType: normalizeEventType(data.eventType || doc.id),
+    label: data.name || data.label || data.title || data.nome || doc.id,
+  };
+}
+
 function createEventAccessHandler({ getAdmin, verifyFirebaseUser }) {
   const respond = (status, body) => {
     const result = jsonResponse(status, body);
@@ -72,13 +82,10 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser }) {
         if (!VIEWERS.has(role)) fail("Sem permissão para gerenciar os links.", 403);
         const canManage = MANAGERS.has(role);
         if (body.action === "list") {
-          const [saved, schedules] = await Promise.all([links.get(), db.collection("schedules").get()]);
+          const [saved, catalog] = await Promise.all([links.get(), db.collection("adminEvents").get()]);
           return respond(200, {
             links: saved.docs.map(serializeLink),
-            events: schedules.docs.map(doc => ({
-              id: doc.id, eventType: normalizeEventType(doc.id),
-              label: doc.data().label || doc.data().title || doc.data().nome || doc.id,
-            })),
+            events: catalog.docs.map(catalogEvent),
             canManage,
           });
         }
@@ -89,16 +96,17 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser }) {
           return respond(200, { removed: true });
         }
         if (typeof body.eventType !== "string" || !ID.test(body.eventType)) fail("Evento inválido.");
-        const eventType = normalizeEventType(body.eventType);
         const schedule = normalizeSchedule(body.schedule);
         const url = safeUrl(body.url);
         if (typeof body.active !== "boolean") fail("Informe se o link está ativo.");
-        const catalog = await db.collection("schedules").doc(body.eventType).get();
+        const catalog = await db.collection("adminEvents").doc(body.eventType).get();
         if (!catalog.exists) fail("Evento não encontrado.", 404);
+        const selectedEvent = catalogEvent(catalog);
+        const eventType = selectedEvent.eventType;
         const id = linkKey(eventType, schedule);
         const data = {
           eventType, schedule, url, active: body.active,
-          label: catalog.data().label || catalog.data().title || catalog.data().nome || eventType,
+          label: selectedEvent.label,
           updatedBy: user.uid, updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
         if (body.previousId && body.previousId !== id) {

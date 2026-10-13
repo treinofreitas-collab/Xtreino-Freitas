@@ -185,11 +185,12 @@ function render() {
   $('eventLinksReadonly').classList.toggle('hidden', editable || !state.loadedAt);
   const sel = $('eventLinksEvent');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">Selecione o evento</option>' +
+  const prompt = state.loading ? 'Carregando eventos...' : state.events.length ? 'Selecione o evento' : 'Nenhum evento cadastrado';
+  sel.innerHTML = `<option value="">${prompt}</option>` +
     state.events.map(e => `<option value="${esc(e.id)}">${esc(e.label || e.id)}</option>`).join('');
   sel.value = cur;
   root.querySelectorAll('#eventLinksForm input, #eventLinksForm select, #eventLinksForm button').forEach(el => {
-    el.disabled = state.busy || state.loading; el.style.pointerEvents = ''; el.style.opacity = '';
+    el.disabled = state.busy || state.loading || !state.events.length; el.style.pointerEvents = ''; el.style.opacity = '';
   });
   const refresh = $('eventLinksRefresh');
   refresh.disabled = state.loading; refresh.style.pointerEvents = 'auto'; refresh.style.opacity = state.loading ? '0.6' : '1';
