@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clearEventAccessCache, fetchEventAccess, eventAccessRequest } from '../../artifacts/xtreino/public/js/event-access-client.mjs';
+import { clearEventAccessCache, fetchEventAccess, eventAccessRequest, mountReferenceAccess } from '../../artifacts/xtreino/public/js/event-access-client.mjs';
 
 function setup(t, reply) {
     const oldWindow = globalThis.window;
@@ -17,7 +17,8 @@ function setup(t, reply) {
     t.after(() => { globalThis.window = oldWindow; globalThis.fetch = oldFetch; clearEventAccessCache(); });
     return calls;
 }
-const available = id => ({ registrationId: id, status: 'available', eventType: 'modo-liga', schedule: '19h', url: 'https://example.test/19' });
+const available = id => ({ registrationId: id, status: 'available', eventType: 'modo-liga', schedule: '19h',
+    expiresAt: new Date(Date.now() + 86400000).toISOString(), url: 'https://example.test/19' });
 
 test('client batches and deduplicates concurrent requests, reuses cache, and explicit refresh gets edits', async t => {
     const calls = setup(t, async body => ({ access: body.registrationIds.map(available) }));
@@ -92,4 +93,76 @@ test('large booking histories are batched without arbitrarily losing any access 
     assert.deepEqual(calls.map(call => call.body.registrationIds.length), [200, 5]);
     await fetchEventAccess(ids);
     assert.equal(calls.length, 2);
+});
+
+test('responses arriving after expiry never expose a URL and missing expiry is rejected', async t => {
+    let now = Date.parse('2026-11-12T03:00:59Z');
+    t.mock.method(Date, 'now', () => now);
+    const row = { ...available('a'), expiresAt: '2026-11-12T03:01:00Z' };
+    let missingExpiry = false;
+    setup(t, async () => {
+        now += 1000;
+        return { access: [missingExpiry ? { ...available('a'), expiresAt: undefined } : row] };
+    });
+    const expired = (await fetchEventAccess(['a']))[0];
+    assert.equal(expired.status, 'expired');
+    assert.equal(expired.url, undefined);
+    missingExpiry = true;
+    clearEventAccessCache();
+    await assert.rejects(fetchEventAccess(['a']), /Validade/);
+});
+
+function fakeContainer() {
+    const element = { children: [], isConnected: true, append(child) { this.children.push(child); },
+        replaceChildren() { this.children = []; this._text = ''; } };
+    Object.defineProperty(element, 'textContent', {
+        get() { return this._text || ''; },
+        set(text) { this._text = text; this.children = []; },
+    });
+    return element;
+}
+
+test('an open modal loses expired links locally without polling; future bookings stay available', async t => {
+    let now = Date.parse('2026-11-12T03:00:59Z');
+    t.mock.method(Date, 'now', () => now);
+    const timers = [];
+    t.mock.method(globalThis, 'setTimeout', (callback, delay) => { const timer = { callback, delay, unref() {} }; timers.push(timer); return timer; });
+    t.mock.method(globalThis, 'clearTimeout', () => {});
+    const oldDocument = globalThis.document;
+    globalThis.document = { createElement: tag => ({ tag }) };
+    t.after(() => { globalThis.document = oldDocument; });
+    const calls = setup(t, async () => ({ access: [
+        { ...available('a'), eventDate: '2026-11-11', expiresAt: '2026-11-12T03:01:00Z' },
+        { ...available('b'), eventDate: '2026-11-12', expiresAt: '2026-11-13T03:01:00Z' },
+    ] }));
+    const container = fakeContainer();
+    await mountReferenceAccess(container, 'event_one');
+    assert.equal(container.children.filter(child => child.tag === 'a').length, 2);
+    now += 1000;
+    timers.find(timer => timer.delay === 1000).callback();
+    assert.equal(container.children.filter(child => child.tag === 'a').length, 1);
+    assert.ok(container.children.some(child => child.textContent?.includes('Link expirado')));
+    assert.equal(calls.length, 1);
+});
+
+test('a stale visible link cannot navigate after expiry even if a background timer has not fired', async t => {
+    let now = Date.parse('2026-11-12T03:00:59Z');
+    t.mock.method(Date, 'now', () => now);
+    t.mock.method(globalThis, 'setTimeout', () => ({ unref() {} }));
+    t.mock.method(globalThis, 'clearTimeout', () => {});
+    const oldDocument = globalThis.document;
+    globalThis.document = { createElement: tag => ({ tag }) };
+    t.after(() => { globalThis.document = oldDocument; });
+    const calls = setup(t, async () => ({ access: [{ ...available('a'), expiresAt: '2026-11-12T03:01:00Z' }] }));
+    const container = fakeContainer();
+    await mountReferenceAccess(container, 'event_one');
+    const link = container.children.find(child => child.tag === 'a');
+    now += 1000;
+    let prevented = false;
+    link.onclick({ preventDefault() { prevented = true; } });
+    assert.ok(prevented);
+    assert.ok(!container.children.some(child => child.tag === 'a'));
+    await mountReferenceAccess(container, 'event_one');
+    assert.ok(!container.children.some(child => child.tag === 'a'));
+    assert.equal(calls.length, 1);
 });

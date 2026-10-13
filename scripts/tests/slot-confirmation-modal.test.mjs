@@ -35,10 +35,17 @@ test('league confirmation handles the current team field and teamName variant wi
     assert.ok(html.includes('Vaga confirmada'));
 });
 
-test('regular and letter-based confirmation keep original slot numbers and support slotNumber', () => {
+test('all event modes keep team/hour but omit slot numbers, letters and the event-page button', () => {
     const slots = [{ team: 'Equipe atual', slot: 'Slot 3', schedule: '19h' }, { teamName: 'Equipe teste', slotNumber: 4, schedule: '20h' }];
-    assert.ok(render(slots).includes('>4</span>'));
-    assert.ok(render(slots, false, 'modo-liga').includes('SUA LETRA É D'));
+    for (const html of [render(slots), render(slots, false, 'modo-liga'), render(slots, true, 'modo-liga')]) {
+        assert.ok(html.includes('Equipe atual') && html.includes('Equipe teste'));
+        assert.ok(html.includes('19h') && html.includes('20h'));
+        assert.ok(!html.includes('SLOT') && !html.includes('SUA LETRA'));
+        assert.ok(!html.includes('VER PÁGINA DO EVENTO'));
+        assert.ok(!html.includes('sininho') && !html.includes('5 minutos'));
+        assert.ok(html.includes('💡 Você receberá a lista de Slots junto com o ID E SENHA no GRUPO!'));
+        assert.ok(html.includes('justify-center gap-1 text-center'));
+    }
 });
 
 test('team names are escaped; missing names have a readable fallback', () => {

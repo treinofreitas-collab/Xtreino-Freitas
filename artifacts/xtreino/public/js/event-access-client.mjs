@@ -1,6 +1,7 @@
 import { paymentFetch } from './payment-client.js';
 
 const messages = {
+    expired: 'Link expirado. O acesso terminou às 00h01 do dia seguinte à reserva (horário de Brasília).',
     not_configured: 'O link deste horário ainda não foi cadastrado pela organização.',
     inactive: 'O link deste horário está temporariamente desativado.',
     needs_review: 'Esta reserva precisa de conferência da organização para liberar o link.',
@@ -12,6 +13,15 @@ let epoch = 0;
 const records = new Map();
 const pending = new Map();
 const references = new Map();
+const repaintTimers = new WeakMap();
+
+function currentAccess(row) {
+    if (row.status === 'available' && Date.parse(row.expiresAt) <= Date.now()) {
+        const { url, ...expired } = row;
+        return { ...expired, status: 'expired' };
+    }
+    return row;
+}
 
 export async function eventAccessRequest(action, data = {}) {
     const response = await paymentFetch(window.firebaseAuth?.currentUser, '/.netlify/functions/event-access-links', {
@@ -51,14 +61,17 @@ function remember(access, uid, generation) {
             throw new Error('Resposta inválida ao consultar os links.');
         }
         if (row.status === 'available') {
+            if (!Number.isFinite(Date.parse(row.expiresAt))) throw new Error('Validade do link inválida.');
             const url = new URL(row.url);
             if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Link inválido.');
         }
     }
-    for (const row of access) records.set(row.registrationId, {
-        row, expires: Date.now() + (row.status === 'available' ? 120000 : 20000),
+    const rows = access.map(currentAccess);
+    for (const row of rows) records.set(row.registrationId, {
+        row, expires: Math.min(Date.now() + (row.status === 'available' ? 120000 : 20000),
+            row.status === 'available' ? Date.parse(row.expiresAt) : Infinity),
     });
-    return access;
+    return rows;
 }
 
 export async function fetchEventAccess(ids, { force = false } = {}) {
@@ -82,14 +95,16 @@ export async function fetchEventAccess(ids, { force = false } = {}) {
     }
     const result = await Promise.all(unique.map(id => pending.get(id) || records.get(id)?.row));
     checkSession(uid);
-    return result;
+    return result.map(currentAccess);
 }
 
 async function fetchReferenceAccess(reference, force = false) {
     const uid = await session();
     const generation = epoch;
     const entry = references.get(reference);
-    if (!force && entry && (entry.pending || entry.expires > Date.now())) return entry.pending || entry.rows;
+    if (!force && entry && (entry.pending || entry.expires > Date.now())) {
+        return (await (entry.pending || entry.rows)).map(currentAccess);
+    }
     const request = eventAccessRequest('resolve', { externalReference: reference })
         .then(result => remember(result.access, uid, generation));
     references.set(reference, { pending: request });
@@ -103,11 +118,15 @@ async function fetchReferenceAccess(reference, force = false) {
     }
 }
 
-function paint(container, rows) {
+function paint(container, rows, onRefresh) {
+    clearTimeout(repaintTimers.get(container));
+    repaintTimers.delete(container);
+    const uid = window.firebaseAuth?.currentUser?.uid;
     container.replaceChildren();
     const seen = new Set();
-    for (const row of rows) {
-        const key = `${row.eventType || row.registrationId}/${row.schedule || ''}/${row.status}`;
+    const current = rows.map(currentAccess);
+    for (const row of current) {
+        const key = `${row.eventType || row.registrationId}/${row.schedule || ''}/${row.eventDate || ''}/${row.status}`;
         if (seen.has(key)) continue;
         seen.add(key);
         if (row.status === 'available') {
@@ -117,13 +136,35 @@ function paint(container, rows) {
             link.rel = 'noopener noreferrer';
             link.className = 'inline-flex items-center justify-center px-4 py-2 rounded-lg bg-teal-600 text-white font-semibold text-sm hover:bg-teal-700';
             link.textContent = `Acessar ${row.label || 'evento'} — ${row.schedule}`;
+            link.onclick = event => {
+                if (Date.now() >= Date.parse(row.expiresAt) || uid !== window.firebaseAuth?.currentUser?.uid) {
+                    event.preventDefault();
+                    if (uid === window.firebaseAuth?.currentUser?.uid) paint(container, rows, onRefresh);
+                    else container.textContent = messages.not_authorized;
+                }
+            };
             container.append(link);
+            const validity = document.createElement('p');
+            validity.className = 'text-xs text-gray-500 text-center';
+            validity.textContent = `Disponível até ${new Date(row.expiresAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} às 00h01 (Brasília).`;
+            container.append(validity);
         } else {
             const text = document.createElement('p');
             text.className = 'text-xs text-gray-500';
             text.textContent = `${row.schedule ? row.schedule + ': ' : ''}${messages[row.status] || 'Link não disponível.'}`;
             container.append(text);
         }
+    }
+    if (onRefresh) retry(container, onRefresh);
+    const deadlines = current.filter(row => row.status === 'available').map(row => Date.parse(row.expiresAt));
+    if (deadlines.length) {
+        const timer = setTimeout(() => {
+            if (!container.isConnected) return;
+            if (uid !== window.firebaseAuth?.currentUser?.uid) { container.textContent = messages.not_authorized; return; }
+            paint(container, rows, onRefresh);
+        }, Math.min(2147483647, Math.max(1, Math.min(...deadlines) - Date.now())));
+        timer.unref?.();
+        repaintTimers.set(container, timer);
     }
 }
 
@@ -153,8 +194,7 @@ export async function hydrateEventAccessLinks(root) {
             for (const target of targets) {
                 if (!target.isConnected) continue;
                 const row = rows.find(item => item.registrationId === target.dataset.eventAccessId);
-                paint(target, row ? [row] : []);
-                retry(target, nextForce => update([target], nextForce));
+                paint(target, row ? [row] : [], nextForce => update([target], nextForce));
             }
         } catch (error) {
             if (uid !== window.firebaseAuth?.currentUser?.uid) return;
@@ -175,9 +215,8 @@ export async function mountReferenceAccess(container, reference) {
         try {
             const rows = await fetchReferenceAccess(reference, force);
             if (!container.isConnected || uid !== window.firebaseAuth?.currentUser?.uid) return;
-            paint(container, rows);
+            paint(container, rows, update);
             if (!rows.length) container.textContent = 'Nenhum horário confirmado encontrado.';
-            retry(container, update);
         } catch (error) {
             if (!container.isConnected || uid !== window.firebaseAuth?.currentUser?.uid) return;
             container.textContent = error.message || 'Link indisponível agora. Sua vaga continua confirmada.';

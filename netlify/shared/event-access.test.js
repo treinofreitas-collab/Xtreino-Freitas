@@ -1,8 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createEventAccessHandler, normalizeSchedule, normalizeEventType } = require("./event-access");
+const { createEventAccessHandler, normalizeSchedule, normalizeEventType, bookingExpiry } = require("./event-access");
 
-function setup(overrides = {}) {
+function setup(overrides = {}, now = () => Date.parse("2026-11-11T20:00:00Z")) {
   const docs = new Map(Object.entries({
     "users/ceo": { role: "Ceo" }, "users/admin": { role: "Admin" },
     "users/gerente": { role: "Gerente" }, "users/socio": { role: "Sócio" },
@@ -11,9 +11,9 @@ function setup(overrides = {}) {
     "adminEvents/xtreino-tokens": { name: "Treino Freitas", eventType: "xtreino-tokens" },
     "event_access_links/modo-liga__19h": { eventType: "modo-liga", schedule: "19h", label: "Modo Liga", url: "https://example.test/liga19", active: true },
     "event_access_links/modo-liga__20h": { eventType: "modo-liga", schedule: "20h", label: "Modo Liga", url: "https://example.test/liga20", active: true },
-    "registrations/a": { userId: "buyer", eventType: "modo-liga", schedule: "Quarta - 19h", status: "paid", external_reference: "event_one", membrosUids: ["member"] },
-    "registrations/b": { userId: "buyer", eventType: "modo-liga", schedule: "20:00", status: "paid", external_reference: "event_one" },
-    "registrations/c": { userId: "buyer", eventType: "treino-modo-liga", schedule: "19h", status: "paid", external_reference: "event_one" },
+    "registrations/a": { date: "2026-11-11", userId: "buyer", eventType: "modo-liga", schedule: "Quarta - 19h", status: "paid", external_reference: "event_one", membrosUids: ["member"] },
+    "registrations/b": { date: "2026-11-11", userId: "buyer", eventType: "modo-liga", schedule: "20:00", status: "paid", external_reference: "event_one" },
+    "registrations/c": { date: "2026-11-11", userId: "buyer", eventType: "treino-modo-liga", schedule: "19h", status: "paid", external_reference: "event_one" },
     "purchase_checkouts/event_one": { userId: "buyer", status: "paid", kind: "event", method: "mercadopago", sourcePaths: ["registrations/a", "registrations/b", "registrations/c"] },
     ...overrides,
   }));
@@ -44,6 +44,7 @@ function setup(overrides = {}) {
   };
   const firestore = Object.assign(() => db, { FieldValue: { serverTimestamp: () => "server-time" } });
   const handler = createEventAccessHandler({
+    now,
     getAdmin: () => ({ firestore }),
     verifyFirebaseUser: async event => {
       const uid = event.headers?.authorization?.replace(/^Bearer /, "");
@@ -167,7 +168,7 @@ test("confirmation modal resolves all checkout reservations, not just the first 
 test("an owned verified large checkout is not arbitrarily truncated at the client request-size limit", async () => {
   const paths = Array.from({ length: 205 }, (_, i) => `registrations/reg_${i}`);
   const env = setup(Object.fromEntries([
-    ...paths.map(path => [path, { userId: "buyer", eventType: "modo-liga", schedule: "19h", status: "paid", external_reference: "event_one" }]),
+    ...paths.map(path => [path, { date: "2026-11-11", userId: "buyer", eventType: "modo-liga", schedule: "19h", status: "paid", external_reference: "event_one" }]),
     ["purchase_checkouts/event_one", { userId: "buyer", kind: "event", status: "paid", sourcePaths: paths }],
   ]));
   assert.equal((await env.call({ action: "resolve", externalReference: "event_one" })).body.access.length, 205);
@@ -205,10 +206,61 @@ test("a forged paid document or an old unverified payment cannot borrow a paid c
 
 test("server-confirmed token and free checkouts release links, including free-participation status", async () => {
   for (const method of ["tokens", "free"]) {
-    const env = setup({ "registrations/a": { userId: "buyer", eventType: "modo-liga", schedule: "19h", status: "lisagem_gratis", external_reference: "event_one" },
+    const env = setup({ "registrations/a": { date: "2026-11-11", userId: "buyer", eventType: "modo-liga", schedule: "19h", status: "lisagem_gratis", external_reference: "event_one" },
       "purchase_checkouts/event_one": { userId: "buyer", status: "paid", kind: "event", method, sourcePaths: ["registrations/a"] } });
     assert.equal((await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0].status, "available");
   }
+});
+
+test("expiry is precisely 00:01 the next day in Brasilia, including month/year/leap boundaries", () => {
+  assert.equal(bookingExpiry("2026-11-11"), "2026-11-12T03:01:00.000Z");
+  assert.equal(bookingExpiry("2026-12-31"), "2027-01-01T03:01:00.000Z");
+  assert.equal(bookingExpiry("2028-02-29"), "2028-03-01T03:01:00.000Z");
+  for (const date of [null, "", "11/11/2026", "2026-02-29", "2026-11-31"]) assert.equal(bookingExpiry(date), null);
+});
+
+test("server denies expired links exactly at the deadline, including reference and member access", async () => {
+  let now = Date.parse("2026-11-12T03:00:59.999Z");
+  const env = setup({}, () => now);
+  const before = (await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0];
+  assert.equal(before.status, "available");
+  assert.equal(before.expiresAt, "2026-11-12T03:01:00.000Z");
+  now++;
+  env.reads.length = 0;
+  for (const uid of ["buyer", "member"]) {
+    const expired = (await env.call({ action: "resolve", registrationIds: ["a"],
+      date: "2099-11-11", expiresAt: "2099-11-12T03:01:00Z" }, uid)).body.access[0];
+    assert.equal(expired.status, "expired");
+    assert.equal(expired.url, undefined);
+  }
+  assert.ok(!env.reads.some(path => path.startsWith("event_access_links/")));
+  const rows = (await env.call({ action: "resolve", externalReference: "event_one" })).body.access;
+  assert.ok(rows.every(row => row.status === "expired" && !row.url));
+});
+
+test("expiry revokes only yesterday's reservation, not the fixed URL or tomorrow's paid booking", async () => {
+  const env = setup({}, () => Date.parse("2026-11-12T03:01:00Z"));
+  env.docs.set("registrations/b", { ...env.docs.get("registrations/b"), date: "2026-11-12", schedule: "19h" });
+  const rows = (await env.call({ action: "resolve", registrationIds: ["a", "b"] })).body.access;
+  assert.equal(rows[0].status, "expired");
+  assert.equal(rows[1].status, "available");
+  assert.equal(rows[1].url, "https://example.test/liga19");
+  assert.equal(rows[1].expiresAt, "2026-11-13T03:01:00.000Z");
+  assert.equal(env.docs.get("event_access_links/modo-liga__19h").active, true);
+  assert.equal(env.writes.length, 0);
+});
+
+test("missing or invalid booking dates fail closed, while eventDate is supported", async () => {
+  for (const date of [null, "2026-02-30", "Quarta"]) {
+    const env = setup();
+    env.docs.set("registrations/a", { ...env.docs.get("registrations/a"), date });
+    const row = (await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0];
+    assert.equal(row.status, "needs_review");
+    assert.equal(row.url, undefined);
+  }
+  const env = setup();
+  env.docs.set("registrations/a", { ...env.docs.get("registrations/a"), date: null, eventDate: "2026-11-11" });
+  assert.equal((await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0].status, "available");
 });
 
 test("quota failures fail closed without leaking private links or internal details", async () => {

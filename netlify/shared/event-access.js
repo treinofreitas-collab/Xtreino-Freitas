@@ -4,6 +4,26 @@ const MANAGERS = new Set(["ceo", "admin", "gerente"]);
 const VIEWERS = new Set([...MANAGERS, "socio"]);
 const CONFIRMED = new Set(["paid", "confirmed", "approved", "lisagem_gratis"]);
 const ID = /^[a-zA-Z0-9_-]{1,160}$/;
+const expiryOffset = new Intl.DateTimeFormat("en", {
+  timeZone: "America/Sao_Paulo", timeZoneName: "longOffset",
+});
+
+function bookingExpiry(date) {
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const [year, month, day] = date.split("-").map(Number);
+  const start = Date.UTC(year, month - 1, day);
+  if (new Date(start).toISOString().slice(0, 10) !== date) return null;
+  const localDeadline = Date.UTC(year, month - 1, day + 1, 0, 1);
+  let instant = localDeadline;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const zone = expiryOffset.formatToParts(new Date(instant)).find(part => part.type === "timeZoneName").value;
+    const offset = /^GMT([+-])(\d{2}):(\d{2})$/.exec(zone);
+    if (!offset) return null;
+    const minutes = (Number(offset[2]) * 60 + Number(offset[3])) * (offset[1] === "+" ? 1 : -1);
+    instant = localDeadline - minutes * 60000;
+  }
+  return new Date(instant).toISOString();
+}
 
 function fail(message, statusCode = 400) {
   throw Object.assign(new Error(message), { statusCode });
@@ -57,7 +77,7 @@ function catalogEvent(doc) {
   };
 }
 
-function createEventAccessHandler({ getAdmin, verifyFirebaseUser }) {
+function createEventAccessHandler({ getAdmin, verifyFirebaseUser, now = Date.now }) {
   const respond = (status, body) => {
     const result = jsonResponse(status, body);
     result.headers = { ...result.headers, "Cache-Control": "private, no-store" };
@@ -164,10 +184,15 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser }) {
         let eventType, schedule;
         try { eventType = normalizeEventType(data.eventType); schedule = normalizeSchedule(data.schedule || data.hour); }
         catch { return { ...base, status: "not_configured" }; }
+        // Expiry belongs to this paid reservation, never to the recurring URL configuration.
+        const eventDate = data.date || data.eventDate;
+        const expiresAt = bookingExpiry(eventDate);
+        if (!expiresAt) return { ...base, status: "needs_review" };
+        const details = { ...base, eventType, schedule, eventDate, expiresAt };
+        if (now() >= Date.parse(expiresAt)) return { ...details, status: "expired" };
         const key = linkKey(eventType, schedule);
         if (!configurations.has(key)) configurations.set(key, links.doc(key).get());
         const configuration = await configurations.get(key);
-        const details = { ...base, eventType, schedule };
         if (!configuration.exists) return { ...details, status: "not_configured" };
         if (configuration.data().active !== true) return { ...details, status: "inactive" };
         return { ...details, status: "available", label: configuration.data().label || eventType,
@@ -183,4 +208,4 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser }) {
   };
 }
 
-module.exports = { createEventAccessHandler, normalizeEventType, normalizeSchedule, linkKey, safeUrl };
+module.exports = { createEventAccessHandler, normalizeEventType, normalizeSchedule, linkKey, safeUrl, bookingExpiry };

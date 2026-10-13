@@ -8566,9 +8566,11 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink,
     playNotificationSound();
     const teamLabel = slot => String(slot.team || slot.teamName || slot.name || 'Seu time')
         .replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+    const escapeLabel = value => String(value).replace(/[&<>"']/g, character =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 
     // Agrupar por horário
-    const bySchedule = {};
+    const bySchedule = Object.create(null);
     slots.forEach(s => {
         const key = s.schedule || eventName;
         if (!bySchedule[key]) bySchedule[key] = [];
@@ -8577,51 +8579,12 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink,
 
     const schedules = Object.keys(bySchedule);
 
-    let slotsHtml = '';
-    if (isLiga) {
-        // Modo LIGA: sem slots, só info de acesso à sala
-        slotsHtml = `
-        <div class="p-4 bg-yellow-50 border-2 border-yellow-400 rounded-xl text-center">
-            <div class="text-3xl mb-2">🏆</div>
-            <div class="font-bold text-yellow-800 text-base mb-1">Modo Liga — Acesso à Sala</div>
-            <div class="text-sm text-yellow-700 leading-relaxed">Salas no modo Liga não possuem slots numerados.<br>Consulte abaixo o link personalizado do seu horário.<br>O ID e a senha continuam nas notificações.</div>
-        </div>
-        ${schedules.map(sched => `
-        <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-            <div class="text-xs font-bold text-blue-600 uppercase mb-1">⏰ Horário</div>
-            <div class="font-semibold text-blue-900">${sched}</div>
-            ${bySchedule[sched].map(s => `<div class="text-xs text-gray-600 mt-0.5">✅ ${teamLabel(s)}</div>`).join('')}
-        </div>`).join('')}`;
-    } else {
-        slotsHtml = schedules.map(sched => {
-            const rows = bySchedule[sched].map((s, sIdx) => {
-                let innerHtml;
-                if (eventId === 'modo-liga') {
-                    // Modo Liga: exibir letra em destaque — suporta "Letra A", "Slot A", "Vaga A"
-                    const _raw = String(s.slot || s.slotNumber || '').replace(/^(Letra|Slot|Vaga)\s*/i, '').trim();
-                    let letra;
-                    if (/^[A-Za-z]$/.test(_raw)) {
-                        letra = _raw.toUpperCase();
-                    } else {
-                        const n = parseInt(_raw, 10);
-                        letra = (!isNaN(n) && n > 0) ? String.fromCharCode(64 + n) : '?';
-                    }
-                    innerHtml = `<div class="font-bold text-orange-600 text-sm">SUA LETRA É ${letra} — EQUIPE: ${teamLabel(s)}</div><div class="text-sm font-semibold text-green-700 mt-0.5">Inscrição confirmada!</div>`;
-                } else {
-                    // Extrair número do slot (suporta "Slot 3", "Vaga #3" ou número puro)
-                    const _rawSlot = String(s.slot || s.slotNumber || '');
-                    const _matchSlot = _rawSlot.match(/(\d+)\s*$/);
-                    const _slotN = _matchSlot ? parseInt(_matchSlot[1], 10) : Number(s.slot || s.slotNumber);
-                    const slotSection = (_slotN > 0 && _slotN <= 9999)
-                        ? `<div class="mt-1"><span class="inline-flex items-center gap-1 bg-orange-100 border-2 border-orange-400 rounded-lg px-3 py-1"><span class="text-xs font-black text-orange-600 uppercase tracking-widest">SLOT</span><span class="text-base font-black text-orange-500 mx-0.5">—</span><span class="text-2xl font-black text-orange-700">${_slotN}</span></span></div>`
-                        : `<div class="text-sm font-semibold text-green-700">Inscrição confirmada!</div>`;
-                    innerHtml = `<div class="font-semibold text-gray-800 text-sm">${teamLabel(s)}</div>${slotSection}`;
-                }
-                return `<div class="flex items-center gap-3 p-2 bg-green-50 border border-green-200 rounded-lg mb-1"><span class="text-xl">✅</span><div class="flex-1">${innerHtml}</div></div>`;
-            }).join('');
-            return `<div class="p-3 bg-gray-50 border border-gray-200 rounded-xl"><div class="text-xs font-bold text-blue-600 uppercase mb-2 flex items-center gap-1">⏰ Horário: <span class="text-blue-800">${sched}</span></div>${rows}</div>`;
-        }).join('');
-    }
+    const slotsHtml = schedules.map(sched => {
+        const rows = bySchedule[sched].map(s =>
+            `<div class="flex items-center gap-3 p-2 bg-green-50 border border-green-200 rounded-lg mb-1"><span class="text-xl">✅</span><div class="flex-1 font-semibold text-gray-800 text-sm">${teamLabel(s)}</div></div>`
+        ).join('');
+        return `<div class="p-3 bg-gray-50 border border-gray-200 rounded-xl"><div class="text-xs font-bold text-blue-600 uppercase mb-2 flex items-center justify-center gap-1 text-center">⏰ Horário: <span class="text-blue-800">${escapeLabel(sched)}</span></div>${rows}</div>`;
+    }).join('');
 
     const div = document.createElement('div');
     div.id = 'slotConfirmModal';
@@ -8631,22 +8594,14 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink,
             <div class="text-center mb-5">
                 <div class="text-5xl mb-2">🎉</div>
                 <h3 class="text-xl font-bold text-gray-900">Vaga confirmada</h3>
-                <p class="text-gray-500 text-sm mt-1">${eventName}</p>
+                <p class="text-gray-500 text-sm mt-1">${escapeLabel(eventName)}</p>
             </div>
             <div class="space-y-3 mb-6">${slotsHtml}</div>
-            <div class="p-4 bg-amber-50 border-2 border-amber-400 rounded-xl text-sm text-amber-900 mb-4 text-center leading-relaxed">
-                🔔 <strong>ATENÇÃO:</strong> O ID e senha da sala saem aqui no site mesmo.<br>
-                Fique atento ao sininho de notificações <strong>5 minutos antes do seu horário!</strong>
+            <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700 mb-4 text-center">
+                💡 Você receberá a lista de Slots junto com o ID E SENHA no GRUPO!
             </div>
-            ${!isLiga ? `<div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700 mb-4 text-center">
-                💡 Você receberá a lista de Slots junto com o ID E SENHA!
-            </div>` : ''}
             <div class="flex flex-col gap-2">
                 ${accessReference ? '<div id="confirmedEventAccessLinks" class="flex flex-col gap-2 p-3 rounded-xl bg-teal-50 border border-teal-200" role="status" aria-live="polite">Consultando os links dos horários confirmados...</div>' : ''}
-                ${eventId ? `<button onclick="window.location.href='${_eventoUrl(eventId)}'"
-                        class="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-bold text-base transition-colors">
-                    <i class="fas fa-external-link-alt mr-2"></i>VER PÁGINA DO EVENTO
-                </button>` : ''}
                 <button onclick="document.getElementById('slotConfirmModal').remove()"
                         class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold text-base transition-colors">
                     OK, entendido! 👍
