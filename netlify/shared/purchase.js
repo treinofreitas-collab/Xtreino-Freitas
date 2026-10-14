@@ -1,5 +1,6 @@
 const { getAdmin } = require("./firebase-admin");
 const { toCents, validateApprovedPayment } = require("./token-purchase");
+const { isDeepStrictEqual } = require("node:util");
 
 function fail(message, statusCode = 409) {
   const error = new Error(message);
@@ -128,7 +129,8 @@ async function discountedPrice(db, originalCents, code, kind) {
   };
 }
 
-async function preparePurchase(uid, body, method) {
+// Resolve trusted pricing without writing a checkout yet.
+async function buildPurchase(uid, body, method) {
   const reference = validReference(body.external_reference);
   const admin = getAdmin();
   const db = admin.firestore();
@@ -141,7 +143,7 @@ async function preparePurchase(uid, body, method) {
     if (body.unit_price != null && toCents(body.unit_price) !== checkout.amountCents) {
       fail("O preço exibido não corresponde a este pedido. Confira a compra antes de continuar.");
     }
-    return { db, checkoutRef, checkout };
+    return { db, checkoutRef, checkout, existing: true };
   }
   let sources, kind, product;
   if (reference.startsWith("digital_")) {
@@ -176,6 +178,14 @@ async function preparePurchase(uid, body, method) {
     originalCents, ...discount, status: "pending", currency: "BRL",
     ...(product ? { downloadLink: product.downloadLink, productCategory: product.productCategory } : {}),
   };
+  return { db, checkoutRef, checkout, sources, existing: false };
+}
+
+async function preparePurchase(uid, body, method) {
+  const prepared = await buildPurchase(uid, body, method);
+  const { db, checkoutRef, checkout, sources } = prepared;
+  if (prepared.existing) return { db, checkoutRef, checkout };
+  const admin = getAdmin();
   // Serialize concurrent attempts for the same reference.
   const saved = await db.runTransaction(async transaction => {
     const [current, freshSources] = await Promise.all([
@@ -200,12 +210,40 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
   const admin = getAdmin();
   const db = admin.firestore();
   const checkoutRef = db.collection("purchase_checkouts").doc(reference);
+  return db.runTransaction(transaction => settlePurchase(transaction, reference, {
+    payment, uid, admin, db, checkoutRef,
+  }));
+}
+
+// Tokens create the checkout, debit, receipt and delivery in one atomic commit.
+async function payPurchaseWithTokens(uid, body) {
+  const prepared = await buildPurchase(uid, body, "tokens");
+  const { db, checkoutRef, checkout, sources } = prepared;
+  const admin = getAdmin();
+  return db.runTransaction(transaction => settlePurchase(transaction, checkout.externalReference, {
+    uid, admin, db, checkoutRef, preparedCheckout: checkout,
+    preparedSources: sources, expectedTotal: body.unit_price,
+  }));
+}
+
+function sourcePricingFields(source) {
+  const fields = ["userId", "type", "productId", "productOptions", "eventType",
+    "date", "eventDate", "hour", "schedule", "couponCode", "isFreeEvent", "freeParticipationStatus"];
+  return Object.fromEntries(fields.map(field => [field, source[field]]));
+}
+
+async function settlePurchase(transaction, reference, {
+  payment = null, uid = null, admin, db, checkoutRef,
+  preparedCheckout = null, preparedSources = null, expectedTotal = null,
+}) {
   const review = (reason, message) => ({ status: "needs_review", reason, message });
-  return db.runTransaction(async transaction => {
     const snapshot = await transaction.get(checkoutRef);
-    if (!snapshot.exists) return { status: "not_found" };
-    const checkout = snapshot.data();
+    if (!snapshot.exists && !preparedCheckout) return { status: "not_found" };
+    const checkout = snapshot.exists ? snapshot.data() : preparedCheckout;
     if (uid && checkout.userId !== uid) fail("Esta compra não pertence à sua conta.", 403);
+    if (expectedTotal != null && toCents(expectedTotal) !== checkout.amountCents) {
+      fail("O preço exibido não corresponde a este pedido. Confira a compra antes de continuar.");
+    }
     if (payment) {
       if (checkout.method !== "mercadopago") {
         return review("checkout_method_mismatch", "Este checkout não foi criado para pagamento pelo Mercado Pago.");
@@ -257,6 +295,10 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
       }
       return review("reservation_not_pending", "Uma das inscrições vinculadas já não está pendente; é necessária uma conferência.");
     }
+    if (!snapshot.exists && preparedSources && sources.some((source, index) =>
+      !isDeepStrictEqual(sourcePricingFields(source.data()), sourcePricingFields(preparedSources[index].data())))) {
+      fail("O pedido mudou. Tente novamente.");
+    }
     const debit = checkout.amountCents / 100;
     if (!payment && (!Number.isFinite(balance) || balance < debit)) fail("Saldo de tokens insuficiente.");
     const timestamp = admin.firestore.FieldValue.serverTimestamp();
@@ -293,12 +335,13 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
     }
     if (!payment) transaction.update(userRef, { tokens: Number((balance - debit).toFixed(2)), updatedAt: timestamp });
     transaction.create(receiptRef, { reference, userId: checkout.userId, amountCents: checkout.amountCents, createdAt: timestamp });
-    transaction.update(checkoutRef, { status: "paid", paidAt: timestamp, ...(payment ? { paymentId: String(payment.id) } : {}) });
+    const paidCheckout = { status: "paid", paidAt: timestamp, ...(payment ? { paymentId: String(payment.id) } : {}) };
+    if (snapshot.exists) transaction.update(checkoutRef, paidCheckout);
+    else transaction.create(checkoutRef, { ...checkout, ...paidCheckout, createdAt: timestamp });
     return { status: "paid", balance: payment ? balance : Number((balance - debit).toFixed(2)) };
-  });
 }
 
-module.exports = { preparePurchase, completePurchase, safeBackUrl, siteBaseUrl, productPrice, eventPrice, discountedPrice };
+module.exports = { preparePurchase, completePurchase, payPurchaseWithTokens, safeBackUrl, siteBaseUrl, productPrice, eventPrice, discountedPrice };
 
 module.exports.assertCanConfirm = async (uid, ownerUid) => {
   if (uid === ownerUid) return;

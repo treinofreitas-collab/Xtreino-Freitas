@@ -5,6 +5,7 @@ const firebase = require("./firebase-admin");
 function fakeDatabase(seed, reads = []) {
   let records = new Map(Object.entries(structuredClone(seed)));
   let queue = Promise.resolve();
+  let transactionCount = 0;
   function doc(path) {
     return {
       path, id: path.split("/").pop(),
@@ -13,7 +14,9 @@ function fakeDatabase(seed, reads = []) {
     };
   }
   function snapshot(path) {
-    return { exists: records.has(path), ref: doc(path), id: path.split("/").pop(), data: () => structuredClone(records.get(path)) };
+    const exists = records.has(path);
+    const data = structuredClone(records.get(path));
+    return { exists, ref: doc(path), id: path.split("/").pop(), data: () => structuredClone(data) };
   }
   function collection(name, filters = [], limit = Infinity) {
     return {
@@ -36,11 +39,16 @@ function fakeDatabase(seed, reads = []) {
     collection, doc, read: path => structuredClone(records.get(path)),
     set: (path, value) => records.set(path, structuredClone(value)),
     remove: path => records.delete(path),
+    get transactionCount() { return transactionCount; },
     runTransaction: task => {
+      transactionCount++;
       const job = queue.then(async () => {
         const writes = [];
         const transaction = {
-          get: async ref => snapshot(ref.path),
+          get: async ref => {
+            assert.equal(writes.length, 0, "Firestore transaction reads must precede all writes");
+            return snapshot(ref.path);
+          },
           create: (ref, data) => writes.push(["create", ref.path, data]),
           update: (ref, data) => writes.push(["update", ref.path, data]),
           set: (ref, data) => writes.push(["set", ref.path, data]),
@@ -65,7 +73,7 @@ let currentDb;
 const firestore = () => currentDb;
 firestore.FieldValue = { serverTimestamp: () => 1234 };
 firebase.getAdmin = () => ({ firestore });
-const { preparePurchase, completePurchase, eventPrice, safeBackUrl } = require("./purchase");
+const { preparePurchase, completePurchase, payPurchaseWithTokens, eventPrice, safeBackUrl } = require("./purchase");
 const { handler: webhook } = require("../functions/mp-webhook");
 const crypto = require("node:crypto");
 
@@ -291,10 +299,188 @@ test("coupon is validated on server and an old checkout cannot silently change t
   assert.equal(currentDb.read("users/buyer").tokens, 16);
 });
 
+test("new token purchase creates the paid checkout and delivers the product in exactly one transaction", async () => {
+  currentDb = fakeDatabase(productSeed());
+  const result = await payPurchaseWithTokens("buyer", { external_reference: "digital_one", unit_price: 8 });
+  assert.deepEqual(result, { status: "paid", balance: 12 });
+  assert.equal(currentDb.transactionCount, 1);
+  assert.equal(currentDb.read("purchase_checkouts/digital_one").status, "paid");
+  assert.equal(currentDb.read("orders/one").downloadLink, "https://example.com/file");
+  assert.equal(currentDb.read("orders/one").verifiedOnServer, true);
+  assert.equal(currentDb.read("purchase_receipts/tokens_digital_one").amountCents, 800);
+});
+
+test("new token events confirm all dates/hours and allocate the coupon total in one transaction", async () => {
+  currentDb = fakeDatabase({
+    "users/buyer": { tokens: 10 },
+    "adminEvents/modo-liga": { name: "Liga", preco: 3, status: "Aberto" },
+    "coupons/half": { code: "METADE", isActive: true, usageType: "events", discountType: "percentage", discountValue: 50 },
+    ...Object.fromEntries(["a", "b"].map((id, index) => [`registrations/${id}`, {
+      userId: "buyer", status: "pending", eventType: "modo-liga", date: `2026-10-${14 + index}`,
+      schedule: `Quarta - ${21 + index}h`, external_reference: "tokens_multi",
+    }])),
+  });
+  assert.deepEqual(await payPurchaseWithTokens("buyer", {
+    external_reference: "tokens_multi", unit_price: 3, couponCode: "METADE",
+  }), { status: "paid", balance: 7 });
+  assert.equal(currentDb.transactionCount, 1);
+  assert.equal(currentDb.read("registrations/a").tokensUsed, 1.5);
+  assert.equal(currentDb.read("registrations/b").tokensUsed, 1.5);
+  assert.equal(currentDb.read("orders/event_tokens_multi").quantity, 2);
+  assert.equal(currentDb.read("purchase_checkouts/tokens_multi").couponId, "half");
+});
+
+test("optimized token retries, including concurrent requests, debit only once", async () => {
+  currentDb = fakeDatabase(productSeed());
+  const body = { external_reference: "digital_one", unit_price: 8 };
+  const results = await Promise.all([
+    payPurchaseWithTokens("buyer", body), payPurchaseWithTokens("buyer", body),
+  ]);
+  assert.deepEqual(results.map(result => result.status), ["paid", "already_paid"]);
+  assert.equal((await payPurchaseWithTokens("buyer", body)).status, "already_paid");
+  assert.equal(currentDb.read("users/buyer").tokens, 12);
+});
+
+test("free event confirmation still uses the token endpoint without deducting any balance", async () => {
+  currentDb = fakeDatabase({
+    "users/buyer": { tokens: 0 },
+    "adminEvents/free": { name: "Grátis", entrada: "GRÁTIS", status: "Aberto" },
+    "registrations/free": {
+      userId: "buyer", status: "pending", eventType: "free", date: "2026-10-14",
+      schedule: "Quarta - 19h", external_reference: "free_test",
+      isFreeEvent: true, freeParticipationStatus: "lisagem_gratis",
+    },
+  });
+  assert.deepEqual(await payPurchaseWithTokens("buyer", {
+    external_reference: "free_test", unit_price: 0,
+  }), { status: "paid", balance: 0 });
+  assert.equal(currentDb.transactionCount, 1);
+  assert.equal(currentDb.read("registrations/free").status, "lisagem_gratis");
+  assert.equal(currentDb.read("users/buyer").tokens, 0);
+});
+
+test("optimized concurrent distinct purchases never overdraw the account", async () => {
+  currentDb = fakeDatabase({
+    ...productSeed(10), "orders/two": { ...productSeed()["orders/one"] },
+  });
+  const results = await Promise.allSettled(["one", "two"].map(id =>
+    payPurchaseWithTokens("buyer", { external_reference: `digital_${id}`, unit_price: 8 })));
+  assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
+  assert.equal(currentDb.read("users/buyer").tokens, 2);
+  assert.equal(currentDb.read("purchase_checkouts/digital_two"), undefined);
+});
+
+test("optimized insufficient balance and failed commit leave no checkout, debit or receipt", async () => {
+  for (const failure of ["balance", "commit"]) {
+    currentDb = fakeDatabase(productSeed(failure === "balance" ? 3 : 20));
+    if (failure === "commit") {
+      const run = currentDb.runTransaction;
+      currentDb.runTransaction = task => run(async transaction => {
+        await task(transaction);
+        throw new Error("commit failed");
+      });
+    }
+    await assert.rejects(payPurchaseWithTokens("buyer", { external_reference: "digital_one" }),
+      failure === "balance" ? /insuficiente/ : /commit failed/);
+    assert.equal(currentDb.read("orders/one").status, "pending");
+    assert.equal(currentDb.read("users/buyer").tokens, failure === "balance" ? 3 : 20);
+    assert.equal(currentDb.read("purchase_checkouts/digital_one"), undefined);
+    assert.equal(currentDb.read("purchase_receipts/tokens_digital_one"), undefined);
+  }
+});
+
+test("optimized tokens reject wrong owners, forged prices and invalid coupons before writing", async () => {
+  for (const [uid, body, message] of [
+    ["attacker", {}, /pertence/], ["buyer", { unit_price: 0.01 }, /preço mudou/],
+    ["buyer", { couponCode: "INVALIDO" }, /Cupom/],
+  ]) {
+    currentDb = fakeDatabase(productSeed());
+    await assert.rejects(payPurchaseWithTokens(uid, { external_reference: "digital_one", ...body }), message);
+    assert.equal(currentDb.read("orders/one").status, "pending");
+    assert.equal(currentDb.read("users/buyer").tokens, 20);
+    assert.equal(currentDb.read("purchase_checkouts/digital_one"), undefined);
+  }
+});
+
+test("optimized tokens resume legacy pending token checkouts but refuse Mercado Pago checkouts", async () => {
+  currentDb = fakeDatabase(productSeed());
+  await preparePurchase("buyer", { external_reference: "digital_one", unit_price: 8 }, "tokens");
+  const before = currentDb.transactionCount;
+  assert.equal((await payPurchaseWithTokens("buyer", { external_reference: "digital_one", unit_price: 8 })).status, "paid");
+  assert.equal(currentDb.transactionCount - before, 1);
+  currentDb = fakeDatabase(productSeed());
+  await preparePurchase("buyer", { external_reference: "digital_one", unit_price: 8 }, "mercadopago");
+  await assert.rejects(payPurchaseWithTokens("buyer", { external_reference: "digital_one" }), /outra forma/);
+  assert.equal(currentDb.read("users/buyer").tokens, 20);
+});
+
+test("a source removed or changed between pricing and the atomic token commit never debits", async () => {
+  for (const mutation of ["missing", "owner", "status", "options"]) {
+    currentDb = fakeDatabase(productSeed());
+    const run = currentDb.runTransaction;
+    currentDb.runTransaction = task => {
+      if (mutation === "missing") currentDb.remove("orders/one");
+      else currentDb.set("orders/one", { ...currentDb.read("orders/one"),
+        ...(mutation === "owner" ? { userId: "attacker" }
+          : mutation === "status" ? { status: "canceled" }
+            : { productOptions: { quantity: 10 } }),
+      });
+      return run(task);
+    };
+    const attempt = payPurchaseWithTokens("buyer", { external_reference: "digital_one" });
+    if (mutation === "options") await assert.rejects(attempt, /pedido mudou/);
+    else assert.equal((await attempt).status, "needs_review");
+    assert.equal(currentDb.read("users/buyer").tokens, 20);
+    assert.equal(currentDb.read("purchase_checkouts/digital_one"), undefined);
+    assert.equal(currentDb.read("purchase_receipts/tokens_digital_one"), undefined);
+  }
+});
+
+test("a concurrent conflicting checkout is revalidated inside the token transaction", async () => {
+  for (const patch of [{ method: "mercadopago" }, { amountCents: 1 }]) {
+    currentDb = fakeDatabase(productSeed());
+    const run = currentDb.runTransaction;
+    currentDb.runTransaction = task => {
+      currentDb.set("purchase_checkouts/digital_one", {
+        userId: "buyer", method: "tokens", amountCents: 800, status: "pending", ...patch,
+      });
+      return run(task);
+    };
+    await assert.rejects(payPurchaseWithTokens("buyer", { external_reference: "digital_one", unit_price: 8 }),
+      patch.method ? /Forma de pagamento/ : /preço exibido/);
+    assert.equal(currentDb.read("users/buyer").tokens, 20);
+  }
+});
+
 test("payment endpoints reject unauthenticated requests before any data or payment processing", async () => {
   for (const name of ["create-preference", "create-token-preference", "confirm-purchase", "confirm-token-purchase", "pay-with-tokens", "check-pix-status", "check-payment-status"]) {
     const { handler } = require(`../functions/${name}`);
     const result = await handler({ httpMethod: "POST", headers: {}, body: "{}" });
     assert.equal(result.statusCode, 401, name);
+  }
+});
+
+test("the token endpoint returns the existing response contract using the single-transaction path", async () => {
+  const path = require.resolve("../functions/pay-with-tokens");
+  const verify = firebase.verifyFirebaseUser;
+  delete require.cache[path];
+  firebase.verifyFirebaseUser = async () => ({ uid: "buyer" });
+  try {
+    const { handler } = require(path);
+    currentDb = fakeDatabase(productSeed());
+    const response = await handler({
+      httpMethod: "POST", body: JSON.stringify({ external_reference: "digital_one", unit_price: 8 }),
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(JSON.parse(response.body), { status: "paid", balance: 12 });
+    assert.equal(currentDb.transactionCount, 1);
+    const retry = await handler({
+      httpMethod: "POST", body: JSON.stringify({ external_reference: "digital_one", unit_price: 8 }),
+    });
+    assert.equal(retry.statusCode, 200);
+    assert.deepEqual(JSON.parse(retry.body), { status: "already_paid", balance: 12 });
+  } finally {
+    firebase.verifyFirebaseUser = verify;
+    delete require.cache[path];
   }
 });

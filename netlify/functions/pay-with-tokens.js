@@ -1,5 +1,5 @@
 const { verifyFirebaseUser } = require("../shared/firebase-admin");
-const { preparePurchase, completePurchase } = require("../shared/purchase");
+const { payPurchaseWithTokens } = require("../shared/purchase");
 const { jsonResponse, parseJsonBody } = require("../shared/token-purchase");
 
 exports.handler = async event => {
@@ -8,8 +8,7 @@ exports.handler = async event => {
   try {
     const user = await verifyFirebaseUser(event);
     const body = parseJsonBody(event);
-    await preparePurchase(user.uid, body, "tokens");
-    const result = await completePurchase(body.external_reference, { uid: user.uid });
+    const result = await payPurchaseWithTokens(user.uid, body);
     return jsonResponse(["paid", "already_paid"].includes(result.status) ? 200 : 409, result);
   } catch (error) {
     const status = Number(error.statusCode) || 503;
