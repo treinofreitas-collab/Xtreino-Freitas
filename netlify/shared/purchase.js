@@ -280,7 +280,10 @@ async function settlePurchase(transaction, reference, {
     if (receipt.exists) {
       return review("receipt_already_exists", "Já existe um comprovante desta transação, mas o checkout ainda não está conciliado.");
     }
-    if (!user.exists) {
+    // A users document is a profile, not proof of an approved event payment.
+    // Token debits still require that document; MP events use the trusted
+    // checkout, exact provider payment and reservation ownership instead.
+    if (!user.exists && (!payment || checkout.kind !== "event")) {
       return review("account_missing", "O cadastro da conta responsável pelo checkout não foi encontrado.");
     }
     const invalidSource = sources.find(source => !source.exists

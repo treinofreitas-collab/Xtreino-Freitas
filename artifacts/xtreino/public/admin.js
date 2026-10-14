@@ -3840,6 +3840,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }
   };
 
+  function bindManageHourActions(listConfirmed, listPending, handler) {
+    // These lists persist between modal openings: replace, don't accumulate.
+    if (listConfirmed) listConfirmed.onclick = handler;
+    if (listPending) listPending.onclick = handler;
+  }
+
   async function openManageHourModal(date, eventType, hour, rawEventId = null, evFieldType = null){
     const title         = document.getElementById('manageHourTitle');
     const listConfirmed = document.getElementById('manageHourListConfirmed');
@@ -4070,7 +4076,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
         // ── Verificar Pagamento ───────────────────────────────────────
         const verifyBtn = e.target.closest('[data-verify-reg-id]');
-        if (!verifyBtn) return;
+        if (!verifyBtn || verifyBtn.disabled) return;
         const regId = verifyBtn.getAttribute('data-verify-reg-id');
         const extRef = verifyBtn.getAttribute('data-ext-ref') || '';
         if (!extRef) {
@@ -4090,7 +4096,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             showToast('success', '✅ Pagamento confirmado! Status atualizado para Pago.', 'Confirmado');
             // Reabrir o modal atualizado
             try{ await loadBoard(); }catch(_){}
-            openManageHourModal(date, eventType, hour);
+            openManageHourModal(date, eventType, hour, rawEventId, evFieldType);
           } else if (data.status === 'pending') {
             showToast('warning', '⏳ Pagamento ainda pendente no Mercado Pago.', 'Pendente');
             verifyBtn.disabled = false;
@@ -4119,8 +4125,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
           verifyBtn.innerHTML = origHtml;
         }
       };
-      listConfirmed.addEventListener('click', handleListClick);
-      if (listPending) listPending.addEventListener('click', handleListClick);
+      bindManageHourActions(listConfirmed, listPending, handleListClick);
 
     }catch(e){
       console.error('openManageHourModal error', e);

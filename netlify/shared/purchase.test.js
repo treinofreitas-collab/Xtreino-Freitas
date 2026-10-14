@@ -237,7 +237,7 @@ test("approved event confirms every reservation and creates the paid order autom
   assert.equal(currentDb.read("users/buyer").tokens, 10);
 });
 
-test("event payment review identifies the specific account, receipt, or reservation conflict without releasing the event", async () => {
+test("event payment review identifies receipt or reservation conflicts without releasing the event", async () => {
   const seed = () => ({
     "users/buyer": { tokens: 0 },
     "adminEvents/xtreino-tokens": { name: "XTreino Tokens", eventType: "xtreino-tokens", preco: 1, status: "Aberto" },
@@ -257,7 +257,6 @@ test("event payment review identifies the specific account, receipt, or reservat
     assert.notEqual(currentDb.read("registrations/r1")?.status, "paid");
   };
 
-  await check(() => currentDb.remove("users/buyer"), "account_missing");
   await check(() => currentDb.set("purchase_receipts/mp_987", { reference: "schedule_review" }), "receipt_already_exists");
   await check(() => currentDb.remove("registrations/r1"), "reservation_missing");
   await check(() => currentDb.set("registrations/r1", {
@@ -272,6 +271,44 @@ test("event payment review identifies the specific account, receipt, or reservat
   const wrongMethod = await completePurchase("digital_one", { payment: payment("digital_one") });
   assert.equal(wrongMethod.reason, "checkout_method_mismatch");
   assert.match(wrongMethod.message, /não foi criado para pagamento pelo Mercado Pago/);
+});
+
+test("approved MP events confirm without an optional profile, never creating or crediting an account", async () => {
+  currentDb = fakeDatabase({
+    "adminEvents/liga": { name: "Liga", preco: 1, status: "Aberto" },
+    "registrations/r": {
+      userId: "buyer", status: "pending", eventType: "liga", date: "2026-10-14",
+      schedule: "Quarta - 14h", external_reference: "schedule_no_profile",
+    },
+  });
+  await preparePurchase("buyer", { external_reference: "schedule_no_profile", unit_price: 1 }, "mercadopago");
+  const approved = { ...payment("schedule_no_profile"), transaction_amount: 1 };
+  const badPayment = await completePurchase("schedule_no_profile", {
+    payment: { ...approved, transaction_amount: 0.01 },
+  });
+  assert.equal(badPayment.reason, "amount_mismatch");
+  assert.equal(currentDb.read("registrations/r").status, "pending");
+  assert.equal(currentDb.read("purchase_receipts/mp_987"), undefined);
+  assert.equal((await completePurchase("schedule_no_profile", { payment: approved })).status, "paid");
+  assert.equal(currentDb.read("registrations/r").status, "paid");
+  assert.equal(currentDb.read("orders/event_schedule_no_profile").userId, "buyer");
+  assert.equal(currentDb.read("users/buyer"), undefined);
+  assert.equal((await completePurchase("schedule_no_profile", { payment: approved })).status, "already_paid");
+});
+
+test("missing profiles still block token debits and non-event delivery without any writes", async () => {
+  for (const kind of ["tokens", "mercadopago"]) {
+    currentDb = fakeDatabase(productSeed());
+    await preparePurchase("buyer", { external_reference: "digital_one", unit_price: 8 }, kind);
+    currentDb.remove("users/buyer");
+    const result = kind === "tokens"
+      ? await payPurchaseWithTokens("buyer", { external_reference: "digital_one", unit_price: 8 })
+      : await completePurchase("digital_one", { payment: payment("digital_one") });
+    assert.equal(result.reason, "account_missing");
+    assert.equal(currentDb.read("orders/one").status, "pending");
+    assert.equal(currentDb.read("purchase_checkouts/digital_one").status, "pending");
+    assert.equal(currentDb.read(`purchase_receipts/${kind === "tokens" ? "tokens_digital_one" : "mp_987"}`), undefined);
+  }
 });
 
 test("simultaneous different token purchases cannot overdraw the balance", async () => {
@@ -481,6 +518,50 @@ test("the token endpoint returns the existing response contract using the single
     assert.deepEqual(JSON.parse(retry.body), { status: "already_paid", balance: 12 });
   } finally {
     firebase.verifyFirebaseUser = verify;
+    delete require.cache[path];
+  }
+});
+
+test("admin Verificar validates the provider amount before confirming an event with no customer profile", async () => {
+  const path = require.resolve("../functions/confirm-purchase");
+  const provider = require("./credit-token-order");
+  const verify = firebase.verifyFirebaseUser;
+  const findPayments = provider.findPaymentsByExternalReference;
+  let providerAmount = 0.01;
+  let providerCalls = 0;
+  delete require.cache[path];
+  firebase.verifyFirebaseUser = async () => ({ uid: "admin" });
+  provider.findPaymentsByExternalReference = async reference => {
+    providerCalls++;
+    return [{ ...payment(reference), transaction_amount: providerAmount }];
+  };
+  try {
+    const { handler } = require(path);
+    currentDb = fakeDatabase({
+      "users/admin": { role: "Admin" },
+      "adminEvents/liga": { name: "Liga", preco: 1, status: "Aberto" },
+      "registrations/r": {
+        userId: "buyer", status: "pending", eventType: "liga", date: "2026-10-14",
+        schedule: "Quarta - 14h", external_reference: "schedule_admin_check",
+      },
+    });
+    await preparePurchase("buyer", { external_reference: "schedule_admin_check", unit_price: 1 }, "mercadopago");
+    const request = { httpMethod: "POST", body: JSON.stringify({ external_reference: "schedule_admin_check" }) };
+    const mismatch = await handler(request);
+    assert.equal(mismatch.statusCode, 409);
+    assert.equal(JSON.parse(mismatch.body).reason, "amount_mismatch");
+    assert.equal(currentDb.read("registrations/r").status, "pending");
+    providerAmount = 1;
+    const confirmed = await handler(request);
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(JSON.parse(confirmed.body).status, "paid");
+    assert.equal(currentDb.read("registrations/r").status, "paid");
+    assert.equal(currentDb.read("users/buyer"), undefined);
+    assert.equal((await handler(request)).statusCode, 200);
+    assert.equal(providerCalls, 2);
+  } finally {
+    firebase.verifyFirebaseUser = verify;
+    provider.findPaymentsByExternalReference = findPayments;
     delete require.cache[path];
   }
 });
