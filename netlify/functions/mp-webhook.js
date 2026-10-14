@@ -64,7 +64,7 @@ exports.handler = async (event) => {
       result = await completePurchase(String(payment.external_reference), { payment });
     }
     if (!["not_found", "credited", "already_credited", "paid", "already_paid"].includes(result.status)) {
-      console.error("Payment requires review", result.status);
+      console.error("Payment requires review", result.reason || result.status);
     }
     return jsonResponse(200, { received: true });
   } catch (error) {

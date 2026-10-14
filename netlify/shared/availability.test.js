@@ -121,3 +121,35 @@ test("endpoint returns a strict boolean contract and performs no writes", async 
   assert.deepEqual(JSON.parse(response.body), { available: true });
   assert.equal((await handler({ httpMethod: "GET" })).statusCode, 405);
 });
+
+const saturdayMidnightLiga = {
+  date: "2026-10-17",
+  eventType: "modo-liga",
+  selectedTimes: ["Sábado - 0h"],
+  numberOfTeams: 1,
+};
+
+test("Modo Liga accepts midnight reservations on weekends", async () => {
+  assert.deepEqual(validateRequest(saturdayMidnightLiga).hours, [0]);
+  const db = database({
+    "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
+  });
+  assert.equal((await checkAvailability(db, saturdayMidnightLiga)).available, true);
+});
+
+test("Modo Liga midnight slot still respects manual admin locks", async () => {
+  const db = database({
+    "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
+    "event_hour_locks/mode-liga-midnight": { eventType: "modo-liga", hour: "00:00", locked: true },
+  });
+  const result = await checkAvailability(db, saturdayMidnightLiga);
+  assert.equal(result.available, false);
+  assert.match(result.message, /bloqueado pelo administrador/);
+});
+
+test("midnight reservations are restricted to Modo Liga", () => {
+  assert.throws(
+    () => validateRequest({ ...saturdayMidnightLiga, eventType: "treino-freitas" }),
+    /apenas no Modo Liga/,
+  );
+});

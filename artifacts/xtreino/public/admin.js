@@ -4099,6 +4099,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
             showToast('error', '❌ Pagamento rejeitado pelo Mercado Pago.', 'Rejeitado');
             verifyBtn.disabled = false;
             verifyBtn.innerHTML = origHtml;
+          } else if (data.status === 'needs_review') {
+            showToast(
+              'warning',
+              data.message || 'O pagamento precisa de uma conferência manual antes de liberar a vaga.',
+              'Conferência necessária'
+            );
+            verifyBtn.disabled = false;
+            verifyBtn.innerHTML = origHtml;
           } else {
             showToast('warning', `Status desconhecido: "${data.status}". Verifique no painel do Mercado Pago.`, 'Atenção');
             verifyBtn.disabled = false;

@@ -34,6 +34,8 @@ function fakeDatabase(seed, reads = []) {
   }
   return {
     collection, doc, read: path => structuredClone(records.get(path)),
+    set: (path, value) => records.set(path, structuredClone(value)),
+    remove: path => records.delete(path),
     runTransaction: task => {
       const job = queue.then(async () => {
         const writes = [];
@@ -138,9 +140,14 @@ test("approved product is delivered by webhook without any browser return; repea
 test("pending and amount-mismatched payments never release products", async () => {
   currentDb = fakeDatabase(productSeed());
   await preparePurchase("buyer", { external_reference: "digital_one" }, "mercadopago");
-  for (const p of [{ ...payment("digital_one"), status: "pending" }, { ...payment("digital_one"), transaction_amount: 0.01 }]) {
-    assert.equal((await completePurchase("digital_one", { payment: p })).status, "needs_review");
-  }
+  const pending = await completePurchase("digital_one", { payment: { ...payment("digital_one"), status: "pending" } });
+  const mismatch = await completePurchase("digital_one", { payment: { ...payment("digital_one"), transaction_amount: 0.01 } });
+  assert.equal(pending.status, "needs_review");
+  assert.equal(pending.reason, "pending");
+  assert.match(pending.message, /pendente/);
+  assert.equal(mismatch.status, "needs_review");
+  assert.equal(mismatch.reason, "amount_mismatch");
+  assert.match(mismatch.message, /valor aprovado/);
   assert.equal(currentDb.read("orders/one").status, "pending");
 });
 
@@ -195,7 +202,10 @@ test("a different approved payment for an already-paid purchase is flagged for r
   currentDb = fakeDatabase(productSeed());
   await preparePurchase("buyer", { external_reference: "digital_one" }, "mercadopago");
   await completePurchase("digital_one", { payment: payment("digital_one") });
-  assert.equal((await completePurchase("digital_one", { payment: { ...payment("digital_one"), id: 988 } })).status, "needs_review");
+  const result = await completePurchase("digital_one", { payment: { ...payment("digital_one"), id: 988 } });
+  assert.equal(result.status, "needs_review");
+  assert.equal(result.reason, "checkout_paid_with_other_payment");
+  assert.match(result.message, /outra transação/);
 });
 
 test("return URLs cannot redirect the customer to an attacker", () => {
@@ -217,6 +227,43 @@ test("approved event confirms every reservation and creates the paid order autom
   assert.equal(currentDb.read("registrations/a").status, "paid");
   assert.equal(currentDb.read("orders/event_schedule_event").total, 1);
   assert.equal(currentDb.read("users/buyer").tokens, 10);
+});
+
+test("event payment review identifies the specific account, receipt, or reservation conflict without releasing the event", async () => {
+  const seed = () => ({
+    "users/buyer": { tokens: 0 },
+    "adminEvents/xtreino-tokens": { name: "XTreino Tokens", eventType: "xtreino-tokens", preco: 1, status: "Aberto" },
+    "registrations/r1": {
+      userId: "buyer", status: "pending", eventType: "xtreino-tokens",
+      date: "2026-10-14", schedule: "Quarta - 21h", external_reference: "schedule_review",
+    },
+  });
+  const check = async (mutate, expectedReason) => {
+    currentDb = fakeDatabase(seed());
+    await preparePurchase("buyer", { external_reference: "schedule_review", unit_price: 1 }, "mercadopago");
+    mutate?.();
+    const result = await completePurchase("schedule_review", { payment: { ...payment("schedule_review"), transaction_amount: 1 } });
+    assert.equal(result.status, "needs_review");
+    assert.equal(result.reason, expectedReason);
+    assert.ok(result.message);
+    assert.notEqual(currentDb.read("registrations/r1")?.status, "paid");
+  };
+
+  await check(() => currentDb.remove("users/buyer"), "account_missing");
+  await check(() => currentDb.set("purchase_receipts/mp_987", { reference: "schedule_review" }), "receipt_already_exists");
+  await check(() => currentDb.remove("registrations/r1"), "reservation_missing");
+  await check(() => currentDb.set("registrations/r1", {
+    ...currentDb.read("registrations/r1"), userId: "someone_else",
+  }), "reservation_owner_mismatch");
+  await check(() => currentDb.set("registrations/r1", {
+    ...currentDb.read("registrations/r1"), status: "confirmed",
+  }), "reservation_not_pending");
+
+  currentDb = fakeDatabase(productSeed());
+  await preparePurchase("buyer", { external_reference: "digital_one", unit_price: 8 }, "tokens");
+  const wrongMethod = await completePurchase("digital_one", { payment: payment("digital_one") });
+  assert.equal(wrongMethod.reason, "checkout_method_mismatch");
+  assert.match(wrongMethod.message, /não foi criado para pagamento pelo Mercado Pago/);
 });
 
 test("simultaneous different token purchases cannot overdraw the balance", async () => {

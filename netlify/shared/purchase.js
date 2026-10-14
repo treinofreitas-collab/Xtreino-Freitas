@@ -200,14 +200,29 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
   const admin = getAdmin();
   const db = admin.firestore();
   const checkoutRef = db.collection("purchase_checkouts").doc(reference);
+  const review = (reason, message) => ({ status: "needs_review", reason, message });
   return db.runTransaction(async transaction => {
     const snapshot = await transaction.get(checkoutRef);
     if (!snapshot.exists) return { status: "not_found" };
     const checkout = snapshot.data();
     if (uid && checkout.userId !== uid) fail("Esta compra não pertence à sua conta.", 403);
     if (payment) {
-      if (checkout.method !== "mercadopago") return { status: "needs_review" };
-      if (!validateApprovedPayment(payment, checkout).valid) return { status: "needs_review" };
+      if (checkout.method !== "mercadopago") {
+        return review("checkout_method_mismatch", "Este checkout não foi criado para pagamento pelo Mercado Pago.");
+      }
+      const paymentCheck = validateApprovedPayment(payment, checkout);
+      if (!paymentCheck.valid) {
+        const paymentMessages = {
+          not_found: "Não foi possível localizar o pagamento no Mercado Pago.",
+          pending: "O Mercado Pago ainda informa que este pagamento está pendente.",
+          rejected: "O Mercado Pago informa que este pagamento foi rejeitado.",
+          cancelled: "O Mercado Pago informa que este pagamento foi cancelado.",
+          external_reference_mismatch: "A referência do pagamento não corresponde à referência do checkout.",
+          currency_mismatch: "A moeda do pagamento não corresponde a BRL.",
+          amount_mismatch: "O valor aprovado não corresponde ao valor salvo no checkout.",
+        };
+        return review(paymentCheck.status, paymentMessages[paymentCheck.status] || "Os dados do pagamento não passaram na validação.");
+      }
     } else if (!uid || checkout.method !== "tokens") fail("Forma de pagamento inválida.", 403);
     const refs = checkout.sourcePaths.map(path => db.doc(path));
     const userRef = db.collection("users").doc(checkout.userId);
@@ -219,11 +234,28 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
     ]);
     const balance = Number(user.data()?.tokens || 0);
     if (checkout.status === "paid") {
-      if (payment && String(checkout.paymentId) !== String(payment.id)) return { status: "needs_review" };
+      if (payment && String(checkout.paymentId) !== String(payment.id)) {
+        return review("checkout_paid_with_other_payment", "Este checkout já está marcado como pago com outra transação.");
+      }
       return { status: "already_paid", balance };
     }
-    if (receipt.exists || !user.exists || sources.some(s => !s.exists || s.data().userId !== checkout.userId || s.data().status !== "pending")) {
-      return { status: "needs_review" };
+    if (receipt.exists) {
+      return review("receipt_already_exists", "Já existe um comprovante desta transação, mas o checkout ainda não está conciliado.");
+    }
+    if (!user.exists) {
+      return review("account_missing", "O cadastro da conta responsável pelo checkout não foi encontrado.");
+    }
+    const invalidSource = sources.find(source => !source.exists
+      || source.data()?.userId !== checkout.userId
+      || source.data()?.status !== "pending");
+    if (invalidSource) {
+      if (!invalidSource.exists) {
+        return review("reservation_missing", "Uma das inscrições vinculadas ao checkout não foi encontrada.");
+      }
+      if (invalidSource.data()?.userId !== checkout.userId) {
+        return review("reservation_owner_mismatch", "Uma das inscrições vinculadas não pertence à conta deste checkout.");
+      }
+      return review("reservation_not_pending", "Uma das inscrições vinculadas já não está pendente; é necessária uma conferência.");
     }
     const debit = checkout.amountCents / 100;
     if (!payment && (!Number.isFinite(balance) || balance < debit)) fail("Saldo de tokens insuficiente.");

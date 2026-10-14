@@ -16,6 +16,11 @@ function hourOf(value) {
   return match ? Number(match[1]) : null;
 }
 
+function isModoLigaType(value) {
+  const type = String(value || "").toLowerCase().trim().replace(/[\s_]+/g, "-");
+  return type === "liga" || type === "acesso" || type.includes("modo-liga");
+}
+
 function validateRequest(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) invalid("Dados da reserva inválidos.");
   const { date, eventType, selectedTimes } = body;
@@ -26,7 +31,8 @@ function validateRequest(body) {
   if (!Array.isArray(selectedTimes) || selectedTimes.length < 1 || selectedTimes.length > 10
       || selectedTimes.some(time => typeof time !== "string" || time.length > 80)) invalid("Selecione horários válidos.");
   const hours = selectedTimes.map(hourOf);
-  if (hours.some(hour => hour == null || hour < 14 || hour > 23)
+  if (!isModoLigaType(eventType) && hours.includes(0)) invalid("O horário 00h00 está disponível apenas no Modo Liga.");
+  if (hours.some(hour => hour == null || hour < 0 || hour > 23)
       || new Set(hours).size !== hours.length) invalid("Selecione horários válidos, sem repetições.");
   const numberOfTeams = Number(body.numberOfTeams);
   if (!Number.isInteger(numberOfTeams) || numberOfTeams < 1 || numberOfTeams > 100) invalid("Quantidade de times inválida.");

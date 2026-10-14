@@ -4627,7 +4627,7 @@ window.openFAQModal = function (faqId) {
         'faq7': {
             title: 'Horários dos Treinos',
             content: `
-                <p>Os X Treinos Freitas acontecem de segunda a sexta, das 14h às 23h (horário de Brasília).</p>
+                <p>Os treinos podem ser reservados em qualquer dia com horário disponível no site, inclusive aos sábados e domingos. No Modo Liga, também há o horário de 00h00.</p>
                 <p>As vagas são limitadas e organizadas por horário.</p>
                 <p class="text-blue-600 font-medium">💡 Compre suas vagas com antecedência e garanta seu espaço.</p>
             `
@@ -4834,7 +4834,7 @@ window.initSmoothAnimations = initSmoothAnimations;
 const scheduleConfig =
 {
     'modo-liga': { label: 'XTreino Modo Liga', price: 3.00, vagas: 15 },
-    'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2026-01-12', allowedWeekdays: [1, 2, 3, 4, 5], slots: ['19h', '20h', '21h', '22h', '23h'] },
+    'camp-freitas': { label: 'Camp Freitas', price: 8.00, startDate: '2026-01-12', slots: ['19h', '20h', '21h', '22h', '23h'] },
     'camp-final': { label: 'Vaga Direto na Final', price: 100.00 },
     'semanal-freitas': { label: 'Semanal Freitas', price: 3.50 },
     'xtreino-tokens': { label: 'XTreino Tokens', price: 1.00 },
@@ -6121,15 +6121,16 @@ function getEventPrice(eventType, hourStr, dateStr) {
     return Number(cfg.price || 0);
 }
 
-// Valida se a data é válida para agendamento (segunda a sexta, não passado)
+// Valida datas futuras; dias sem atendimento são controlados pelos bloqueios manuais de horários.
 function isValidScheduleDate(dateStr, eventType) {
     const date = new Date(dateStr + 'T00:00:00');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(date.getTime()) || date < today) return false;
 
     // Xtreino Tokens (gratuito): permite todos os dias da semana
     if (eventType === 'xtreino-tokens') {
-        return date >= today;
+        return true;
     }
 
     // Regras específicas por evento
@@ -6137,7 +6138,7 @@ function isValidScheduleDate(dateStr, eventType) {
         // Prioridade: manter suporte a semifinais já definidas
         const dateIso = dateStr || '';
         if (CAMP_SEMIFINAL_DATES.includes(dateIso)) {
-            return date >= today;
+            return true;
         }
 
         // Usar configuração em scheduleConfig quando disponível (promoção regular a partir de uma data)
@@ -6150,17 +6151,6 @@ function isValidScheduleDate(dateStr, eventType) {
                 return false;
             }
             if (date < normalizedStart) return false;
-            // verificar dias da semana permitidos se definido
-            if (Array.isArray(cfg.allowedWeekdays) && cfg.allowedWeekdays.length > 0) {
-                const day = date.getDay(); // 0..6 (Domingo..Sábado)
-                if (!cfg.allowedWeekdays.includes(day)) return false;
-            } else {
-                // por padrão permitir apenas segunda a sexta
-                const dayOfWeek = date.getDay();
-                if (dayOfWeek < 1 || dayOfWeek > 5) return false;
-            }
-            // não permitir datas no passado
-            if (date < today) return false;
             return true;
         }
 
@@ -6169,29 +6159,12 @@ function isValidScheduleDate(dateStr, eventType) {
     } else if (eventType === 'camp-final') {
         const dateIso = dateStr || '';
         if (CAMP_FINAL_DATES.includes(dateIso)) {
-            return date >= today;
+            return true;
         }
         return false;
     }
 
-    // Não pode ser no passado (padrão)
-    if (date < today) return false;
-
-    // Modo Liga e Semanal Freitas: somente segunda a sexta
-    if (eventType === 'modo-liga' || eventType === 'semanal-freitas') {
-        const dayOfWeek = date.getDay();
-        return dayOfWeek >= 1 && dayOfWeek <= 5;
-    }
-
-    // Eventos dinâmicos/desconhecidos: respeitar allowedWeekdays do scheduleConfig
-    if (typeof scheduleConfig !== 'undefined' && scheduleConfig[eventType]) {
-        const cfg = scheduleConfig[eventType];
-        if (Array.isArray(cfg.allowedWeekdays) && cfg.allowedWeekdays.length > 0) {
-            return cfg.allowedWeekdays.includes(date.getDay());
-        }
-    }
-
-    // Por padrão: qualquer dia não-passado é válido
+    // Eventos recorrentes e dinâmicos aceitam qualquer dia futuro.
     return true;
 }
 
@@ -6217,7 +6190,7 @@ async function renderScheduleTimes() {
 
     if (!isValidScheduleDate(date, eventType)) {
         stopScheduleAvailabilityListener();
-        let msg = 'Agendamentos apenas de segunda a sexta-feira e não em datas passadas.';
+        let msg = 'Esta data não está disponível para este evento.';
         if (eventType === 'xtreino-tokens') msg = 'Agendamentos não disponíveis em datas passadas.';
         else if (eventType === 'camp-freitas') msg = 'Camp Freitas (Semifinal) disponível somente em 22/11 e 23/11 às 17h.';
         else if (eventType === 'camp-final') msg = 'Vaga Direto na Final disponível apenas em 28/11 às 18h.';
@@ -6387,11 +6360,20 @@ async function renderScheduleTimes() {
     }
 
     // ── Renderizar horários em uma única passagem (sem flash) ───────────────
-    const slots = ['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'];
+    const eventConfig = scheduleConfig[eventType] || {};
+    const isModoLiga = [eventType, eventConfig.eventType, eventConfig.label, eventConfig.modo]
+        .some(value => normalizeEventType(value) === 'modo-liga');
+    const slots = [
+        ...(isModoLiga ? [{ value: '0h', label: '00h00' }] : []),
+        ...['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h']
+            .map(value => ({ value, label: value }))
+    ];
     timesWrap.innerHTML = '';
     let hasVisibleSlot = false;
 
-    for (const time of slots) {
+    for (const slot of slots) {
+        const time = slot.value;
+        const displayTime = slot.label;
         const schedule = `${day} - ${time}`;
         const hour = parseInt(time.replace('h', ''));
         const capacity = (cfg.vagas > 0 ? cfg.vagas : null) || getEventCapacity(eventType, time, date);
@@ -6424,7 +6406,7 @@ async function renderScheduleTimes() {
             if (mins < 6) {
                 btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
                 btn.disabled = true;
-                btn.innerHTML = `<span class="font-semibold">${time}</span><span class="block text-xs opacity-75 mt-0.5">Disponível em ${Math.ceil(mins)} min • ${taken}/${capacity}</span>`;
+                btn.innerHTML = `<span class="font-semibold">${displayTime}</span><span class="block text-xs opacity-75 mt-0.5">Disponível em ${Math.ceil(mins)} min • ${taken}/${capacity}</span>`;
                 btn.onclick = null;
                 timesWrap.appendChild(btn);
                 hasVisibleSlot = true;
@@ -6439,10 +6421,10 @@ async function renderScheduleTimes() {
         // Horário disponível — mostrar com vagas e barra de progresso
         const _pct = capacity > 0 ? Math.round((taken / capacity) * 100) : 0;
         if (_isFreeHour) {
-            btn.innerHTML = `<span class="font-semibold">${time}</span><span class="block text-xs font-bold mt-0.5" style="color:#16a34a">🆓 GRATUITO</span>`;
+            btn.innerHTML = `<span class="font-semibold">${displayTime}</span><span class="block text-xs font-bold mt-0.5" style="color:#16a34a">🆓 GRATUITO</span>`;
             btn.dataset.freeSlot = 'true';
         } else {
-            btn.innerHTML = `<span class="font-semibold">${time}</span><span class="block text-xs opacity-75 mt-0.5">✅ VAGA DISPONÍVEL</span>`;
+            btn.innerHTML = `<span class="font-semibold">${displayTime}</span><span class="block text-xs opacity-75 mt-0.5">✅ VAGA DISPONÍVEL</span>`;
         }
         btn.onclick = () => { selectTime(schedule, btn); };
         if (isTimeSelected(date, schedule)) {
@@ -6824,6 +6806,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
         if (!schedule) return; // Ignorar elementos que não são slots (ex: mensagem "Nenhum horário")
         const time = (schedule || '').split(' - ')[1] || '';
         const hour = parseInt(time.replace('h', ''));
+        const displayTime = hour === 0 ? '00h00' : time;
         const capacity = (scheduleConfig[eventType]?.vagas > 0 ? scheduleConfig[eventType].vagas : null) || getEventCapacity(eventType, time);
 
         // Verificar se o horário está travado (prioridade máxima)
@@ -6871,7 +6854,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
             // Menos de 12 min para o horário — mostrar desabilitado
             btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
             btn.disabled = true;
-            btn.innerHTML = `<span class="font-semibold">${time}</span><span class="block text-xs opacity-75 mt-0.5">${timeMessage} • ${taken}/${capacity}</span>`;
+            btn.innerHTML = `<span class="font-semibold">${displayTime}</span><span class="block text-xs opacity-75 mt-0.5">${timeMessage} • ${taken}/${capacity}</span>`;
             btn.onclick = null;
             btn.style.display = 'block'; // Garantir que está visível
         } else {
@@ -6881,10 +6864,10 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
             const _freeMapR = (window._freeHoursMap || {})[normalizedDate] || {};
             const _isFreeHourR = !!_freeMapR[hour];
             if (_isFreeHourR) {
-                btn.innerHTML = `<span class="font-semibold">${time}</span><span class="block text-xs font-bold mt-0.5" style="color:#16a34a">🆓 GRATUITO</span>`;
+                btn.innerHTML = `<span class="font-semibold">${displayTime}</span><span class="block text-xs font-bold mt-0.5" style="color:#16a34a">🆓 GRATUITO</span>`;
                 btn.dataset.freeSlot = 'true';
             } else {
-                btn.innerHTML = `<span class="font-semibold">${time}</span><span class="block text-xs opacity-75 mt-0.5">✅ VAGA DISPONÍVEL</span>`;
+                btn.innerHTML = `<span class="font-semibold">${displayTime}</span><span class="block text-xs opacity-75 mt-0.5">✅ VAGA DISPONÍVEL</span>`;
                 btn.dataset.freeSlot = '';
             }
             btn.onclick = () => {
@@ -7105,8 +7088,9 @@ async function updateReservationsSummary() {
             computedTotal += lineTotal;
 
             const formattedDate = new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
+            const displaySchedule = schedule.replace(/ - 0h$/, ' - 00h00');
             summaryHTML += `<div class="flex justify-between items-center py-1">
-                <span class="text-gray-700">${schedule} (${formattedDate}) × ${teams.length} time(s)</span>
+                <span class="text-gray-700">${displaySchedule} (${formattedDate}) × ${teams.length} time(s)</span>
                 <span class="font-semibold">R$ ${(pricePerReservation * teams.length).toFixed(2)}</span>
             </div>`;
         }
@@ -7151,7 +7135,10 @@ function selectTime(schedule, element) {
             displayField.textContent = '—';
         } else {
             const horasExibidas = selectedTimes
-                .map(item => item.schedule.split(' - ')[1] || item.schedule)
+                .map(item => {
+                    const hour = item.schedule.split(' - ')[1] || item.schedule;
+                    return parseInt(hour, 10) === 0 ? '00h00' : hour;
+                })
                 .join(', ');
             displayField.textContent = horasExibidas;
         }
@@ -10088,7 +10075,6 @@ async function loadDynamicEvents() {
                 category: ev.category || '',
                 regras: ev.regras || '',
                 eventType: ev.eventType || '',
-                allowedWeekdays: [1, 2, 3, 4, 5],
                 slots: ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'],
             };
             // Alias pelo tipo canônico para que overrides de schedule_overrides batem corretamente
