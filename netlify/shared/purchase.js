@@ -280,13 +280,6 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
         amount: debit, total: debit,
       } : {}),
       });
-      if (checkout.kind === "product" && source.data().productId === "passe-booyah") {
-        transaction.set(db.collection("notifications").doc(`purchase_${reference}`), {
-          title: "Novo pedido — Passe Booyah", type: "admin_booyah",
-          message: `Pedido ${source.id} confirmado. Player ID: ${source.data().productOptions?.playerId || "Não informado"}`,
-          createdAt: timestamp,
-        });
-      }
     });
     if (checkout.kind === "event") {
       const first = sources[0].data();

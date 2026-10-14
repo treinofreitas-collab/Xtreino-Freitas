@@ -114,10 +114,6 @@
                 <a href="index.html" style="display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid rgba(7,183,180,0.35);border-radius:8px;color:#07b7b4;font-size:12px;font-weight:700;text-decoration:none">
                     <i class="fas fa-home"></i><span>Início</span>
                 </a>
-                <button id="notificationBellBtn" onclick="switchTab('notifications')" style="position:relative;padding:8px 10px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:transparent;color:#aaa;cursor:pointer">
-                    <i class="fas fa-bell" style="font-size:15px"></i>
-                    <span id="notifBadge" class="hidden" style="position:absolute;top:-5px;right:-5px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;border-radius:99px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 4px">0</span>
-                </button>
                 <button id="logoutBtn" style="padding:7px 14px;background:#ef4444;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">
                     Sair
                 </button>
@@ -145,10 +141,6 @@
             </button>
             <button id="affiliateTab" class="tab-button border-transparent text-gray-500 hidden" style="padding:13px 14px;font-size:12px;font-weight:700;white-space:nowrap;border:none;background:transparent;cursor:pointer;color:rgba(255,255,255,0.5);border-bottom:2px solid transparent;flex-shrink:0">
                 🤝 Afiliados
-            </button>
-            <button id="notificationsTab" class="tab-button border-transparent text-gray-500" style="padding:13px 14px;font-size:12px;font-weight:700;white-space:nowrap;border:none;background:transparent;cursor:pointer;color:rgba(255,255,255,0.5);border-bottom:2px solid transparent;flex-shrink:0">
-                🔔 Notificações
-                <span id="notifTabBadge" class="hidden" style="background:#ef4444;color:#fff;font-size:10px;font-weight:800;border-radius:99px;padding:1px 6px;margin-left:4px">0</span>
             </button>
         </nav>
     </div>
@@ -204,10 +196,6 @@
                 <button onclick="switchTab('tokens')" style="display:flex;align-items:center;gap:10px;padding:14px;background:#1e293b;border:1px solid rgba(255,255,255,0.07);border-radius:14px;cursor:pointer;text-align:left;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(236,212,20,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
                     <div style="width:36px;height:36px;background:rgba(236,212,20,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">🪙</div>
                     <div><div style="font-size:13px;font-weight:800;color:#fff">Meus Tokens</div><div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px">Saldo e histórico</div></div>
-                </button>
-                <button onclick="switchTab('notifications')" style="display:flex;align-items:center;gap:10px;padding:14px;background:#1e293b;border:1px solid rgba(255,255,255,0.07);border-radius:14px;cursor:pointer;text-align:left;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(239,68,68,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
-                    <div style="width:36px;height:36px;background:rgba(239,68,68,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">🔔</div>
-                    <div><div style="font-size:13px;font-weight:800;color:#fff">Notificações</div><div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px">ID e senha da sala</div></div>
                 </button>
                 <button onclick="switchTab('profile')" style="display:flex;align-items:center;gap:10px;padding:14px;background:#1e293b;border:1px solid rgba(255,255,255,0.07);border-radius:14px;cursor:pointer;text-align:left;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(168,85,247,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
                     <div style="width:36px;height:36px;background:rgba(168,85,247,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">👤</div>
@@ -329,7 +317,7 @@
 
         <!-- Orders Tab (Events Only) -->
         <div id="ordersContent" class="tab-content hidden">
-            <!-- Aviso de notificações -->
+            <!-- Orientação sobre acesso ao grupo -->
             <div class="flex items-start gap-3 p-4 mb-4 bg-amber-50 border-2 border-amber-400 rounded-xl text-amber-900 text-sm leading-relaxed">
                 <span class="text-2xl">🔔</span>
                 <div>
@@ -798,27 +786,6 @@
                             </tr>
                         </tbody>
                     </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Notifications Tab -->
-        <div id="notificationsContent" class="tab-content hidden">
-            <div class="bg-white rounded-lg shadow-sm">
-                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                    <h3 class="text-lg font-medium text-gray-900"><i class="fas fa-bell mr-2 text-blue-600"></i>Minhas Notificações</h3>
-                    <button onclick="markAllNotificationsRead()"
-                        class="text-xs text-blue-600 hover:text-blue-800 font-medium px-3 py-1 rounded border border-blue-200 hover:bg-blue-50 transition-colors">
-                        Marcar todas como lidas
-                    </button>
-                </div>
-                <div id="notificationsList" class="divide-y divide-gray-100 min-h-[120px]">
-                    <div class="flex items-center justify-center py-12 text-gray-400">
-                        <div class="text-center">
-                            <i class="fas fa-bell-slash text-4xl mb-3 block"></i>
-                            <p class="text-sm">Carregando notificações...</p>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>

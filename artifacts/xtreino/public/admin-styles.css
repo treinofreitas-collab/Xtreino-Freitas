@@ -538,7 +538,7 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 #sectionPasseBooyah, #sectionProducts, #sectionSchedules,
 #sectionHighlights, #sectionNews, #sectionAdminHistory,
 #sectionAffiliates, #sectionAffiliateSales,
-#sectionShirtOrders, #sectionNotificationsAdmin, #sectionResetData,
+#sectionShirtOrders, #sectionResetData,
 #sectionEvents, #sectionOrders {
     margin-bottom: 1rem !important;
 }
@@ -549,7 +549,7 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 #sectionProducts, #sectionSchedules, #sectionHighlights,
 #sectionNews, #sectionAdminHistory,
 #sectionAffiliates, #sectionAffiliateSales, #sectionShirtOrders,
-#sectionNotificationsAdmin, #sectionResetData, #sectionEvents, #sectionOrders {
+#sectionResetData, #sectionEvents, #sectionOrders {
     padding: 1.35rem !important;
 }
 

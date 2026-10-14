@@ -131,7 +131,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 // Client Area JavaScript
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, collection, query, where, or, getDocs, orderBy, limit, addDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, or, getDocs, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
 import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-docs-store.mjs';
 
@@ -285,8 +285,6 @@ async function checkAuthState() {
             } catch(_) {}
             // Verificar role de afiliado após carregar perfil (já é chamado no loadDashboard, mas garantir)
             await checkAffiliateRole();
-            // Iniciar contador de notificações não lidas
-            initNotificationCounter().catch(() => {});
             // Verificar novamente após um delay para garantir que o DOM está pronto
             setTimeout(async () => {
                 await checkAffiliateRole();
@@ -316,8 +314,6 @@ function setupEventListeners() {
     if (tokensTab) tokensTab.addEventListener('click', async () => await switchTab('tokens'));
     if (profileTab) profileTab.addEventListener('click', async () => await switchTab('profile'));
     if (affiliateTab) affiliateTab.addEventListener('click', async () => await switchTab('affiliate'));
-    const notificationsTab = document.getElementById('notificationsTab');
-    if (notificationsTab) notificationsTab.addEventListener('click', async () => await switchTab('notifications'));
 
     // Logout button
     const logoutBtn = document.getElementById('logoutBtn');
@@ -375,9 +371,6 @@ async function switchTab(tabName) {
             // Verificar novamente se é afiliado antes de carregar
             await checkAffiliateRole();
             await loadAffiliateData();
-            break;
-        case 'notifications':
-            await loadNotifications();
             break;
     }
 }
@@ -3519,272 +3512,11 @@ window.purchaseTokensQuick = async function(quantity) {
     }
 }
 
-// ==================== NOTIFICATION SYSTEM ====================
-let _notifUnsubscribe = null;
-
-async function loadNotifications() {
-    if (!currentUser || !db) return;
-    const listEl = document.getElementById('notificationsList');
-    if (!listEl) return;
-
-    listEl.innerHTML = `<div class="flex items-center justify-center py-12 text-gray-400">
-        <div class="text-center"><i class="fas fa-spinner fa-spin text-3xl mb-3 block"></i><p class="text-sm">Carregando...</p></div>
-    </div>`;
-
-    try {
-        const notifRef = collection(db, 'notifications');
-        const q = query(notifRef, orderBy('createdAt', 'desc'), limit(50));
-        const snap = await getDocs(q);
-
-        const readsRef = collection(db, 'notificationReads');
-        const readsQ = query(readsRef, where('userId', '==', currentUser.uid));
-        const readsSnap = await getDocs(readsQ);
-        const readIds = new Set(readsSnap.docs.map(d => d.data().notifId));
-
-        const notifs = [];
-        snap.forEach(d => {
-            const data = d.data();
-            if (data.type === 'all' || data.targetUserId === currentUser.uid) {
-                notifs.push({ id: d.id, ...data, isRead: readIds.has(d.id) });
-            }
-        });
-
-        renderNotifications(notifs, readIds);
-        updateBellCounter(notifs.filter(n => !n.isRead).length);
-    } catch (err) {
-        console.error('Erro ao carregar notificações:', err);
-        listEl.innerHTML = `<div class="flex items-center justify-center py-12 text-gray-400">
-            <p class="text-sm">Não foi possível carregar notificações.</p>
-        </div>`;
-    }
-}
-
-function renderNotifications(notifs, readIds) {
-    const listEl = document.getElementById('notificationsList');
-    if (!listEl) return;
-
-    if (notifs.length === 0) {
-        listEl.innerHTML = `<div class="flex items-center justify-center py-16 text-gray-400">
-            <div class="text-center">
-                <i class="fas fa-bell-slash text-4xl mb-3 block"></i>
-                <p class="text-sm font-medium">Nenhuma notificação</p>
-                <p class="text-xs mt-1">Você será notificado sobre novidades e eventos aqui</p>
-            </div>
-        </div>`;
-        return;
-    }
-
-    listEl.innerHTML = notifs.map(n => {
-        const isRead = n.isRead || readIds.has(n.id);
-        const dateStr = n.createdAt ? new Date(n.createdAt.toDate ? n.createdAt.toDate() : n.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-        const isCredentials = n.notifyType === 'credentials' || n.notifyType === 'finalists';
-        const isTabela = n.notifyType === 'tabela';
-
-        // Card de tabela pronta (verde) — aparece sempre que houver tabelaLink OU notifyType === 'tabela'
-        const mostrarTabela = isTabela || !!n.tabelaLink;
-        let tabelaHtml = '';
-        if (mostrarTabela) {
-            const btnTabela = n.tabelaLink
-                ? `<a href="${escapeHtml(n.tabelaLink)}" target="_blank" rel="noopener noreferrer"
-                       style="display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 28px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border-radius:50px;font-size:15px;font-weight:800;text-decoration:none;box-shadow:0 4px 14px rgba(22,163,74,0.4);transition:transform 0.15s,box-shadow 0.15s;letter-spacing:0.3px"
-                       onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(22,163,74,0.5)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 14px rgba(22,163,74,0.4)'">
-                        <i class="fas fa-table"></i> Ver Tabela
-                   </a>`
-                : `<span style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#d1fae5;color:#166534;border-radius:50px;font-size:13px;font-weight:700">
-                        <i class="fas fa-table"></i> Tabela em breve
-                   </span>`;
-            tabelaHtml = `
-                <div style="margin-top:12px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:2px solid #86efac;border-radius:16px;padding:16px">
-                    <p style="font-size:10px;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-                        <i class="fas fa-table"></i> Tabela de pontuação disponível!
-                    </p>
-                    ${btnTabela}
-                </div>`;
-        }
-
-        let credentialsHtml = '';
-        if (isCredentials) {
-            const hasRoomId = n.roomId && String(n.roomId).trim();
-            const hasRoomPassword = n.roomPassword && String(n.roomPassword).trim();
-            const linkBtn = n.roomLink
-                ? `<a href="${escapeHtml(n.roomLink)}" target="_blank" rel="noopener noreferrer"
-                      class="mt-3 flex items-center justify-center gap-2 w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-sm font-bold shadow transition-all">
-                      <i class="fas fa-external-link-alt"></i> Entrar na Sala
-                   </a>`
-                : '';
-            const idBox = `<div style="flex:1;background:#fff;border:2px solid #c4b5fd;border-radius:12px;padding:12px;text-align:center;min-width:0">
-                <div style="font-size:10px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🎮 ID da Sala</div>
-                <div style="font-size:26px;font-weight:900;color:#4c1d95;font-family:monospace;letter-spacing:3px;user-select:all;word-break:break-all">${escapeHtml(hasRoomId ? String(n.roomId) : '—')}</div>
-            </div>`;
-            const pwBox = `<div style="flex:1;background:#fff;border:2px solid #a5b4fc;border-radius:12px;padding:12px;text-align:center;min-width:0">
-                <div style="font-size:10px;font-weight:800;color:#4338ca;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🔑 Senha</div>
-                <div style="font-size:26px;font-weight:900;color:#312e81;font-family:monospace;letter-spacing:3px;user-select:all;word-break:break-all">${escapeHtml(hasRoomPassword ? String(n.roomPassword) : '—')}</div>
-            </div>`;
-            // Lista de slots (vagas) enviada junto com as credenciais
-            let slotListHtml = '';
-            if (Array.isArray(n.slotList) && n.slotList.length > 0) {
-                const isLiga = n.slotList.length === 15;
-                const rows = n.slotList.map((s, idx) => {
-                    const label = isLiga
-                        ? `Letra ${String.fromCharCode(65 + idx)}`
-                        : `Slot ${idx + 1}`;
-                    const teamDisplay = s.teamName
-                        ? `<span style="font-weight:700;color:#1e1b4b">${escapeHtml(s.teamName)}</span>`
-                        : `<span style="color:#9ca3af;font-style:italic">Vaga livre</span>`;
-                    return `<tr style="border-top:1px solid #e0d9f7">
-                        <td style="padding:5px 8px;font-size:12px;font-weight:700;color:#7c3aed;white-space:nowrap">${label}</td>
-                        <td style="padding:5px 8px;font-size:13px">${teamDisplay}</td>
-                    </tr>`;
-                }).join('');
-                slotListHtml = `
-                <div style="margin-top:10px;background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:12px;overflow:hidden">
-                    <div style="padding:8px 12px;background:#7c3aed;display:flex;align-items:center;gap:6px">
-                        <i class="fas fa-list-ol" style="color:#e9d5ff;font-size:11px"></i>
-                        <span style="font-size:10px;font-weight:800;color:#e9d5ff;text-transform:uppercase;letter-spacing:1px">Lista de Times</span>
-                    </div>
-                    <table style="width:100%;border-collapse:collapse">${rows}</table>
-                </div>`;
-            }
-            credentialsHtml = `
-                <div style="margin-top:12px;background:linear-gradient(135deg,#f5f3ff,#eef2ff);border:2px solid #c4b5fd;border-radius:16px;padding:16px">
-                    <p style="font-size:10px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;display:flex;align-items:center;gap:4px">
-                        <i class="fas fa-gamepad"></i> Credenciais da Sala
-                    </p>
-                    <div style="display:flex;gap:10px;margin-bottom:8px">
-                        ${idBox}
-                        ${pwBox}
-                    </div>
-                    ${linkBtn}
-                    ${slotListHtml}
-                </div>`;
-        }
-
-        const iconClass = isCredentials ? 'fa-gamepad' : isTabela ? 'fa-table' : 'fa-bell';
-        const iconBg = isCredentials
-            ? (isRead ? 'bg-purple-100 text-purple-400' : 'bg-purple-200 text-purple-700')
-            : isTabela
-            ? (isRead ? 'bg-green-100 text-green-400' : 'bg-green-200 text-green-700')
-            : (isRead ? 'bg-gray-100 text-gray-400' : 'bg-blue-100 text-blue-600');
-
-        // Para tabela, a mensagem já vai dentro do card verde — não duplicar
-        const messageHtml = (!mostrarTabela && n.message)
-            ? `<p class="text-sm text-gray-600 mt-1 leading-relaxed">${escapeHtml(n.message)}</p>`
-            : '';
-
-        return `<div class="${isRead ? 'bg-white' : 'bg-blue-50 border-l-4 border-l-blue-500'} hover:bg-gray-50 transition-colors px-6 py-4" data-notif-id="${n.id}">
-            <div class="flex items-start gap-4">
-                <div class="flex-shrink-0 mt-1">
-                    <div class="w-9 h-9 rounded-full flex items-center justify-center ${iconBg}">
-                        <i class="fas ${iconClass} text-sm"></i>
-                    </div>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-start justify-between gap-2">
-                        <p class="font-semibold text-sm ${isRead ? 'text-gray-900' : 'text-blue-900'}">${escapeHtml(n.title || 'Notificação')}</p>
-                        <span class="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">${dateStr}</span>
-                    </div>
-                    ${messageHtml}
-                    ${credentialsHtml}
-                    ${tabelaHtml}
-                    <div class="mt-2">
-                        ${!isRead ? `<button onclick="markNotificationRead('${n.id}')" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Marcar como lida</button>` : `<span class="text-xs text-gray-400">Lida</span>`}
-                    </div>
-                </div>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-async function markNotificationRead(notifId) {
-    if (!currentUser || !db || !notifId) return;
-    try {
-        const readDocId = `${currentUser.uid}_${notifId}`;
-        const readRef = doc(db, 'notificationReads', readDocId);
-        await setDoc(readRef, {
-            userId: currentUser.uid,
-            notifId: notifId,
-            readAt: new Date()
-        }, { merge: true });
-        await loadNotifications();
-    } catch (err) {
-        console.error('Erro ao marcar notificação como lida:', err);
-    }
-}
-
-async function markAllNotificationsRead() {
-    if (!currentUser || !db) return;
-    const items = document.querySelectorAll('[data-notif-id]');
-    if (items.length === 0) { showToast('info', 'Nenhuma notificação para marcar.', 'Notificações'); return; }
-    try {
-        const promises = [];
-        items.forEach(el => {
-            const notifId = el.getAttribute('data-notif-id');
-            if (notifId) {
-                const readDocId = `${currentUser.uid}_${notifId}`;
-                const readRef = doc(db, 'notificationReads', readDocId);
-                promises.push(setDoc(readRef, { userId: currentUser.uid, notifId, readAt: new Date() }, { merge: true }));
-            }
-        });
-        await Promise.all(promises);
-        await loadNotifications();
-        showToast('success', 'Todas as notificações foram marcadas como lidas.', 'Notificações');
-    } catch (err) {
-        console.error('Erro ao marcar todas como lidas:', err);
-        showToast('error', 'Erro ao marcar notificações.', 'Erro');
-    }
-}
-
-function updateBellCounter(count) {
-    const badge = document.getElementById('notifBadge');
-    const tabBadge = document.getElementById('notifTabBadge');
-    if (badge) {
-        if (count > 0) {
-            badge.textContent = count > 99 ? '99+' : count;
-            badge.classList.remove('hidden');
-        } else {
-            badge.classList.add('hidden');
-        }
-    }
-    if (tabBadge) {
-        if (count > 0) {
-            tabBadge.textContent = count > 99 ? '99+' : count;
-            tabBadge.classList.remove('hidden');
-        } else {
-            tabBadge.classList.add('hidden');
-        }
-    }
-}
-
-async function initNotificationCounter() {
-    if (!currentUser || !db) return;
-    try {
-        const notifRef = collection(db, 'notifications');
-        const q = query(notifRef, orderBy('createdAt', 'desc'), limit(50));
-        const snap = await getDocs(q);
-
-        const readsRef = collection(db, 'notificationReads');
-        const readsQ = query(readsRef, where('userId', '==', currentUser.uid));
-        const readsSnap = await getDocs(readsQ);
-        const readIds = new Set(readsSnap.docs.map(d => d.data().notifId));
-
-        let unread = 0;
-        snap.forEach(d => {
-            const data = d.data();
-            if ((data.type === 'all' || data.targetUserId === currentUser.uid) && !readIds.has(d.id)) {
-                unread++;
-            }
-        });
-        updateBellCounter(unread);
-    } catch (_) {}
-}
-
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-window.markNotificationRead = markNotificationRead;
-window.markAllNotificationsRead = markAllNotificationsRead;
 window.switchTab = switchTab;
 
 // Atualizações por mudanças reais, sem reler o histórico a cada 45 segundos.

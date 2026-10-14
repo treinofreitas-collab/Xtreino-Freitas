@@ -318,41 +318,41 @@ window.showWarningToast = function(message, title = 'Atenção') {
           'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
           'sectionAffiliatePanel','sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionShirtOrders',
-          'sectionSchedules','sectionEventLinks','sectionNotificationsAdmin','sectionAdminHistory','sectionResetData'],
+          'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData'],
     // SOCIO: tudo, somente visualização (sem reset)
     socio: ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
             'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
             'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
             'sectionAffiliatePanel','sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionShirtOrders',
-            'sectionSchedules','sectionEventLinks','sectionNotificationsAdmin','sectionAdminHistory'],
+            'sectionSchedules','sectionEventLinks','sectionAdminHistory'],
     // GERENTE: tudo, EXCETO aba principal completa (KPIs, filtros, gráficos, pedidos, tokenStats)
     gerente: ['sectionUsers','sectionUsersManagement',
               'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
               'sectionAffiliateSales','sectionAffiliatePayouts','sectionAffiliatePanel','sectionPasseBooyah',
               'sectionHighlights','sectionNews','sectionProducts','sectionEvents',
               'sectionShirtOrders','sectionSchedules','sectionEventLinks',
-              'sectionNotificationsAdmin','sectionAdminHistory'],
+              'sectionAdminHistory'],
     // DESIGNER: apenas conteúdo (destaques, notícias, produtos, eventos) — sem camisas, sem horários
     designer: ['sectionHighlights','sectionNews','sectionProducts','sectionEvents'],
-    // VENDEDOR: usuários + financeiro (sem aba principal) + camisas + produtos + notificações
+    // VENDEDOR: usuários + financeiro (sem aba principal) + camisas + produtos
     vendedor: ['sectionUsers','sectionUsersManagement',
                'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
-               'sectionProducts','sectionNotificationsAdmin'],
-    // ADMIN: gerenciador de eventos + horários + notificações
-    admin: ['sectionEvents','sectionSchedules','sectionEventLinks','sectionNotificationsAdmin'],
-    // STAFF: notificações e eventos
-    staff: ['sectionEvents','sectionNotificationsAdmin'],
+               'sectionProducts'],
+    // ADMIN: gerenciador de eventos + horários
+    admin: ['sectionEvents','sectionSchedules','sectionEventLinks'],
+    // STAFF: eventos
+    staff: ['sectionEvents'],
     // MODERADOR: igual ao staff
-    moderador: ['sectionEvents','sectionNotificationsAdmin'],
+    moderador: ['sectionEvents'],
     // OPERADOR: mesmo acesso do vendedor (sem aba principal)
     operador: ['sectionUsers','sectionUsersManagement',
                'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
-               'sectionProducts','sectionNotificationsAdmin'],
-    // SUPORTE: tokens, notificações, camisas
-    suporte: ['sectionTokens','sectionNotificationsAdmin','sectionShirtOrders'],
+               'sectionProducts'],
+    // SUPORTE: tokens, camisas
+    suporte: ['sectionTokens','sectionShirtOrders'],
     // Aliases
     'sócio': null, // tratado abaixo
     'desgin': null,
@@ -364,7 +364,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons','sectionCouponUsage',
     'sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts','sectionAffiliatePanel','sectionPasseBooyah',
     'sectionHighlights','sectionNews','sectionProducts','sectionEvents','sectionShirtOrders',
-    'sectionSchedules','sectionEventLinks','sectionNotificationsAdmin','sectionAdminHistory','sectionResetData',
+    'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData',
   ];
 
   // Control section visibility based on role
@@ -471,16 +471,16 @@ window.showWarningToast = function(message, title = 'Atenção') {
     vendedor: ['#sectionUsers','#sectionUsersManagement',
                '#sectionTokens','#sectionCoupons','#sectionCouponUsage','#sectionAffiliates',
                '#sectionAffiliateSales','#sectionPasseBooyah','#sectionShirtOrders',
-               '#sectionProducts','#sectionNotificationsAdmin'],
+               '#sectionProducts'],
     designer: ['#sectionHighlights','#sectionNews','#sectionProducts','#sectionEvents'],
-    staff:    ['#sectionEvents','#sectionNotificationsAdmin'],
-    moderador:['#sectionEvents','#sectionNotificationsAdmin'],
+    staff:    ['#sectionEvents'],
+    moderador:['#sectionEvents'],
     operador: ['#sectionUsers','#sectionUsersManagement',
                '#sectionTokens','#sectionCoupons','#sectionCouponUsage','#sectionAffiliates',
                '#sectionAffiliateSales','#sectionPasseBooyah','#sectionShirtOrders',
-               '#sectionProducts','#sectionNotificationsAdmin'],
-    suporte:  ['#sectionTokens','#sectionNotificationsAdmin','#sectionShirtOrders'],
-    admin:    ['#sectionEvents','#sectionEventLinks','#sectionNotificationsAdmin'],
+               '#sectionProducts'],
+    suporte:  ['#sectionTokens','#sectionShirtOrders'],
+    admin:    ['#sectionEvents','#sectionEventLinks'],
   };
 
   function controlEditPermissions(userRole) {
@@ -665,7 +665,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             <option value="Gerente" ${(user.role||'').toLowerCase() === 'gerente' ? 'selected' : ''}>Gerente – Sem Dashboard/Pagamentos</option>
             <option value="Vendedor" ${(user.role||'').toLowerCase() === 'vendedor' ? 'selected' : ''}>Vendedor – Pedidos/Tokens/Passes</option>
             <option value="Designer" ${['designer','design','desgin'].includes((user.role||'').toLowerCase()) ? 'selected' : ''}>Designer – Produtos/Eventos/Conteúdo</option>
-            <option value="Staff" ${['staff','admin'].includes((user.role||'').toLowerCase()) ? 'selected' : ''}>Staff – Notificações/Eventos</option>
+            <option value="Staff" ${['staff','admin'].includes((user.role||'').toLowerCase()) ? 'selected' : ''}>Staff – Eventos</option>
           </select>
         </td>
       `;
@@ -1102,10 +1102,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
     statusEl.className = 'text-xs mt-1 text-gray-400';
     const uid = await resolveUserIdByEmail(email);
     if (uid) {
-      statusEl.textContent = '✅ Usuário encontrado — notificações serão enviadas para ele.';
+      statusEl.textContent = '✅ Usuário encontrado — a reserva será vinculada à conta dele.';
       statusEl.className = 'text-xs mt-1 text-green-600';
     } else {
-      statusEl.textContent = '⚠️ E-mail não encontrado no sistema. A vaga será salva, mas ele não receberá notificações.';
+      statusEl.textContent = '⚠️ E-mail não encontrado. A vaga será salva sem vínculo com uma conta.';
       statusEl.className = 'text-xs mt-1 text-yellow-600';
     }
   }
@@ -1230,12 +1230,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
             payload.slotNumber = _nextSlot;
             payload.slotDisplay = _nextSlotDisplay;
             await addDoc(collection(window.firebaseDb,'registrations'), { ...payload, createdAt: serverTimestamp() });
-            const notifMsg = clientUserId
-              ? 'Time adicionado! O cliente receberá notificações de ID/senha.'
+            const feedbackMsg = clientUserId
+              ? 'Time adicionado e reserva vinculada à conta do cliente.'
               : clientEmail
-                ? 'Time adicionado. ⚠️ E-mail não encontrado — cliente não receberá notificações.'
+                ? 'Time adicionado. ⚠️ E-mail não encontrado — reserva sem vínculo com uma conta.'
                 : 'Time adicionado com sucesso!';
-            if (msgEl) msgEl.textContent = notifMsg;
+            if (msgEl) msgEl.textContent = feedbackMsg;
             // limpar campos
             if (teamEl) teamEl.value = '';
             if (contactEl) contactEl.value = '';
@@ -4144,59 +4144,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // [removido duplicado]
 })();
-
-// ===== Dados estruturados da lista de slots (para notificações) =====
-async function buildSlotData(date, eventType, hour) {
-  try {
-    const hh = String(hour).match(/(\d{1,2})/)?.[1] || '';
-    const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-    const normalize = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const normalizeHour = s => { const m = String(s || '').match(/(\d{1,2})/); return m ? String(parseInt(m[1], 10)).padStart(2, '0') : null; };
-    const evLower = normalize(eventType);
-    const snap = await getDocs(query(collection(window.firebaseDb, 'registrations'), where('date', '==', date)));
-    const teams = [];
-    snap.forEach(doc => {
-      const r = doc.data();
-      const rType = normalize(r.eventType);
-      if (evLower) {
-        if (evLower.includes('liga') || evLower.includes('acesso')) {
-          if (!(rType.includes('liga') || rType.includes('acesso'))) return;
-        } else if (evLower.includes('semanal')) { if (!rType.includes('semanal')) return; }
-        else if (evLower.includes('camp')) { if (!rType.includes('camp')) return; }
-        else if (evLower.includes('xtreino') || evLower.includes('tokens')) {
-          if (!(rType.includes('xtreino') || rType.includes('tokens'))) return;
-        } else {
-          // evLower é um docId — filtrar por correspondência exata para não misturar eventos
-          if (rType !== evLower) return;
-        }
-      }
-      const regHH = normalizeHour(r.schedule) || normalizeHour(r.hour);
-      if (regHH !== hh) return;
-      const st = String(r.status || '').toLowerCase();
-      if (!['paid', 'confirmed', 'lisagem_gratis'].includes(st)) return;
-      const slotNum = r.slot != null ? Number(r.slot) : (r.slotNumber != null ? Number(r.slotNumber) : null);
-      teams.push({ teamName: r.teamName || r.name || r.email || 'Time', slot: slotNum, createdAt: r.createdAt?.toDate?.() || new Date(0) });
-    });
-    teams.sort((a, b) => {
-      const ta = a.createdAt?.getTime?.() || 0;
-      const tb = b.createdAt?.getTime?.() || 0;
-      if (ta > 0 && tb > 0) return ta - tb;
-      if (a.slot !== null && b.slot !== null) return a.slot - b.slot;
-      if (a.slot !== null) return -1;
-      if (b.slot !== null) return 1;
-      return 0;
-    });
-    const _evN = normalize(eventType);
-    const capacity = (_evN.includes('liga') || _evN.includes('acesso')) ? 15 : 12;
-    const slots = [];
-    for (let i = 1; i <= capacity; i++) {
-      slots.push({ slot: i, teamName: teams[i - 1]?.teamName || '' });
-    }
-    return { slots, capacity };
-  } catch (_) {
-    return { slots: [], capacity: 12 };
-  }
-}
 
 // ===== Exportação de lista por horário =====
 async function buildExportList(date, eventType, hour){
@@ -10610,37 +10557,6 @@ async function saveProducts() {
     }
 }
 
-async function sendDownloadLink(orderId, userId, downloadLink, productName) {
-    if (!orderId || !downloadLink) { showToast('error', 'Pedido ou link inválido.', 'Erro'); return; }
-    try {
-        const { doc, collection, addDoc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        // Marca o pedido como link enviado manualmente
-        await updateDoc(doc(window.firebaseDb, 'orders', orderId), {
-            downloadSent: true,
-            downloadSentAt: Date.now(),
-            downloadSentBy: window.firebaseAuth?.currentUser?.uid || null
-        });
-        // Envia notificação ao usuário no app
-        if (userId) {
-            await addDoc(collection(window.firebaseDb, 'notifications'), {
-                userId,
-                title: '📦 Seu produto digital está pronto!',
-                message: `Olá! Seu produto "${productName || 'digital'}" está disponível para download. Acesse o link abaixo.`,
-                link: downloadLink,
-                type: 'download_ready',
-                read: false,
-                createdAt: serverTimestamp()
-            });
-        }
-        // Copia o link para área de transferência também
-        try { await navigator.clipboard.writeText(downloadLink); } catch(_) {}
-        showToast('success', 'Link enviado ao cliente! Link também copiado para área de transferência.', 'Enviado');
-    } catch (e) {
-        console.error('Erro ao enviar link:', e);
-        showToast('error', 'Erro ao enviar link: ' + (e.message || e), 'Erro');
-    }
-}
-
 window.openProductsModal = openProductsModal;
 window.closeProductsModal = closeProductsModal;
 window.addProduct = addProduct;
@@ -10648,7 +10564,6 @@ window._createProductWithCat = _createProductWithCat;
 window.deleteProduct = deleteProduct;
 window.uploadProductBanner = uploadProductBanner;
 window.saveProducts = saveProducts;
-window.sendDownloadLink = sendDownloadLink;
 window.updateProdStatus = updateProdStatus;
 window.updateProdTitle = updateProdTitle;
 window.addPriceOption = addPriceOption;
@@ -10657,79 +10572,6 @@ window.updatePriceOption = updatePriceOption;
 window.updateMapLink = updateMapLink;
 window.setProdCategory = setProdCategory;
 window.updateProdBannerPreview = updateProdBannerPreview;
-
-// ==================== ADMIN NOTIFICATION SYSTEM ====================
-
-function toggleNotifUserField() {
-    const target = document.getElementById('notifTarget');
-    const row = document.getElementById('notifUserIdRow');
-    if (!target || !row) return;
-    if (target.value === 'user') {
-        row.classList.remove('hidden');
-    } else {
-        row.classList.add('hidden');
-    }
-}
-
-async function sendAdminNotification() {
-    const titleEl = document.getElementById('notifTitle');
-    const messageEl = document.getElementById('notifMessage');
-    const targetEl = document.getElementById('notifTarget');
-    const userIdEl = document.getElementById('notifUserId');
-
-    if (!titleEl || !messageEl || !targetEl) return;
-
-    const title = titleEl.value.trim();
-    const message = messageEl.value.trim();
-    const target = targetEl.value;
-    const emailInput = (target === 'user' && userIdEl) ? userIdEl.value.trim().toLowerCase() : null;
-
-    if (!title) { showToast('warning', 'Informe o título da notificação.', 'Atenção'); return; }
-    if (!message) { showToast('warning', 'Informe a mensagem da notificação.', 'Atenção'); return; }
-    if (target === 'user' && !emailInput) { showToast('warning', 'Informe o e-mail do usuário destinatário.', 'Atenção'); return; }
-
-    if (!window.firebaseDb) { showToast('error', 'Firebase não inicializado.', 'Erro'); return; }
-
-    const btn = document.querySelector('[onclick="sendAdminNotification()"]');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Enviando...'; }
-
-    try {
-        const { collection, addDoc, serverTimestamp, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const adminUser = window.firebaseAuth?.currentUser;
-
-        let targetUserId = null;
-        if (target === 'user' && emailInput) {
-            const q = query(collection(window.firebaseDb, 'users'), where('email', '==', emailInput));
-            const snap = await getDocs(q);
-            if (snap.empty) {
-                showToast('error', `Nenhum usuário encontrado com o e-mail: ${emailInput}`, 'Usuário não encontrado');
-                return;
-            }
-            targetUserId = snap.docs[0].id;
-        }
-
-        await addDoc(collection(window.firebaseDb, 'notifications'), {
-            title,
-            message,
-            type: target,
-            targetUserId: targetUserId || null,
-            createdAt: serverTimestamp(),
-            createdBy: adminUser ? (adminUser.displayName || adminUser.email || adminUser.uid) : 'Admin',
-            createdByUid: adminUser ? adminUser.uid : null
-        });
-
-        showToast('success', `Notificação enviada para ${target === 'all' ? 'todos os usuários' : emailInput}.`, 'Sucesso');
-        titleEl.value = '';
-        messageEl.value = '';
-        if (userIdEl) userIdEl.value = '';
-        await loadAdminNotifications();
-    } catch (err) {
-        console.error('Erro ao enviar notificação:', err);
-        showToast('error', 'Erro ao enviar notificação: ' + (err.message || err), 'Erro');
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Enviar Notificação'; }
-    }
-}
 
 async function premiarVencedorTreino() {
     const emailEl = document.getElementById('premiacaoEmail');
@@ -10746,7 +10588,7 @@ async function premiarVencedorTreino() {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Premiando...'; }
 
     try {
-        const { collection, query, where, getDocs, doc, updateDoc, increment, addDoc, serverTimestamp } =
+        const { collection, query, where, getDocs, doc, updateDoc, increment } =
             await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
 
         // Buscar usuário pelo e-mail
@@ -10763,17 +10605,6 @@ async function premiarVencedorTreino() {
         // Creditar tokens
         await updateDoc(doc(window.firebaseDb, 'users', userId), {
             tokens: increment(premioTokens)
-        });
-
-        // Enviar notificação in-app
-        await addDoc(collection(window.firebaseDb, 'notifications'), {
-            title: '🏆 Você foi premiado!',
-            message: `Parabéns! Você ganhou ${premioTokens} tokens como prêmio do ${eventoNome}. Use para se inscrever no Semanal Freitas!`,
-            type: 'user',
-            targetUserId: userId,
-            createdAt: serverTimestamp(),
-            createdBy: window.firebaseAuth?.currentUser?.email || 'Admin',
-            createdByUid: window.firebaseAuth?.currentUser?.uid || null
         });
 
         // Log
@@ -10904,119 +10735,11 @@ window.baixarPacoteSPECPorGrupo = function(eventType, rawEventId, date, hour) {
     baixarPacoteSPEC();
 };
 
-async function loadAdminNotifications() {
-    const listEl = document.getElementById('adminNotifList');
-    if (!listEl) return;
-    if (!window.firebaseDb) { listEl.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Firebase não disponível.</p>'; return; }
-
-    listEl.innerHTML = '<div class="text-center text-gray-400 py-4 text-sm"><i class="fas fa-spinner fa-spin mr-2"></i>Carregando...</div>';
-
-    try {
-        const { collection, getDocs, query, orderBy, limit, deleteDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const q = query(collection(window.firebaseDb, 'notifications'), orderBy('createdAt', 'desc'), limit(300));
-        const snap = await getDocs(q);
-
-        if (snap.empty) {
-            listEl.innerHTML = '<p class="text-gray-400 text-sm text-center py-6">Nenhuma notificação enviada ainda.</p>';
-            return;
-        }
-
-        // Agrupar por batchId para não duplicar envios em lote (credenciais de evento, etc.)
-        // Notificações sem batchId são exibidas individualmente
-        const groups = [];
-        const seenBatch = new Map(); // batchId → índice no array groups
-
-        snap.docs.forEach(d => {
-            const n = d.data();
-            const bid = n.batchId || null;
-            if (bid) {
-                if (seenBatch.has(bid)) {
-                    // Incrementar contagem do grupo existente
-                    groups[seenBatch.get(bid)].count++;
-                } else {
-                    const idx = groups.length;
-                    seenBatch.set(bid, idx);
-                    groups.push({ doc: d, data: n, count: 1, batchId: bid });
-                }
-            } else {
-                // Notificação individual (sem lote)
-                groups.push({ doc: d, data: n, count: 1, batchId: null });
-            }
-        });
-
-        listEl.innerHTML = groups.map(g => {
-            const n = g.data;
-            const d = g.doc;
-            const dateStr = n.createdAt ? new Date(n.createdAt.toDate ? n.createdAt.toDate() : n.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
-            const isLote = !!g.batchId;
-            const targetLabel = isLote
-                ? `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">${g.count} participante${g.count !== 1 ? 's' : ''}</span>`
-                : (n.type === 'all'
-                    ? '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Todos</span>'
-                    : `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">${'Específico'}</span>`);
-            const deleteAction = isLote
-                ? `deleteAdminNotificationBatch('${escapeAdminHtml(g.batchId)}')`
-                : `deleteAdminNotification('${d.id}')`;
-            return `<div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <div class="flex-1 min-w-0">
-                    <div class="flex flex-wrap items-center gap-2 mb-1">
-                        <span class="font-semibold text-sm text-gray-900">${escapeAdminHtml(n.title || '-')}</span>
-                        ${targetLabel}
-                    </div>
-                    <p class="text-xs text-gray-600 leading-relaxed">${escapeAdminHtml(n.message || '')}</p>
-                    <div class="text-xs text-gray-400 mt-1">Enviado em ${dateStr} por ${escapeAdminHtml(n.createdBy || 'Admin')}</div>
-                </div>
-                <button onclick="${deleteAction}" title="Excluir" class="flex-shrink-0 text-red-400 hover:text-red-600 p-1">
-                    <i class="fas fa-trash text-xs"></i>
-                </button>
-            </div>`;
-        }).join('');
-    } catch (err) {
-        console.error('Erro ao carregar notificações:', err);
-        listEl.innerHTML = '<p class="text-red-400 text-sm text-center py-4">Erro ao carregar notificações.</p>';
-    }
-}
-
-async function deleteAdminNotification(notifId) {
-    if (!notifId || !window.firebaseDb) return;
-    if (!confirm('Tem certeza que deseja excluir esta notificação?')) return;
-    try {
-        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        await deleteDoc(doc(window.firebaseDb, 'notifications', notifId));
-        showToast('success', 'Notificação excluída.', 'Sucesso');
-        await loadAdminNotifications();
-    } catch (err) {
-        console.error('Erro ao excluir notificação:', err);
-        showToast('error', 'Erro ao excluir notificação.', 'Erro');
-    }
-}
-
-async function deleteAdminNotificationBatch(batchId) {
-    if (!batchId || !window.firebaseDb) return;
-    if (!confirm('Excluir todas as notificações deste envio em lote?')) return;
-    try {
-        const { collection, query, where, getDocs, deleteDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const q = query(collection(window.firebaseDb, 'notifications'), where('batchId', '==', batchId));
-        const snap = await getDocs(q);
-        await Promise.all(snap.docs.map(d => deleteDoc(doc(window.firebaseDb, 'notifications', d.id))));
-        showToast('success', `Lote excluído (${snap.size} notificações removidas).`, 'Sucesso');
-        await loadAdminNotifications();
-    } catch (err) {
-        console.error('Erro ao excluir lote de notificações:', err);
-        showToast('error', 'Erro ao excluir lote.', 'Erro');
-    }
-}
-
 function escapeAdminHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-window.toggleNotifUserField = toggleNotifUserField;
-window.sendAdminNotification = sendAdminNotification;
-window.loadAdminNotifications = loadAdminNotifications;
-window.deleteAdminNotification = deleteAdminNotification;
-window.deleteAdminNotificationBatch = deleteAdminNotificationBatch;
 window.saveProducts = saveProducts;
 
 // ============================================================
@@ -11418,9 +11141,6 @@ async function loadEventsList(category) {
                     </a>
                     <button onclick="openEventSlotsModal('${d.id}', this.dataset.name)" data-name="${escapeAdminHtml(ev.name || '')}" title="Ver slots por horário" class="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-100">
                         <i class="fas fa-hashtag mr-1"></i>Slots
-                    </button>
-                    <button onclick="openEventNotifyModal('${d.id}', this.dataset.name)" data-name="${escapeAdminHtml(ev.name || '')}" title="Enviar mensagem aos participantes" class="px-3 py-1.5 bg-purple-50 text-purple-600 rounded-lg text-xs font-semibold hover:bg-purple-100">
-                        <i class="fas fa-paper-plane mr-1"></i>Notificar
                     </button>
                     <button onclick="editEventItem('${d.id}')" title="Editar" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-semibold hover:bg-blue-100">
                         <i class="fas fa-pen mr-1"></i>Editar
@@ -12014,479 +11734,6 @@ async function loadEventsPreview() {
     }
 }
 
-// ===== NOTIFICAR PARTICIPANTES DO EVENTO =====
-let _notifyEventDocs = [];
-let _notifyScheduleMap = {};
-let _notifySelectedSlotKey = 'all';
-let _notifySelectedType = 'credentials';
-let _notifyOtherDaysVisible = false;
-
-function selectNotifyType(type) {
-    _notifySelectedType = type;
-    const colorMap = { credentials: 'purple', tabela: 'green', custom: 'blue' };
-    const hexMap   = { purple: '#a855f7', green: '#22c55e', blue: '#3b82f6' };
-    const bgMap    = { purple: '#faf5ff', green: '#f0fdf4', blue: '#eff6ff' };
-    document.querySelectorAll('.notify-type-card').forEach(card => {
-        const t = card.dataset.type;
-        const c = colorMap[t] || 'purple';
-        const isSelected = t === type;
-        card.style.borderColor     = isSelected ? (hexMap[c] || '#a855f7') : '';
-        card.style.backgroundColor = isSelected ? (bgMap[c]  || '#faf5ff') : '';
-    });
-    const roomSec        = document.getElementById('eventNotifyRoomLinkSection');
-    const tabSec         = document.getElementById('eventNotifyTabelaSection');
-    const msgEl          = document.getElementById('eventNotifyMessage');
-    const optLabel       = document.getElementById('notifyMsgOptLabel');
-    if (roomSec)      roomSec.classList.toggle('hidden', type !== 'credentials');
-    if (tabSec)       tabSec.classList.toggle('hidden',  type !== 'tabela');
-    if (optLabel) optLabel.textContent = (type === 'custom') ? '(obrigatória)' : '(opcional)';
-    if (type === 'credentials') {
-        if (msgEl) msgEl.placeholder = 'Ex: Use as credenciais abaixo para entrar na sala. Boa sorte!';
-    } else if (type === 'tabela') {
-        if (msgEl) msgEl.placeholder = 'Ex: A tabela do evento já está disponível!';
-    } else {
-        if (msgEl) msgEl.placeholder = 'Digite sua mensagem para os participantes...';
-    }
-}
-
-function selectNotifySlot(key) {
-    _notifySelectedSlotKey = key;
-    document.querySelectorAll('.notify-slot-btn').forEach(btn => {
-        const sel = btn.dataset.key === key;
-        btn.style.borderColor       = sel ? '#a855f7' : '#e5e7eb';
-        btn.style.backgroundColor   = sel ? '#faf5ff' : '#ffffff';
-        btn.style.color             = sel ? '#7e22ce' : '#374151';
-        btn.style.fontWeight        = sel ? '700'     : '400';
-    });
-    _updateNotifyCount();
-}
-
-function _updateNotifyCount() {
-    const countEl = document.getElementById('eventNotifyCount');
-    if (!countEl) return;
-    if (_notifySelectedSlotKey === 'all') {
-        const total = new Set(_notifyEventDocs.map(d => d.data().userId).filter(Boolean)).size;
-        countEl.textContent = `Vai enviar para ${total} participante(s)`;
-    } else {
-        const entry = _notifyScheduleMap[_notifySelectedSlotKey];
-        const n = entry ? entry.users.size : 0;
-        countEl.textContent = `Vai enviar para ${n} participante(s)${entry ? ' — ' + entry.sched : ''}`;
-    }
-}
-
-function toggleNotifyOtherDays() {
-    _notifyOtherDaysVisible = !_notifyOtherDaysVisible;
-    const sec  = document.getElementById('notifyOtherDaysSection');
-    const icon = document.getElementById('notifyToggleIcon');
-    const txt  = document.getElementById('notifyToggleText');
-    if (sec)  sec.classList.toggle('hidden', !_notifyOtherDaysVisible);
-    if (icon) icon.className = _notifyOtherDaysVisible ? 'fas fa-chevron-up fa-xs' : 'fas fa-chevron-down fa-xs';
-    if (txt)  txt.textContent = _notifyOtherDaysVisible ? 'Ocultar outros dias' : 'Ver outros dias';
-}
-
-function _buildSlotButton(key, entry) {
-    const safeKey = key.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    return `<button class="notify-slot-btn border-2 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer"
-        style="border-color:#e5e7eb;background:#fff;color:#374151"
-        data-key="${key.replace(/"/g, '&quot;')}"
-        onclick="selectNotifySlot('${safeKey}')">
-        <span style="display:block;font-weight:600">${entry.sched}</span>
-        <span style="display:block;color:#9ca3af">${entry.users.size} pessoa(s)</span>
-    </button>`;
-}
-
-async function openEventNotifyModal(eventId, eventName) {
-    const modal = document.getElementById('eventNotifyModal');
-    if (!modal) return;
-
-    _notifyEventDocs = [];
-    _notifyScheduleMap = {};
-    _notifySelectedSlotKey = 'all';
-    _notifyOtherDaysVisible = false;
-
-    document.getElementById('eventNotifyEventId').value = eventId;
-    document.getElementById('eventNotifyEventName').textContent = eventName;
-    document.getElementById('eventNotifyTitle').value = '';
-    document.getElementById('eventNotifyMessage').value = '';
-    ['eventNotifyRoomId','eventNotifyRoomPassword','eventNotifyRoomLink','eventNotifyTabelaLink']
-        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-
-    document.getElementById('eventNotifyCount').textContent = '—';
-    document.getElementById('notifyLoadingSlots').classList.remove('hidden');
-    document.getElementById('notifyTodaySlots').classList.add('hidden');
-    document.getElementById('notifyTodaySlots').innerHTML = '';
-    document.getElementById('notifyNoTodaySlots').classList.add('hidden');
-    document.getElementById('notifyOtherDaysSection').classList.add('hidden');
-    document.getElementById('notifyToggleOtherDays').classList.add('hidden');
-    document.getElementById('notifyOtherSlots').innerHTML = '';
-
-    selectNotifyType('credentials');
-
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-
-    try {
-        const { collection, query, where, getDocs, doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
-        // Construir conjunto de variantes do eventType para encontrar todas as inscrições
-        // CRÍTICO: usar APENAS eventType e docId — nunca ev.name, pois nomes podem
-        // corresponder a aliases de outros eventos e puxar registros incorretos.
-        const _notifyTypes = new Set([eventId]);
-        let _evEventType = null;
-        try {
-            const _evSnap = await getDoc(doc(window.firebaseDb, 'adminEvents', eventId));
-            if (_evSnap.exists()) {
-                const _evData = _evSnap.data();
-                _evEventType = _evData.eventType || null;
-                if (_evEventType) _notifyTypes.add(_evEventType);
-            }
-        } catch(_) {}
-
-        // Aliases via resolveAliases apenas para o eventType canônico (não para o nome)
-        if (_evEventType) {
-            try { resolveAliases(_evEventType).forEach(a => { if (a) _notifyTypes.add(a); }); } catch(_) {}
-        }
-
-        // Buscar registrações por cada variante e mesclar (deduplicando por doc.id)
-        const _docsMap = new Map();
-        const validStatuses = new Set(['confirmed', 'paid', 'approved', 'lisagem_gratis']);
-        for (const _et of _notifyTypes) {
-            try {
-                const snap = await getDocs(query(
-                    collection(window.firebaseDb, 'registrations'),
-                    where('eventType', '==', _et)
-                ));
-                snap.docs.forEach(d => { if (!_docsMap.has(d.id)) _docsMap.set(d.id, d); });
-            } catch(_) {}
-        }
-        // Mesma lógica do painel Gerenciar: filtra status inválidos E datas passadas (inclui grátis pela lisagem)
-        const _brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
-        const _todayStr = _brNow.toISOString().split('T')[0];
-        _notifyEventDocs = [..._docsMap.values()].filter(d => {
-            const r = d.data();
-            if (!validStatuses.has(r.status)) return false;
-            if (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date < _todayStr) return false;
-            return true;
-        });
-
-        // Normaliza horário: "Terça - 22h", "22:00", "22h" → "22h"
-        const _normSchedH = s => {
-            const m = String(s || '').match(/(\d{1,2})(?:h|:00)?\s*$/i);
-            return m ? String(parseInt(m[1], 10)) + 'h' : String(s || '—').trim();
-        };
-
-        for (const d of _notifyEventDocs) {
-            const r = d.data();
-            const schedRaw = r.schedule || r.slotDisplay || '—';
-            const sched    = _normSchedH(schedRaw);   // canonical: "22h"
-            const date     = r.date || '';
-            const key      = date ? `${date}||${sched}` : `||${sched}`;
-            if (!_notifyScheduleMap[key]) {
-                let dateLabel = '';
-                if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-                    const [, m, dd] = date.split('-');
-                    dateLabel = `${dd}/${m}`;
-                } else if (date) {
-                    dateLabel = date;
-                }
-                _notifyScheduleMap[key] = {
-                    label: dateLabel ? `${dateLabel} — ${sched}` : sched,
-                    users: new Set(), date, sched
-                };
-            }
-            // só adiciona ao conjunto de destinatários se tiver userId
-            // (o slot aparece de qualquer forma, mesmo sem userId, para admin saber que existe)
-            if (r.userId) _notifyScheduleMap[key].users.add(r.userId);
-        }
-
-        // Expandir para todos os membros do time (via teamId ou teamName como fallback)
-        try {
-            const teamIds = [...new Set(_notifyEventDocs.map(d => d.data().teamId).filter(Boolean))];
-            const teamNames = [...new Set(_notifyEventDocs.map(d => d.data().teamName).filter(Boolean))];
-            if (teamIds.length > 0 || teamNames.length > 0) {
-                const teamsSnap = await getDocs(collection(window.firebaseDb, 'teams'));
-                // mapa schedKey → membrosUids expandidos
-                teamsSnap.docs.forEach(td => {
-                    const t = td.data();
-                    const matchId   = teamIds.includes(td.id);
-                    const matchNome = t.nome && teamNames.includes(t.nome);
-                    if (!matchId && !matchNome) return;
-                    const membros = t.membrosUids || [];
-                    if (!membros.length) return;
-                    // Adiciona membros a todos os slots que têm esse time inscrito
-                    for (const d of _notifyEventDocs) {
-                        const r = d.data();
-                        if ((td.id && r.teamId === td.id) || (t.nome && r.teamName === t.nome)) {
-                            const sched = _normSchedH(r.schedule || r.slotDisplay || '—');
-                            const date  = r.date || '';
-                            const key   = date ? `${date}||${sched}` : `||${sched}`;
-                            if (_notifyScheduleMap[key]) {
-                                membros.forEach(uid => _notifyScheduleMap[key].users.add(uid));
-                            }
-                        }
-                    }
-                });
-            }
-        } catch(_) {}
-
-        const today = new Date();
-        const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-        const todayDD  = String(today.getDate()).padStart(2,'0');
-        const todayMM  = String(today.getMonth()+1).padStart(2,'0');
-        document.getElementById('notifyTodayLabel').textContent = `— ${todayDD}/${todayMM}`;
-
-        const allKeys   = Object.keys(_notifyScheduleMap).sort();
-        // Chaves sem data (k.startsWith('||')) são slots recorrentes (ex: Modo Liga semanal)
-        // — aparecem sempre no "hoje" pois acontecem toda semana
-        const todayKeys = allKeys.filter(k => k.startsWith(todayStr + '||') || k.startsWith('||'));
-        const otherKeys = allKeys.filter(k => !k.startsWith(todayStr + '||') && !k.startsWith('||'));
-
-        document.getElementById('notifyLoadingSlots').classList.add('hidden');
-        document.getElementById('notifyTodaySlots').classList.remove('hidden');
-
-        // Totaliza membros únicos já expandidos (inclui membros do time)
-        const totalUnique = new Set([...Object.values(_notifyScheduleMap).flatMap(v => [...v.users])]).size || new Set(_notifyEventDocs.map(d => d.data().userId).filter(Boolean)).size;
-        const todaySlotsEl = document.getElementById('notifyTodaySlots');
-
-        if (todayKeys.length === 0) {
-            document.getElementById('notifyNoTodaySlots').classList.remove('hidden');
-            todaySlotsEl.innerHTML = `<button class="notify-slot-btn border-2 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer"
-                style="border-color:#a855f7;background:#faf5ff;color:#7e22ce;font-weight:700"
-                data-key="all" onclick="selectNotifySlot('all')">
-                <span style="display:block;font-weight:700">Todos</span>
-                <span style="display:block;color:#a855f7">${totalUnique} pessoa(s)</span>
-            </button>`;
-        } else {
-            const todayUserSet = new Set();
-            todayKeys.forEach(k => _notifyScheduleMap[k].users.forEach(u => todayUserSet.add(u)));
-            let html = `<button class="notify-slot-btn border-2 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer"
-                style="border-color:#a855f7;background:#faf5ff;color:#7e22ce;font-weight:700"
-                data-key="all" onclick="selectNotifySlot('all')">
-                <span style="display:block;font-weight:700">Todos de hoje</span>
-                <span style="display:block;color:#a855f7">${todayUserSet.size} pessoa(s)</span>
-            </button>`;
-            todayKeys.forEach(k => { html += _buildSlotButton(k, _notifyScheduleMap[k]); });
-            todaySlotsEl.innerHTML = html;
-        }
-
-        if (otherKeys.length > 0) {
-            document.getElementById('notifyOtherSlots').innerHTML =
-                otherKeys.map(k => _buildSlotButton(k, _notifyScheduleMap[k])).join('');
-            document.getElementById('notifyToggleOtherDays').classList.remove('hidden');
-        }
-
-        selectNotifySlot('all');
-
-    } catch(e) {
-        document.getElementById('notifyLoadingSlots').classList.add('hidden');
-        document.getElementById('eventNotifyCount').textContent = 'Erro ao carregar participantes';
-        document.getElementById('notifyTodaySlots').classList.remove('hidden');
-        document.getElementById('notifyTodaySlots').innerHTML =
-            '<p class="text-xs text-red-400">Não foi possível carregar os horários.</p>';
-    }
-}
-
-function closeEventNotifyModal() {
-    const modal = document.getElementById('eventNotifyModal');
-    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-    _notifyEventDocs = [];
-    _notifyScheduleMap = {};
-}
-
-function onEventNotifyScheduleChange() {}
-function onEventNotifyTypeChange() {}
-
-
-async function sendEventNotification() {
-    const eventId = document.getElementById('eventNotifyEventId').value;
-    const eventName = document.getElementById('eventNotifyEventName').textContent;
-    const title = document.getElementById('eventNotifyTitle').value.trim();
-    const message = document.getElementById('eventNotifyMessage').value.trim();
-    const selectedSchedule = _notifySelectedSlotKey || 'all';
-    const notifyType = _notifySelectedType || 'custom';
-
-    if (!title) { showToast('warning', 'Informe o título da notificação.', 'Atenção'); return; }
-    if (notifyType !== 'credentials' && notifyType !== 'tabela' && !message) { showToast('warning', 'Informe a mensagem.', 'Atenção'); return; }
-
-    // Validação de credenciais
-    let roomId = null, roomPassword = null, roomLink = null;
-    if (notifyType === 'credentials') {
-        roomId = (document.getElementById('eventNotifyRoomId')?.value || '').trim();
-        roomPassword = (document.getElementById('eventNotifyRoomPassword')?.value || '').trim();
-        roomLink = (document.getElementById('eventNotifyRoomLink')?.value || '').trim() || null;
-        if (!roomId) { showToast('warning', 'Informe o ID da sala.', 'Atenção'); return; }
-        if (!roomPassword) { showToast('warning', 'Informe a senha da sala.', 'Atenção'); return; }
-    }
-
-    // Validação de tabela
-    let tabelaLink = null;
-    if (notifyType === 'tabela') {
-        tabelaLink = (document.getElementById('eventNotifyTabelaLink')?.value || '').trim() || null;
-        if (!tabelaLink) { showToast('warning', 'Informe o link da tabela de pontuação.', 'Atenção'); return; }
-    }
-
-    const btn = document.getElementById('eventNotifySendBtn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Enviando...'; }
-
-    try {
-        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
-        // Opção 2: buscar dados frescos antes de enviar (captura inscrições feitas após abrir o modal)
-        try {
-            const { collection: _frc, query: _frq, where: _frw, getDocs: _frg } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            const _freshTypes = [...new Set([
-                ..._notifyEventDocs.map(d => d.data().eventType).filter(Boolean),
-                eventId
-            ].filter(Boolean))];
-            const _freshMap = new Map(_notifyEventDocs.map(d => [d.id, d]));
-            const _freshValidStatuses = new Set(['paid', 'confirmed', 'approved', 'lisagem_gratis']);
-            for (const _ft of _freshTypes) {
-                try {
-                    const _fs = await _frg(_frq(_frc(window.firebaseDb, 'registrations'), _frw('eventType', '==', _ft)));
-                    _fs.forEach(d => { if (_freshValidStatuses.has(d.data().status || '')) _freshMap.set(d.id, d); });
-                } catch (_) {}
-            }
-            const _brNow2 = new Date(Date.now() - 3 * 60 * 60 * 1000);
-            const _todayStr2 = _brNow2.toISOString().split('T')[0];
-            _notifyEventDocs = [..._freshMap.values()].filter(d => {
-                const r = d.data();
-                if (!_freshValidStatuses.has(r.status || '')) return false;
-                if (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date < _todayStr2) return false;
-                return true;
-            });
-        } catch (_fe) {
-            console.warn('[Notify] Falha ao buscar dados frescos, usando cache:', _fe.message);
-        }
-
-        let docsToNotify = _notifyEventDocs;
-        let filterLabel = '';
-        if (selectedSchedule !== 'all') {
-            const [selDate, ...schedParts] = selectedSchedule.split('||');
-            const selSched = schedParts.join('||');
-            docsToNotify = _notifyEventDocs.filter(d => {
-                const r = d.data();
-                const rawSched = r.schedule || r.slotDisplay || '—';
-                const mNorm = String(rawSched).match(/(\d{1,2})(?:h|:00)?\s*$/i);
-                const normSched = mNorm ? String(parseInt(mNorm[1], 10)) + 'h' : String(rawSched).trim();
-                return (r.date || '') === selDate && normSched === selSched;
-            });
-            if (selDate && /^\d{4}-\d{2}-\d{2}$/.test(selDate)) {
-                const [, m, dd] = selDate.split('-');
-                filterLabel = `${dd}/${m} — ${selSched}`;
-            } else {
-                filterLabel = selSched;
-            }
-        }
-
-        // Coletar usuários das inscrições e expandir para todos os membros do time
-        // Usa teamId (inscrições novas) OU teamName como fallback (inscrições antigas)
-        const regUsers = [...new Set(docsToNotify.map(d => d.data().userId).filter(Boolean))];
-        const allUsersSet = new Set(regUsers);
-        const teamIds   = [...new Set(docsToNotify.map(d => d.data().teamId).filter(Boolean))];
-        const teamNames = [...new Set(docsToNotify.map(d => d.data().teamName).filter(Boolean))];
-        if (teamIds.length > 0 || teamNames.length > 0) {
-            try {
-                const { collection: _col2, getDocs: _gd2, query: _q2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                const teamsSnap = await _gd2(_q2(_col2(window.firebaseDb, 'teams')));
-                teamsSnap.docs.forEach(td => {
-                    const t = td.data();
-                    if (teamIds.includes(td.id) || (t.nome && teamNames.includes(t.nome))) {
-                        (t.membrosUids || []).forEach(u => allUsersSet.add(u));
-                    }
-                });
-            } catch(_) {}
-            }
-        const uniqueUsers = [...allUsersSet];
-        if (uniqueUsers.length === 0) {
-            showToast('warning', 'Nenhum participante encontrado para o dia/horário selecionado.', 'Atenção');
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Enviar'; }
-            return;
-        }
-
-        const user = window.firebaseAuth?.currentUser;
-        const createdBy = user ? (user.displayName || user.email || user.uid) : 'Admin';
-        const scheduleLabel = filterLabel ? ` [${filterLabel}]` : '';
-        // batchId agrupa todas as notificações deste envio — evita duplicatas na listagem do admin
-        const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-        let slotList = null;
-        let slotCapacity = null;
-
-        // Ao enviar credenciais para um horário específico, incluir lista de slots na notificação.
-        // CRÍTICO: usar docsToNotify (já filtrado ao slot/evento correto) — evita re-query com docId
-        // que retornaria vazio porque registrations são salvas com eventType='acesso', não com o docId.
-        if (notifyType === 'credentials' && selectedSchedule !== 'all') {
-            try {
-                const { doc: _sd, getDoc: _sgd } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                // Buscar eventType do doc adminEvents para determinar a capacidade correta
-                let _evType = '';
-                try {
-                    const _evSnap2 = await _sgd(_sd(window.firebaseDb, 'adminEvents', eventId));
-                    if (_evSnap2.exists()) _evType = (_evSnap2.data().eventType || '').toLowerCase();
-                } catch(_) {}
-                const _isLigaType = _evType.includes('liga') || _evType.includes('acesso') || _evType === 'modo-liga';
-                const _cap = _isLigaType ? 15 : 12;
-
-                // Montar lista a partir de docsToNotify (já filtrado ao slot correto)
-                // ordenado por slotNumber → slot → createdAt
-                const _sorted = [...docsToNotify].sort((a, b) => {
-                    const ra = a.data(), rb = b.data();
-                    const ta = ra.createdAt?.toDate?.()?.getTime() || 0;
-                    const tb = rb.createdAt?.toDate?.()?.getTime() || 0;
-                    if (ta > 0 && tb > 0) return ta - tb;
-                    const sa = ra.slotNumber ?? ra.slot ?? 9999;
-                    const sb = rb.slotNumber ?? rb.slot ?? 9999;
-                    return sa - sb;
-                });
-                const _teams = _sorted.map(d => d.data().teamName || d.data().name || '');
-                const _slots = [];
-                for (let i = 0; i < _cap; i++) {
-                    _slots.push({ slot: i + 1, teamName: _teams[i] || '' });
-                }
-                slotList = _slots;
-                slotCapacity = _cap;
-            } catch (_) {}
-        }
-
-        const notifTitle = `[${eventName}]${scheduleLabel} ${title}`;
-
-        await Promise.all(uniqueUsers.map(uid =>
-            addDoc(collection(window.firebaseDb, 'notifications'), {
-                title: notifTitle,
-                message: message || null,
-                type: 'user',
-                targetUserId: uid,
-                eventId,
-                eventName,
-                schedule: filterLabel || null,
-                notifyType,
-                roomId: roomId || null,
-                roomPassword: roomPassword || null,
-                roomLink: roomLink || null,
-                tabelaLink: tabelaLink || null,
-                slotList: slotList || null,
-                slotCapacity: slotCapacity || null,
-                createdAt: serverTimestamp(),
-                createdBy,
-                createdByUid: user?.uid || null,
-                batchId,
-                batchTotal: uniqueUsers.length,
-            })
-        ));
-
-        const horarioMsg = filterLabel ? ` (${filterLabel})` : '';
-        showToast('success', `Notificação enviada para ${uniqueUsers.length} participante(s)${horarioMsg}!`, 'Sucesso');
-        closeEventNotifyModal();
-        // Atualizar lista de notificações enviadas no painel
-        if (document.getElementById('adminNotifList')) loadAdminNotifications();
-    } catch (err) {
-        console.error('Erro ao enviar notificação de evento:', err);
-        showToast('error', 'Erro ao enviar: ' + (err.message || err), 'Erro');
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i>Enviar'; }
-    }
-}
-
 // ===== SLOTS POR HORÁRIO =====
 async function openEventSlotsModal(eventId, eventName) {
     const modal = document.getElementById('eventSlotsModal');
@@ -12857,15 +12104,6 @@ window.openEventSlotsModal = openEventSlotsModal;
 window.closeEventSlotsModal = closeEventSlotsModal;
 window.repairEventSlots = repairEventSlots;
 
-window.openEventNotifyModal = openEventNotifyModal;
-window.closeEventNotifyModal = closeEventNotifyModal;
-window.onEventNotifyTypeChange = onEventNotifyTypeChange;
-window.onEventNotifyScheduleChange = onEventNotifyScheduleChange;
-window.sendEventNotification = sendEventNotification;
-window.selectNotifyType = selectNotifyType;
-window.selectNotifySlot = selectNotifySlot;
-window.toggleNotifyOtherDays = toggleNotifyOtherDays;
-
 window.loadEventsPreview = loadEventsPreview;
 window.openEventsModal = openEventsModal;
 window.closeEventsModal = closeEventsModal;
@@ -12922,7 +12160,6 @@ window.loadPageData = async function(page) {
 
     } else if (page === 'operacoes') {
         try { loadWhatsAppLinks(); } catch(e) {}
-        try { loadAdminNotifications(); } catch(e) {}
     }
 };
 

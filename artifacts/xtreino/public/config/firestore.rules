@@ -353,21 +353,13 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin() || isGerente() || isDesign();
     }
 
-    // notifications: gerente, staff e admin podem criar/editar; usuários podem criar notificações de pedido para admin
+    // Coleções legadas de notificações desativadas; os documentos antigos permanecem armazenados.
     match /notifications/{notifId} {
-      allow read: if isSignedIn();
-      allow create: if isAuthorizedAdmin() || isGerente() || isStaff() ||
-        (isSignedIn() && request.resource.data.type == 'admin_booyah');
-      allow update, delete: if isAuthorizedAdmin() || isGerente() || isStaff();
+      allow read, write: if false;
     }
 
-    // notificationReads
     match /notificationReads/{readId} {
-      allow read: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || isAdmin() || isGerente()
-      );
-      allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow delete: if isAdmin() || isGerente();
+      allow read, write: if false;
     }
 
     // slotCounters

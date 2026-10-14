@@ -136,11 +136,6 @@
                         LOGIN
                     </button>
                     <span id="tokenBadgeDesktop" class="hidden bg-yellow-400 text-[var(--brand-black)] px-3 py-1 rounded-full text-xs font-bold shadow-sm">💎 0</span>
-                    <!-- Sininho de Notificações Desktop -->
-                    <button id="notifBellDesktop" onclick="toggleNotifDropdown()" title="Notificações" class="hidden relative text-gray-600 hover:text-blue-600 transition-colors p-2 rounded-full hover:bg-gray-100">
-                        <i class="fas fa-bell text-xl"></i>
-                        <span id="notifBadgeDesktop" class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 hidden"></span>
-                    </button>
                     <div id="accountSectionDesktop" class="hidden flex items-center space-x-3">
                         <button id="accountBtnDesktop" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
                             MINHA CONTA
@@ -158,11 +153,6 @@
                 <div class="md:hidden flex items-center gap-2 ml-auto">
                     <a href="javascript:void(0)" onclick="requestAdminAccess()" id="adminLinkMobile" class="text-black text-xs font-semibold px-2 py-1 hidden">ADMIN</a>
                     <span id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-2 py-1 rounded-full text-xs font-bold shadow-sm">💎 0</span>
-                    <!-- Sininho Mobile -->
-                    <button id="notifBellMobile" onclick="toggleNotifDropdown()" title="Notificações" class="hidden relative text-gray-600 p-1 rounded-full">
-                        <i class="fas fa-bell text-lg"></i>
-                        <span id="notifBadgeMobile" class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5 hidden"></span>
-                    </button>
                     <button id="loginBtnMobile" onclick="openLoginModal()" class="bg-blue-matte px-4 py-2 rounded-xl text-white text-xs font-bold transition-colors">
                         LOGIN
                     </button>
@@ -1230,19 +1220,6 @@
         </div>
     </div>
 
-    <!-- Dropdown de Notificações -->
-    <div id="notifDropdown" class="hidden fixed inset-0 z-[150]" onclick="closeNotifDropdown()">
-        <div class="absolute top-16 left-3 right-3 md:left-auto md:right-10 md:w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 max-h-[420px] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
-            <div class="p-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-600 to-purple-600 rounded-t-2xl">
-                <h3 class="font-bold text-white flex items-center gap-2"><i class="fas fa-bell"></i> Notificações</h3>
-                <button onclick="closeNotifDropdown()" class="text-white/80 hover:text-white text-lg leading-none">✕</button>
-            </div>
-            <div id="notifList" class="overflow-y-auto flex-1 divide-y divide-gray-100">
-                <p class="text-center text-gray-400 text-sm py-8">Carregando...</p>
-            </div>
-        </div>
-    </div>
-
     <!-- Free WhatsApp Modal -->
     <div id="freeWhatsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 relative">
@@ -1970,79 +1947,6 @@
     </div>
   </div>
 </div>
-
-<!-- ==================== MODAL CREDENCIAIS DA SALA ==================== -->
-<div id="modalCredenciais" class="fixed inset-0 z-[9999] hidden flex items-end justify-center" style="background:rgba(0,0,0,0.75);backdrop-filter:blur(4px)" onclick="if(event.target===this)closeCredenciaisModal()">
-  <div style="width:100%;max-width:480px;max-height:92dvh;overflow-y:auto;background:#fff;border-radius:1.5rem 1.5rem 0 0;box-sizing:border-box;-webkit-overflow-scrolling:touch">
-
-    <!-- Cabeçalho roxo gaming -->
-    <div style="background:linear-gradient(135deg,#4c1d95 0%,#5b21b6 40%,#4338ca 100%);padding:1.1rem 1.1rem 0.9rem;position:relative;border-radius:1.5rem 1.5rem 0 0">
-      <!-- Alça de arrastar -->
-      <div style="width:36px;height:4px;background:rgba(255,255,255,0.35);border-radius:2px;margin:0 auto 0.8rem"></div>
-      <button onclick="closeCredenciaisModal()" style="position:absolute;top:0.9rem;right:0.9rem;background:rgba(255,255,255,0.18);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">✕</button>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:40px;height:40px;background:rgba(255,255,255,0.18);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🎮</div>
-        <div>
-          <div id="credModalTitle" style="color:#fff;font-size:1rem;font-weight:900;line-height:1.2;letter-spacing:0.3px">Credenciais da Sala</div>
-          <div id="credModalSub" style="color:rgba(255,255,255,0.75);font-size:0.72rem;margin-top:2px;font-weight:600"></div>
-        </div>
-      </div>
-      <!-- Instrução -->
-      <div style="margin-top:0.75rem;background:rgba(255,255,255,0.12);border-radius:10px;padding:7px 10px;font-size:11px;color:rgba(255,255,255,0.9);font-weight:600">
-        ⚠️ Entre na sala <strong>5 minutos antes</strong> do horário combinado
-      </div>
-    </div>
-
-    <!-- Corpo do modal -->
-    <div style="padding:1rem;display:flex;flex-direction:column;gap:0.85rem">
-
-      <!-- ID e Senha lado a lado -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <!-- ID -->
-        <div style="background:linear-gradient(135deg,#f5f3ff,#ede9fe);border:2px solid #c4b5fd;border-radius:14px;padding:12px;text-align:center;position:relative">
-          <div style="font-size:9px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🎮 ID da Sala</div>
-          <div id="credModalRoomId" style="font-size:1.5rem;font-weight:900;color:#4c1d95;font-family:monospace;letter-spacing:3px;user-select:all;line-height:1">—</div>
-          <button onclick="copiarCredencial('credModalRoomId',this)" title="Copiar ID"
-            style="position:absolute;top:8px;right:8px;background:#ede9fe;border:1px solid #c4b5fd;color:#7c3aed;font-size:11px;font-weight:700;border-radius:6px;padding:3px 7px;cursor:pointer;transition:background 0.15s">
-            📋
-          </button>
-        </div>
-        <!-- Senha -->
-        <div style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:2px solid #a5b4fc;border-radius:14px;padding:12px;text-align:center;position:relative">
-          <div style="font-size:9px;font-weight:800;color:#4338ca;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🔑 Senha</div>
-          <div id="credModalRoomPass" style="font-size:1.5rem;font-weight:900;color:#312e81;font-family:monospace;letter-spacing:3px;user-select:all;line-height:1">—</div>
-          <button onclick="copiarCredencial('credModalRoomPass',this)" title="Copiar Senha"
-            style="position:absolute;top:8px;right:8px;background:#e0e7ff;border:1px solid #a5b4fc;color:#4338ca;font-size:11px;font-weight:700;border-radius:6px;padding:3px 7px;cursor:pointer;transition:background 0.15s">
-            📋
-          </button>
-        </div>
-      </div>
-
-      <!-- Botão Entrar na Sala (só aparece quando há roomLink) -->
-      <a id="credModalLink" href="#" target="_blank" rel="noopener noreferrer"
-        style="display:none;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;padding:14px 16px;border-radius:14px;font-weight:900;font-size:15px;letter-spacing:0.5px;animation:_credPulse 1.5s infinite;box-shadow:0 0 0 0 rgba(124,58,237,0.7)">
-        🚀 ENTRAR NA SALA!!
-      </a>
-
-      <!-- Lista de slots -->
-      <div id="credModalSlotWrap" class="hidden">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div style="flex:1;height:1px;background:#e5e7eb"></div>
-          <span style="font-size:10px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;white-space:nowrap">📋 Lista de Times</span>
-          <div style="flex:1;height:1px;background:#e5e7eb"></div>
-        </div>
-        <div id="credModalSlotList" style="display:flex;flex-direction:column;gap:6px"></div>
-      </div>
-
-      <!-- Fechar -->
-      <button onclick="closeCredenciaisModal()"
-        style="width:100%;padding:13px;background:#f3f4f6;border:none;border-radius:14px;font-size:14px;font-weight:700;color:#374151;cursor:pointer;margin-bottom:calc(env(safe-area-inset-bottom,0px) + 4px)">
-        Fechar
-      </button>
-    </div>
-  </div>
-</div>
-<style>@keyframes _credPulse{0%{box-shadow:0 0 0 0 rgba(124,58,237,0.7)}70%{box-shadow:0 0 0 12px rgba(124,58,237,0)}100%{box-shadow:0 0 0 0 rgba(124,58,237,0)}}</style>
 
 <style>
 /* ============================================================
