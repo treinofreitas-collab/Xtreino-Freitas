@@ -7107,20 +7107,10 @@ async function submitSchedule(e, useTokens = false) {
                     message: 'Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.'
                 })));
 
-        // 3) Travas permanentes: global + horários em paralelo
-        const _lockPromise = (async () => {
-            try {
-                const { doc: _ld, getDoc: _lg, collection: _lc, query: _lq, where: _lw, getDocs: _lgs } =
-                    await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                const [globalLock, hourLocksSnap] = await Promise.all([
-                    _lg(_ld(window.firebaseDb, 'event_global_locks', rawEventType)),
-                    _lgs(_lq(_lc(window.firebaseDb, 'event_hour_locks'), _lw('eventType', '==', rawEventType)))
-                ]);
-                return { globalLock, hourLocksSnap };
-            } catch (_) { return null; }
-        })();
+        // O servidor acima já verifica travas globais, por horário e por data.
+        // Não repetir essas leituras no navegador antes de cada pagamento.
 
-        // 4) Anti-duplicação para campeonatos (em paralelo com o resto)
+        // 3) Anti-duplicação para campeonatos (em paralelo com o resto)
         const _isCampEvent = (cfg?.category === 'camp') ||
             rawEventType === 'camp-freitas' || rawEventType === 'camp-final' ||
             rawEventType.toLowerCase().startsWith('camp');
@@ -7136,9 +7126,8 @@ async function submitSchedule(e, useTokens = false) {
         })() : Promise.resolve(null);
 
         // ── AGUARDAR TUDO DE UMA VEZ ──────────────────────────────────────────
-        const [availResults, lockResult, campExistNames] = await Promise.all([
+        const [availResults, campExistNames] = await Promise.all([
             Promise.all(_availPromises),
-            _lockPromise,
             _campDupPromise,
             _fbReadyPromise
         ]);
@@ -7149,30 +7138,6 @@ async function submitSchedule(e, useTokens = false) {
                 alert(check.message || 'Não há vagas suficientes.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
-            }
-        }
-
-        // Processar travas
-        if (lockResult) {
-            const { globalLock, hourLocksSnap } = lockResult;
-            if (globalLock.exists() && globalLock.data().locked === true) {
-                alert('Este evento está temporariamente suspenso. Nenhuma nova inscrição pode ser feita no momento.');
-                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-                return;
-            }
-            const lockedHoursSet = new Set();
-            hourLocksSnap.forEach(ld => {
-                const ldata = ld.data();
-                if (ldata.locked === true && ldata.hour) lockedHoursSet.add(String(ldata.hour).toLowerCase().trim());
-            });
-            for (const item of selectedTimes) {
-                const parts = (item.schedule || '').split(' - ');
-                const normH = normalizeHour((parts[1] || parts[0] || '').trim());
-                if (normH && lockedHoursSet.has(normH)) {
-                    alert(`O horário ${normH} está permanentemente bloqueado para este evento e não aceita novas inscrições.`);
-                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-                    return;
-                }
             }
         }
 
@@ -7303,7 +7268,7 @@ async function submitSchedule(e, useTokens = false) {
         // --- SALVAR NO FIRESTORE ---
         let externalRef = `schedule_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         let regIds = [];
-        let _prefFetchPromise = null; // iniciado antes do addDoc para ganhar tempo
+        let _prefFetchPromise = null; // requisição preparada; enviada após persistir as reservas
 
         try {
             // Firebase já foi aguardado em paralelo acima — verificação rápida
@@ -7399,8 +7364,7 @@ async function submitSchedule(e, useTokens = false) {
                 }
             }
 
-            // ── Iniciar create-preference ANTES do addDoc ─────────────────────
-            // O payload não depende dos docIds — fetch em paralelo com os saves
+            // Preparar create-preference; o servidor precisa das reservas já gravadas.
             {
                 const _earlyAff = getActiveAffiliateCode(appliedScheduleCoupon?.affiliateId || null);
                 if (_earlyAff) { try { sessionStorage.setItem('xf_pending_aff', _earlyAff); } catch (_) {} }
@@ -7499,7 +7463,7 @@ async function submitSchedule(e, useTokens = false) {
             if (submitBtn) { submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Aguarde...'; }
             if (typeof showToast === 'function') showToast('info', 'Conectando ao Mercado Pago, aguarde...', 'Pagamento', 20000);
 
-            // Fetch já foi iniciado em paralelo com o addDoc — apenas aguardar
+            // As reservas já foram gravadas; agora solicitar o checkout seguro.
             let resp;
             try {
                 resp = await _prefFetchPromise();

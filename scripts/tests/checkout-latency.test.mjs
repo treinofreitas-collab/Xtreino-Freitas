@@ -34,6 +34,67 @@ function setup(overrides = {}) {
 }
 const verified = { eventType: 'modo-liga', numberOfTeams: 1, timesByDate: { '2026-10-13': ['Terça - 19h'] } };
 
+const submission = extract('submitSchedule', '// ===== Helper: busca registrações');
+function setupSubmission(result) {
+    const calls = [];
+    const values = { name: 'Equipe teste', email: 'teste@example.test', phone: '11999999999' };
+    const elements = {
+        scheduleModal: { dataset: { eventType: 'modo-liga' } },
+        schedDate: { value: '2026-10-13' },
+        schedSubmit: { disabled: false, textContent: 'Pagar' },
+        schedPayTokens: { disabled: false },
+    };
+    const context = {
+        console,
+        window: { isLoggedIn: true, _freeHoursMap: {} },
+        document: {
+            getElementById: id => elements[id],
+            querySelectorAll: () => [{
+                id: 'team1',
+                querySelector: selector => {
+                    const field = selector.match(/data-field="(\w+)"/)?.[1];
+                    return field ? { value: values[field] } : null;
+                },
+            }],
+        },
+        scheduleConfig: { 'modo-liga': { label: 'MODO LIGA', price: 3 } },
+        selectedDates: ['2026-10-13'], selectedTimes: selected, teams: [],
+        appliedScheduleCoupon: null,
+        waitForFirebase: async () => { calls.push('ready'); },
+        checkMultipleSlotAvailability: async () => { calls.push('check'); return result; },
+        getEventPrice: () => 3,
+        useTokensForEvent: async (...args) => { calls.push('tokens'); context.proof = args[6]; },
+        alert: () => { calls.push('blocked'); },
+    };
+    vm.createContext(context);
+    new vm.Script(submission).runInContext(context);
+    return { context, calls, elements };
+}
+
+test('event submit uses the server lock/capacity check without duplicate client lock queries', async () => {
+    assert.doesNotMatch(submission, /event_global_locks|event_hour_locks|_lockPromise/);
+    const { context, calls, elements } = setupSubmission({ available: true });
+    await context.submitSchedule({ preventDefault() {} }, true);
+    assert.deepEqual(calls, ['ready', 'check', 'tokens']);
+    assert.equal(JSON.stringify(context.proof), JSON.stringify(verified));
+    assert.equal(context.window._scheduleSubmitting, false);
+    assert.equal(elements.schedPayTokens.disabled, false);
+});
+
+test('a server-blocked or failed availability check stops both payment methods before persistence or payment', async () => {
+    for (const useTokens of [true, false]) {
+        for (const result of [
+            { available: false, message: 'Horário bloqueado pelo administrador.' },
+            { available: false, message: 'Não foi possível confirmar as vagas.' },
+        ]) {
+            const { context, calls } = setupSubmission(result);
+            await context.submitSchedule({ preventDefault() {} }, useTokens);
+            assert.deepEqual(calls, ['ready', 'check', 'blocked']);
+            assert.equal(context.window._scheduleSubmitting, false);
+        }
+    }
+});
+
 test('token submit reuses only the same verified selection, persisting before debit and showing confirmation afterward', async () => {
     const { context, calls } = setup();
     await context.useTokensForEvent('modo-liga', 1, 3, team, selected, ['2026-10-13'], verified);
