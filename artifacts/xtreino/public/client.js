@@ -3248,6 +3248,10 @@ async function performPendingPaymentReconciliation() {
         if (uniqueRefs.length === 0) return;
 
         let confirmedAny = false;
+        const needsReviewReferences = new Set();
+        const collectNeedsReview = ({ reference }) => {
+            if (reference) needsReviewReferences.add(reference);
+        };
         for (const ref of uniqueRefs) {
             if (uid !== currentUser?.uid) return;
             try {
@@ -3255,13 +3259,29 @@ async function performPendingPaymentReconciliation() {
                     order.data.external_reference === ref && isTokenPurchaseOrder(order)
                 );
                 if (tokenOrder) {
-                    confirmedAny = (await processSuccessfulPayment(ref, { refresh: false })) || confirmedAny;
+                    confirmedAny = (await processSuccessfulPayment(ref, {
+                        refresh: false,
+                        onNeedsReview: collectNeedsReview
+                    })) || confirmedAny;
                     continue;
                 }
 
-                confirmedAny = (await processSuccessfulPayment(ref, { refresh: false })) || confirmedAny;
+                confirmedAny = (await processSuccessfulPayment(ref, {
+                    refresh: false,
+                    onNeedsReview: collectNeedsReview
+                })) || confirmedAny;
             } catch (_) { /* ignora erros por ref */ }
             await new Promise(r => setTimeout(r, 200));
+        }
+
+        if (needsReviewReferences.size > 0 && uid === currentUser?.uid) {
+            const count = needsReviewReferences.size;
+            showToast(
+                'warning',
+                `${count} compra${count === 1 ? '' : 's'} precisa${count === 1 ? '' : 'm'} de conferência manual. Nenhuma foi aprovada automaticamente.`,
+                'Verificação necessária',
+                9000
+            );
         }
 
         if (!confirmedAny) return;
@@ -3277,7 +3297,7 @@ async function performPendingPaymentReconciliation() {
     } catch (_) { /* ignora */ }
 }
 
-async function processSuccessfulPayment(externalRef = null, { refresh = true } = {}) {
+async function processSuccessfulPayment(externalRef = null, { refresh = true, onNeedsReview = null } = {}) {
     const uid = currentUser?.uid;
     const extRef = externalRef || sessionStorage.getItem('lastExternalRef');
     
@@ -3287,7 +3307,10 @@ async function processSuccessfulPayment(externalRef = null, { refresh = true } =
         if (uid !== currentUser?.uid) return false;
         if (!paymentCompleted(result)) {
             sessionStorage.setItem('lastExternalRef', extRef);
-            if (result.status === 'needs_review') showToast('warning', result.message || 'Solicite conferência deste pedido ao suporte.', 'Verificação necessária');
+            if (result.status === 'needs_review') {
+                if (typeof onNeedsReview === 'function') onNeedsReview({ reference: extRef, result });
+                else showToast('warning', result.message || 'Solicite conferência deste pedido ao suporte.', 'Verificação necessária');
+            }
             return;
         }
         clearEventAccessCache();
