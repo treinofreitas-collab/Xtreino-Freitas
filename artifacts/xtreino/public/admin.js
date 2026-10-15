@@ -5,6 +5,18 @@ const CAMP_FINAL_DATES = ['2024-11-28','2025-11-28'];
 let campSemifinalLinks = {};
 let campSemifinalLinksLoaded = false;
 
+const adminReportCache = window.AdminReadControl.createReadCache();
+async function readAdminReportCollection(name) {
+    const uid = window.firebaseAuth?.currentUser?.uid;
+    if (!uid) throw new Error('Entre novamente no painel administrativo.');
+    adminReportCache.setScope(uid);
+    return adminReportCache.read(name, async () => {
+        const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        return getDocs(collection(window.firebaseDb, name));
+    });
+}
+window.invalidateAdminReports = () => adminReportCache.clear();
+
 function showToast(type, message, title = null, duration = 5000) {
     const container = document.getElementById('toastContainer');
     if (!container) return;
@@ -949,7 +961,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       
       // Buscar pedidos confirmados
       const ordersRef = collection(window.firebaseDb, 'orders');
-      const ordersSnapshot = await getDocs(ordersRef);
+      const ordersSnapshot = await readAdminReportCollection('orders');
       
       
       // Função auxiliar para obter nome do item/evento
@@ -1259,7 +1271,19 @@ window.showWarningToast = function(message, title = 'Atenção') {
   window.submitAddTeam = submitAddTeam;
   
   onAuthStateChanged(window.firebaseAuth, async (user) => {
+    if (window.adminDataUid !== (user?.uid || null)) {
+      window.adminDataUid = user?.uid || null;
+      window.adminDataReady = false;
+      window._adminPages = { initialized: new Set(), pending: new Map(), loadedAt: new Map() };
+      stopCouponUsage();
+    }
+    adminReportCache.setScope(user?.uid || null);
     if (!user){
+      window.adminDataReady = false;
+      window._adminPages?.initialized.clear();
+      window._adminPages?.loadedAt.clear();
+      stopCouponUsage();
+      window.dispatchEvent(new Event('admin:pagechange'));
       authGate.classList.remove('hidden');
       dashboard.classList.add('hidden');
       return;
@@ -1314,32 +1338,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       }
     }catch(_){ }
     
-    // Carregar usuários de permissões depois de definir o cargo
-    if (window.loadPermissionsUsers) {
-      window.loadPermissionsUsers();
-    }
-    
-    // Carregar dados das novas seções
-    if (window.loadTokensUsers) {
-      window.loadTokensUsers();
-    }
-    
-    if (window.loadAdminHistory) {
-      window.loadAdminHistory();
-    }
-    
-    // Carregar dados de cupons
-    if (window.loadCoupons) {
-      window.loadCoupons();
-    }
-    
-    if (window.loadCouponUsage) {
-      window.loadCouponUsage();
-    }
-    
-    if (window.loadAffiliates) {
-      window.loadAffiliates();
-    }
+    // Other pages load only after navigation, not merely because their DOM exists.
     
     // Se for afiliado, carregar dados do painel de afiliado
     if (isAffiliate) {
@@ -1371,24 +1370,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
       }, 500);
     }
     
-  // Carregar pedidos de camisa (envios)
-  if (window.loadShirtOrders) {
-    window.loadShirtOrders();
-  }
     // Controla visibilidade conforme o papel - REMOVIDO para evitar conflito com controlSectionVisibility
     // A visibilidade agora é controlada exclusivamente pela função controlSectionVisibility
 
-    try {
-      // Carregamento de dados conforme papel
-      if (canViewAll) {
-        // CEO/Gerente/Sócio: pode carregar datasets completos
-        await carregarUsuarios();
-        await loadTokensData();
-        await carregarPedidosConfirmados();
-      }
-    } catch(e){
-      console.error('❌ Erro ao carregar dados:', e);
-    }
     // bind filtros e export
     const btnApply = document.getElementById('btnApplyFilter');
     if (btnApply) btnApply.onclick = applyFilter;
@@ -1398,60 +1382,30 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (btnSch) btnSch.onclick = exportSchedulesCsv;
     const btnLoadBoard = document.getElementById('btnLoadBoard');
     if (btnLoadBoard) btnLoadBoard.onclick = loadBoard;
-    // Carrega eventos dinâmicos no dropdown do board ao iniciar e quando Firebase estiver pronto
-    if (window.firebaseDb) {
-      loadDynamicEventsIntoBoard();
-    } else {
-      const _waitFb = setInterval(() => {
-        if (window.firebaseDb) { clearInterval(_waitFb); loadDynamicEventsIntoBoard(); }
-      }, 300);
-    }
     const formAddTeam = document.getElementById('formAddTeam');
     if (formAddTeam) formAddTeam.onsubmit = submitAddTeam;
-
-    // ── Limpeza única de registrations de teste ──
-    (async function cleanupTestRegistrations() {
-      try {
-        const _fbDb = window.firebaseDb || await new Promise(res => {
-          const _t = setInterval(() => { if (window.firebaseDb) { clearInterval(_t); res(window.firebaseDb); } }, 300);
-        });
-        const { collection, query, where, getDocs, deleteDoc, doc } =
-          await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const nomesAlvo = ['B12 E-SPORTS', 'TROPA DO FERA', 'B12 E-SPORTS B'];
-        let deletados = 0;
-        for (const nome of nomesAlvo) {
-          // Query simples (campo único) — sem composite index
-          const snap = await getDocs(query(collection(_fbDb, 'registrations'), where('teamName', '==', nome)));
-          for (const d of snap.docs) {
-            const r = d.data();
-            if (r.addedManually !== true) continue; // filtro em JS
-            await deleteDoc(doc(_fbDb, 'registrations', d.id));
-            deletados++;
-          }
-        }
-        if (deletados > 0) console.log(`🧹 Limpeza: ${deletados} registration(s) de teste removida(s).`);
-      } catch (e) {
-        console.warn('Limpeza de testes:', e?.message || e);
-      }
-    })();
 
     // Bind filtros do histórico de cupons - configurar após DOM estar pronto
     setupCouponUsageFilters();
     // Inicializa período como "hoje" (sincroniza com botão Hoje ativo por padrão)
     parsePeriodFromValue('today');
-    // Carrega relatórios e pendências para todas as funções
-    await loadReports().catch(()=>{});
-    // Marcar 'principal' como inicializado para evitar que loadPageData
-    // sobrescreva os dados com funções legadas (loadKPIs/loadCharts)
-    window._adminPages = window._adminPages || { initialized: new Set() };
-    window._adminPages.initialized.add('principal');
-    if (canViewAll){
-      await loadRecentSchedules().catch(()=>{});
-      await loadPending(true).catch(()=>{});
-    } else {
-      await loadRecentOrders().catch(()=>{});
-      await loadPending(false).catch(()=>{});
-    }
+    window.loadPrincipalAdminData = async () => {
+      await loadReports();
+      if (canViewAll) {
+        await loadTokensData();
+        await carregarPedidosConfirmados();
+      }
+      await loadPending(canViewAll);
+      if (!window._popularHoursFiltersBound) {
+        window._popularHoursFiltersBound = true;
+        await loadEventOptions();
+        setupPopularHoursFilters();
+      }
+    };
+    window.adminDataReady = true;
+    const requestedPage = (window.location.hash || '#principal').slice(1);
+    const activePage = document.getElementById('page-' + requestedPage) ? requestedPage : 'principal';
+    await window.loadPageData(activePage);
     
     // APLICAR CONTROLE DE VISIBILIDADE APÓS CARREGAMENTO DE TODOS OS DADOS
     // Usar um delay maior e garantir que seja a última chamada
@@ -1534,7 +1488,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
       // 1. Eventos vêm de registrations (fonte primária para eventos)
       try {
-        const regs = await getDocs(collection(window.firebaseDb, 'registrations'));
+        const regs = await readAdminReportCollection('registrations');
         regs.forEach(d => {
           const r = d.data();
           const ts = (r.createdAt?.toDate ? r.createdAt.toDate() : (r.timestamp ? new Date(r.timestamp) : new Date()));
@@ -1560,7 +1514,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // Eventos que criam order também (via processSuccessfulPayment) são ignorados
       // pela deduplicação por external_reference
       try {
-        const ords = await getDocs(collection(window.firebaseDb, 'orders'));
+        const ords = await readAdminReportCollection('orders');
         ords.forEach(d => {
           const o = d.data();
           const type = (o.type || '').toLowerCase();
@@ -1603,7 +1557,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       await renderSalesChart().catch(()=>{});
       await renderTopProducts().catch(()=>{});
       await renderPaymentMethodsChart().catch(()=>{});
-      await renderPopularHours().catch(()=>{});
+      await window.renderPopularHours().catch(()=>{});
       await renderActiveUsers().catch(()=>{});
     }catch(e){ console.error('Erro ao carregar relatórios', e); }
   }
@@ -1675,7 +1629,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // 1) Tokens comprados (orders com "token" no item/description, status paid)
       let totalComprados = 0;
       try {
-        const ordSnap = await gd(col(window.firebaseDb, 'orders'));
+        const ordSnap = await readAdminReportCollection('orders');
         ordSnap.forEach(d => {
           const o = d.data();
           const txt = (o.description || o.item || '').toLowerCase();
@@ -1694,7 +1648,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // 2) Tokens adicionados manualmente pelo admin (adminHistory action=add_tokens)
       let totalManual = 0;
       try {
-        const histSnap = await gd(col(window.firebaseDb, 'adminHistory'));
+        const histSnap = await readAdminReportCollection('adminHistory');
         histSnap.forEach(d => {
           const h = d.data();
           if ((h.action || '') !== 'add_tokens') return;
@@ -1711,7 +1665,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // 3) Tokens usados em eventos (registrations com paidWithTokens=true)
       let totalUsados = 0;
       try {
-        const regSnap = await gd(col(window.firebaseDb, 'registrations'));
+        const regSnap = await readAdminReportCollection('registrations');
         regSnap.forEach(d => {
           const r = d.data();
           if (!r.paidWithTokens) return;
@@ -1878,10 +1832,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
     // ── Orders (produtos, camisas — não eventos, não tokens usados) ──
     try {
       const ordersCol = collection(window.firebaseDb, 'orders');
-      const [todayOrd, monthOrd] = await Promise.all([
-        getDocsFromServer(query(ordersCol, where('createdAt', '>=', today))),
-        getDocsFromServer(query(ordersCol, where('createdAt', '>=', firstMonth)))
-      ]);
+      const monthOrd = await getDocsFromServer(query(ordersCol, where('createdAt', '>=', firstMonth)));
+      const todayOrd = monthOrd.docs.filter(d => {
+        const value = d.data().createdAt;
+        return (value?.toDate ? value.toDate() : new Date(value)) >= today;
+      });
       todayOrd.forEach(d => {
         const o = d.data();
         if ((o.type || '').toLowerCase() === 'event') return;
@@ -1904,10 +1859,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
     // ── Registrations (apenas MP/PIX — excluir paidWithTokens) ──
     try {
       const regsCol = collection(window.firebaseDb, 'registrations');
-      const [todayRegs, monthRegs] = await Promise.all([
-        getDocsFromServer(query(regsCol, where('createdAt', '>=', today))),
-        getDocsFromServer(query(regsCol, where('createdAt', '>=', firstMonth)))
-      ]);
+      const monthRegs = await getDocsFromServer(query(regsCol, where('createdAt', '>=', firstMonth)));
+      const todayRegs = monthRegs.docs.filter(d => {
+        const value = d.data().createdAt;
+        return (value?.toDate ? value.toDate() : new Date(value)) >= today;
+      });
       todayRegs.forEach(d => {
         const r = d.data();
         if (r.paidWithTokens) return;
@@ -1933,10 +1889,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const roleLower = (window.adminRoleLower||'').toLowerCase();
       if (roleLower==='ceo' || roleLower==='gerente' || roleLower==='socio'){
         try{
-          const usersSnap = await getDocs(collection(window.firebaseDb,'users'));
+          const { getCountFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
           const weekAgo = Date.now() - 7*24*60*60*1000;
-          let active = 0; usersSnap.forEach(d=>{ const u=d.data(); if (Number(u.lastLogin||0) >= weekAgo) active++; });
-          kpiActiveEl.textContent = String(active);
+          const usersCount = await getCountFromServer(query(collection(window.firebaseDb,'users'), where('lastLogin', '>=', weekAgo)));
+          kpiActiveEl.textContent = String(usersCount.data().count);
         }catch(_){ kpiActiveEl.textContent = '—'; }
       } else {
         kpiActiveEl.textContent = '—';
@@ -2433,6 +2389,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // Atualiza todos os componentes do dashboard
   async function refreshDashboard(){
+    window.invalidateAdminReports();
     try { await loadKpis(); } catch(_){ }
     try { await renderSalesChart(); } catch(_){ }
     try { await renderTopProducts(); } catch(_){ }
@@ -2865,6 +2822,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   // evFieldType = valor real do campo eventType no doc adminEvents (ex: 'xtreino-tokens')
   // CRÍTICO: igual ao fetchOccupiedForDate do script.js — query por campo único sem composite index
   // date e status são filtrados em JS depois, evitando necessidade de índice composto no Firestore
+  let boardIndexUnavailable = false;
   async function fetchRegistrationsByDate(date, evFieldType, ovEventType = null, rawEventId = null) {
     try {
       const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -2875,7 +2833,17 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (!date || typesToQuery.length === 0) return {};
 
       // Filtro simples por data: reduz leituras ao dia selecionado sem exigir índice composto.
-      const snap = await getDocs(query(regs, where('date', '==', date)));
+      let snap;
+      try {
+        snap = await getDocs(boardIndexUnavailable
+          ? query(regs, where('date', '==', date))
+          : query(regs, where('date', '==', date), where('eventType', 'in', typesToQuery)));
+      } catch (error) {
+        if (!String(error?.code || '').includes('failed-precondition')) throw error;
+        boardIndexUnavailable = true;
+        console.warn('[Admin] Índice do quadro ainda não disponível; usando consulta diária compatível.');
+        snap = await getDocs(query(regs, where('date', '==', date)));
+      }
 
       const map = {};
       snap.forEach(d => {
@@ -2895,7 +2863,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       return map;
     } catch (e) {
       console.error('Erro ao buscar registrations:', e);
-      return {};
+      throw e; // Keep the last known occupancy on refresh failures, never show false zeroes.
     }
   }
 
@@ -3206,9 +3174,19 @@ window.showWarningToast = function(message, title = 'Atenção') {
   })();
 
   let _isLoadingBoard = false;
-  let _boardRefreshInterval = null; // Opção 4: intervalo de atualização automática do board
+  let _boardPoller = null;
+  const syncBoardVisibility = () => _boardPoller?.sync();
+  document.addEventListener('visibilitychange', syncBoardVisibility);
+  window.addEventListener('admin:pagechange', syncBoardVisibility);
+  const boardVisibilityObserver = new MutationObserver(syncBoardVisibility);
+  for (const id of ['page-conteudo', 'sectionSchedules', 'dashboard']) {
+    const element = document.getElementById(id);
+    if (element) boardVisibilityObserver.observe(element, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
   async function loadBoard(){
     if (_isLoadingBoard) return;
+    _boardPoller?.stop();
+    _boardPoller = null;
     _isLoadingBoard = true;
     const loadButton = document.getElementById('btnLoadBoard');
     if (loadButton) {
@@ -3364,16 +3342,25 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // ===== Bind dos botões de ação =====
       bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId, evFieldType);
 
-      // ===== Opção 4: badge ao vivo — atualiza contagem a cada 60 s sem reload =====
-      if (_boardRefreshInterval) { clearInterval(_boardRefreshInterval); _boardRefreshInterval = null; }
+      // Keep automatic updates while this page is visible; refresh immediately on return.
       const _liveDate = date, _liveField = evFieldType, _liveOv = ovEventType, _liveRaw = rawEventId;
-      _boardRefreshInterval = setInterval(async () => {
-        try {
-          const freshOcc = await fetchRegistrationsByDate(_liveDate, _liveField, _liveOv, _liveRaw);
+      const liveUid = window.firebaseAuth.currentUser?.uid;
+      _boardPoller = window.AdminReadControl.createVisiblePoller({
+        isVisible: () => {
+          const section = document.getElementById('sectionSchedules');
+          return document.visibilityState !== 'hidden'
+            && liveUid === window.firebaseAuth.currentUser?.uid
+            && !document.getElementById('dashboard')?.classList.contains('hidden')
+            && !!section?.getClientRects().length;
+        },
+        read: () => fetchRegistrationsByDate(_liveDate, _liveField, _liveOv, _liveRaw),
+        apply: freshOcc => {
           document.querySelectorAll('[data-board-count]').forEach(td => {
             const h = td.dataset.boardCount;
             const cap = parseInt(td.dataset.boardCap || '0', 10);
-            const occ = freshOcc[h] || 0;
+            const override = overridesMap[h];
+            const occ = override?.lockedAny ? cap
+              : (freshOcc[h] || 0) + Number(override?.extraOccupied || 0);
             const rem = Math.max(0, cap - occ);
             const newText = rem === 0 ? 'Lotado' : `Restam ${rem}`;
             if (td.textContent !== newText) {
@@ -3383,8 +3370,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
               setTimeout(() => { td.style.color = ''; }, 2000);
             }
           });
-        } catch (_) {}
-      }, 60000);
+        },
+        onError: error => console.warn('[Admin] Não foi possível atualizar as vagas; mantendo a última contagem.', error?.code || 'erro'),
+      });
+      _boardPoller.start();
 
     } catch (e) {
       console.error('❌ Erro em loadBoard:', e.message || e);
@@ -4138,12 +4127,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
   // Usuários ativos nos últimos 30 dias (baseado em lastLogin em users)
   async function renderActiveUsers(){
     try{
-          const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      const snap = await getDocs(collection(window.firebaseDb,'users'));
+      const { collection, query, where, getCountFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const thirtyDaysAgo = Date.now() - 30*24*60*60*1000;
-      let active = 0; snap.forEach(d=>{ const u=d.data(); if (Number(u.lastLogin||0) >= thirtyDaysAgo) active++; });
+      const snap = await getCountFromServer(query(collection(window.firebaseDb,'users'), where('lastLogin', '>=', thirtyDaysAgo)));
           const kpiActiveEl = document.getElementById('kpiActiveUsers');
-          if (kpiActiveEl) kpiActiveEl.textContent = String(active);
+          if (kpiActiveEl) kpiActiveEl.textContent = String(snap.data().count);
     }catch(e){  }
   }
 
@@ -4443,7 +4431,7 @@ async function loadPopularHoursData(dayFilter = '', eventFilter = '') {
         }
         
         const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const snap = await getDocs(collection(window.firebaseDb, 'registrations'));
+        const snap = await readAdminReportCollection('registrations');
         
         const hourCounts = new Map();
         
@@ -4808,12 +4796,8 @@ async function main() {
         gate.classList.add('hidden');
         dash.classList.remove('hidden');
 
-        try { await loadKPIs(); } catch (e) { console.error('KPIs error', e); }
-        // loadCharts() desabilitado — renderSalesChart() e renderTopProducts() em loadReports() já cobrem os gráficos
-        try { await loadTables(can(role, 'manage_products')); } catch (e) { console.error('Tables error', e); }
+        // Data loading is owned by loadPageData after the role has been resolved.
         try { await upsertUserProfile(user); } catch {}
-        try { await loadUsersAndRoles(role); } catch (e) { console.error('Users error', e); }
-        try { await loadPendingOrders(); } catch (e) { console.error('Pending orders error', e); }
         // try { await loadConfirmedOrders(); } catch (e) { console.error('Confirmed orders error', e); } // Desabilitado - usando nova função com paginação
     });
 }
@@ -5911,40 +5895,7 @@ window.addEventListener('load', () => {
     try {
       setupEventListeners();
       await initAuth();
-      
-      // Load products if dashboard is visible
-      setTimeout(() => {
-        if (window.firebaseDb && document.getElementById('productsPreview') && !dashboard.classList.contains('hidden')) {
-          loadProducts();
-        }
-      }, 2000);
-
-      // Load Passe Booyah controls
-      setTimeout(() => {
-        if (window.firebaseDb && document.getElementById('booyahTbody')) {
-          try { loadPasseBooyahControls(); } catch (_) {}
-        }
-      }, 2500);
-      
-      // Recomputar totais de tokens (evita contagens duplicadas)
-      setTimeout(() => {
-        if (window.firebaseDb) {
-          try { recomputeTokenTotals(); } catch (_) {}
-        }
-      }, 2800);
-
-      // Load users and setup guards
-      setTimeout(() => {
-        if (window.firebaseDb) {
-          try {
-            const roleLower = (window.adminRoleLower||'').toLowerCase();
-            if (roleLower==='ceo' || roleLower==='gerente' || roleLower==='socio') {
-              loadUsers();
-            }
-          } catch (_) {}
-        }
-        try { setupRoleGuards(); } catch (_) {}
-      }, 800);
+      // Hidden pages must not launch their own startup queries.
       
     } catch (error) {
       console.error('Admin initialization error:', error);
@@ -5952,42 +5903,8 @@ window.addEventListener('load', () => {
     }
   }
 
-  // Função de teste para verificar permissões
-  async function testFirestorePermissions() {
-    try {
-      
-      const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      
-      // Testar leitura de usuários
-      const usersRef = collection(window.firebaseDb, 'users');
-      const usersSnapshot = await getDocs(usersRef);
-      
-      
-      // Testar leitura de pedidos
-      const ordersRef = collection(window.firebaseDb, 'orders');
-      const ordersSnapshot = await getDocs(ordersRef);
-      
-      
-      // Testar leitura de registros
-      const regsRef = collection(window.firebaseDb, 'registrations');
-      const regsSnapshot = await getDocs(regsRef);
-      
-      
-      
-      return true;
-    } catch (error) {
-      console.error('❌ Erro no teste de permissões:', error);
-      return false;
-    }
-  }
-
   // Start admin panel
   initAdmin();
-  
-  // Testar permissões após inicialização
-  setTimeout(() => {
-    testFirestorePermissions();
-  }, 2000);
   
   // Configurar filtros de usuários quando o DOM estiver pronto
   document.addEventListener('DOMContentLoaded', () => {
@@ -6265,14 +6182,7 @@ function setupUserFilters() {
 // Expor funções globalmente
 window.changeUsersPage = changeUsersPage;
 
-// Inicializar sistema de filtros de horários populares
-setTimeout(() => {
-  if (document.getElementById('popularHoursChart')) {
-    loadEventOptions();
-    setupPopularHoursFilters();
-    renderPopularHours();
-  }
-}, 1000);
+// Popular-hours data and filters are initialized by the principal page loader.
 
 // ==================== RESTRIÇÕES DE PAPÉIS ====================
 
@@ -6337,10 +6247,10 @@ let filteredActiveUsers = []; // Usuários filtrados para a tabela de ativos
 let activeUsersCurrentPage = 1; // Página atual da tabela de usuários ativos
 const activeUsersPerPage = 10; // 10 usuários por página
 
-async function loadUsersForTables() {
+async function loadUsersForTables(sharedSnapshot = null) {
   try {
     const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-    const usersSnapshot = await getDocs(collection(window.firebaseDb, 'users'));
+    const usersSnapshot = sharedSnapshot || await getDocs(collection(window.firebaseDb, 'users'));
     const users = [];
     
     usersSnapshot.forEach(doc => {
@@ -6763,13 +6673,13 @@ window.filterPermissionsTable = function() {
 };
 
 // Carregar usuários especificamente para o card de permissões
-async function loadPermissionsUsers() {
+async function loadPermissionsUsers(sharedSnapshot = null) {
   try {
     
     const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     
     const usersRef = collection(window.firebaseDb, 'users');
-    const snapshot = await getDocs(usersRef);
+    const snapshot = sharedSnapshot || await getDocs(usersRef);
     
     permissionsUsersData = [];
     snapshot.forEach(doc => {
@@ -7031,12 +6941,12 @@ let tokensCurrentPage = 1;
 const tokensPerPage = 5;
 
 // Carregar usuários para gerenciamento de tokens
-async function loadTokensUsers() {
+async function loadTokensUsers(sharedSnapshot = null) {
   try {
     
     const { collection, getDocsFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const usersCol = collection(window.firebaseDb, 'users');
-    const snapUsers = await getDocsFromServer(usersCol);
+    const snapUsers = sharedSnapshot || await getDocsFromServer(usersCol);
     
     tokensUsersData = [];
     snapUsers.forEach(doc => {
@@ -7261,6 +7171,27 @@ let couponUsageData = [];
 let filteredCouponUsageData = [];
 let couponUsageFilters = { period: '7d', context: 'all', couponCode: 'all', productName: '' };
 let _couponUsageUnsubscribe = null;
+let _couponUsageGeneration = 0;
+
+function couponUsageIsVisible() {
+    return document.visibilityState !== 'hidden'
+        && !!window.firebaseAuth?.currentUser
+        && window.adminDataReady
+        && !document.getElementById('dashboard')?.classList.contains('hidden')
+        && !!document.getElementById('page-financeiro')
+        && !document.getElementById('page-financeiro').classList.contains('hidden');
+}
+function stopCouponUsage() {
+    _couponUsageGeneration++;
+    if (_couponUsageUnsubscribe) _couponUsageUnsubscribe();
+    _couponUsageUnsubscribe = null;
+}
+function syncCouponUsageVisibility() {
+    if (!couponUsageIsVisible()) stopCouponUsage();
+    else if (!_couponUsageUnsubscribe && window._adminPages?.initialized.has('financeiro')) void loadCouponUsage();
+}
+document.addEventListener('visibilitychange', syncCouponUsageVisibility);
+window.addEventListener('admin:pagechange', syncCouponUsageVisibility);
 
 // Carregar cupons
 async function loadCoupons() {
@@ -7397,13 +7328,18 @@ function renderCouponsTable() {
 // Carregar histórico de uso de cupons
 async function loadCouponUsage() {
     // Cancelar listener anterior se existir
-    if (_couponUsageUnsubscribe) { _couponUsageUnsubscribe(); _couponUsageUnsubscribe = null; }
+    stopCouponUsage();
+    if (!couponUsageIsVisible()) return;
+    const generation = _couponUsageGeneration;
+    const uid = window.firebaseAuth.currentUser.uid;
     try {
         const { collection, query, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        if (generation !== _couponUsageGeneration || !couponUsageIsVisible() || uid !== window.firebaseAuth.currentUser?.uid) return;
         const usageRef = collection(window.firebaseDb, 'couponUsage');
         const q = query(usageRef);
 
         _couponUsageUnsubscribe = onSnapshot(q, (snapshot) => {
+            if (generation !== _couponUsageGeneration || uid !== window.firebaseAuth.currentUser?.uid || !couponUsageIsVisible()) return;
             couponUsageData = [];
             snapshot.forEach(doc => {
                 const data = doc.data();
@@ -9593,26 +9529,8 @@ window.editCoupon = editCoupon;
 window.toggleCouponStatus = toggleCouponStatus;
 window.deleteCoupon = deleteCoupon;
 
-// Carregar usuários quando o admin for inicializado
+// Bind the coupon form without reading all users on authentication.
 document.addEventListener('DOMContentLoaded', function() {
-  // Aguardar Firebase E usuário autenticado antes de carregar dados protegidos
-  const waitForFirebaseAndAuth = () => {
-    if (window.firebaseReady && window.firebaseDb && window.firebaseAuth) {
-      const { onAuthStateChanged } = window.firebaseAuthModule || {};
-      // Usar import dinâmico para aguardar auth state
-      import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js').then(({ onAuthStateChanged }) => {
-        onAuthStateChanged(window.firebaseAuth, (user) => {
-          if (user) {
-            loadUsersForTables();
-          }
-        });
-      }).catch(() => {});
-    } else {
-      setTimeout(waitForFirebaseAndAuth, 150);
-    }
-  };
-  waitForFirebaseAndAuth();
-  
   // Event listener para formulário de criação de cupons
   const createCouponForm = document.getElementById('createCouponForm');
   if (createCouponForm) {
@@ -12124,47 +12042,70 @@ window.onEvtImageUrlInput = onEvtImageUrlInput;
 window.clearEvtImage = clearEvtImage;
 window.onEvtEntradaChange = onEvtEntradaChange;
 // ========== ADMIN PAGE LAZY LOADING ==========
-// Tracks which pages have had their data loaded so each page only fetches
-// Firebase data the first time it becomes visible.
-window._adminPages = { initialized: new Set() };
+// Coalesce navigation requests and reuse pages briefly, without losing freshness on return.
+window._adminPages = { initialized: new Set(), pending: new Map(), loadedAt: new Map() };
 
 window.loadPageData = async function(page) {
-    if (!window.firebaseDb) return;
-    if (window._adminPages.initialized.has(page)) return;
-    window._adminPages.initialized.add(page);
+    if (!window.firebaseDb || !window.firebaseAuth?.currentUser || !window.adminDataReady) return;
+    const pageElement = document.getElementById('page-' + page);
+    if (!pageElement || pageElement.classList.contains('hidden')) return;
+    if (page !== 'financeiro' && _couponUsageUnsubscribe) {
+        stopCouponUsage();
+    }
+    const state = window._adminPages;
+    if (state.pending.has(page)) return state.pending.get(page);
+    if (state.initialized.has(page) && Date.now() - state.loadedAt.get(page) < 60000) {
+        if (page === 'financeiro' && !_couponUsageUnsubscribe) await loadCouponUsage();
+        return;
+    }
 
     const role = (window.adminRoleLower || '').toLowerCase();
+    const uid = window.firebaseAuth.currentUser.uid;
+    const request = (async () => {
 
     if (page === 'principal') {
-        // loadKPIs() e loadCharts() legados REMOVIDOS — o handler do onAuthStateChanged
-        // em initAdmin já carrega tudo via loadReports() (modern). Chamá-los aqui causava
-        // o efeito "aparece e some": os dados corretos eram sobrescritos pelos legados.
-        try { await loadKpis(); } catch(e) { console.warn('[page:principal] KPIs', e); }
-        try { await loadTables(true); } catch(e) { console.warn('[page:principal] Tables', e); }
-        try { await loadPendingOrders(); } catch(e) { console.warn('[page:principal] PendingOrders', e); }
-        try { await loadEventOptions(); } catch(e) {}
-        try { renderPopularHours(); } catch(e) {}
-        try { setupPopularHoursFilters(); } catch(e) {}
+        await window.loadPrincipalAdminData();
 
     } else if (page === 'usuarios') {
-        try { await loadUsersAndRoles({ role: role || 'ceo' }); } catch(e) { console.warn('[page:usuarios] UsersAndRoles', e); }
-        try { await loadUsers(); } catch(e) { console.warn('[page:usuarios] loadUsers', e); }
+        // One fresh snapshot fills all three tables. Mutation refreshes remain fresh.
+        const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const users = await getDocs(collection(window.firebaseDb, 'users'));
+        await loadUsersForTables(users);
+        await loadPermissionsUsers(users);
+        await loadTokensUsers(users);
+        await loadAdminHistory();
         try { setupRoleGuards(); } catch(e) {}
-        try { recomputeTokenTotals(); } catch(e) {}
 
     } else if (page === 'financeiro') {
-        try { loadPasseBooyahControls(); } catch(e) {}
+        await loadCoupons();
+        await loadCouponUsage();
+        await loadAffiliates();
+        await loadAffiliateSales();
+        await loadAffiliatePayouts();
+        await loadPasseBooyahControls();
         try { setupCouponUsageFilters(); } catch(e) {}
 
     } else if (page === 'conteudo') {
-        try { await loadHighlights(); } catch(e) { console.warn('[page:conteudo] Highlights', e); }
-        try { await loadNews(); } catch(e) { console.warn('[page:conteudo] News', e); }
-        try { loadProducts(); } catch(e) {}
-        try { loadEventsPreview(); } catch(e) {}
-        try { loadShirtOrders(); } catch(e) {}
+        await loadHighlights();
+        await loadNews();
+        await loadProducts();
+        await loadEventsPreview();
+        await loadShirtOrders();
+        await window.loadDynamicEventsIntoBoard();
 
-    } else if (page === 'operacoes') {
-        try { loadWhatsAppLinks(); } catch(e) {}
+    } // The reset/operations page does not need an automatic database scan.
+    if (window.firebaseAuth.currentUser?.uid === uid) {
+        state.initialized.add(page);
+        state.loadedAt.set(page, Date.now());
+    }
+    })();
+    state.pending.set(page, request);
+    try { await request; }
+    catch (error) {
+        console.error('[Admin] Falha ao carregar a página:', page, error);
+        showToast('error', 'Não foi possível carregar todos os dados. Abra esta seção novamente para tentar de novo.');
+    } finally {
+        if (state.pending.get(page) === request) state.pending.delete(page);
     }
 };
 

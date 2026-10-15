@@ -1671,6 +1671,7 @@
     </script>
     <script type="module" src="config/firebase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/admin-read-control.js"></script>
     <script src="admin.js"></script>
 
     <!-- Sidebar / Page Router -->
@@ -1713,6 +1714,7 @@
                 }
             });
             window.scrollTo({ top: 0, behavior: 'instant' });
+            window.dispatchEvent(new Event('admin:pagechange'));
             /* Lazy-load data for this page */
             if (typeof window.loadPageData === 'function' && window.firebaseDb) {
                 window.loadPageData(page);
