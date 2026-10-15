@@ -938,16 +938,16 @@
                         <div class="text-lg font-bold text-blue-800" id="affiliateStatsTotal">0</div>
                     </div>
                     <div class="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <div class="text-xs text-green-600 mb-1">Vendas Totais</div>
-                        <div class="text-lg font-bold text-green-800" id="affiliateStatsSales">0</div>
+                        <div class="text-xs text-green-600 mb-1">Vendas do afiliado selecionado</div>
+                        <div class="text-lg font-bold text-green-800" id="affiliateStatsSales">—</div>
                     </div>
                     <div class="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                        <div class="text-xs text-purple-600 mb-1">Comissão Total</div>
-                        <div class="text-lg font-bold text-purple-800" id="affiliateStatsCommission">R$ 0,00</div>
+                        <div class="text-xs text-purple-600 mb-1">Comissão do afiliado selecionado</div>
+                        <div class="text-lg font-bold text-purple-800" id="affiliateStatsCommission">—</div>
                     </div>
                     <div class="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                        <div class="text-xs text-orange-600 mb-1">Comissão Pendente</div>
-                        <div class="text-lg font-bold text-orange-800" id="affiliateStatsPending">R$ 0,00</div>
+                        <div class="text-xs text-orange-600 mb-1">Pendente do afiliado selecionado</div>
+                        <div class="text-lg font-bold text-orange-800" id="affiliateStatsPending">—</div>
                     </div>
                 </div>
 
@@ -959,9 +959,9 @@
                                 <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Afiliado</th>
                                 <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Email</th>
                                 <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Comissão (%)</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Vendas</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Comissão Total</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Pendente</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Vendas*</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Comissão*</th>
+                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Pendente*</th>
                                 <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Status</th>
                                 <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Ações</th>
                             </tr>
@@ -973,48 +973,70 @@
                         </tbody>
                     </table>
                 </div>
+                <p class="mt-2 text-xs text-gray-500">* Valores são carregados ao selecionar o afiliado ou abrir os detalhes dele.</p>
             </div>
 
             <!-- Seção: Vendas e Comissões de Afiliados -->
             <div id="sectionAffiliateSales" class="bg-white border border-gray-200 rounded-xl p-4 mb-8" style="display:none">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="font-bold text-sm flex items-center">
-                        <span class="mr-2">💰</span>
-                        Vendas e Comissões
-                    </h3>
-                    <div class="flex gap-2">
-                        <select id="affiliateSalesFilter" class="border border-gray-300 rounded px-3 py-2 text-xs">
-                            <option value="all">Todos os afiliados</option>
-                        </select>
-                        <select id="affiliateSalesStatusFilter" class="border border-gray-300 rounded px-3 py-2 text-xs">
-                            <option value="all">Todos os status</option>
-                            <option value="pending">Pendentes</option>
-                            <option value="paid">Pagas</option>
-                        </select>
+                <div class="flex flex-col gap-4 mb-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h3 class="font-bold text-base flex items-center">
+                                <span class="mr-2">💰</span>
+                                Vendas e Comissões
+                            </h3>
+                            <p class="mt-1 text-xs text-gray-500">A consulta das vendas só acontece ao selecionar um afiliado; a lista fica em cache nesta sessão.</p>
+                        </div>
+                        <span id="affiliateSalesCount" class="text-xs text-gray-500">Selecione um afiliado</span>
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="sm:col-span-1">
+                            <span class="mb-1 block text-xs font-medium text-gray-600">Afiliado</span>
+                            <select id="affiliateSalesFilter" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm">
+                                <option value="">Selecione um afiliado</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span class="mb-1 block text-xs font-medium text-gray-600">Status da comissão</span>
+                            <select id="affiliateSalesStatusFilter" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm">
+                                <option value="all">Todos os status</option>
+                                <option value="pending">Pendentes</option>
+                                <option value="paid">Pagas</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span class="mb-1 block text-xs font-medium text-gray-600">Buscar nesta lista</span>
+                            <input id="affiliateSalesSearch" type="search" placeholder="Cliente ou produto"
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm">
+                        </label>
+                    </div>
+                    <div class="flex justify-end">
+                        <button id="affiliateSalesRefresh" type="button" disabled
+                            class="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-500 disabled:cursor-not-allowed disabled:opacity-50">
+                            <i class="fas fa-sync-alt mr-1"></i>Atualizar vendas
+                        </button>
                     </div>
                 </div>
 
-                <div class="overflow-x-auto -mx-4 px-4">
-                    <table class="w-full text-xs min-w-[1000px]">
-                        <thead>
-                            <tr class="border-b border-gray-200 bg-gray-50">
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Data</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Afiliado</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Cliente</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[150px]">Produto</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Valor Venda</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Comissão %</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Comissão</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Status</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="affiliateSalesTableBody">
-                            <tr>
-                                <td colspan="9" class="py-6 text-center text-gray-500">Carregando vendas...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div id="affiliateSalesSummary" class="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-3" style="display:none">
+                    <div class="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                        <span class="block text-xs text-blue-700">Vendas exibidas</span>
+                        <strong id="affiliateSalesSummaryCount" class="mt-1 block text-lg text-blue-900">0</strong>
+                    </div>
+                    <div class="rounded-lg border border-green-100 bg-green-50 p-3">
+                        <span class="block text-xs text-green-700">Valor das vendas</span>
+                        <strong id="affiliateSalesSummaryValue" class="mt-1 block text-lg text-green-900">R$ 0,00</strong>
+                    </div>
+                    <div class="rounded-lg border border-purple-100 bg-purple-50 p-3">
+                        <span class="block text-xs text-purple-700">Comissões nesta lista</span>
+                        <strong id="affiliateSalesSummaryCommission" class="mt-1 block text-lg text-purple-900">R$ 0,00</strong>
+                    </div>
+                </div>
+
+                <div id="affiliateSalesResults" class="space-y-3">
+                    <div class="rounded-xl border border-dashed border-gray-200 py-10 text-center text-sm text-gray-500">
+                        Selecione um afiliado para ver as vendas e comissões dele.
+                    </div>
                 </div>
             </div>
 
@@ -1208,33 +1230,46 @@
 
             <!-- Seção: Controle Passe Booyah -->
             <div id="sectionPasseBooyah" class="bg-white border border-gray-200 rounded-xl p-4 mb-8" style="display:none">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="font-bold text-sm flex items-center">
-                        <span class="mr-2">💳</span>
-                        Controle Passe Booyah
-                    </h3>
-                    <div class="text-xs text-gray-500">
-                        <span id="booyahCount">0 registros</span>
+                <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                    <div>
+                        <h3 class="font-bold text-base flex items-center">
+                            <span class="mr-2">💳</span>
+                            Passes Booyah pagos
+                        </h3>
+                        <p class="text-xs text-gray-500 mt-1">Acompanhe as compras aprovadas e marque cada passe quando for enviado.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span id="booyahCount" class="text-xs text-gray-500">0 compras pagas</span>
+                        <button type="button" onclick="loadPasseBooyahControls()" class="px-3 py-2 rounded-lg border border-gray-200 text-xs font-semibold hover:bg-gray-50" aria-label="Atualizar lista de passes pagos">
+                            <i class="fas fa-sync-alt mr-1"></i> Atualizar
+                        </button>
                     </div>
                 </div>
 
-                <div class="overflow-x-auto -mx-4 px-4">
-                    <table class="w-full text-xs min-w-[600px]">
-                        <thead>
-                            <tr class="border-b border-gray-200">
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[160px]">Cliente</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[120px]">Email</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Player ID</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[80px]">Status</th>
-                                <th class="text-left py-2 px-2 font-medium text-gray-600 min-w-[100px]">Ação</th>
-                            </tr>
-                        </thead>
-                        <tbody id="booyahTbody">
-                            <tr>
-                                <td colspan="5" class="py-6 text-center text-gray-500">Carregando registros...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div id="booyahNotice" class="hidden mb-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800" role="status" aria-live="polite"></div>
+
+                <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                    <label class="relative flex-1">
+                        <span class="sr-only">Buscar por cliente, e-mail ou Player ID</span>
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input id="booyahSearch" type="search" placeholder="Buscar cliente, e-mail ou Player ID"
+                            class="w-full rounded-lg border border-gray-200 py-2.5 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none">
+                    </label>
+                </div>
+
+                <div class="flex flex-wrap gap-2 border-b border-gray-100 pb-3 mb-3" role="tablist" aria-label="Status de entrega dos passes">
+                    <button id="booyahPendingTab" type="button" role="tab" aria-selected="true"
+                        onclick="setBooyahView('pending')" class="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                        Aguardando envio <span id="booyahPendingCount" class="ml-1 rounded-full bg-white px-2 py-0.5 text-xs">0</span>
+                    </button>
+                    <button id="booyahSentTab" type="button" role="tab" aria-selected="false"
+                        onclick="setBooyahView('sent')" class="rounded-lg bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-600">
+                        Enviados <span id="booyahSentCount" class="ml-1 rounded-full bg-white px-2 py-0.5 text-xs">0</span>
+                    </button>
+                </div>
+
+                <div id="booyahResults" class="space-y-2" aria-live="polite">
+                    <div class="py-8 text-center text-sm text-gray-500">Carregando compras pagas...</div>
                 </div>
             </div>
 

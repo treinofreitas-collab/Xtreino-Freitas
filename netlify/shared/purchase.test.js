@@ -145,6 +145,63 @@ test("approved product is delivered by webhook without any browser return; repea
   }
 });
 
+test("automatic event webhook confirms without a customer profile or browser return, keeping all payment checks", async () => {
+  const reference = "schedule_auto_no_profile";
+  currentDb = fakeDatabase({
+    "adminEvents/liga": { name: "Liga", preco: 1, status: "Aberto" },
+    ...Object.fromEntries(["a", "b"].map((id, index) => [`registrations/${id}`, {
+      userId: "buyer", status: "pending", eventType: "liga", date: `2026-10-${14 + index}`,
+      schedule: `Quarta - ${14 + index}h`, external_reference: reference,
+    }])),
+  });
+  await preparePurchase("buyer", { external_reference: reference, unit_price: 2 }, "mercadopago");
+  const originalFetch = global.fetch;
+  const originalError = console.error;
+  const reviews = [];
+  let providerPayment = { ...payment(reference), status: "pending", transaction_amount: 2 };
+  let fetchCalls = 0;
+  process.env.MP_WEBHOOK_SECRET = "test-auto-webhook-key";
+  process.env.MP_ACCESS_TOKEN = "test-access";
+  global.fetch = async () => {
+    fetchCalls++;
+    return { ok: true, json: async () => providerPayment };
+  };
+  console.error = (...args) => reviews.push(args);
+  const signature = crypto.createHmac("sha256", "test-auto-webhook-key")
+    .update("id:987;request-id:auto-req;ts:123;").digest("hex");
+  const event = {
+    httpMethod: "POST", body: JSON.stringify({ type: "payment", data: { id: 987 } }),
+    headers: { "x-signature": `ts=123,v1=${signature}`, "x-request-id": "auto-req" },
+  };
+  try {
+    assert.equal((await webhook({ ...event, headers: {} })).statusCode, 401);
+    assert.equal(fetchCalls, 0);
+    assert.equal((await webhook(event)).statusCode, 200);
+    assert.equal(currentDb.read("registrations/a").status, "pending");
+    providerPayment = { ...providerPayment, status: "approved", transaction_amount: 0.01 };
+    assert.equal((await webhook(event)).statusCode, 200);
+    assert.equal(currentDb.read("registrations/a").status, "pending");
+    assert.equal(currentDb.read("purchase_receipts/mp_987"), undefined);
+    assert.deepEqual(reviews, [["Payment requires review", "amount_mismatch"]]);
+    providerPayment = { ...providerPayment, transaction_amount: 2 };
+    assert.equal((await webhook(event)).statusCode, 200);
+    assert.equal(currentDb.read("registrations/a").status, "paid");
+    assert.equal(currentDb.read("registrations/b").status, "paid");
+    assert.equal(currentDb.read(`purchase_checkouts/${reference}`).status, "paid");
+    assert.equal(currentDb.read(`orders/event_${reference}`).total, 2);
+    assert.equal(currentDb.read("users/buyer"), undefined);
+    const receipt = currentDb.read("purchase_receipts/mp_987");
+    assert.equal((await webhook(event)).statusCode, 200);
+    assert.deepEqual(currentDb.read("purchase_receipts/mp_987"), receipt);
+    assert.equal(reviews.length, 1);
+  } finally {
+    global.fetch = originalFetch;
+    console.error = originalError;
+    delete process.env.MP_WEBHOOK_SECRET;
+    delete process.env.MP_ACCESS_TOKEN;
+  }
+});
+
 test("pending and amount-mismatched payments never release products", async () => {
   currentDb = fakeDatabase(productSeed());
   await preparePurchase("buyer", { external_reference: "digital_one" }, "mercadopago");

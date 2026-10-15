@@ -328,20 +328,20 @@ window.showWarningToast = function(message, title = 'Atenção') {
     ceo: ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
           'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
           'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
-          'sectionAffiliatePanel','sectionPasseBooyah','sectionHighlights','sectionNews',
+          'sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionShirtOrders',
           'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData'],
     // SOCIO: tudo, somente visualização (sem reset)
     socio: ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
             'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
             'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
-            'sectionAffiliatePanel','sectionPasseBooyah','sectionHighlights','sectionNews',
+            'sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionShirtOrders',
             'sectionSchedules','sectionEventLinks','sectionAdminHistory'],
     // GERENTE: tudo, EXCETO aba principal completa (KPIs, filtros, gráficos, pedidos, tokenStats)
     gerente: ['sectionUsers','sectionUsersManagement',
               'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
-              'sectionAffiliateSales','sectionAffiliatePayouts','sectionAffiliatePanel','sectionPasseBooyah',
+               'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah',
               'sectionHighlights','sectionNews','sectionProducts','sectionEvents',
               'sectionShirtOrders','sectionSchedules','sectionEventLinks',
               'sectionAdminHistory'],
@@ -1276,6 +1276,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       window.adminDataReady = false;
       window._adminPages = { initialized: new Set(), pending: new Map(), loadedAt: new Map() };
       stopCouponUsage();
+      resetAffiliateSalesCache();
     }
     adminReportCache.setScope(user?.uid || null);
     if (!user){
@@ -7742,6 +7743,16 @@ async function zerarComissoes() {
             couponUsageData = [];
         }
 
+        // A manutenção de comissões também precisa atualizar os históricos já abertos.
+        affiliateSalesData.forEach(sale => {
+            if (!isSingle || sale.couponCode === selectedCode) {
+                sale.commissionAmount = 0;
+                sale.status = 'zeroed';
+            }
+        });
+        renderAffiliateSalesTable();
+        filterAffiliatesTable();
+        updateAffiliateStats();
         filteredCouponUsageData = [];
         renderCouponUsageTable();
         renderAffiliateRanking([]);
@@ -8403,6 +8414,31 @@ window.loadCouponUsage = loadCouponUsage;
 // Variáveis globais para afiliados
 let affiliatesData = [];
 let affiliateSalesData = [];
+const affiliateSalesCache = new Map();
+const affiliateSalesPending = new Map();
+let affiliateSalesGeneration = 0;
+
+function resetAffiliateSalesCache() {
+    affiliateSalesGeneration++;
+    affiliateSalesCache.clear();
+    affiliateSalesPending.clear();
+    affiliateSalesData = [];
+    affiliatesData = [];
+    const select = document.getElementById('affiliateSalesFilter');
+    if (select) {
+        select.innerHTML = '<option value="">Selecione um afiliado</option>';
+        select.value = '';
+    }
+    const details = document.getElementById('affiliateDetailsOverlay');
+    if (details) {
+        details.style.display = 'none';
+        details.innerHTML = '';
+    }
+    const table = document.getElementById('affiliatesTableBody');
+    if (table) table.innerHTML = '';
+    renderAffiliateSalesTable();
+    updateAffiliateStats();
+}
 
 // Carregar afiliados
 async function loadAffiliates() {
@@ -8460,11 +8496,9 @@ async function loadAffiliates() {
         
         
         
-        // Carregar vendas e comissões para cada afiliado
-        await loadAffiliateSales();
-        
         // Popular filtro de afiliados
         populateAffiliateFilter();
+        renderAffiliateSalesTable();
         
         // Renderizar tabela
         renderAffiliatesTable();
@@ -8483,53 +8517,80 @@ async function loadAffiliates() {
     }
 }
 
-// Carregar vendas de afiliados
-async function loadAffiliateSales() {
-    try {
-        const { collection, getDocs, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const salesRef = collection(window.firebaseDb, 'affiliate_sales');
-        
-        // Tentar com orderBy, se falhar, buscar sem orderBy
-        let snapshot;
-        try {
-            const q = query(salesRef, orderBy('createdAt', 'desc'));
-            snapshot = await getDocs(q);
-        } catch (error) {
-            // Se não houver índice, buscar sem orderBy
-            console.warn('Índice não encontrado para affiliate_sales, buscando sem orderBy:', error);
-            const q = query(salesRef);
-            snapshot = await getDocs(q);
-        }
-        
-        affiliateSalesData = [];
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            // Tratar createdAt de forma segura (pode ser Timestamp, Date, string ou número)
-            let createdAt = new Date();
-            if (data.createdAt) {
-                if (data.createdAt.toDate && typeof data.createdAt.toDate === 'function') {
-                    // É um Timestamp do Firestore
-                    createdAt = data.createdAt.toDate();
-                } else if (data.createdAt instanceof Date) {
-                    // Já é uma Date
-                    createdAt = data.createdAt;
-                } else if (typeof data.createdAt === 'string' || typeof data.createdAt === 'number') {
-                    // É string ou número (timestamp)
-                    createdAt = new Date(data.createdAt);
-                }
-            }
-            
-            affiliateSalesData.push({
-                id: doc.id,
-                ...data,
-                createdAt: createdAt
-            });
-        });
-        
-        
+// Nunca consultar a coleção inteira: cada histórico é carregado sob demanda.
+async function loadAffiliateSales(affiliateId, { force = false } = {}) {
+    affiliateId = String(affiliateId || '').trim();
+    const generation = affiliateSalesGeneration;
+    const selectedId = () => document.getElementById('affiliateSalesFilter')?.value || '';
+    const refresh = document.getElementById('affiliateSalesRefresh');
+    if (!affiliateId) {
         renderAffiliateSalesTable();
+        updateAffiliateStats();
+        if (refresh) refresh.disabled = true;
+        return [];
+    }
+
+    if (!force && affiliateSalesCache.has(affiliateId)) {
+        renderAffiliateSalesTable();
+        updateAffiliateStats();
+        if (refresh) refresh.disabled = !selectedId() || affiliateSalesPending.has(selectedId());
+        return affiliateSalesCache.get(affiliateId);
+    }
+
+    let request = affiliateSalesPending.get(affiliateId);
+    if (!request) {
+        request = (async () => {
+            const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            if (generation !== affiliateSalesGeneration) return null;
+            const snapshot = await getDocs(query(
+                collection(window.firebaseDb, 'affiliate_sales'),
+                where('affiliateId', '==', affiliateId)
+            ));
+            const sales = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const value = data.createdAt;
+                const createdAt = value?.toDate ? value.toDate()
+                    : value instanceof Date ? value
+                    : value ? new Date(value) : null;
+                sales.push({ ...data, id: doc.id, createdAt });
+            });
+            if (generation !== affiliateSalesGeneration) return null;
+            sales.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+            affiliateSalesCache.set(affiliateId, sales);
+            affiliateSalesData = [...affiliateSalesCache.values()].flat();
+            return sales;
+        })();
+        affiliateSalesPending.set(affiliateId, request);
+    }
+    if (selectedId() === affiliateId) {
+        if (refresh) refresh.disabled = true;
+        renderAffiliateSalesTable();
+        updateAffiliateStats();
+    }
+    try {
+        const sales = await request;
+        if (generation !== affiliateSalesGeneration) return null;
+        if (affiliateSalesPending.get(affiliateId) === request) affiliateSalesPending.delete(affiliateId);
+        if (selectedId() === affiliateId) {
+            renderAffiliateSalesTable();
+            updateAffiliateStats();
+        }
+        filterAffiliatesTable();
+        return sales;
     } catch (error) {
+        if (generation !== affiliateSalesGeneration) return null;
         console.error('❌ Erro ao carregar vendas de afiliados:', error);
+        if (selectedId() === affiliateId) {
+            const results = document.getElementById('affiliateSalesResults');
+            const count = document.getElementById('affiliateSalesCount');
+            if (count) count.textContent = 'Falha ao atualizar as vendas';
+            if (results) results.innerHTML = '<div class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">Não foi possível carregar as vendas. Clique em Atualizar vendas para tentar novamente.</div>';
+        }
+        return null;
+    } finally {
+        if (affiliateSalesPending.get(affiliateId) === request) affiliateSalesPending.delete(affiliateId);
+        if (refresh && generation === affiliateSalesGeneration) refresh.disabled = !selectedId() || affiliateSalesPending.has(selectedId());
     }
 }
 
@@ -8537,14 +8598,18 @@ async function loadAffiliateSales() {
 function populateAffiliateFilter() {
     const select = document.getElementById('affiliateSalesFilter');
     if (!select) return;
-    
-    select.innerHTML = '<option value="all">Todos os afiliados</option>';
-    affiliatesData.forEach(affiliate => {
+
+    const currentValue = select.value || '';
+    select.innerHTML = '<option value="">Selecione um afiliado</option>';
+    [...affiliatesData]
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'))
+        .forEach(affiliate => {
         const option = document.createElement('option');
         option.value = affiliate.id;
         option.textContent = `${affiliate.name} (${affiliate.email})`;
         select.appendChild(option);
     });
+    select.value = affiliatesData.some(affiliate => affiliate.id === currentValue) ? currentValue : '';
 }
 
 // Filtrar tabela de afiliados por busca individual
@@ -8583,8 +8648,9 @@ function renderAffiliatesTable() {
 
 function renderAffiliatesRows(affiliatesList, tbody) {
     tbody.innerHTML = affiliatesList.map(affiliate => {
-        // Calcular estatísticas do afiliado
-        const sales = affiliateSalesData.filter(s => s.affiliateId === affiliate.id);
+        // Não apresentar zero para históricos que ainda não foram consultados.
+        const loaded = affiliateSalesCache.has(affiliate.id);
+        const sales = affiliateSalesCache.get(affiliate.id) || [];
         const totalSales = sales.length;
         const totalCommission = sales.reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
         const pendingCommission = sales
@@ -8610,9 +8676,9 @@ function renderAffiliatesRows(affiliatesList, tbody) {
                     <div>Eventos: ${affiliate.commissionRateEvents || affiliate.commissionRate || 10}%</div>
                     <div class="text-gray-500">Produtos: ${affiliate.commissionRateProducts || affiliate.commissionRate || 10}%</div>
                 </td>
-                <td class="py-2 px-2 text-xs">${totalSales}</td>
-                <td class="py-2 px-2 text-xs font-medium">R$ ${totalCommission.toFixed(2)}</td>
-                <td class="py-2 px-2 text-xs text-orange-600">R$ ${pendingCommission.toFixed(2)}</td>
+                <td class="py-2 px-2 text-xs">${loaded ? totalSales : '—'}</td>
+                <td class="py-2 px-2 text-xs font-medium">${loaded ? `R$ ${totalCommission.toFixed(2)}` : '—'}</td>
+                <td class="py-2 px-2 text-xs text-orange-600">${loaded ? `R$ ${pendingCommission.toFixed(2)}` : '—'}</td>
                 <td class="py-2 px-2 text-xs">${statusBadge}</td>
                 <td class="py-2 px-2 text-xs">
                     <div class="flex gap-1 flex-wrap">
@@ -8635,58 +8701,134 @@ function renderAffiliatesRows(affiliatesList, tbody) {
     }).join('');
 }
 
-// Renderizar tabela de vendas de afiliados
+// Renderizar vendas do afiliado selecionado
 function renderAffiliateSalesTable() {
-    const tbody = document.getElementById('affiliateSalesTableBody');
-    if (!tbody) return;
-    
-    const affiliateFilter = document.getElementById('affiliateSalesFilter')?.value || 'all';
+    const results = document.getElementById('affiliateSalesResults');
+    if (!results) return;
+
+    const affiliateFilter = document.getElementById('affiliateSalesFilter')?.value || '';
     const statusFilter = document.getElementById('affiliateSalesStatusFilter')?.value || 'all';
-    
-    let filteredSales = affiliateSalesData;
-    
-    if (affiliateFilter !== 'all') {
-        filteredSales = filteredSales.filter(s => s.affiliateId === affiliateFilter);
-    }
-    
-    if (statusFilter !== 'all') {
-        filteredSales = filteredSales.filter(s => s.status === statusFilter);
-    }
-    
-    if (filteredSales.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-gray-500">Nenhuma venda encontrada</td></tr>';
+    const search = String(document.getElementById('affiliateSalesSearch')?.value || '').trim().toLocaleLowerCase('pt-BR');
+    const countEl = document.getElementById('affiliateSalesCount');
+    const summary = document.getElementById('affiliateSalesSummary');
+    const selectedAffiliate = affiliatesData.find(affiliate => affiliate.id === affiliateFilter);
+
+    if (!affiliateFilter || !selectedAffiliate) {
+        const refresh = document.getElementById('affiliateSalesRefresh');
+        if (refresh) refresh.disabled = true;
+        if (countEl) countEl.textContent = 'Selecione um afiliado';
+        if (summary) summary.style.display = 'none';
+        results.innerHTML = `<div class="rounded-xl border border-dashed border-gray-200 py-10 text-center">
+            <div class="mb-2 text-2xl">👤</div>
+            <p class="font-semibold text-gray-700">Escolha um afiliado</p>
+            <p class="mt-1 text-sm text-gray-500">As vendas e comissões aparecerão aqui sem misturar os demais afiliados.</p>
+        </div>`;
         return;
     }
-    
-    tbody.innerHTML = filteredSales.map(sale => {
-        const affiliate = affiliatesData.find(a => a.id === sale.affiliateId);
-        const date = sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('pt-BR') : 'N/A';
-        const statusBadge = sale.status === 'paid'
-            ? '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Paga</span>'
-            : '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Pendente</span>';
-        
+
+    if (affiliateSalesPending.has(affiliateFilter)) {
+        if (countEl) countEl.textContent = 'Carregando vendas do afiliado…';
+        if (summary) summary.style.display = 'none';
+        results.innerHTML = '<div role="status" class="rounded-xl border border-gray-200 py-10 text-center text-sm text-gray-500">Carregando somente as vendas deste afiliado…</div>';
+        return;
+    }
+    if (!affiliateSalesCache.has(affiliateFilter)) {
+        if (countEl) countEl.textContent = 'Vendas ainda não carregadas';
+        if (summary) summary.style.display = 'none';
+        results.innerHTML = '<div class="rounded-xl border border-gray-200 py-8 text-center text-sm text-gray-500">Clique em Atualizar vendas para carregar este afiliado.</div>';
+        return;
+    }
+
+    const filteredSales = affiliateSalesData
+        .filter(sale => sale.affiliateId === affiliateFilter)
+        .filter(sale => statusFilter === 'all' || sale.status === statusFilter)
+        .filter(sale => !search || [
+            sale.customerName, sale.customerEmail, sale.productName, sale.productId
+        ].some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(search)))
+        .sort((a, b) => {
+            const toMillis = value => {
+                if (value?.toDate) return value.toDate().getTime();
+                const date = value instanceof Date ? value : new Date(value || 0);
+                return Number.isFinite(date.getTime()) ? date.getTime() : 0;
+            };
+            return toMillis(b.createdAt) - toMillis(a.createdAt);
+        });
+
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+    const money = value => `R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`;
+    const formatDate = value => {
+        if (!value) return 'Data não informada';
+        try {
+            const date = value?.toDate ? value.toDate() : value instanceof Date ? value : new Date(value || 0);
+            return Number.isFinite(date.getTime()) ? date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Data não informada';
+        } catch (_) { return 'Data não informada'; }
+    };
+
+    const totalSalesValue = filteredSales.reduce((sum, sale) => sum + Number(sale.saleValue || 0), 0);
+    const totalCommission = filteredSales.reduce((sum, sale) => sum + Number(sale.commissionAmount || 0), 0);
+    const summaryCount = document.getElementById('affiliateSalesSummaryCount');
+    const summaryValue = document.getElementById('affiliateSalesSummaryValue');
+    const summaryCommission = document.getElementById('affiliateSalesSummaryCommission');
+    if (countEl) countEl.textContent = `${filteredSales.length} ${filteredSales.length === 1 ? 'venda' : 'vendas'} de ${selectedAffiliate.name}`;
+    if (summary) summary.style.display = 'grid';
+    if (summaryCount) summaryCount.textContent = String(filteredSales.length);
+    if (summaryValue) summaryValue.textContent = money(totalSalesValue);
+    if (summaryCommission) summaryCommission.textContent = money(totalCommission);
+
+    if (!filteredSales.length) {
+        results.innerHTML = `<div class="rounded-xl border border-dashed border-gray-200 py-8 text-center text-sm text-gray-500">
+            ${search ? 'Nenhuma venda corresponde à busca.' : 'Nenhuma venda encontrada para este afiliado com o status selecionado.'}
+        </div>`;
+        return;
+    }
+
+    results.innerHTML = filteredSales.map(sale => {
+        const saleStatus = String(sale.status || '').toLowerCase();
+        const statusLabel = saleStatus === 'paid' ? 'Paga' : saleStatus === 'pending' ? 'Pendente' : (sale.status || 'Sem status');
+        const statusBadge = saleStatus === 'paid'
+            ? '<span class="rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-800">Paga</span>'
+            : saleStatus === 'pending'
+                ? '<span class="rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-semibold text-yellow-800">Pendente</span>'
+                : `<span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">${escapeHtml(statusLabel)}</span>`;
+
         return `
-            <tr class="border-b border-gray-100 hover:bg-gray-50">
-                <td class="py-2 px-2 text-xs">${date}</td>
-                <td class="py-2 px-2 text-xs">${affiliate?.name || sale.affiliateId || 'N/A'}</td>
-                <td class="py-2 px-2 text-xs">${sale.customerName || sale.customerEmail || 'N/A'}</td>
-                <td class="py-2 px-2 text-xs">
-                    <div>${sale.productName || sale.productId || 'N/A'}</div>
-                    <div class="text-xs text-gray-500">${sale.saleType === 'event' ? '📅 Evento' : '🛒 Produto'}</div>
-                </td>
-                <td class="py-2 px-2 text-xs font-medium">R$ ${(sale.saleValue || 0).toFixed(2)}</td>
-                <td class="py-2 px-2 text-xs">${(sale.commissionRate || 0).toFixed(1)}%</td>
-                <td class="py-2 px-2 text-xs font-medium text-green-600">R$ ${(sale.commissionAmount || 0).toFixed(2)}</td>
-                <td class="py-2 px-2 text-xs">${statusBadge}</td>
-                <td class="py-2 px-2 text-xs">
-                    ${sale.status === 'pending' ? `
-                        <button onclick="approveAffiliateCommission('${sale.id}')" 
-                                class="px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-xs">
-                            Aprovar
-                        </button>
-                    ` : ''}
-                </td>
-            </tr>
+            <article class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <h4 class="font-semibold text-gray-900">${escapeHtml(sale.customerName || sale.customerEmail || 'Cliente não informado')}</h4>
+                        ${sale.customerName && sale.customerEmail ? `<p class="mt-0.5 truncate text-xs text-gray-500">${escapeHtml(sale.customerEmail)}</p>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        ${statusBadge}
+                        ${sale.status === 'pending' ? `
+                            <button onclick="approveAffiliateCommission('${escapeHtml(sale.id)}')"
+                                class="rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700">
+                                Aprovar comissão
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+                <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-3 text-xs text-gray-500">
+                    <span>📅 ${escapeHtml(formatDate(sale.createdAt))}</span>
+                    <span>${sale.saleType === 'event' ? '🎮 Evento' : '🛒 Produto'}: <strong class="font-medium text-gray-700">${escapeHtml(sale.productName || sale.productId || 'Não informado')}</strong></span>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div class="rounded-lg bg-gray-50 p-3">
+                        <span class="block text-xs text-gray-500">Valor da venda</span>
+                        <strong class="mt-1 block text-sm text-gray-900">${escapeHtml(money(sale.saleValue))}</strong>
+                    </div>
+                    <div class="rounded-lg bg-gray-50 p-3">
+                        <span class="block text-xs text-gray-500">Taxa de comissão</span>
+                        <strong class="mt-1 block text-sm text-gray-900">${Number(sale.commissionRate || 0).toFixed(1)}%</strong>
+                    </div>
+                    <div class="col-span-2 rounded-lg bg-green-50 p-3 sm:col-span-1">
+                        <span class="block text-xs text-green-700">Comissão</span>
+                        <strong class="mt-1 block text-sm text-green-800">${escapeHtml(money(sale.commissionAmount))}</strong>
+                    </div>
+                </div>
+            </article>
         `;
     }).join('');
 }
@@ -8694,11 +8836,14 @@ function renderAffiliateSalesTable() {
 // Atualizar estatísticas de afiliados
 function updateAffiliateStats() {
     const totalAffiliates = affiliatesData.length;
-    const totalSales = affiliateSalesData.length;
-    const totalCommission = affiliateSalesData.reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
-    const pendingCommission = affiliateSalesData
+    const selectedId = document.getElementById('affiliateSalesFilter')?.value || '';
+    const loaded = affiliateSalesCache.has(selectedId);
+    const sales = affiliateSalesCache.get(selectedId) || [];
+    const totalSales = sales.length;
+    const totalCommission = sales.reduce((sum, s) => sum + Number(s.commissionAmount || 0), 0);
+    const pendingCommission = sales
         .filter(s => s.status === 'pending')
-        .reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+        .reduce((sum, s) => sum + Number(s.commissionAmount || 0), 0);
     
     const statsTotal = document.getElementById('affiliateStatsTotal');
     const statsSales = document.getElementById('affiliateStatsSales');
@@ -8706,9 +8851,9 @@ function updateAffiliateStats() {
     const statsPending = document.getElementById('affiliateStatsPending');
     
     if (statsTotal) statsTotal.textContent = totalAffiliates;
-    if (statsSales) statsSales.textContent = totalSales;
-    if (statsCommission) statsCommission.textContent = `R$ ${totalCommission.toFixed(2).replace('.', ',')}`;
-    if (statsPending) statsPending.textContent = `R$ ${pendingCommission.toFixed(2).replace('.', ',')}`;
+    if (statsSales) statsSales.textContent = loaded ? totalSales : '—';
+    if (statsCommission) statsCommission.textContent = loaded ? `R$ ${totalCommission.toFixed(2).replace('.', ',')}` : '—';
+    if (statsPending) statsPending.textContent = loaded ? `R$ ${pendingCommission.toFixed(2).replace('.', ',')}` : '—';
 }
 
 // Abrir modal de criação de afiliado
@@ -8857,6 +9002,11 @@ function editAffiliate(affiliateId) {
 async function viewAffiliateDetails(affiliateId) {
     const affiliate = affiliatesData.find(a => a.id === affiliateId);
     if (!affiliate) return;
+    const sales = await loadAffiliateSales(affiliateId);
+    if (!sales) {
+        showToast('error', 'Não foi possível carregar as vendas deste afiliado. Tente novamente.', 'Afiliado');
+        return;
+    }
 
     // Criar/reusar modal overlay
     let overlay = document.getElementById('affiliateDetailsOverlay');
@@ -8868,7 +9018,6 @@ async function viewAffiliateDetails(affiliateId) {
     }
     overlay.style.display = 'flex';
 
-    const sales = affiliateSalesData.filter(s => s.affiliateId === affiliateId);
     const totalCommission = sales.reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
     const pendingCommission = sales.filter(s => s.status === 'pending').reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
     const paidCommission = sales.filter(s => s.status === 'paid').reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
@@ -9102,6 +9251,8 @@ window.deleteAffiliate = deleteAffiliate;
 
 // ── Descontar / Quitar comissão manualmente ───────────────────────────────────
 window.descontarComissaoAfiliado = async function (affiliateId, affiliateName) {
+    const latestSales = await loadAffiliateSales(affiliateId, { force: true });
+    if (!latestSales) return;
     // Calcular saldo pendente atual
     const pendente = affiliateSalesData
         .filter(s => s.affiliateId === affiliateId && s.status === 'pending')
@@ -9159,6 +9310,9 @@ window.descontarComissaoAfiliado = async function (affiliateId, affiliateName) {
         showToast('success', `R$ ${valor.toFixed(2)} descontado de ${affiliateName} com sucesso.`, 'Concluído', 5000);
 
         // Reabrir o modal para refletir os novos valores
+        renderAffiliateSalesTable();
+        filterAffiliatesTable();
+        updateAffiliateStats();
         await viewAffiliateDetails(affiliateId);
 
     } catch (err) {
@@ -9175,15 +9329,21 @@ async function approveAffiliateCommission(saleId) {
     
     try {
         const { doc, updateDoc, collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const sale = affiliateSalesData.find(s => s.id === saleId);
+        if (!sale) throw new Error('Carregue as vendas do afiliado antes de aprovar a comissão.');
         
         await updateDoc(doc(window.firebaseDb, 'affiliate_sales', saleId), {
             status: 'paid',
             paidAt: new Date(),
             paidBy: window.adminRoleLower || 'admin'
         });
+        sale.status = 'paid';
+        sale.paidAt = new Date();
+        renderAffiliateSalesTable();
+        filterAffiliatesTable();
+        updateAffiliateStats();
         
         // Criar registro de comissão paga
-        const sale = affiliateSalesData.find(s => s.id === saleId);
         if (sale) {
             await addDoc(collection(window.firebaseDb, 'affiliate_commissions'), {
                 affiliateId: sale.affiliateId,
@@ -9198,10 +9358,6 @@ async function approveAffiliateCommission(saleId) {
         
         await logAdminAction('approve_commission', `Aprovou comissão de venda ${saleId}`);
         
-        // Recarregar dados
-        await loadAffiliateSales();
-        await loadAffiliates();
-        
         alert('Comissão aprovada e marcada como paga!');
     } catch (error) {
         console.error('❌ Erro ao aprovar comissão:', error);
@@ -9211,6 +9367,7 @@ async function approveAffiliateCommission(saleId) {
 
 // Expor funções globalmente
 window.loadAffiliates = loadAffiliates;
+window.loadAffiliateSales = loadAffiliateSales;
 window.openCreateAffiliateModal = openCreateAffiliateModal;
 window.closeCreateAffiliateModal = closeCreateAffiliateModal;
 window.editAffiliate = editAffiliate;
@@ -9358,16 +9515,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // Configurar filtros de vendas
     const affiliateFilter = document.getElementById('affiliateSalesFilter');
     const statusFilter = document.getElementById('affiliateSalesStatusFilter');
+    const searchInput = document.getElementById('affiliateSalesSearch');
+    const refreshSales = document.getElementById('affiliateSalesRefresh');
     
     if (affiliateFilter) {
         affiliateFilter.addEventListener('change', () => {
-            renderAffiliateSalesTable();
+            loadAffiliateSales(affiliateFilter.value);
         });
     }
     
     if (statusFilter) {
         statusFilter.addEventListener('change', () => {
             renderAffiliateSalesTable();
+        });
+    }
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            renderAffiliateSalesTable();
+        });
+    }
+    if (refreshSales) {
+        refreshSales.addEventListener('click', () => {
+            loadAffiliateSales(affiliateFilter?.value, { force: true });
         });
     }
 });
@@ -9617,61 +9786,168 @@ window.jumpToSelectedSection = jumpToSelectedSection;
 // ==================== PASSE BOOYAH CONTROLS ====================
 async function loadPasseBooyahControls(){
   try{
-    const tbody = document.getElementById('booyahTbody');
+    const resultsEl = document.getElementById('booyahResults');
     const countEl = document.getElementById('booyahCount');
-    if (!tbody) return;
+    if (!resultsEl) return;
 
-    tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-gray-500">Carregando registros...</td></tr>';
+    resultsEl.innerHTML = '<div class="py-8 text-center text-sm text-gray-500">Carregando compras pagas...</div>';
 
-    const { collection, query, where, orderBy, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const { collection, query, where, getDocs, updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
 
-    // Buscar pedidos de Passe Booyah aprovados/pendentes de confirmação
+    // Mantém a consulta restrita ao produto; pedidos não pagos são descartados antes da renderização.
     const ordersRef = collection(window.firebaseDb, 'orders');
     const q = query(ordersRef, where('productId','==','passe-booyah'));
     const snap = await getDocs(q);
 
     const rows = [];
-    let total = 0;
     snap.forEach(d => {
       const o = d.data() || {};
-      const status = (o.status||'').toLowerCase();
-      const isPaid = status==='paid' || status==='approved' || status==='confirmed';
-      // Mostrar todos, mas com ação apenas para pagos não confirmados
+      const status = String(o.status || '').trim().toLowerCase();
+      const isPaid = status === 'paid' || status === 'approved' || status === 'confirmed';
+      if (!isPaid) return;
+
       const confirmed = !!o.booyahConfirmed;
       const playerId = (o.productOptions && (o.productOptions.playerId || o.productOptions.id || o.playerId)) || '';
-      rows.push({ id:d.id, name:o.customerName||'-', email:o.customer||o.buyerEmail||'-', playerId, confirmed, canConfirm: isPaid && !confirmed });
-      total++;
+      const createdAt = o.createdAt || o.timestamp || null;
+      const purchaseDate = (() => {
+        try {
+          let date = createdAt?.toDate ? createdAt.toDate()
+            : createdAt instanceof Date ? createdAt
+            : typeof createdAt === 'number' ? new Date(createdAt < 1e12 ? createdAt * 1000 : createdAt)
+            : createdAt?.seconds ? new Date(createdAt.seconds * 1000)
+            : createdAt ? new Date(createdAt) : null;
+          return date && Number.isFinite(date.getTime()) ? date : null;
+        } catch (_) { return null; }
+      })();
+      rows.push({
+        id: d.id,
+        name: o.customerName || '-',
+        email: o.customer || o.buyerEmail || '-',
+        playerId: String(playerId || ''),
+        confirmed,
+        createdAt: purchaseDate,
+        confirmedAt: o.booyahConfirmedAt || null,
+      });
     });
 
-    if (countEl) countEl.textContent = `${total} registros`;
+    rows.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+    window._booyahOrders = rows;
+    window._booyahView = window._booyahView || 'pending';
 
-    if (rows.length === 0){
-      tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-gray-500">Nenhum registro encontrado</td></tr>';
-      return;
-    }
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+    const formatDate = value => {
+      try {
+        const date = value?.toDate ? value.toDate()
+          : value instanceof Date ? value
+          : typeof value === 'number' ? new Date(value < 1e12 ? value * 1000 : value)
+          : value?.seconds ? new Date(value.seconds * 1000)
+          : value ? new Date(value) : null;
+        return date && Number.isFinite(date.getTime())
+          ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(date)
+          : 'Data não disponível';
+      } catch (_) { return 'Data não disponível'; }
+    };
 
-    tbody.innerHTML = rows.map(r => `
-      <tr class="border-b border-gray-100">
-        <td class="py-2 px-2">${r.name}</td>
-        <td class="py-2 px-2">${r.email}</td>
-        <td class="py-2 px-2">${r.playerId || '<span class="text-gray-400">—</span>'}</td>
-        <td class="py-2 px-2">${r.confirmed ? '<span class="px-2 py-1 text-[10px] rounded-full bg-green-100 text-green-700">Confirmado</span>' : '<span class="px-2 py-1 text-[10px] rounded-full bg-yellow-100 text-yellow-700">Pendente</span>'}</td>
-        <td class="py-2 px-2 flex items-center gap-2">
-          ${r.canConfirm ? `<button class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs" onclick="confirmPasseBooyah('${r.id}')">Confirmar</button>` : ''}
-          ${r.confirmed ? `<button class="px-2 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded text-xs" onclick="deleteBooyahOrder('${r.id}')" title="Excluir pedido">🗑️</button>` : ''}
-          ${!r.canConfirm && !r.confirmed ? '<span class="text-gray-400 text-xs">—</span>' : ''}
-        </td>
-      </tr>
-    `).join('');
+    window.renderPasseBooyahControls = function(){
+      const allRows = window._booyahOrders || [];
+      const view = window._booyahView === 'sent' ? 'sent' : 'pending';
+      const search = String(document.getElementById('booyahSearch')?.value || '').trim().toLocaleLowerCase('pt-BR');
+      const pendingCount = allRows.filter(row => !row.confirmed).length;
+      const sentCount = allRows.length - pendingCount;
+      const pendingCountEl = document.getElementById('booyahPendingCount');
+      const sentCountEl = document.getElementById('booyahSentCount');
+      if (countEl) countEl.textContent = `${allRows.length} ${allRows.length === 1 ? 'compra paga' : 'compras pagas'}`;
+      if (pendingCountEl) pendingCountEl.textContent = pendingCount;
+      if (sentCountEl) sentCountEl.textContent = sentCount;
 
-    // Expor funções no escopo global
+      const pendingTab = document.getElementById('booyahPendingTab');
+      const sentTab = document.getElementById('booyahSentTab');
+      if (pendingTab) {
+        pendingTab.setAttribute('aria-selected', String(view === 'pending'));
+        pendingTab.className = `rounded-lg px-3 py-2 text-sm font-semibold ${view === 'pending' ? 'bg-amber-50 text-amber-800' : 'bg-gray-50 text-gray-600'}`;
+      }
+      if (sentTab) {
+        sentTab.setAttribute('aria-selected', String(view === 'sent'));
+        sentTab.className = `rounded-lg px-3 py-2 text-sm font-semibold ${view === 'sent' ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-600'}`;
+      }
+
+      const filtered = allRows.filter(row => {
+        if ((view === 'sent') !== row.confirmed) return false;
+        if (!search) return true;
+        return [row.name, row.email, row.playerId].some(value =>
+          String(value || '').toLocaleLowerCase('pt-BR').includes(search));
+      });
+
+      if (!allRows.length) {
+        resultsEl.innerHTML = '<div class="rounded-xl border border-dashed border-gray-200 py-10 text-center"><div class="text-2xl mb-2">🧾</div><p class="font-semibold text-gray-700">Nenhum Passe Booyah pago encontrado</p><p class="mt-1 text-sm text-gray-500">Compras pendentes ou não aprovadas não aparecem nesta lista.</p></div>';
+        return;
+      }
+      if (!filtered.length) {
+        const message = search
+          ? 'Nenhum passe pago corresponde à busca.'
+          : view === 'pending' ? 'Tudo em dia: não há passes pagos aguardando envio.' : 'Ainda não há passes marcados como enviados.';
+        resultsEl.innerHTML = `<div class="rounded-xl border border-dashed border-gray-200 py-8 text-center text-sm text-gray-500">${message}</div>`;
+        return;
+      }
+
+      resultsEl.innerHTML = filtered.map(row => `
+        <article class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <h4 class="font-semibold text-gray-900">${escapeHtml(row.name)}</h4>
+                <span class="rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-semibold text-green-800">Pagamento aprovado</span>
+                <span class="rounded-full ${row.confirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'} px-2.5 py-1 text-[11px] font-semibold">${row.confirmed ? 'Enviado' : 'Aguardando envio'}</span>
+              </div>
+              <p class="mt-1 truncate text-sm text-gray-500">${escapeHtml(row.email)}</p>
+            </div>
+            ${row.confirmed
+              ? `<button type="button" data-booyah-action="delete" data-order-id="${escapeHtml(row.id)}" class="rounded-lg border border-red-100 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50" title="Excluir este registro enviado">Excluir</button>`
+              : `<button type="button" data-booyah-action="confirm" data-order-id="${escapeHtml(row.id)}" class="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">Marcar como enviado</button>`}
+          </div>
+          <div class="mt-4 grid gap-3 border-t border-gray-100 pt-3 text-sm sm:grid-cols-3">
+            <div><span class="block text-xs font-medium uppercase tracking-wide text-gray-400">Player ID</span><span class="mt-1 block font-semibold text-gray-800">${escapeHtml(row.playerId || 'Não informado')}</span></div>
+            <div><span class="block text-xs font-medium uppercase tracking-wide text-gray-400">Comprado em</span><span class="mt-1 block text-gray-800">${escapeHtml(formatDate(row.createdAt))}</span></div>
+            ${row.confirmed ? `<div><span class="block text-xs font-medium uppercase tracking-wide text-gray-400">Enviado em</span><span class="mt-1 block text-gray-800">${escapeHtml(formatDate(row.confirmedAt))}</span></div>` : '<div><span class="block text-xs font-medium uppercase tracking-wide text-gray-400">Próxima etapa</span><span class="mt-1 block text-gray-800">Entregar o passe no jogo</span></div>'}
+          </div>
+        </article>
+      `).join('');
+    };
+
+    window.setBooyahView = function(view){
+      window._booyahView = view === 'sent' ? 'sent' : 'pending';
+      window.renderPasseBooyahControls();
+    };
+
+    const searchInput = document.getElementById('booyahSearch');
+    if (searchInput) searchInput.oninput = () => window.renderPasseBooyahControls();
+    resultsEl.onclick = async event => {
+      const button = event.target.closest('[data-booyah-action]');
+      if (!button) return;
+      if (button.dataset.booyahAction === 'confirm') {
+        await window.confirmPasseBooyah(button.dataset.orderId);
+      } else if (button.dataset.booyahAction === 'delete') {
+        await window.deleteBooyahOrder(button.dataset.orderId);
+      }
+    };
+
     window.confirmPasseBooyah = async function(orderId){
       try{
         const ok = confirm('Confirmar entrega do Passe Booyah?');
         if (!ok) return;
         const ref = doc(window.firebaseDb, 'orders', orderId);
-        await updateDoc(ref, { booyahConfirmed: true, booyahConfirmedAt: new Date() });
-        await loadPasseBooyahControls();
+        const confirmedAt = new Date();
+        await updateDoc(ref, { booyahConfirmed: true, booyahConfirmedAt: confirmedAt });
+        window._booyahOrders = (window._booyahOrders || []).map(row =>
+          row.id === orderId ? { ...row, confirmed: true, confirmedAt } : row);
+        const notice = document.getElementById('booyahNotice');
+        if (notice) {
+          notice.textContent = 'Passe marcado como enviado. Você pode encontrá-lo na aba “Enviados”.';
+          notice.classList.remove('hidden');
+        }
+        window.renderPasseBooyahControls();
       }catch(err){
         console.error('Erro ao confirmar Passe Booyah:', err);
         alert('Erro ao confirmar. Tente novamente.');
@@ -9684,14 +9960,18 @@ async function loadPasseBooyahControls(){
         if (!ok) return;
         const { deleteDoc, doc: docFn } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         await deleteDoc(docFn(window.firebaseDb, 'orders', orderId));
-        await loadPasseBooyahControls();
+        window._booyahOrders = (window._booyahOrders || []).filter(row => row.id !== orderId);
+        window.renderPasseBooyahControls();
       }catch(err){
         console.error('Erro ao excluir pedido Booyah:', err);
         alert('Erro ao excluir. Tente novamente.');
       }
     };
+    window.renderPasseBooyahControls();
   }catch(err){
     console.error('Erro ao carregar Passe Booyah:', err);
+    const resultsEl = document.getElementById('booyahResults');
+    if (resultsEl) resultsEl.innerHTML = '<div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Não foi possível carregar os passes pagos. Tente atualizar a lista.</div>';
   }
 }
 
@@ -12080,7 +12360,6 @@ window.loadPageData = async function(page) {
         await loadCoupons();
         await loadCouponUsage();
         await loadAffiliates();
-        await loadAffiliateSales();
         await loadAffiliatePayouts();
         await loadPasseBooyahControls();
         try { setupCouponUsageFilters(); } catch(e) {}

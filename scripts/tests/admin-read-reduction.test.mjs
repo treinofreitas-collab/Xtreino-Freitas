@@ -223,6 +223,9 @@ test('actual navigation loads only the active page after authorization, with no 
         assert.equal(h.calls.find(call => call[0] === name)[1], h.users);
     }
     assert.ok(!h.calls.some(call => ['loadCoupons', 'loadAffiliates'].includes(call[0])));
+    h.show('financeiro');
+    await h.window.loadPageData('financeiro');
+    assert.ok(!h.calls.some(call => call[0] === 'loadAffiliateSales'), 'históricos de afiliados exigem seleção explícita');
 });
 
 test('concurrent navigation coalesces and failed pages can be retried', async () => {
