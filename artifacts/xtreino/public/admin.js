@@ -413,9 +413,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
         if (id === 'sectionEvents' && typeof loadEventsPreview === 'function') {
           loadEventsPreview();
         }
-        if (id === 'sectionAffiliatePayouts' && typeof loadAffiliatePayouts === 'function') {
-          loadAffiliatePayouts();
-        }
       }
     });
 
@@ -1277,6 +1274,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       window._adminPages = { initialized: new Set(), pending: new Map(), loadedAt: new Map() };
       stopCouponUsage();
       resetAffiliateSalesCache();
+      resetAffiliatePayoutsCache();
     }
     adminReportCache.setScope(user?.uid || null);
     if (!user){
@@ -9379,46 +9377,135 @@ window.approveAffiliateCommission = approveAffiliateCommission;
 // ============================================================
 
 let _allPayouts = [];
+const _affiliatePayoutsCache = new Map();
+let _affiliatePayoutsLoadGeneration = 0;
 
-async function loadAffiliatePayouts() {
+function resetAffiliatePayoutsCache() {
+    _affiliatePayoutsCache.clear();
+    _allPayouts = [];
+    _affiliatePayoutsLoadGeneration++;
+}
+
+function _renderPayoutAffiliateFilter() {
+    const select = document.getElementById('payoutsAffiliateFilter');
+    if (!select) return;
+    const selected = select.value;
+    const affiliates = new Map();
+    for (const records of _affiliatePayoutsCache.values()) {
+        for (const payout of records) {
+            if (!payout.affiliateId) continue;
+            affiliates.set(payout.affiliateId, {
+                id: payout.affiliateId,
+                label: payout.affiliateName || payout.affiliateEmail || payout.affiliateId
+            });
+        }
+    }
+    const options = [...affiliates.values()].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+    select.innerHTML = '<option value="">Todos os afiliados</option>' + options.map(affiliate =>
+        `<option value="${escapeAdminHtml(affiliate.id)}">${escapeAdminHtml(affiliate.label)}</option>`
+    ).join('');
+    if (options.some(affiliate => affiliate.id === selected)) select.value = selected;
+}
+
+async function loadAffiliatePayouts({ force = false } = {}) {
+    const affiliateId = document.getElementById('payoutsAffiliateFilter')?.value || '';
+    const status = document.getElementById('payoutsStatusFilter')?.value || 'pending';
+    const cacheKey = affiliateId ? `affiliate:${affiliateId}` : `global:${status}`;
+    const generation = ++_affiliatePayoutsLoadGeneration;
+    if (!force && _affiliatePayoutsCache.has(cacheKey)) {
+        _allPayouts = _affiliatePayoutsCache.get(cacheKey);
+        _renderPayoutAffiliateFilter();
+        _updatePayoutStats();
+        filterAffiliatePayouts();
+        return;
+    }
+
+    const tbody = document.getElementById('affiliatePayoutsTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-gray-500">Carregando solicitações...</td></tr>';
     try {
-        const { collection, getDocs, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const snap = await getDocs(query(collection(window.firebaseDb, 'affiliate_payouts'), orderBy('createdAt', 'desc')));
-        _allPayouts = [];
+        const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const payoutsCollection = collection(window.firebaseDb, 'affiliate_payouts');
+        const constraints = affiliateId
+            ? [where('affiliateId', '==', affiliateId)]
+            : status === 'all' ? [] : [where('status', '==', status)];
+        const snap = await getDocs(constraints.length ? query(payoutsCollection, ...constraints) : payoutsCollection);
+        if (generation !== _affiliatePayoutsLoadGeneration) return;
+        const payouts = [];
         snap.forEach(d => {
             const data = d.data();
-            _allPayouts.push({
+            const parseDate = value => {
+                const date = value?.toDate?.() || (value ? new Date(value) : null);
+                return date && !Number.isNaN(date.getTime()) ? date : null;
+            };
+            payouts.push({
                 id: d.id,
                 ...data,
-                createdAt: data.createdAt?.toDate?.() || (data.createdAt ? new Date(data.createdAt) : new Date()),
-                processedAt: data.processedAt?.toDate?.() || (data.processedAt ? new Date(data.processedAt) : null)
+                createdAt: parseDate(data.createdAt),
+                processedAt: parseDate(data.processedAt)
             });
         });
+        payouts.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+        _affiliatePayoutsCache.set(cacheKey, payouts);
+        _allPayouts = payouts;
+        _renderPayoutAffiliateFilter();
         _updatePayoutStats();
         filterAffiliatePayouts();
     } catch (err) {
+        if (generation !== _affiliatePayoutsLoadGeneration) return;
         console.error('Erro ao carregar saques:', err);
-        const tb = document.getElementById('affiliatePayoutsTableBody');
-        if (tb) tb.innerHTML = '<tr><td colspan="8" class="py-6 text-center text-red-500">Erro ao carregar saques</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="py-6 text-center text-red-500">Erro ao carregar saques. Tente atualizar.</td></tr>';
     }
 }
 
 function _updatePayoutStats() {
-    const pending = _allPayouts.filter(p => p.status === 'pending');
-    const approved = _allPayouts.filter(p => p.status === 'approved');
-    const rejected = _allPayouts.filter(p => p.status === 'rejected');
-    const approvedTotal = approved.reduce((s, p) => s + (p.amount || 0), 0);
+    const affiliateId = document.getElementById('payoutsAffiliateFilter')?.value || '';
+    const allGlobal = _affiliatePayoutsCache.get('global:all');
+    const scoped = affiliateId ? _affiliatePayoutsCache.get(`affiliate:${affiliateId}`) : allGlobal;
+    const pending = scoped ? scoped.filter(p => p.status === 'pending') : _affiliatePayoutsCache.get('global:pending');
+    const approved = scoped ? scoped.filter(p => p.status === 'approved') : _affiliatePayoutsCache.get('global:approved');
+    const rejected = scoped ? scoped.filter(p => p.status === 'rejected') : _affiliatePayoutsCache.get('global:rejected');
     const pendingEl = document.getElementById('payoutsPendingCount');
+    const pendingTotalEl = document.getElementById('payoutsPendingTotal');
     const approvedEl = document.getElementById('payoutsApprovedTotal');
     const rejectedEl = document.getElementById('payoutsRejectedCount');
-    if (pendingEl) pendingEl.textContent = pending.length;
-    if (approvedEl) approvedEl.textContent = `R$ ${approvedTotal.toFixed(2).replace('.', ',')}`;
-    if (rejectedEl) rejectedEl.textContent = rejected.length;
+    const pendingTotal = pending?.reduce((sum, payout) => sum + (Number(payout.amount) || 0), 0);
+    const approvedTotal = approved?.reduce((sum, payout) => sum + (Number(payout.amount) || 0), 0);
+    if (pendingEl) pendingEl.textContent = pending ? pending.length : '—';
+    if (pendingTotalEl) pendingTotalEl.textContent = pending ? `R$ ${pendingTotal.toFixed(2).replace('.', ',')}` : '—';
+    if (approvedEl) approvedEl.textContent = approved ? `R$ ${approvedTotal.toFixed(2).replace('.', ',')}` : '—';
+    if (rejectedEl) rejectedEl.textContent = rejected ? rejected.length : '—';
+    const scope = document.getElementById('payoutsStatsScope');
+    if (scope) {
+        scope.textContent = affiliateId
+            ? 'Indicadores do afiliado selecionado.'
+            : allGlobal
+                ? 'Indicadores de todas as solicitações.'
+                : 'O resumo de cada status é carregado ao selecionar esse filtro.';
+    }
 }
 
 function filterAffiliatePayouts() {
     const filter = document.getElementById('payoutsStatusFilter')?.value || 'all';
-    const filtered = filter === 'all' ? _allPayouts : _allPayouts.filter(p => p.status === filter);
+    const affiliateId = document.getElementById('payoutsAffiliateFilter')?.value || '';
+    const search = (document.getElementById('payoutsSearch')?.value || '').trim().toLocaleLowerCase('pt-BR');
+    const filtered = _allPayouts.filter(p => {
+        const matchesStatus = filter === 'all' || p.status === filter;
+        const matchesAffiliate = !affiliateId || p.affiliateId === affiliateId;
+        const searchable = [p.affiliateName, p.affiliateEmail, p.pixKey, p.pixAccountName, p.rejectionReason]
+            .filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
+        return matchesStatus && matchesAffiliate && (!search || searchable.includes(search));
+    });
+    const summary = document.getElementById('payoutsResultsSummary');
+    if (summary) {
+        const labels = {
+            pending: ['pendente', 'pendentes'],
+            approved: ['aprovada', 'aprovadas'],
+            rejected: ['recusada', 'recusadas'],
+            all: ['solicitação', 'solicitações']
+        };
+        const label = labels[filter] || labels.all;
+        summary.textContent = `${filtered.length} ${label[filtered.length === 1 ? 0 : 1]} exibida${filtered.length === 1 ? '' : 's'}`;
+    }
     renderAffiliatePayoutsTable(filtered);
 }
 
@@ -9426,11 +9513,18 @@ function renderAffiliatePayoutsTable(payouts) {
     const tb = document.getElementById('affiliatePayoutsTableBody');
     if (!tb) return;
     if (payouts.length === 0) {
-        tb.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-gray-400">Nenhuma solicitação encontrada</td></tr>';
+        const filter = document.getElementById('payoutsStatusFilter')?.value || 'pending';
+        const search = (document.getElementById('payoutsSearch')?.value || '').trim();
+        const emptyMessage = search
+            ? 'Nenhuma solicitação corresponde à busca e ao filtro.'
+            : filter === 'pending'
+                ? 'Nenhuma solicitação pendente. Novos pedidos de saque aparecerão aqui.'
+                : 'Nenhuma solicitação encontrada para este filtro.';
+        tb.innerHTML = `<tr><td colspan="8" class="py-10 text-center text-gray-500">${emptyMessage}</td></tr>`;
         return;
     }
     tb.innerHTML = payouts.map(p => {
-        const date = p.createdAt ? p.createdAt.toLocaleDateString('pt-BR') : '—';
+        const date = p.createdAt ? p.createdAt.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Data indisponível';
         const statusBadge = p.status === 'approved'
             ? '<span class="px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium">Aprovado</span>'
             : p.status === 'rejected'
@@ -9438,20 +9532,21 @@ function renderAffiliatePayoutsTable(payouts) {
             : '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">Pendente</span>';
         const obs = p.rejectionReason
             ? `<span class="text-red-600">${escapeAdminHtml(p.rejectionReason)}</span>`
-            : (p.status === 'approved' ? `<span class="text-gray-400 text-xs">Aprovado em ${p.processedAt ? p.processedAt.toLocaleDateString('pt-BR') : '—'}</span>` : '—');
+            : (p.status === 'approved' ? `<span class="text-gray-400 text-xs">Aprovado em ${p.processedAt ? p.processedAt.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span>` : '—');
         const actions = p.status === 'pending'
             ? `<div class="flex gap-1">
                  <button onclick="approveAffiliatePayout('${p.id}')" class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs">✓ Aprovar</button>
                  <button onclick="rejectAffiliatePayout('${p.id}')" class="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs">✗ Recusar</button>
                </div>`
             : `<span class="text-gray-400 text-xs">${p.processedBy ? `por ${escapeAdminHtml(p.processedBy)}` : '—'}</span>`;
+        const amount = (Number(p.amount) || 0).toFixed(2).replace('.', ',');
         return `<tr class="border-b border-gray-100 hover:bg-gray-50">
             <td class="py-2 px-3">${date}</td>
             <td class="py-2 px-3">
                 <div class="font-medium">${escapeAdminHtml(p.affiliateName || p.affiliateEmail || '—')}</div>
                 <div class="text-gray-400 text-xs">${escapeAdminHtml(p.affiliateEmail || '')}</div>
             </td>
-            <td class="py-2 px-3 font-semibold text-green-700">R$ ${(p.amount || 0).toFixed(2).replace('.', ',')}</td>
+            <td class="py-2 px-3 font-semibold text-green-700">R$ ${amount}</td>
             <td class="py-2 px-3 font-mono text-xs max-w-[140px] truncate" title="${escapeAdminHtml(p.pixKey || '')}">${escapeAdminHtml(p.pixKey || '—')}</td>
             <td class="py-2 px-3">${escapeAdminHtml(p.pixAccountName || '—')}</td>
             <td class="py-2 px-3">${statusBadge}</td>
@@ -9472,7 +9567,8 @@ async function approveAffiliatePayout(payoutId) {
             processedBy: adminEmail
         });
         showToast('success', 'Saque aprovado com sucesso!', 'Saque');
-        await loadAffiliatePayouts();
+        _affiliatePayoutsCache.clear();
+        await loadAffiliatePayouts({ force: true });
     } catch (err) {
         console.error('Erro ao aprovar saque:', err);
         alert('Erro ao aprovar saque: ' + err.message);
@@ -9493,7 +9589,8 @@ async function rejectAffiliatePayout(payoutId) {
             processedBy: adminEmail
         });
         showToast('success', 'Saque recusado.', 'Saque');
-        await loadAffiliatePayouts();
+        _affiliatePayoutsCache.clear();
+        await loadAffiliatePayouts({ force: true });
     } catch (err) {
         console.error('Erro ao recusar saque:', err);
         alert('Erro ao recusar saque: ' + err.message);
@@ -12360,7 +12457,6 @@ window.loadPageData = async function(page) {
         await loadCoupons();
         await loadCouponUsage();
         await loadAffiliates();
-        await loadAffiliatePayouts();
         await loadPasseBooyahControls();
         try { setupCouponUsageFilters(); } catch(e) {}
 
@@ -12709,4 +12805,3 @@ window.repairDateSlots = async function(eventType, targetDate) {
         alert('Erro: ' + (err.message || err));
     }
 };
-
