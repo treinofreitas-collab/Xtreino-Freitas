@@ -195,7 +195,9 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
       sdk.where("ownerUid", "==", uid),
       sdk.limit(MAX_FAVORITES)
     ));
-    const ids = favoriteSnapshots.docs.map(item => item.id);
+    const ids = favoriteSnapshots.docs
+      .map(item => item.data().profileUid)
+      .filter(profileUid => typeof profileUid === "string" && profileUid.length > 0);
     favoriteIdsCache.set(uid, { expiresAt: Date.now() + MAX_LISTING_AGE_MS, ids });
     return ids;
   }
@@ -407,7 +409,7 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
       requireCurrentUser(auth, uid);
       const targetId = safeTargetId(profileUid);
       const sdk = await getFirestoreSdk();
-      const ref = sdk.doc(db, "market_favorites", targetId);
+      const ref = sdk.doc(db, "market_favorites", `${uid}__${targetId}`);
       if (isFavorite) {
         const profileSnapshot = await sdk.getDoc(sdk.doc(db, "market_profiles", targetId));
         if (!profileSnapshot.exists() || profileSnapshot.data().status !== "published") {

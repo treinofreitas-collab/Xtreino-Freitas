@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   createMercadoDaBalaService,
   isSafeMarketUrl,
@@ -7,6 +8,11 @@ import {
   sanitizeMarketplaceProfile,
   sanitizeMarketplaceVacancy
 } from "../../artifacts/xtreino/public/js/mercado-da-bala-data.mjs";
+
+const firestoreRules = readFileSync(
+  new URL("../../artifacts/xtreino/public/config/firestore.rules", import.meta.url),
+  "utf8"
+);
 
 test("currículo só aceita funções conhecidas e remove contatos de texto público", () => {
   const profile = sanitizeMarketplaceProfile({
@@ -111,7 +117,12 @@ test("login busca os IDs de favoritos sem ler todos os currículos salvos", asyn
     where: (...args) => ({ type: "where", args }),
     limit: value => ({ type: "limit", value }),
     query: (...parts) => parts,
-    getDocs: async () => ({ docs: [{ id: "player-1" }, { id: "player-2" }] }),
+    getDocs: async () => ({
+      docs: [
+        { id: "account-1__player-1", data: () => ({ ownerUid: "account-1", profileUid: "player-1" }) },
+        { id: "account-1__player-2", data: () => ({ ownerUid: "account-1", profileUid: "player-2" }) }
+      ]
+    }),
     getDoc: async () => { profileReads += 1; }
   };
   const service = createMercadoDaBalaService({
@@ -121,6 +132,37 @@ test("login busca os IDs de favoritos sem ler todos os currículos salvos", asyn
   });
   assert.deepEqual(await service.listFavoriteIds("account-1"), ["player-1", "player-2"]);
   assert.equal(profileReads, 0);
+});
+
+test("favoritar o mesmo jogador cria um documento independente para cada usuário", async () => {
+  const auth = { currentUser: { uid: "account-1" } };
+  const saved = [];
+  const sdk = {
+    doc: (_db, collection, id) => ({ collection, id }),
+    getDoc: async () => ({ exists: () => true, data: () => ({ status: "published" }) }),
+    setDoc: async (ref, data) => saved.push({ ref, data }),
+    serverTimestamp: () => "server-time"
+  };
+  const service = createMercadoDaBalaService({ auth, db: {}, sdk });
+
+  await service.setFavorite("account-1", "player-1", true);
+  auth.currentUser.uid = "account-2";
+  await service.setFavorite("account-2", "player-1", true);
+
+  assert.deepEqual(saved.map(item => item.ref.id), ["account-1__player-1", "account-2__player-1"]);
+  assert.deepEqual(saved.map(item => item.data.ownerUid), ["account-1", "account-2"]);
+});
+
+test("regras do Firestore vinculam favoritos ao dono e ao currículo escolhido", () => {
+  assert.match(firestoreRules, /match \/market_favorites\/\{favoriteId\}/);
+  assert.match(firestoreRules, /resource\.data\.ownerUid == request\.auth\.uid/);
+  assert.match(firestoreRules, /favoriteId == request\.auth\.uid \+ '__' \+ request\.resource\.data\.profileUid/);
+  assert.match(firestoreRules, /request\.resource\.data\.profileUid == resource\.data\.profileUid/);
+});
+
+test("regras mantêm desativadas as coleções antigas de notificações", () => {
+  assert.match(firestoreRules, /match \/notifications\/\{notifId\}\s*\{\s*allow read, write: if false;/);
+  assert.match(firestoreRules, /match \/notificationReads\/\{readId\}\s*\{\s*allow read, write: if false;/);
 });
 
 test("redator remove e-mail e telefone brasileiros em texto livre", () => {

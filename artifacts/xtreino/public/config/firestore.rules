@@ -602,16 +602,25 @@ service cloud.firestore {
     }
 
     // Favoritos privados, particionados pelo proprietário.
-    match /market_favorites/{profileUid} {
+    match /market_favorites/{favoriteId} {
       allow get, list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
       allow create: if isSignedIn() &&
         request.resource.data.keys().hasOnly(['ownerUid', 'profileUid', 'createdAt']) &&
         request.resource.data.ownerUid == request.auth.uid &&
-        request.resource.data.profileUid == profileUid &&
+        request.resource.data.profileUid is string &&
+        favoriteId == request.auth.uid + '__' + request.resource.data.profileUid &&
         request.resource.data.createdAt == request.time &&
-        exists(/databases/$(database)/documents/market_profiles/$(profileUid)) &&
-        get(/databases/$(database)/documents/market_profiles/$(profileUid)).data.status == 'published';
-      allow update: if false;
+        exists(/databases/$(database)/documents/market_profiles/$(request.resource.data.profileUid)) &&
+        get(/databases/$(database)/documents/market_profiles/$(request.resource.data.profileUid)).data.status == 'published';
+      allow update: if isSignedIn() &&
+        resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.keys().hasOnly(['ownerUid', 'profileUid', 'createdAt']) &&
+        request.resource.data.ownerUid == resource.data.ownerUid &&
+        request.resource.data.profileUid == resource.data.profileUid &&
+        favoriteId == request.auth.uid + '__' + request.resource.data.profileUid &&
+        request.resource.data.createdAt is timestamp &&
+        exists(/databases/$(database)/documents/market_profiles/$(request.resource.data.profileUid)) &&
+        get(/databases/$(database)/documents/market_profiles/$(request.resource.data.profileUid)).data.status == 'published';
       allow delete: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
     }
 
