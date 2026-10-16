@@ -299,6 +299,53 @@ test("avaliador só abre o currículo publicado do candidato ligado à própria 
   await assert.rejects(service.getApplicantProfile("team-1", "vacancy-1__player-1", "player-1"), /Entre na sua conta/);
 });
 
+test("candidato pode retirar somente a própria candidatura e a retirada preserva o histórico", async () => {
+  const documents = new Map([
+    ["market_applications/vacancy-1__player-1", {
+      applicantUid: "player-1",
+      status: "reviewing"
+    }],
+    ["market_applications/vacancy-2__player-2", {
+      applicantUid: "player-2",
+      status: "new"
+    }]
+  ]);
+  const updates = [];
+  const key = ref => `${ref.collection}/${ref.id}`;
+  const sdk = {
+    doc: (_db, collection, id) => ({ collection, id }),
+    getDoc: async ref => ({
+      exists: () => documents.has(key(ref)),
+      data: () => documents.get(key(ref))
+    }),
+    updateDoc: async (ref, patch) => {
+      updates.push({ ref: key(ref), patch });
+      documents.set(key(ref), { ...documents.get(key(ref)), ...patch });
+    },
+    serverTimestamp: () => "server-time"
+  };
+  const auth = { currentUser: { uid: "player-1" } };
+  const service = createMercadoDaBalaService({ auth, db: {}, sdk });
+
+  await service.withdrawApplication("player-1", "vacancy-1__player-1");
+  assert.deepEqual(updates, [{
+    ref: "market_applications/vacancy-1__player-1",
+    patch: { status: "withdrawn", updatedAt: "server-time" }
+  }]);
+  assert.equal(documents.get("market_applications/vacancy-1__player-1").status, "withdrawn");
+  await assert.rejects(
+    service.withdrawApplication("player-1", "vacancy-2__player-2"),
+    /Candidatura não encontrada ou sem permissão/
+  );
+  assert.equal(updates.length, 1);
+
+  auth.currentUser = null;
+  await assert.rejects(
+    service.withdrawApplication("player-1", "vacancy-1__player-1"),
+    /Entre na sua conta/
+  );
+});
+
 test("abrir o espaço próprio migra links de perfis legados para a coleção privada", async () => {
   const documents = new Map([
     ["market_profiles/player-legacy", {
@@ -356,10 +403,21 @@ test("abrir o espaço próprio migra links de perfis legados para a coleção pr
 test("candidaturas recebidas oferecem uma ação para abrir o currículo do candidato", () => {
   assert.match(marketUi, /data-action="view-applicant-profile"/);
   assert.match(marketUi, /case "view-applicant-profile"/);
-  assert.match(marketUi, /isReceived \? `[\s\S]*data-action="view-applicant-profile"/);
+  assert.match(marketUi, /isReceived && !isWithdrawn \? `[\s\S]*data-action="view-applicant-profile"/);
   assert.match(marketUi, /getApplicantProfile\(appState\.user\.uid, applicationId, profileUid\)/);
   assert.match(marketUi, /profileDetail\(profile, \{ allowContactCheck: true \}\)/);
   assert.match(marketUi, /"Clique para verificar os links de contato compartilhados pelo jogador\."/);
+});
+
+test("candidatos podem retirar a própria candidatura e a organização vê o estado final", () => {
+  assert.match(marketUi, /data-action="withdraw-application"/);
+  assert.match(marketUi, /case "withdraw-application": await withdrawApplication\(id\)/);
+  assert.match(marketUi, /service\.withdrawApplication\(appState\.user\.uid, id\)/);
+  assert.match(marketUi, /withdrawn: "Candidatura retirada"/);
+  assert.match(marketUi, /O candidato retirou esta candidatura\./);
+  assert.match(marketUi, /isReceived && !isWithdrawn/);
+  const applicationRules = firestoreRules.split("match /market_applications/")[1].split("match /market_favorites/")[0];
+  assert.match(applicationRules, /resource\.data\.applicantUid == request\.auth\.uid[\s\S]*request\.resource\.data\.status == 'withdrawn'/);
 });
 
 test("Firestore mantém os links privados e o admin tem uma fila de denúncias do Mercado da Bala", () => {

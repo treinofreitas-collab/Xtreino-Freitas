@@ -491,6 +491,18 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
       await sdk.updateDoc(ref, { status, updatedAt: sdk.serverTimestamp() });
     },
 
+    async withdrawApplication(uid, applicationId) {
+      requireCurrentUser(auth, uid);
+      const sdk = await getFirestoreSdk();
+      const ref = sdk.doc(db, "market_applications", safeTargetId(applicationId));
+      const snapshot = await sdk.getDoc(ref);
+      if (!snapshot.exists() || snapshot.data().applicantUid !== uid) {
+        throw new Error("Candidatura não encontrada ou sem permissão.");
+      }
+      if (snapshot.data().status === "withdrawn") return;
+      await sdk.updateDoc(ref, { status: "withdrawn", updatedAt: sdk.serverTimestamp() });
+    },
+
     async listFavorites(uid) {
       requireCurrentUser(auth, uid);
       const cached = favoritesCache.get(uid);

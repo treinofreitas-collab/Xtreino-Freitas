@@ -6,7 +6,7 @@ const AVAILABILITY = {
 const APP_STATUS = {
   new: "Novo candidato", pending: "Novo candidato", reviewing: "Em análise",
   trial_scheduled: "Teste agendado", approved: "Aprovado", rejected: "Não selecionado",
-  accepted: "Aprovado", not_selected: "Não selecionado"
+  accepted: "Aprovado", not_selected: "Não selecionado", withdrawn: "Candidatura retirada"
 };
 const appState = {
   service: null, user: null, role: "", profiles: [], vacancies: [], favorites: [],
@@ -380,17 +380,24 @@ function applicantName(application) {
 function renderApplication(application) {
   const status = first(application, ["status", "pipelineStatus"], "new");
   const isReceived = appState.mode === "received";
+  const isWithdrawn = status === "withdrawn";
   const who = isReceived ? applicantName(application) : first(application, ["teamName", "vacancyTitle", "title"], "Equipe");
   const message = first(application, ["message", "coverMessage", "note"], "");
   const id = appId(application);
   const applicantUid = first(application, ["applicantUid", "profileUid"], "");
   const statuses = [["new", "Novo candidato"], ["reviewing", "Em análise"], ["trial_scheduled", "Teste agendado"], ["approved", "Aprovado"], ["rejected", "Não selecionado"]];
-  const applicantActions = isReceived ? `
+  const applicantActions = isReceived && !isWithdrawn ? `
     ${applicantUid && id ? `<button class="mb-button secondary small" type="button" data-action="view-applicant-profile" data-id="${esc(id)}" data-profile-uid="${esc(applicantUid)}" data-name="${esc(applicantName(application))}">Ver currículo</button>` : ""}
     ${applicantUid ? `<button class="mb-button yellow small" type="button" data-action="contact-applicant" data-profile-uid="${esc(applicantUid)}" data-name="${esc(applicantName(application))}">Entrar em contato</button>` : ""}
     <select class="mb-control" data-status-select="${esc(id)}" aria-label="Etapa da candidatura">${statuses.map(([value, label]) => `<option value="${value}" ${value === status ? "selected" : ""}>${label}</option>`).join("")}</select>
     <button class="mb-button small" type="button" data-action="update-application" data-id="${esc(id)}">Atualizar etapa</button>` : "";
-  return `<article class="mb-applicant"><div><div class="mb-inline"><h3>${esc(who)}</h3><span class="mb-status-pill ${esc(status)}">${esc(APP_STATUS[status] || status)}</span></div><p>${esc(message || "Sem mensagem adicional.")}</p></div><div class="mb-applicant-actions">${applicantActions}</div></article>`;
+  const sentActions = !isReceived && !isWithdrawn
+    ? `<button class="mb-button danger small" type="button" data-action="withdraw-application" data-id="${esc(id)}">Retirar candidatura</button>`
+    : "";
+  const withdrawalNotice = isWithdrawn
+    ? `<p class="mb-help">${isReceived ? "O candidato retirou esta candidatura." : "Você retirou esta candidatura. Ela permanece no histórico da organização."}</p>`
+    : "";
+  return `<article class="mb-applicant${isWithdrawn ? " is-withdrawn" : ""}"><div><div class="mb-inline"><h3>${esc(who)}</h3><span class="mb-status-pill ${esc(status)}">${esc(APP_STATUS[status] || status)}</span></div><p>${esc(message || "Sem mensagem adicional.")}</p>${withdrawalNotice}</div><div class="mb-applicant-actions">${applicantActions}${sentActions}</div></article>`;
 }
 async function loadApplications() {
   const root = $("#applicationsList");
@@ -437,6 +444,17 @@ async function updateApplication(id) {
     await appState.service.updateApplicationStatus(appState.user.uid, id, status);
     toast("Etapa da candidatura atualizada.");
     await loadApplications();
+  } catch (error) { toast(friendlyError(error)); }
+}
+async function withdrawApplication(id) {
+  if (!requireUser()) return;
+  if (!window.confirm("Retirar sua candidatura? A organização verá que você desistiu. Esta ação não pode ser desfeita.")) return;
+  try {
+    await appState.service.withdrawApplication(appState.user.uid, id);
+    toast("Candidatura retirada.");
+    if ($("#panel-applications").classList.contains("active") && appState.mode === "sent") {
+      await loadApplications();
+    }
   } catch (error) { toast(friendlyError(error)); }
 }
 async function openContactLinks(profileUid, name = "jogador") {
@@ -704,6 +722,7 @@ document.addEventListener("click", async event => {
     case "report": await reportContent(kind, id); break;
     case "send-report": await sendReport(kind, id); break;
     case "update-application": await updateApplication(id); break;
+    case "withdraw-application": await withdrawApplication(id); break;
     case "moderate": await moderate(kind, id, status); break;
     case "clear-player-filters": $("#playerFilters").querySelectorAll("input,select").forEach(input => { input.value = ""; }); loadPlayers(); break;
     case "clear-vacancy-filters": $("#vacancyFilters").querySelectorAll("input,select").forEach(input => { input.value = ""; }); loadVacancies(); break;
