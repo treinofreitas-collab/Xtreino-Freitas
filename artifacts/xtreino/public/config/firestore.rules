@@ -91,6 +91,22 @@ service cloud.firestore {
 
     function isMarketModerator() { return isAdmin(); }
 
+    function validMarketContactUrl(value) {
+      return value is string && value.size() >= 9 && value.size() <= 240 &&
+        value.matches('https?://.+');
+    }
+
+    function profileHasNoSharedMarketContact(profileId) {
+      let profile = get(/databases/$(database)/documents/market_profiles/$(profileId)).data;
+      return profile.contactAvailable == false &&
+        (!profile.keys().hasAny(['socialLinks']) ||
+         (profile.socialLinks is list && profile.socialLinks.size() == 0)) &&
+        (!exists(/databases/$(database)/documents/market_contact_links/$(profileId)) ||
+         (get(/databases/$(database)/documents/market_contact_links/$(profileId)).data.ownerUid == profileId &&
+          get(/databases/$(database)/documents/market_contact_links/$(profileId)).data.links is list &&
+          get(/databases/$(database)/documents/market_contact_links/$(profileId)).data.links.size() == 0));
+    }
+
     function validMarketProfile(profileId) {
       return request.resource.data.keys().hasAll([
           'uid', 'nickname', 'mainRole', 'secondaryRoles', 'city', 'state',
@@ -615,6 +631,100 @@ service cloud.firestore {
       allow delete: if isMarketModerator() ||
         (isSignedIn() && resource.data.applicantUid == request.auth.uid &&
          resource.data.status == 'new');
+    }
+
+    // Pedidos privados de contato entre uma equipe com vaga aberta e um jogador.
+    // O link da equipe fica em coleção separada e só pode ser lido depois do aceite.
+    match /market_contact_requests/{requestId} {
+      allow get, list: if isSignedIn() &&
+        (resource.data.senderUid == request.auth.uid ||
+         resource.data.recipientUid == request.auth.uid);
+      allow create: if isSignedIn() &&
+        request.resource.data.keys().hasAll([
+          'senderUid', 'recipientUid', 'vacancyId', 'teamName', 'vacancyTitle',
+          'playerName', 'message', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          'senderUid', 'recipientUid', 'vacancyId', 'teamName', 'vacancyTitle',
+          'playerName', 'message', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        request.resource.data.senderUid == request.auth.uid &&
+        request.resource.data.recipientUid is string &&
+        request.resource.data.recipientUid != request.auth.uid &&
+        requestId == request.resource.data.recipientUid + '__' + request.auth.uid &&
+        request.resource.data.vacancyId is string &&
+        request.resource.data.teamName is string &&
+        request.resource.data.teamName.size() >= 2 &&
+        request.resource.data.teamName.size() <= 60 &&
+        request.resource.data.vacancyTitle is string &&
+        request.resource.data.vacancyTitle.size() >= 3 &&
+        request.resource.data.vacancyTitle.size() <= 70 &&
+        request.resource.data.playerName is string &&
+        request.resource.data.playerName.size() >= 2 &&
+        request.resource.data.playerName.size() <= 36 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() >= 5 &&
+        request.resource.data.message.size() <= 500 &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        exists(/databases/$(database)/documents/market_vacancies/$(request.resource.data.vacancyId)) &&
+        get(/databases/$(database)/documents/market_vacancies/$(request.resource.data.vacancyId)).data.ownerUid == request.auth.uid &&
+        get(/databases/$(database)/documents/market_vacancies/$(request.resource.data.vacancyId)).data.status == 'open' &&
+        get(/databases/$(database)/documents/market_vacancies/$(request.resource.data.vacancyId)).data.expiresAt > request.time &&
+        exists(/databases/$(database)/documents/market_profiles/$(request.resource.data.recipientUid)) &&
+        get(/databases/$(database)/documents/market_profiles/$(request.resource.data.recipientUid)).data.status == 'published' &&
+        get(/databases/$(database)/documents/market_profiles/$(request.resource.data.recipientUid)).data.nickname == request.resource.data.playerName &&
+        profileHasNoSharedMarketContact(request.resource.data.recipientUid) &&
+        existsAfter(/databases/$(database)/documents/market_contact_request_details/$(requestId)) &&
+        getAfter(/databases/$(database)/documents/market_contact_request_details/$(requestId)).data.senderContactUrl is string;
+      allow update: if isSignedIn() &&
+        resource.data.recipientUid == request.auth.uid &&
+        resource.data.status == 'pending' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        request.resource.data.status in ['accepted', 'declined'] &&
+        request.resource.data.updatedAt == request.time &&
+        (request.resource.data.status == 'declined' ||
+          (existsAfter(/databases/$(database)/documents/market_contact_request_details/$(requestId)) &&
+           getAfter(/databases/$(database)/documents/market_contact_request_details/$(requestId)).data.recipientContactUrl is string &&
+           validMarketContactUrl(getAfter(/databases/$(database)/documents/market_contact_request_details/$(requestId)).data.recipientContactUrl)));
+      allow delete: if false;
+    }
+
+    // Os contatos compartilhados são isolados do pedido e liberados só após aceite.
+    match /market_contact_request_details/{requestId} {
+      allow get: if isSignedIn() &&
+        exists(/databases/$(database)/documents/market_contact_requests/$(requestId)) &&
+        get(/databases/$(database)/documents/market_contact_requests/$(requestId)).data.status == 'accepted' &&
+        (get(/databases/$(database)/documents/market_contact_requests/$(requestId)).data.senderUid == request.auth.uid ||
+         get(/databases/$(database)/documents/market_contact_requests/$(requestId)).data.recipientUid == request.auth.uid);
+      allow list: if false;
+      allow create: if isSignedIn() &&
+        request.resource.data.keys().hasAll(['senderContactUrl', 'senderContactLabel']) &&
+        request.resource.data.keys().hasOnly(['senderContactUrl', 'senderContactLabel']) &&
+        validMarketContactUrl(request.resource.data.senderContactUrl) &&
+        request.resource.data.senderContactLabel is string &&
+        request.resource.data.senderContactLabel.size() <= 30 &&
+        existsAfter(/databases/$(database)/documents/market_contact_requests/$(requestId)) &&
+        getAfter(/databases/$(database)/documents/market_contact_requests/$(requestId)).data.senderUid == request.auth.uid &&
+        getAfter(/databases/$(database)/documents/market_contact_requests/$(requestId)).data.status == 'pending';
+      allow update: if isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'recipientContactUrl', 'recipientContactLabel'
+        ]) &&
+        resource.data.senderContactUrl == request.resource.data.senderContactUrl &&
+        resource.data.senderContactLabel == request.resource.data.senderContactLabel &&
+        !resource.data.keys().hasAny(['recipientContactUrl', 'recipientContactLabel']) &&
+        request.resource.data.keys().hasAll([
+          'senderContactUrl', 'senderContactLabel', 'recipientContactUrl', 'recipientContactLabel'
+        ]) &&
+        validMarketContactUrl(request.resource.data.recipientContactUrl) &&
+        request.resource.data.recipientContactLabel is string &&
+        request.resource.data.recipientContactLabel.size() <= 30 &&
+        existsAfter(/databases/$(database)/documents/market_contact_requests/$(requestId)) &&
+        getAfter(/databases/$(database)/documents/market_contact_requests/$(requestId)).data.recipientUid == request.auth.uid &&
+        getAfter(/databases/$(database)/documents/market_contact_requests/$(requestId)).data.status == 'accepted';
+      allow delete: if false;
     }
 
     // Favoritos privados, particionados pelo proprietário.

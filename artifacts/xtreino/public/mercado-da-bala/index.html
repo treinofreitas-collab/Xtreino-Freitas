@@ -56,6 +56,7 @@
         <button class="mb-tab" type="button" data-tab="vacancies">Encontrar equipes</button>
         <button class="mb-tab" type="button" data-tab="my-space">Meu espaço</button>
         <button class="mb-tab" type="button" data-tab="applications">Candidaturas</button>
+        <button class="mb-tab" type="button" data-tab="contact-requests">Interesses</button>
         <button class="mb-tab" type="button" data-tab="favorites">Favoritos</button>
         <button class="mb-tab mb-hidden" type="button" data-tab="moderation" id="moderationTab">Moderação</button>
       </nav>
@@ -101,6 +102,12 @@
         <div class="mb-panel-head"><div><h2>Candidaturas</h2><p>Seu pipeline é privado. Só você e o responsável autorizado veem essas informações.</p></div></div>
         <div class="mb-toolbar"><div class="mb-segment" id="applicationMode"><button type="button" class="active" data-mode="received">Recebidas</button><button type="button" data-mode="sent">Enviadas</button></div><span id="applicationCount" class="mb-filter-count"></span></div>
         <div id="applicationsList"><div class="mb-state"><h3>Carregando candidaturas</h3></div></div>
+      </section>
+
+      <section class="mb-panel" id="panel-contact-requests">
+        <div class="mb-panel-head"><div><h2>Interesses e pedidos de contato</h2><p>Pedidos privados. Seus links só são compartilhados quando você aceita.</p></div></div>
+        <div class="mb-toolbar"><div class="mb-segment" id="contactRequestMode"><button type="button" class="active" data-contact-mode="received">Recebidos</button><button type="button" data-contact-mode="sent">Enviados</button></div><span id="contactRequestCount" class="mb-filter-count"></span></div>
+        <div id="contactRequestsList"><div class="mb-state"><h3>Carregando pedidos</h3></div></div>
       </section>
 
       <section class="mb-panel" id="panel-favorites">

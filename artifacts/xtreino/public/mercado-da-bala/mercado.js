@@ -8,9 +8,15 @@ const APP_STATUS = {
   trial_scheduled: "Teste agendado", approved: "Aprovado", rejected: "Não selecionado",
   accepted: "Aprovado", not_selected: "Não selecionado", withdrawn: "Candidatura retirada"
 };
+const CONTACT_REQUEST_STATUS = {
+  pending: "Aguardando resposta",
+  accepted: "Contato compartilhado",
+  declined: "Pedido recusado"
+};
 const appState = {
   service: null, user: null, role: "", profiles: [], vacancies: [], favorites: [],
-  ownProfile: null, ownVacancies: [], applications: [], moderation: [], mode: "received",
+  ownProfile: null, ownVacancies: [], applications: [], contactRequests: [], moderation: [],
+  mode: "received", contactRequestMode: "received",
   loading: false, profileModalRequest: 0
 };
 
@@ -64,6 +70,7 @@ function setPanel(panel) {
   $$(".mb-panel").forEach(section => section.classList.toggle("active", section.id === `panel-${panel}`));
   if (panel === "my-space") loadMySpace();
   if (panel === "applications") loadApplications();
+  if (panel === "contact-requests") loadContactRequests();
   if (panel === "favorites") loadFavorites();
   if (panel === "moderation") loadModeration();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -106,6 +113,12 @@ function matchesFilters(item, filters, fields) {
     (!filters.state || text.includes(filters.state.toLowerCase())) &&
     (!filters.availability || [filters.availability, AVAILABILITY[filters.availability]].some(val => text.includes(String(val).toLowerCase()))) &&
     (!filters.level || text.includes(filters.level.toLowerCase()));
+}
+function dateLabel(value) {
+  const date = value?.toDate?.() || (value ? new Date(value) : null);
+  return date instanceof Date && Number.isFinite(date.getTime())
+    ? date.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
+    : "";
 }
 function linkList(profile) {
   const links = profile?.socialLinks ?? profile?.contactLinks ?? profile?.links ?? [];
@@ -216,19 +229,27 @@ function profileDetail(profile, { allowContactCheck = false } = {}) {
   const tournaments = first(profile, ["championships", "tournaments"], "");
   const schedule = first(profile, ["availabilitySchedule", "trainingAvailability", "schedule"], "");
   const hasContact = profile.contactAvailable === true || linkList(profile).length > 0;
-  const contactSection = hasContact || allowContactCheck
+  const contactSection = hasContact || allowContactCheck || appState.user
     ? `<section class="mb-contact-section" aria-label="Contato do jogador">
         <h4>CONTATO</h4>
-        ${appState.user
+        ${hasContact && appState.user
           ? `<button class="mb-button yellow mb-contact-button" type="button" data-action="contact-profile" data-id="${esc(uid)}" data-name="${esc(name)}">CONTATO</button>
              <p class="mb-contact-help">${hasContact ? "Acesse somente os links que este jogador escolheu compartilhar." : "Clique para verificar os links de contato compartilhados pelo jogador."}</p>`
-          : `<button class="mb-button yellow mb-contact-button" type="button" disabled aria-disabled="true">CONTATO</button>
-             <p class="mb-contact-help">Entre em uma conta cadastrada para habilitar o contato.</p>
-             <button class="mb-button secondary small" type="button" data-action="signin">Entrar na plataforma</button>`}
+          : !hasContact && appState.user && appState.user.uid !== uid
+            ? `<p class="mb-contact-help">Este jogador ainda não compartilhou um link. Envie um pedido privado; ele decide se quer compartilhar o contato.</p>
+               <button class="mb-button yellow mb-contact-button" type="button" data-action="request-contact" data-id="${esc(uid)}" data-name="${esc(name)}">TENHO INTERESSE</button>`
+            : !appState.user
+              ? `<button class="mb-button yellow mb-contact-button" type="button" disabled aria-disabled="true">CONTATO</button>
+                 <p class="mb-contact-help">${hasContact ? "Entre em uma conta cadastrada para habilitar o contato." : "Sem link compartilhado. Entre na plataforma para enviar um pedido privado."}</p>
+                 <button class="mb-button secondary small" type="button" data-action="signin">Entrar na plataforma</button>`
+              : `<p class="mb-contact-help">Este é o seu próprio currículo.</p>`}
       </section>`
     : `<section class="mb-contact-section" aria-label="Contato do jogador">
         <h4>CONTATO</h4>
         <p class="mb-contact-help">Este jogador ainda não compartilhou um link de contato.</p>
+        <button class="mb-button yellow mb-contact-button" type="button" disabled aria-disabled="true">TENHO INTERESSE</button>
+        <p class="mb-contact-help">Entre em uma conta para enviar um pedido privado.</p>
+        <button class="mb-button secondary small" type="button" data-action="signin">Entrar na plataforma</button>
       </section>`;
   return `<div class="mb-person" style="margin-bottom:18px"><div class="mb-avatar" style="width:52px;height:52px;font-size:24px">${esc(initials(name))}</div><div><h3 style="margin:0;font:800 27px var(--mb-display);text-transform:uppercase">${esc(name)}</h3><p style="margin:3px 0;color:#687970;font-size:12px">${esc([profileRole(profile), place].filter(Boolean).join(" · "))}</p></div></div>
   <div class="mb-detail-grid">
@@ -244,9 +265,18 @@ function profileDetail(profile, { allowContactCheck = false } = {}) {
   ${contactSection}
   <p class="mb-help" style="margin-top:12px">Contato pessoal não é exibido. Os links ficam disponíveis somente para usuários conectados.</p>`;
 }
-function viewProfile(id) {
-  const profile = appState.profiles.find(item => recordId(item) === id) || appState.favorites.find(item => recordId(item) === id);
+async function viewProfile(id) {
+  let profile = appState.profiles.find(item => recordId(item) === id) || appState.favorites.find(item => recordId(item) === id);
   if (!profile) return toast("Este currículo não está mais disponível. Atualize a lista.");
+  if (appState.user && profile.contactAvailable !== true && linkList(profile).length === 0) {
+    try {
+      const links = await appState.service.getProfileContactLinks(appState.user.uid, id);
+      profile = { ...profile, contactAvailable: links.length > 0 };
+    } catch (error) {
+      toast(friendlyError(error));
+      return;
+    }
+  }
   openModal(profileName(profile), "Currículo público", profileDetail(profile), [
     { label: "Denunciar perfil", action: "report", class: "secondary", data: `data-kind="profile" data-id="${esc(id)}"` },
     { label: "Fechar", action: "close-modal", class: "secondary" }
@@ -417,6 +447,62 @@ async function loadApplications() {
     root.innerHTML = `<div class="mb-state"><h3>Não foi possível carregar</h3><p>${esc(friendlyError(error))}</p><button class="mb-button secondary" type="button" data-action="retry">Tentar novamente</button></div>`;
   }
 }
+function contactRequestId(request) { return first(request, ["id", "requestId"], ""); }
+function renderContactRequest(request) {
+  const isReceived = appState.contactRequestMode === "received";
+  const status = first(request, ["status"], "pending");
+  const id = contactRequestId(request);
+  const team = first(request, ["teamName"], "Equipe");
+  const vacancy = first(request, ["vacancyTitle"], "Interesse no jogador");
+  const message = first(request, ["message"], "");
+  const created = dateLabel(request.createdAt);
+  const actions = status === "pending" && isReceived
+    ? `<button class="mb-button yellow small" type="button" data-action="accept-contact-request" data-id="${esc(id)}">Aceitar e compartilhar contato</button><button class="mb-button secondary small" type="button" data-action="decline-contact-request" data-id="${esc(id)}">Recusar</button>`
+    : status === "accepted"
+      ? `<button class="mb-button small" type="button" data-action="view-request-contact" data-id="${esc(id)}">${isReceived ? "Ver contato do time" : "Ver contato do jogador"}</button>`
+      : "";
+  const statusHelp = status === "pending"
+    ? isReceived
+      ? "Ao aceitar, o link do time e o contato que você escolher compartilhar ficarão visíveis para os dois."
+      : "Aguardando o jogador. Seu link só será liberado se ele aceitar."
+    : status === "declined" && !isReceived
+      ? "O jogador recusou o pedido. Nenhum contato foi compartilhado."
+      : "";
+  return `<article class="mb-applicant mb-contact-request-card">
+    <div><div class="mb-inline"><h3>${esc(team)}</h3><span class="mb-status-pill ${status === "declined" ? "rejected" : esc(status)}">${esc(CONTACT_REQUEST_STATUS[status] || status)}</span></div>
+      <p><strong>${esc(vacancy)}</strong>${created ? ` · ${esc(created)}` : ""}</p>
+      <p>${esc(message || "A equipe demonstrou interesse no seu currículo.")}</p>
+      ${statusHelp ? `<p class="mb-help">${esc(statusHelp)}</p>` : ""}
+    </div>
+    <div class="mb-applicant-actions">${actions}</div>
+  </article>`;
+}
+async function loadContactRequests() {
+  const root = $("#contactRequestsList");
+  if (!appState.user) {
+    $("#contactRequestCount").textContent = "";
+    root.innerHTML = emptyState("Entre para ver seus interesses", "Pedidos de contato são privados e ficam vinculados à sua conta.", '<button class="mb-button" type="button" data-action="signin">Entrar na plataforma</button>');
+    return;
+  }
+  root.innerHTML = '<div class="mb-skeleton"></div>';
+  try {
+    const result = await appState.service.listContactRequests(appState.user.uid, appState.contactRequestMode);
+    appState.contactRequests = normalizeResults(result, ["requests", "items", "results"]);
+    const count = appState.contactRequests.length;
+    $("#contactRequestCount").textContent = `${count} ${count === 1 ? "pedido" : "pedidos"} · até 50 mais recentes`;
+    root.innerHTML = count
+      ? appState.contactRequests.map(renderContactRequest).join("")
+      : emptyState(
+          appState.contactRequestMode === "received" ? "Nenhum interesse recebido" : "Nenhum pedido enviado",
+          appState.contactRequestMode === "received"
+            ? "Quando uma equipe sem link de contato compartilhado demonstrar interesse, o pedido aparecerá aqui."
+            : "Pedidos enviados para jogadores sem link de contato compartilhado aparecerão aqui."
+        );
+  } catch (error) {
+    root.innerHTML = `<div class="mb-state"><h3>Não foi possível carregar os interesses</h3><p>${esc(friendlyError(error))}</p><button class="mb-button secondary" type="button" data-action="retry-contact-requests">Tentar novamente</button></div>`;
+    $("#contactRequestCount").textContent = "Falha ao carregar";
+  }
+}
 async function viewApplicantProfile(applicationId, profileUid, name = "Candidato") {
   const application = appState.applications.find(item => appId(item) === applicationId);
   if (!appState.user || appState.mode !== "received" || !application ||
@@ -430,6 +516,10 @@ async function viewApplicantProfile(applicationId, profileUid, name = "Candidato
   const request = appState.profileModalRequest;
   try {
     const profile = await appState.service.getApplicantProfile(appState.user.uid, applicationId, profileUid);
+    if (profile.contactAvailable !== true) {
+      const links = await appState.service.getProfileContactLinks(appState.user.uid, profileUid);
+      profile.contactAvailable = links.length > 0;
+    }
     if (request !== appState.profileModalRequest || !$("#modal").classList.contains("open")) return;
     $("#modalBody").innerHTML = profileDetail(profile, { allowContactCheck: true });
   } catch (error) {
@@ -465,19 +555,24 @@ async function openContactLinks(profileUid, name = "jogador") {
   }
   try {
     const result = await appState.service.getProfileContactLinks(appState.user.uid, profileUid);
-    const links = normalizeResults(result, ["links", "items", "results"])
-      .map(link => {
-        const href = safeUrl(first(link, ["url", "href", "link"], ""));
-        return href ? `<a class="mb-button yellow mb-contact-open-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(first(link, ["label", "platform", "name"], "Abrir contato"))}</a>` : "";
-      })
-      .filter(Boolean);
-    if (!links.length) return toast("Este jogador não tem links de contato disponíveis.");
-    openModal(`Contato · ${name}`, "Links escolhidos e compartilhados pelo próprio jogador.", `<div class="mb-contact-options">${links.join("")}</div>`, [
-      { label: "Fechar", action: "close-modal", class: "secondary" }
-    ]);
+    showContactLinks(normalizeResults(result, ["links", "items", "results"]), name);
   } catch (error) {
     toast(friendlyError(error));
   }
+}
+function showContactLinks(links, name = "jogador") {
+  const buttons = links.map(link => {
+    const href = safeUrl(first(link, ["url", "href", "link"], ""));
+    return href ? `<a class="mb-button yellow mb-contact-open-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(first(link, ["label", "platform", "name"], "Abrir contato"))}</a>` : "";
+  }).filter(Boolean);
+  if (!buttons.length) {
+    toast("Este jogador não tem links de contato disponíveis.");
+    return false;
+  }
+  openModal(`Contato · ${name}`, "Links escolhidos e compartilhados pelo próprio jogador.", `<div class="mb-contact-options">${buttons.join("")}</div>`, [
+    { label: "Fechar", action: "close-modal", class: "secondary" }
+  ]);
+  return true;
 }
 async function loadFavorites() {
   const root = $("#favoritesList");
@@ -528,6 +623,115 @@ async function sendApplication(id) {
     closeModal();
     toast("Candidatura enviada. Você poderá acompanhar a resposta em Candidaturas.");
     if ($("#panel-applications").classList.contains("active")) loadApplications();
+  } catch (error) { toast(friendlyError(error)); }
+}
+async function startContactRequest(profileUid, name = "jogador") {
+  if (!requireUser()) return;
+  if (profileUid === appState.user.uid) return toast("Esse é o seu próprio currículo.");
+  const profile = [...appState.profiles, ...appState.favorites]
+    .find(item => recordId(item) === profileUid);
+  if (profile?.contactAvailable === true) {
+    return toast("Este jogador já compartilhou um link. Use o botão CONTATO.");
+  }
+
+  try {
+    const result = await appState.service.listMyVacancies(appState.user.uid);
+    const vacancies = normalizeResults(result, ["vacancies", "items", "results"])
+      .filter(vacancy => {
+        if (first(vacancy, ["status"], "") !== "open") return false;
+        if (!vacancy.expiresAt) return true;
+        const expiresAt = vacancy.expiresAt?.toDate?.() || new Date(vacancy.expiresAt);
+        return Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() > Date.now();
+      });
+    if (!vacancies.length) {
+      openModal("Publique uma vaga primeiro", "O pedido de interesse identifica a equipe por uma vaga aberta da sua conta.", "<p class=\"mb-help\">Crie ou reabra uma vaga da equipe antes de enviar o pedido ao jogador.</p>", [
+        { label: "Ir para Meu espaço", action: "go-my-space" },
+        { label: "Fechar", action: "close-modal", class: "secondary" }
+      ]);
+      return;
+    }
+
+    const options = vacancies.map(vacancy => [
+      recordId(vacancy),
+      `${first(vacancy, ["teamName"], "Equipe")} — ${first(vacancy, ["title"], "Vaga")}`
+    ]);
+    const form = `<form id="contactRequestForm" class="mb-form">
+      ${field("vacancyId", "Vaga da sua equipe", options[0][0], "select", { required: true, options })}
+      ${field("message", "Mensagem para o jogador", "", "textarea", { full: true, required: true, maxlength: 500, placeholder: "Conte por que sua equipe tem interesse neste jogador." })}
+      ${field("contactUrl", "Link de contato da equipe", "", "url", { full: true, required: true, maxlength: 240, placeholder: "https://wa.me/... ou link de convite" })}
+      <p class="mb-help mb-field full">O jogador receberá o pedido em Interesses. Seu link de contato só ficará visível se ele aceitar.</p>
+    </form>`;
+    openModal(`Tenho interesse · ${name}`, "Pedido privado para um currículo sem contato compartilhado.", form, [
+      { label: "Cancelar", action: "close-modal", class: "secondary" },
+      { label: "Enviar pedido", action: "send-contact-request", data: `data-id="${esc(profileUid)}"` }
+    ]);
+  } catch (error) {
+    toast(friendlyError(error));
+  }
+}
+async function sendContactRequest(profileUid) {
+  const form = $("#contactRequestForm");
+  if (!form?.reportValidity()) return;
+  const contactUrl = safeUrl(form.elements.contactUrl.value.trim());
+  if (!contactUrl) return toast("Informe um link de contato válido.");
+  try {
+    await appState.service.createContactRequest(
+      appState.user.uid,
+      profileUid,
+      form.elements.vacancyId.value,
+      form.elements.message.value.trim(),
+      contactUrl
+    );
+    closeModal();
+    toast("Pedido enviado. O link da equipe só será compartilhado após o aceite.");
+    if ($("#panel-contact-requests").classList.contains("active")) {
+      appState.contactRequestMode = "sent";
+      $$("#contactRequestMode button").forEach(button =>
+        button.classList.toggle("active", button.dataset.contactMode === "sent"));
+      await loadContactRequests();
+    }
+  } catch (error) {
+    if (/já compartilhou um link/.test(error?.message || "")) {
+      await openContactLinks(profileUid);
+      return;
+    }
+    toast(friendlyError(error));
+  }
+}
+function acceptContactRequest(id) {
+  openModal("Aceitar e compartilhar contato", "O link da equipe e o seu ficarão visíveis somente para vocês dois.", `<form id="acceptContactRequestForm">${field("contactUrl", "Link que você quer compartilhar", "", "url", { full: true, required: true, maxlength: 240, placeholder: "https://wa.me/... ou seu perfil social" })}<p class="mb-help">Esse link será privado e liberado apenas para a equipe deste pedido.</p></form>`, [
+    { label: "Cancelar", action: "close-modal", class: "secondary" },
+    { label: "Aceitar e compartilhar", action: "confirm-contact-request", data: `data-id="${esc(id)}"` }
+  ]);
+}
+async function confirmContactRequest(id) {
+  const form = $("#acceptContactRequestForm");
+  if (!form?.reportValidity()) return;
+  const contactUrl = safeUrl(form.elements.contactUrl.value.trim());
+  if (!contactUrl) return toast("Informe um link de contato válido.");
+  try {
+    await appState.service.acceptContactRequest(appState.user.uid, id, contactUrl);
+    closeModal();
+    toast("Pedido aceito. Os contatos foram compartilhados somente entre vocês.");
+    if ($("#panel-contact-requests").classList.contains("active")) await loadContactRequests();
+  } catch (error) { toast(friendlyError(error)); }
+}
+async function declineContactRequest(id) {
+  if (!window.confirm("Recusar este pedido? Nenhum contato será compartilhado.")) return;
+  try {
+    await appState.service.declineContactRequest(appState.user.uid, id);
+    toast("Pedido recusado. Nenhum contato foi compartilhado.");
+    if ($("#panel-contact-requests").classList.contains("active")) await loadContactRequests();
+  } catch (error) { toast(friendlyError(error)); }
+}
+async function openRequestContact(id) {
+  try {
+    const contact = await appState.service.getSharedContactForRequest(appState.user.uid, id);
+    const href = safeUrl(contact.url);
+    if (!href) return toast("O contato compartilhado não está disponível.");
+    openModal(contact.label || "Contato compartilhado", "Este link foi liberado após o aceite do pedido.", `<div class="mb-contact-options"><a class="mb-button yellow mb-contact-open-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">Abrir contato</a></div>`, [
+      { label: "Fechar", action: "close-modal", class: "secondary" }
+    ]);
   } catch (error) { toast(friendlyError(error)); }
 }
 async function reportContent(kind, id) {
@@ -662,6 +866,7 @@ async function onUserChanged(user) {
   appState.ownProfile = null;
   appState.ownVacancies = [];
   appState.favorites = [];
+  appState.contactRequests = [];
   $("#sessionLabel").textContent = user ? (user.displayName || "Sessão conectada") : "Navegação pública";
   $("#signInButton").textContent = user ? "Conta conectada" : "Entrar para anunciar";
   $("#signInButton").disabled = !!user;
@@ -689,6 +894,14 @@ document.addEventListener("click", async event => {
     loadApplications();
     return;
   }
+  const contactMode = event.target.closest("[data-contact-mode]");
+  if (contactMode) {
+    appState.contactRequestMode = contactMode.dataset.contactMode;
+    $$("#contactRequestMode button").forEach(button =>
+      button.classList.toggle("active", button === contactMode));
+    loadContactRequests();
+    return;
+  }
   const action = event.target.closest("[data-action]");
   if (!action) {
     if (event.target === $("#modal")) closeModal();
@@ -707,7 +920,15 @@ document.addEventListener("click", async event => {
     case "vacancy-status": await setVacancyStatus(id, status); break;
     case "set-profile-status": await setProfileStatus(status); break;
     case "delete-profile": await deleteProfile(); break;
-    case "view-profile": viewProfile(id); break;
+    case "view-profile": await viewProfile(id); break;
+    case "request-contact": await startContactRequest(id, action.dataset.name || "jogador"); break;
+    case "send-contact-request": await sendContactRequest(id); break;
+    case "accept-contact-request": acceptContactRequest(id); break;
+    case "confirm-contact-request": await confirmContactRequest(id); break;
+    case "decline-contact-request": await declineContactRequest(id); break;
+    case "view-request-contact": await openRequestContact(id); break;
+    case "retry-contact-requests": await loadContactRequests(); break;
+    case "go-my-space": closeModal(); setPanel("my-space"); break;
     case "contact-profile": {
       const profile = appState.profiles.find(item => recordId(item) === id) || appState.favorites.find(item => recordId(item) === id);
       await openContactLinks(id, action.dataset.name || (profile ? profileName(profile) : "jogador"));

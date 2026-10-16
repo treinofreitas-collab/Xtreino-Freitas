@@ -158,6 +158,8 @@ a { color: inherit; }
 .mb-applicant-actions { display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap; }
 .mb-applicant { display:grid;grid-template-columns:1fr auto;gap:14px;padding:15px;border:1px solid var(--mb-line);background:var(--mb-card);margin-bottom:9px; }
 .mb-applicant.is-withdrawn { background:#f6f7f5;border-style:dashed; }
+.mb-contact-request-card { border-left:3px solid var(--mb-teal); }
+.mb-contact-request-card .mb-help { display:block;margin-top:8px; }
 .mb-applicant h3 { margin:0;font:700 21px var(--mb-display);text-transform:uppercase; }
 .mb-applicant p { margin:6px 0 0;color:#60716a;font-size:12px;white-space:pre-line; }
 .mb-inline { display:flex;gap:7px;align-items:center;flex-wrap:wrap; }

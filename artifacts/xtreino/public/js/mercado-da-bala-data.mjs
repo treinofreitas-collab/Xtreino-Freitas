@@ -15,6 +15,7 @@ const VACANCY_FIELDS = Object.freeze([
 const MAX_LISTING_AGE_MS = 30_000;
 const MAX_PUBLIC_RESULTS = 100;
 const MAX_FAVORITES = 50;
+const MAX_CONTACT_REQUESTS = 50;
 
 function plainText(value, maxLength) {
   return String(value ?? "")
@@ -40,6 +41,13 @@ export function isSafeMarketUrl(value) {
   } catch {
     return false;
   }
+}
+
+function profileHasSharedContact(profile = {}) {
+  return profile.contactAvailable === true ||
+    (Array.isArray(profile.socialLinks) && profile.socialLinks.some(link =>
+      isSafeMarketUrl(typeof link === "string" ? link : link?.url)
+    ));
 }
 
 function boundedText(value, maxLength) {
@@ -435,6 +443,135 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
         sdk.limit(MAX_PUBLIC_RESULTS)
       ));
       return snapshotData(results).sort(newestFirst);
+    },
+
+    async createContactRequest(uid, profileUid, vacancyId, message, contactUrl) {
+      requireCurrentUser(auth, uid);
+      const playerId = safeTargetId(profileUid);
+      const vacancyKey = safeTargetId(vacancyId);
+      if (playerId === uid) throw new Error("Você não pode enviar interesse para o próprio currículo.");
+
+      const safeMessage = boundedText(message, 500);
+      if (safeMessage.length < 5) throw new Error("Escreva uma mensagem curta para apresentar o interesse da equipe.");
+      const safeContactUrl = plainText(contactUrl, 240);
+      if (!isSafeMarketUrl(safeContactUrl)) throw new Error("Informe um link de contato válido começando com http:// ou https://.");
+
+      const sdk = await getFirestoreSdk();
+      const [vacancySnapshot, profileSnapshot, contactSnapshot] = await Promise.all([
+        sdk.getDoc(sdk.doc(db, "market_vacancies", vacancyKey)),
+        sdk.getDoc(sdk.doc(db, "market_profiles", playerId)),
+        sdk.getDoc(sdk.doc(db, "market_contact_links", playerId))
+      ]);
+      if (!vacancySnapshot.exists()) throw new Error("A vaga da equipe não está mais disponível.");
+      const vacancy = vacancySnapshot.data();
+      if (vacancy.ownerUid !== uid || vacancy.status !== "open" ||
+          (vacancy.expiresAt && millis(vacancy.expiresAt) <= Date.now())) {
+        throw new Error("Escolha uma vaga aberta publicada pela sua conta.");
+      }
+      if (!profileSnapshot.exists() || profileSnapshot.data().status !== "published") {
+        throw new Error("Este currículo não está mais publicado.");
+      }
+      const savedContactLinks = contactSnapshot.exists() && Array.isArray(contactSnapshot.data().links)
+        ? contactSnapshot.data().links
+        : [];
+      if (profileHasSharedContact(profileSnapshot.data()) || savedContactLinks.length > 0) {
+        throw new Error("Este jogador já compartilhou um link. Use o botão CONTATO no currículo.");
+      }
+
+      const requestId = `${playerId}__${uid}`;
+      const requestRef = sdk.doc(db, "market_contact_requests", requestId);
+      const existingRequest = await sdk.getDoc(requestRef);
+      if (existingRequest.exists()) throw new Error("Você já enviou um pedido de contato para este jogador.");
+
+      const batch = sdk.writeBatch(db);
+      batch.set(requestRef, {
+        senderUid: uid,
+        recipientUid: playerId,
+        vacancyId: vacancyKey,
+        teamName: boundedText(vacancy.teamName, 60),
+        vacancyTitle: boundedText(vacancy.title, 70),
+        playerName: boundedText(profileSnapshot.data().nickname, 36),
+        message: safeMessage,
+        status: "pending",
+        createdAt: sdk.serverTimestamp(),
+        updatedAt: sdk.serverTimestamp()
+      });
+      batch.set(sdk.doc(db, "market_contact_request_details", requestId), {
+        senderContactUrl: safeContactUrl,
+        senderContactLabel: "Contato do time"
+      });
+      await batch.commit();
+      return requestId;
+    },
+
+    async listContactRequests(uid, mode) {
+      requireCurrentUser(auth, uid);
+      if (!["received", "sent"].includes(mode)) throw new Error("Tipo de interesse inválido.");
+      const sdk = await getFirestoreSdk();
+      const field = mode === "received" ? "recipientUid" : "senderUid";
+      const results = await sdk.getDocs(sdk.query(
+        sdk.collection(db, "market_contact_requests"),
+        sdk.where(field, "==", uid),
+        sdk.orderBy("createdAt", "desc"),
+        sdk.limit(MAX_CONTACT_REQUESTS)
+      ));
+      return snapshotData(results);
+    },
+
+    async acceptContactRequest(uid, requestId, contactUrl) {
+      requireCurrentUser(auth, uid);
+      const id = safeTargetId(requestId);
+      const safeContactUrl = plainText(contactUrl, 240);
+      if (!isSafeMarketUrl(safeContactUrl)) throw new Error("Informe um link de contato válido começando com http:// ou https://.");
+      const sdk = await getFirestoreSdk();
+      const requestRef = sdk.doc(db, "market_contact_requests", id);
+      const requestSnapshot = await sdk.getDoc(requestRef);
+      if (!requestSnapshot.exists() || requestSnapshot.data().recipientUid !== uid ||
+          requestSnapshot.data().status !== "pending") {
+        throw new Error("Este pedido não está pendente para sua conta.");
+      }
+
+      const batch = sdk.writeBatch(db);
+      batch.update(requestRef, { status: "accepted", updatedAt: sdk.serverTimestamp() });
+      batch.update(sdk.doc(db, "market_contact_request_details", id), {
+        recipientContactUrl: safeContactUrl,
+        recipientContactLabel: "Contato do jogador"
+      });
+      await batch.commit();
+    },
+
+    async declineContactRequest(uid, requestId) {
+      requireCurrentUser(auth, uid);
+      const id = safeTargetId(requestId);
+      const sdk = await getFirestoreSdk();
+      const ref = sdk.doc(db, "market_contact_requests", id);
+      const snapshot = await sdk.getDoc(ref);
+      if (!snapshot.exists() || snapshot.data().recipientUid !== uid ||
+          snapshot.data().status !== "pending") {
+        throw new Error("Este pedido não está pendente para sua conta.");
+      }
+      await sdk.updateDoc(ref, { status: "declined", updatedAt: sdk.serverTimestamp() });
+    },
+
+    async getSharedContactForRequest(uid, requestId) {
+      requireCurrentUser(auth, uid);
+      const id = safeTargetId(requestId);
+      const sdk = await getFirestoreSdk();
+      const requestSnapshot = await sdk.getDoc(sdk.doc(db, "market_contact_requests", id));
+      if (!requestSnapshot.exists()) throw new Error("Pedido de contato não encontrado.");
+      const request = requestSnapshot.data();
+      if (request.status !== "accepted" || ![request.senderUid, request.recipientUid].includes(uid)) {
+        throw new Error("O contato só fica disponível depois que o jogador aceita o pedido.");
+      }
+
+      const detailsSnapshot = await sdk.getDoc(sdk.doc(db, "market_contact_request_details", id));
+      if (!detailsSnapshot.exists()) throw new Error("Os contatos compartilhados não estão disponíveis.");
+      const details = detailsSnapshot.data();
+      const contact = uid === request.senderUid
+        ? { label: details.recipientContactLabel, url: details.recipientContactUrl }
+        : { label: details.senderContactLabel, url: details.senderContactUrl };
+      if (!isSafeMarketUrl(contact.url)) throw new Error("O link compartilhado não é válido.");
+      return contact;
     },
 
     async getApplicantProfile(uid, applicationId, profileUid) {

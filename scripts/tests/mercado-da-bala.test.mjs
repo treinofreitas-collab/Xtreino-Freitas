@@ -13,8 +13,16 @@ const firestoreRules = readFileSync(
   new URL("../../artifacts/xtreino/public/config/firestore.rules", import.meta.url),
   "utf8"
 );
+const firestoreIndexes = JSON.parse(readFileSync(
+  new URL("../../firestore.indexes.json", import.meta.url),
+  "utf8"
+));
 const marketUi = readFileSync(
   new URL("../../artifacts/xtreino/public/mercado-da-bala/mercado.js", import.meta.url),
+  "utf8"
+);
+const marketHtml = readFileSync(
+  new URL("../../artifacts/xtreino/public/mercado-da-bala/index.html", import.meta.url),
   "utf8"
 );
 const adminHtml = readFileSync(
@@ -343,6 +351,246 @@ test("candidato pode retirar somente a própria candidatura e a retirada preserv
   await assert.rejects(
     service.withdrawApplication("player-1", "vacancy-1__player-1"),
     /Entre na sua conta/
+  );
+});
+
+test("pedido de contato só é criado para perfil sem link e mantém o link privado até o aceite", async () => {
+  const documents = new Map([
+    ["market_vacancies/vacancy-1", {
+      ownerUid: "team-1",
+      teamName: "Freitas",
+      title: "Procurando fragger",
+      status: "open",
+      expiresAt: new Date(Date.now() + 60_000)
+    }],
+    ["market_vacancies/vacancy-2", {
+      ownerUid: "team-2",
+      teamName: "Outra equipe",
+      title: "Procurando suporte",
+      status: "open",
+      expiresAt: new Date(Date.now() + 60_000)
+    }],
+    ["market_profiles/player-1", {
+      uid: "player-1",
+      nickname: "Falcão",
+      status: "published",
+      contactAvailable: false
+    }],
+    ["market_profiles/player-with-link", {
+      uid: "player-with-link",
+      nickname: "Atleta",
+      status: "published",
+      contactAvailable: true
+    }],
+    ["market_profiles/player-legacy-link", {
+      uid: "player-legacy-link",
+      nickname: "Legado",
+      status: "published",
+      contactAvailable: false,
+      socialLinks: [{ url: "https://instagram.com/legacy" }]
+    }],
+    ["market_profiles/player-private-link", {
+      uid: "player-private-link",
+      nickname: "Contato privado",
+      status: "published",
+      contactAvailable: false
+    }],
+    ["market_contact_links/player-private-link", {
+      ownerUid: "player-private-link",
+      links: [{ label: "Contato", url: "https://instagram.com/private" }]
+    }]
+  ]);
+  const key = ref => `${ref.collection}/${ref.id}`;
+  const auth = { currentUser: { uid: "team-1" } };
+  const sdk = {
+    doc: (_db, collection, id) => ({ collection, id }),
+    getDoc: async ref => ({
+      exists: () => documents.has(key(ref)),
+      data: () => documents.get(key(ref))
+    }),
+    writeBatch: () => {
+      const operations = [];
+      return {
+        set: (ref, data) => operations.push(() => documents.set(key(ref), data)),
+        commit: async () => operations.forEach(operation => operation())
+      };
+    },
+    serverTimestamp: () => "server-time"
+  };
+  const service = createMercadoDaBalaService({ auth, db: {}, sdk });
+
+  const id = await service.createContactRequest(
+    "team-1", "player-1", "vacancy-1", "Gostaríamos de conversar com você.", "https://wa.me/5511999999999"
+  );
+  assert.equal(id, "player-1__team-1");
+  assert.deepEqual(documents.get(`market_contact_requests/${id}`), {
+    senderUid: "team-1",
+    recipientUid: "player-1",
+    vacancyId: "vacancy-1",
+    teamName: "Freitas",
+    vacancyTitle: "Procurando fragger",
+    playerName: "Falcão",
+    message: "Gostaríamos de conversar com você.",
+    status: "pending",
+    createdAt: "server-time",
+    updatedAt: "server-time"
+  });
+  assert.equal("senderContactUrl" in documents.get(`market_contact_requests/${id}`), false);
+  assert.equal(documents.get(`market_contact_request_details/${id}`).senderContactUrl, "https://wa.me/5511999999999");
+  await assert.rejects(
+    service.createContactRequest("team-1", "player-1", "vacancy-1", "Outra mensagem", "https://wa.me/5511999999999"),
+    /já enviou um pedido/
+  );
+
+  auth.currentUser.uid = "team-2";
+  await assert.rejects(
+    service.createContactRequest("team-2", "player-with-link", "vacancy-2", "Temos interesse", "https://wa.me/5511888888888"),
+    /já compartilhou um link/
+  );
+  await assert.rejects(
+    service.createContactRequest("team-2", "player-legacy-link", "vacancy-2", "Temos interesse", "https://wa.me/5511888888888"),
+    /já compartilhou um link/
+  );
+  await assert.rejects(
+    service.createContactRequest("team-2", "player-private-link", "vacancy-2", "Temos interesse", "https://wa.me/5511888888888"),
+    /já compartilhou um link/
+  );
+});
+
+test("aceitar pedido libera um link de cada lado apenas para as duas contas", async () => {
+  const id = "player-1__team-1";
+  const documents = new Map([
+    [`market_contact_requests/${id}`, {
+      senderUid: "team-1",
+      recipientUid: "player-1",
+      status: "pending"
+    }],
+    [`market_contact_request_details/${id}`, {
+      senderContactUrl: "https://wa.me/5511999999999",
+      senderContactLabel: "Contato do time"
+    }]
+  ]);
+  const key = ref => `${ref.collection}/${ref.id}`;
+  const auth = { currentUser: { uid: "player-1" } };
+  const sdk = {
+    doc: (_db, collection, docId) => ({ collection, id: docId }),
+    getDoc: async ref => ({
+      exists: () => documents.has(key(ref)),
+      data: () => documents.get(key(ref))
+    }),
+    writeBatch: () => {
+      const operations = [];
+      return {
+        update: (ref, patch) => operations.push(() => documents.set(key(ref), { ...documents.get(key(ref)), ...patch })),
+        commit: async () => operations.forEach(operation => operation())
+      };
+    },
+    serverTimestamp: () => "accepted-time"
+  };
+  const service = createMercadoDaBalaService({ auth, db: {}, sdk });
+
+  auth.currentUser.uid = "team-1";
+  await assert.rejects(
+    service.acceptContactRequest("team-1", id, "https://instagram.com/team"),
+    /não está pendente para sua conta/
+  );
+  auth.currentUser.uid = "player-1";
+  await service.acceptContactRequest("player-1", id, "https://instagram.com/falcao");
+  assert.equal(documents.get(`market_contact_requests/${id}`).status, "accepted");
+  assert.equal(documents.get(`market_contact_request_details/${id}`).recipientContactUrl, "https://instagram.com/falcao");
+  assert.deepEqual(await service.getSharedContactForRequest("player-1", id), {
+    label: "Contato do time",
+    url: "https://wa.me/5511999999999"
+  });
+  auth.currentUser.uid = "team-1";
+  assert.deepEqual(await service.getSharedContactForRequest("team-1", id), {
+    label: "Contato do jogador",
+    url: "https://instagram.com/falcao"
+  });
+  auth.currentUser.uid = "intruso";
+  await assert.rejects(service.getSharedContactForRequest("intruso", id), /só fica disponível depois que o jogador aceita/);
+});
+
+test("recusar o pedido atualiza somente o status e não libera os contatos privados", async () => {
+  const id = "player-2__team-2";
+  const documents = new Map([
+    [`market_contact_requests/${id}`, {
+      senderUid: "team-2",
+      recipientUid: "player-2",
+      status: "pending"
+    }],
+    [`market_contact_request_details/${id}`, {
+      senderContactUrl: "https://wa.me/5511999999999",
+      senderContactLabel: "Contato do time"
+    }]
+  ]);
+  const key = ref => `${ref.collection}/${ref.id}`;
+  const sdk = {
+    doc: (_db, collection, docId) => ({ collection, id: docId }),
+    getDoc: async ref => ({
+      exists: () => documents.has(key(ref)),
+      data: () => documents.get(key(ref))
+    }),
+    updateDoc: async (ref, patch) => documents.set(key(ref), { ...documents.get(key(ref)), ...patch }),
+    serverTimestamp: () => "declined-time"
+  };
+  const auth = { currentUser: { uid: "player-2" } };
+  const service = createMercadoDaBalaService({
+    auth,
+    db: {},
+    sdk
+  });
+  await service.declineContactRequest("player-2", id);
+  assert.equal(documents.get(`market_contact_requests/${id}`).status, "declined");
+  assert.equal("recipientContactUrl" in documents.get(`market_contact_request_details/${id}`), false);
+  auth.currentUser.uid = "team-2";
+  await assert.rejects(service.getSharedContactForRequest("team-2", id), /só fica disponível depois que o jogador aceita/);
+});
+
+test("lista de pedidos de contato é limitada, recente primeiro e consultada por participante", async () => {
+  let queryParts;
+  const sdk = {
+    collection: (_db, name) => name,
+    where: (...args) => ({ type: "where", args }),
+    orderBy: (...args) => ({ type: "orderBy", args }),
+    limit: value => ({ type: "limit", value }),
+    query: (...parts) => { queryParts = parts; return parts; },
+    getDocs: async () => ({ docs: [{ id: "request-1", data: () => ({ status: "pending" }) }] })
+  };
+  const service = createMercadoDaBalaService({
+    auth: { currentUser: { uid: "player-1" } },
+    db: {},
+    sdk
+  });
+  const results = await service.listContactRequests("player-1", "received");
+  assert.equal(results[0].id, "request-1");
+  assert.deepEqual(queryParts[1], { type: "where", args: ["recipientUid", "==", "player-1"] });
+  assert.deepEqual(queryParts[2], { type: "orderBy", args: ["createdAt", "desc"] });
+  assert.deepEqual(queryParts[3], { type: "limit", value: 50 });
+});
+
+test("pedido de contato só aparece como alternativa quando o jogador não compartilhou link", () => {
+  assert.match(marketUi, /hasContact \|\| allowContactCheck \|\| appState\.user/);
+  assert.match(marketUi, /data-action="contact-profile"/);
+  assert.match(marketUi, /data-action="request-contact"/);
+  assert.match(marketUi, /getProfileContactLinks\(appState\.user\.uid, id\)/);
+  assert.match(marketUi, /getProfileContactLinks\(appState\.user\.uid, profileUid\)/);
+  assert.match(marketUi, /Este jogador já compartilhou um link\. Use o botão CONTATO\./);
+  assert.match(marketUi, /O link da equipe e o seu ficarão visíveis somente para vocês dois/);
+  assert.match(marketHtml, /data-tab="contact-requests"/);
+  const requestRules = firestoreRules.split("match /market_contact_requests/")[1].split("match /market_contact_request_details/")[0];
+  const detailsRules = firestoreRules.split("match /market_contact_request_details/")[1].split("match /market_favorites/")[0];
+  assert.match(requestRules, /profileHasNoSharedMarketContact/);
+  assert.match(requestRules, /request\.resource\.data\.status == 'pending'/);
+  assert.match(detailsRules, /allow list: if false;/);
+  assert.match(detailsRules, /data\.status == 'accepted'/);
+  assert.match(firestoreRules, /market_contact_links\/\$\(\s*profileId\s*\)/);
+  assert.deepEqual(
+    firestoreIndexes.indexes
+      .filter(index => index.collectionGroup === "market_contact_requests")
+      .map(index => index.fields[0].fieldPath)
+      .sort(),
+    ["recipientUid", "senderUid"]
   );
 });
 
