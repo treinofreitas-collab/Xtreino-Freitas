@@ -1,6 +1,7 @@
 const { getAdmin } = require("./firebase-admin");
 const { toCents, validateApprovedPayment } = require("./token-purchase");
 const { isDeepStrictEqual } = require("node:util");
+const CAMP_SEASON_7_START_DATE = "2026-11-15";
 
 function fail(message, statusCode = 409) {
   const error = new Error(message);
@@ -13,6 +14,25 @@ function validReference(value) {
     fail("Referência de compra inválida.", 400);
   }
   return value;
+}
+
+function normalizeEventType(value) {
+  if (typeof value !== "string") fail("Evento inválido.", 400);
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const aliases = { camp: "camp-freitas", "treino-modo-liga": "modo-liga", semanal: "semanal-freitas" };
+  return validReference(aliases[normalized] || normalized);
+}
+
+function isCampSeason7(value) {
+  const normalized = String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return normalized.includes("camp") && /\bseason\s*7\b/.test(normalized);
+}
+
+function validIsoDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
 }
 
 function siteBaseUrl() {
@@ -60,11 +80,11 @@ async function productPrice(db, order) {
 }
 
 async function eventPrice(db, registration, forcePay = false, reads = new Map()) {
-  const type = validReference(registration.eventType);
+  const type = normalizeEventType(registration.eventType);
   const hourMatch = String(registration.hour || registration.schedule || "").match(/(\d{1,2})(?:h|:|$)/);
   const hour = hourMatch ? Number(hourMatch[1]) : null;
   const date = registration.date || registration.eventDate;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) || hour == null || hour > 23) {
+  if (!validIsoDate(date) || hour == null || hour > 23) {
     fail("Data ou horário do evento inválido.", 400);
   }
   // Share only reads from this purchase, never a cross-request/stale price cache.
@@ -72,8 +92,14 @@ async function eventPrice(db, registration, forcePay = false, reads = new Map())
     if (!reads.has(key)) reads.set(key, read());
     return reads.get(key);
   };
+  const adminEventId = registration.adminEventId ? validReference(registration.adminEventId) : null;
   const [snap, overrides] = await Promise.all([
-    readOnce(`event:${type}`, async () => {
+    readOnce(adminEventId ? `event:${type}:${adminEventId}` : `event:${type}`, async () => {
+      if (adminEventId) {
+        const exactEvent = await db.collection("adminEvents").doc(adminEventId).get();
+        if (!exactEvent.exists) fail("Evento não encontrado no catálogo.", 404);
+        return exactEvent;
+      }
       const direct = await db.collection("adminEvents").doc(type).get();
       if (direct.exists) return direct;
       const found = await db.collection("adminEvents").where("eventType", "==", type).limit(1).get();
@@ -82,6 +108,16 @@ async function eventPrice(db, registration, forcePay = false, reads = new Map())
     readOnce(`overrides:${date}`, () => db.collection("schedule_overrides").where("date", "==", date).get()),
   ]);
   const config = snap?.exists ? snap.data() : null;
+  if (adminEventId && config?.eventType && normalizeEventType(config.eventType) !== type) {
+    fail("O evento selecionado não corresponde a esta reserva.", 400);
+  }
+  const isSeason7 = isCampSeason7(config?.name || registration.title);
+  if (isSeason7 && date < CAMP_SEASON_7_START_DATE) {
+    fail("As inscrições para o Camp Season 7 começam em 15/11/2026.", 400);
+  }
+  if (registration.eventLinkDateScoped === true && (!adminEventId || !isSeason7)) {
+    fail("Não foi possível validar o evento do Camp Season 7.", 400);
+  }
   const defaults = { "modo-liga": 3, "camp-freitas": 8, "camp-final": 100, "semanal-freitas": 3.5, "xtreino-tokens": 1 };
   if (!config && !(type in defaults)) fail("Evento não encontrado.", 404);
   if (config?.status && !["Aberto", "Em breve"].includes(config.status)) fail("Evento indisponível.");
@@ -228,7 +264,8 @@ async function payPurchaseWithTokens(uid, body) {
 
 function sourcePricingFields(source) {
   const fields = ["userId", "type", "productId", "productOptions", "eventType",
-    "date", "eventDate", "hour", "schedule", "couponCode", "isFreeEvent", "freeParticipationStatus"];
+    "adminEventId", "eventLinkDateScoped", "date", "eventDate", "hour", "schedule",
+    "couponCode", "isFreeEvent", "freeParticipationStatus"];
   return Object.fromEntries(fields.map(field => [field, source[field]]));
 }
 

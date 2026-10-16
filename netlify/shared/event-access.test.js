@@ -114,6 +114,75 @@ test("a random event document ID saves under its booking eventType and resolves 
   assert.equal(custom.body.link.eventType, "customdocumentbb");
 });
 
+test("Camp Season 7 access links are stored and resolved by exact date and hour", async () => {
+  const eventId = "Season7Event";
+  const registrationPaths = ["s7_15_19", "s7_15_20", "s7_16_19"];
+  const env = setup({
+    [`adminEvents/${eventId}`]: {
+      name: "CAMPEONATO SEASON 7 - INÍCIO: 15/11", eventType: "camp-freitas", status: "Aberto",
+    },
+    "event_access_links/camp-freitas__19h": {
+      eventType: "camp-freitas", schedule: "19h", label: "Camp Freitas",
+      url: "https://example.test/legacy", active: true,
+    },
+    ...Object.fromEntries([
+      ["s7_15_19", "2026-11-15", "Domingo - 19h"],
+      ["s7_15_20", "2026-11-15", "Domingo - 20h"],
+      ["s7_16_19", "2026-11-16", "Segunda - 19h"],
+    ].map(([id, date, schedule]) => [`registrations/${id}`, {
+      userId: "buyer", eventType: "camp-freitas", adminEventId: eventId,
+      eventLinkDateScoped: true, title: "CAMPEONATO SEASON 7 - INÍCIO: 15/11 - Slot 1",
+      date, schedule, status: "paid", external_reference: "event_one",
+    }])),
+    "purchase_checkouts/event_one": {
+      userId: "buyer", status: "paid", kind: "event", method: "mercadopago",
+      sourcePaths: registrationPaths.map(id => `registrations/${id}`),
+    },
+  });
+
+  const save = (date, schedule, url) => env.call({
+    action: "save", eventType: eventId, date, schedule, url, active: true,
+  }, "ceo");
+  const first = await save("2026-11-15", "19h", "https://example.test/15-19");
+  const second = await save("2026-11-15", "20h", "https://example.test/15-20");
+  const third = await save("2026-11-16", "19h", "https://example.test/16-19");
+  assert.equal(first.body.link.id, "camp-freitas__Season7Event__2026-11-15__19h");
+  assert.equal(second.body.link.id, "camp-freitas__Season7Event__2026-11-15__20h");
+  assert.equal(third.body.link.id, "camp-freitas__Season7Event__2026-11-16__19h");
+  assert.equal(first.body.link.date, "2026-11-15");
+
+  const resolved = await env.call({ action: "resolve", externalReference: "event_one" });
+  assert.deepEqual(resolved.body.access.map(row => row.url), [
+    "https://example.test/15-19", "https://example.test/15-20", "https://example.test/16-19",
+  ]);
+});
+
+test("Camp Season 7 links cannot be configured before 15/11/2026 or fall back to recurring Camp links", async () => {
+  const env = setup({
+    "adminEvents/Season7Event": {
+      name: "CAMPEONATO SEASON 7", eventType: "camp-freitas", status: "Aberto",
+    },
+    "event_access_links/camp-freitas__19h": {
+      eventType: "camp-freitas", schedule: "19h", url: "https://example.test/legacy", active: true,
+    },
+    "registrations/s7": {
+      userId: "buyer", eventType: "camp-freitas", adminEventId: "Season7Event",
+      eventLinkDateScoped: true, title: "CAMPEONATO SEASON 7 - Slot 1",
+      date: "2026-11-15", schedule: "Domingo - 19h", status: "paid", external_reference: "event_one",
+    },
+    "purchase_checkouts/event_one": {
+      userId: "buyer", status: "paid", kind: "event", method: "mercadopago",
+      sourcePaths: ["registrations/s7"],
+    },
+  });
+  const invalidSave = await env.call({
+    action: "save", eventType: "Season7Event", date: "2026-11-14", schedule: "19h",
+    url: "https://example.test/too-early", active: true,
+  }, "ceo");
+  assert.equal(invalidSave.status, 400);
+  assert.equal((await env.call({ action: "resolve", externalReference: "event_one" })).body.access[0].status, "not_configured");
+});
+
 test("create/edit is one recurring document per event/hour; deactivate and delete revoke subsequent resolves", async () => {
   const env = setup();
   const save = active => env.call({ action: "save", eventType: "modo-liga", schedule: "19:00", url: "https://example.test/new", active }, "admin");

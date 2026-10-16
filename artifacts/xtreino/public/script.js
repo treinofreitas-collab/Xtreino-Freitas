@@ -4264,6 +4264,34 @@ const scheduleConfig =
     // 'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
     // 'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
 };
+const CAMP_SEASON_7_START_DATE = '2026-11-15';
+
+function isCampSeason7Name(value) {
+    const name = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return name.includes('camp') && /\bseason\s*7\b/.test(name);
+}
+
+function getActiveScheduleConfig(eventType) {
+    const modal = document.getElementById('scheduleModal');
+    const requestedType = eventType || modal?.dataset?.eventType;
+    const adminEventId = modal?.dataset?.adminEventId;
+    const exactConfig = adminEventId ? scheduleConfig[adminEventId] : null;
+    if (exactConfig && (!requestedType || requestedType === modal?.dataset?.eventType
+        || requestedType === exactConfig.eventType || requestedType === adminEventId)) {
+        return exactConfig;
+    }
+    return scheduleConfig[requestedType] || {};
+}
+
+function getActiveEventRegistrationMetadata() {
+    const modal = document.getElementById('scheduleModal');
+    const config = getActiveScheduleConfig(modal?.dataset?.eventType);
+    if (!config.adminEventId) return {};
+    return {
+        adminEventId: config.adminEventId,
+        ...(config.dateScopedEventLinks ? { eventLinkDateScoped: true } : {}),
+    };
+}
 
 // Função para controlar a exibição da seleção de marcas Android
 function handlePlatformChange() {
@@ -4831,15 +4859,19 @@ function stopScheduleAvailabilityListener() {
     }
 }
 
-function openScheduleModal(eventType) {
+function openScheduleModal(eventType, options = {}) {
     if (!window.isLoggedIn || !window.firebaseAuth?.currentUser) {
         showToast('Faça login para se inscrever em eventos.', 3000);
         openLoginModal();
         return;
     }
-    const cfg = scheduleConfig[eventType];
+    const requestedAdminEventId = options && typeof options === 'object' ? options.adminEventId : null;
+    const inferredAdminEventId = requestedAdminEventId
+        || (scheduleConfig[eventType]?.adminEventId === eventType ? eventType : null);
+    const cfg = (inferredAdminEventId && scheduleConfig[inferredAdminEventId]) || scheduleConfig[eventType];
     const modal = document.getElementById('scheduleModal');
     if (!cfg || !modal) return;
+    if (inferredAdminEventId && cfg.eventType) eventType = cfg.eventType;
     window.__schedRenderGeneration = (window.__schedRenderGeneration || 0) + 1;
     stopScheduleAvailabilityListener();
 
@@ -4855,6 +4887,7 @@ function openScheduleModal(eventType) {
     teamCounter = 0;
 
     modal.dataset.eventType = eventType;
+    modal.dataset.adminEventId = inferredAdminEventId || '';
     window._currentScheduleEventType = eventType;
     document.getElementById('schedPrice').textContent = cfg.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     document.getElementById('schedEventType').textContent = cfg.label;
@@ -4991,7 +5024,7 @@ function openScheduleModal(eventType) {
     if (teamsSection) {
         // Ocultar apenas se for evento GRATUITO do tipo xtreino-tokens (usa modal próprio)
         // Eventos xtreino-tokens PAGOS usam este modal e precisam mostrar a seção de time
-        const _isFreeTeamEvt = (eventType === 'xtreino-tokens' || scheduleConfig[eventType]?.eventType === 'xtreino-tokens')
+        const _isFreeTeamEvt = (eventType === 'xtreino-tokens' || getActiveScheduleConfig(eventType).eventType === 'xtreino-tokens')
             && (cfg.price === 0 || cfg.isFree === true);
         teamsSection.style.display = _isFreeTeamEvt ? 'none' : 'block';
     }
@@ -5046,9 +5079,16 @@ function openScheduleModal(eventType) {
         const m = String(today.getMonth() + 1).padStart(2, '0');
         const d = String(today.getDate()).padStart(2, '0');
         const todayStr = `${y}-${m}-${d}`;
+        const activeConfig = getActiveScheduleConfig(eventType);
+        dateInput.removeAttribute('max');
+        if (activeConfig.dateScopedEventLinks) {
+            const startDate = activeConfig.startDate || CAMP_SEASON_7_START_DATE;
+            dateInput.min = startDate;
+            dateInput.value = todayStr > startDate ? todayStr : startDate;
+            updateSelectedDate();
         // Para camp-freitas, usar configurações específicas (semifinais têm prioridade)
-        if (eventType === 'camp-freitas') {
-            const cfg = scheduleConfig[eventType] || {};
+        } else if (eventType === 'camp-freitas') {
+            const cfg = activeConfig;
             // Prioridade: se há datas de semifinal, manter essas datas como opções mínimas
             const availableDates = CAMP_SEMIFINAL_DATES.filter(d => d >= todayStr);
             if (availableDates.length > 0) {
@@ -5482,6 +5522,7 @@ function getEventCapacity(eventType, hourStr, dateStr) {
     const type = String(eventType || '').toLowerCase();
     const hour = String(hourStr || '').toLowerCase().replace(/\s/g, '');
     const dateIso = dateStr || (document.getElementById('schedDate')?.value || null);
+    const activeConfig = getActiveScheduleConfig(eventType);
 
     // Modo liga / Acesso (mesmo formato de sala): 15
     if (type === 'modo-liga' || type === 'acesso') return 15;
@@ -5493,7 +5534,7 @@ function getEventCapacity(eventType, hourStr, dateStr) {
     if (type === 'semanal-freitas' && (hour === '22h' || hour.includes('22'))) return 4;
 
     // Camp Freitas SEMIFINAL: 22/11 e 23/11 às 17h - apenas 3 vagas
-    if (type === 'camp-freitas') {
+    if (type === 'camp-freitas' && !activeConfig.dateScopedEventLinks) {
         if (dateIso && CAMP_SEMIFINAL_DATES.includes(dateIso) && (hour === '17h' || hour.includes('17'))) {
             return 3; // Semifinal: apenas 3 vagas
         }
@@ -5536,7 +5577,7 @@ function getEventPrice(eventType, hourStr, dateStr) {
         }
     } catch (_) { }
     // Padrão: usar preço do config
-    const cfg = scheduleConfig[eventType] || {};
+    const cfg = getActiveScheduleConfig(eventType);
     return Number(cfg.price || 0);
 }
 
@@ -5553,6 +5594,10 @@ function isValidScheduleDate(dateStr, eventType) {
     }
 
     // Regras específicas por evento
+    const activeConfig = getActiveScheduleConfig(eventType);
+    if (activeConfig.dateScopedEventLinks) {
+        return dateStr >= (activeConfig.startDate || CAMP_SEASON_7_START_DATE);
+    }
     if (eventType === 'camp-freitas') {
         // Prioridade: manter suporte a semifinais já definidas
         const dateIso = dateStr || '';
@@ -5561,7 +5606,7 @@ function isValidScheduleDate(dateStr, eventType) {
         }
 
         // Usar configuração em scheduleConfig quando disponível (promoção regular a partir de uma data)
-        const cfg = scheduleConfig[eventType] || {};
+        const cfg = activeConfig;
         if (cfg.startDate) {
             // aceitar datas a partir do startDate e somente em weekdays permitidos
             const normalizedStart = new Date(cfg.startDate + 'T00:00:00');
@@ -5611,6 +5656,7 @@ async function renderScheduleTimes() {
         stopScheduleAvailabilityListener();
         let msg = 'Esta data não está disponível para este evento.';
         if (eventType === 'xtreino-tokens') msg = 'Agendamentos não disponíveis em datas passadas.';
+        else if (getActiveScheduleConfig(eventType).dateScopedEventLinks) msg = 'O Camp Season 7 aceita inscrições a partir de 15/11/2026.';
         else if (eventType === 'camp-freitas') msg = 'Camp Freitas (Semifinal) disponível somente em 22/11 e 23/11 às 17h.';
         else if (eventType === 'camp-final') msg = 'Vaga Direto na Final disponível apenas em 28/11 às 18h.';
         timesWrap.innerHTML = `<p class="text-red-500 text-center py-4">${msg}</p>`;
@@ -5640,7 +5686,7 @@ async function renderScheduleTimes() {
         }
     } catch(_) {}
 
-    const cfg = scheduleConfig[eventType] || {};
+    const cfg = getActiveScheduleConfig(eventType);
     const now = new Date();
     const selectedDate = new Date(date + 'T00:00:00');
     const isToday = selectedDate.toDateString() === now.toDateString();
@@ -5779,7 +5825,7 @@ async function renderScheduleTimes() {
     }
 
     // ── Renderizar horários em uma única passagem (sem flash) ───────────────
-    const eventConfig = scheduleConfig[eventType] || {};
+    const eventConfig = getActiveScheduleConfig(eventType);
     const isModoLiga = [eventType, eventConfig.eventType, eventConfig.label, eventConfig.modo]
         .some(value => normalizeEventType(value) === 'modo-liga');
     const slots = [
@@ -6448,7 +6494,7 @@ async function updateReservationsSummary() {
 
     const modal = document.getElementById('scheduleModal');
     const eventType = modal?.dataset?.eventType || 'modo-liga';
-    const cfg = scheduleConfig[eventType];
+    const cfg = getActiveScheduleConfig(eventType);
 
     // Agrupa horários por data
     const timesByDate = {};
@@ -6990,10 +7036,14 @@ async function submitSchedule(e, useTokens = false) {
     try {
         const modal = document.getElementById('scheduleModal');
         const rawEventType = modal?.dataset?.eventType || 'modo-liga';
-        const normalizeType = (t) => String(t || '').toLowerCase().trim().replace(/\s+/g, '-').replace('modo liga', 'modo-liga').replace('camp', 'camp-freitas').replace('semanal freitas', 'semanal-freitas');
+        const normalizeType = (t) => {
+            const normalized = String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase().trim().replace(/[\s_]+/g, '-');
+            return normalized === 'camp' ? 'camp-freitas' : normalized;
+        };
         const normalizeHour = (h) => { if (!h) return null; const s = String(h).toLowerCase().trim(); const m = s.match(/(\d{1,2})/); return m ? `${parseInt(m[1], 10)}h` : s; };
         const eventType = normalizeType(rawEventType);
-        const cfg = scheduleConfig[rawEventType] || scheduleConfig[eventType] || {};
+        const cfg = getActiveScheduleConfig(rawEventType);
         const isFreeEvent = (cfg.price === 0 || cfg.isFree === true) && !cfg.isProduct;
 
         // Se for produto da loja, usar lógica de compra
@@ -7024,6 +7074,11 @@ async function submitSchedule(e, useTokens = false) {
         // Validações básicas
         const date = document.getElementById('schedDate').value;
         const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [date];
+        if (datesToUse.some(bookingDate => !isValidScheduleDate(bookingDate, rawEventType))) {
+            alert('A data selecionada não está disponível para este evento. O Camp Season 7 começa em 15/11/2026.');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
 
         // Horário obrigatório para TODOS os tipos de evento (incluindo gratuitos)
         if (selectedTimes.length === 0) {
@@ -7349,6 +7404,7 @@ async function submitSchedule(e, useTokens = false) {
                         schedule: p.schedule,
                         date: p.d,
                         eventType: rawEventType,
+                        ...getActiveEventRegistrationMetadata(),
                         title: mpIsLiga ? `${cfg.label} - ${p.schedule}` : `${cfg.label} - ${slotDisplay || p.schedule}`,
                         price: p.price,
                         slot: mpIsLiga ? null : slotNum,
@@ -7867,6 +7923,7 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
                             schedule: schedKey,
                             date: d,
                             eventType: rawEventType,
+                            ...getActiveEventRegistrationMetadata(),
                             title: isLiga ? `${cfg.label} - ${schedKey}` : `${cfg.label} - ${slotDisplay}`,
                             price: 0,
                             slot: slotNumber,
@@ -8613,7 +8670,7 @@ window.getWhatsAppLink = getWhatsAppLink;
 
 
 async function createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, status = 'pending', couponInfo = null) {
-    const cfg = scheduleConfig[eventType] || {};
+    const cfg = getActiveScheduleConfig(eventType);
     const isLiga = (cfg.modo || '').toUpperCase().includes('LIGA');
     const vagas = cfg.vagas || 0;
     const grupos = Math.max(1, cfg.grupos || 1);
@@ -8724,6 +8781,7 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                     schedule: schedule,
                     date: d,
                     eventType: eventType,
+                    ...getActiveEventRegistrationMetadata(),
                     title: isLiga ? `${cfg.label} - ${schedule}` : `${cfg.label} - ${slotDisplay || schedule}`,
                     price: price,
                     slot: slotNum,
@@ -9379,11 +9437,12 @@ const EVENT_URL_MAP = {
     'camp-freitas':    '/campeonato',
     'acesso':          '/acesso',
 };
-function _eventoUrl(eventType, docId) {
+function _eventoUrl(eventType, docId, eventData) {
+    if (eventData?.urlSlug === 'camp-season-7') return 'camp-season-7';
+    // Eventos dinâmicos sempre usam seu documento exato, evitando abrir outro evento do mesmo tipo.
+    if (docId) return 'evento.html?id=' + encodeURIComponent(docId);
     // Eventos estáticos: usar URL limpa do mapa
     if (EVENT_URL_MAP[eventType]) return EVENT_URL_MAP[eventType];
-    // Eventos dinâmicos (adminEvents): usar ?id=docId para busca direta por documento
-    if (docId) return 'evento.html?id=' + encodeURIComponent(docId);
     // Fallback legacy
     return 'evento.html?event=' + encodeURIComponent(eventType || '');
 }
@@ -9449,6 +9508,9 @@ async function loadDynamicEvents() {
                 category: ev.category || '',
                 regras: ev.regras || '',
                 eventType: ev.eventType || '',
+                adminEventId: d.id,
+                dateScopedEventLinks: isCampSeason7Name(ev.name),
+                ...(isCampSeason7Name(ev.name) ? { startDate: CAMP_SEASON_7_START_DATE } : {}),
                 slots: ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'],
             };
             // Alias pelo tipo canônico para que overrides de schedule_overrides batem corretamente
@@ -9465,13 +9527,15 @@ async function loadDynamicEvents() {
             const _isEmBreve = ev.status === 'Em breve';
             const btnLabel = _isEquipeEvent ? 'INSCREVER TIME' : (ev.entrada === 'PAGO' && ev.preco ? `INSCREVER — ${preco}` : 'RESERVAR VAGA');
             const evTypeParaModal = ev.eventType || d.id;
-            const btnOnclick = _isEquipeEvent ? `abrirModalEquipe('${evTypeParaModal}')` : `openScheduleModal('${evTypeParaModal}')`;
+            const btnOnclick = _isEquipeEvent
+                ? `abrirModalEquipe('${evTypeParaModal}')`
+                : `openScheduleModal('${evTypeParaModal}', { adminEventId: '${d.id}' })`;
             const hasRegras = !!(ev.regras && ev.regras.trim());
             const btnHtml = _isEmBreve
                 ? `<div class="flex flex-col gap-2">
                     <button disabled class="w-full py-2 rounded-lg font-semibold bg-gray-300 text-gray-500 cursor-not-allowed">EM BREVE</button>
                     <div class="flex gap-2">
-                        <a href="${_eventoUrl(ev.eventType, d.id)}" class="flex-1 text-center border border-gray-300 text-gray-400 py-2 rounded-lg font-semibold text-sm block pointer-events-none opacity-50">
+                        <a href="${_eventoUrl(ev.eventType, d.id, ev)}" class="flex-1 text-center border border-gray-300 text-gray-400 py-2 rounded-lg font-semibold text-sm block pointer-events-none opacity-50">
                             <i class="fas fa-info-circle mr-1"></i>Ver Detalhes
                         </a>
                     </div>
@@ -9479,7 +9543,7 @@ async function loadDynamicEvents() {
                 : `<div class="flex flex-col gap-2">
                 <button onclick="${btnOnclick}" class="w-full btn-primary py-2 rounded-lg font-semibold">${btnLabel}</button>
                 <div class="flex gap-2">
-                    <a href="${_eventoUrl(ev.eventType, d.id)}" class="flex-1 text-center border border-gray-300 hover:border-orange-400 text-gray-600 hover:text-orange-600 py-2 rounded-lg font-semibold text-sm transition-colors block">
+                    <a href="${_eventoUrl(ev.eventType, d.id, ev)}" class="flex-1 text-center border border-gray-300 hover:border-orange-400 text-gray-600 hover:text-orange-600 py-2 rounded-lg font-semibold text-sm transition-colors block">
                         <i class="fas fa-info-circle mr-1"></i>Ver Detalhes
                     </a>
                     ${hasRegras ? `<button onclick="openEventRulesModal('${d.id}')" class="flex-1 border border-cyan-300 hover:border-cyan-500 text-cyan-700 hover:text-cyan-900 py-2 rounded-lg font-semibold text-sm transition-colors">

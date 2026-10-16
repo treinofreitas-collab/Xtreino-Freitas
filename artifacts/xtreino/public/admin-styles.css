@@ -836,3 +836,525 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 /* sectionKPIs: oculto por padrão — só CEO e sócio veem */
 #sectionKPIs { display: none !important; }
 html.kpis-enabled #sectionKPIs { display: grid !important; }
+
+/* ===== MONTHLY SALES DIALOG ===== */
+#monthSalesModal[hidden] {
+    display: none !important;
+}
+
+#monthSalesModal:not([hidden]) {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 10000 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    overflow-y: auto;
+    background: rgba(15, 23, 42, 0.66);
+    backdrop-filter: blur(3px);
+}
+
+#monthSalesDialog {
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 36rem);
+    max-height: min(86vh, 48rem);
+    overflow: hidden;
+    border-radius: 1.25rem;
+    background: #fff;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.month-sales-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e8edf5;
+}
+
+.month-sales-header h3 {
+    margin: 0 !important;
+    color: #172033;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.month-sales-header p {
+    margin: 0.25rem 0 0 !important;
+    color: #64748b;
+    font-size: 0.78rem;
+}
+
+.month-sales-close {
+    flex: 0 0 auto;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 0;
+    border-radius: 0.65rem;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.month-sales-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid #edf1f6;
+}
+
+.month-sales-navigation button {
+    min-height: 2.25rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid #dbe5f1;
+    border-radius: 0.65rem;
+    background: #fff;
+    color: #315b9d;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.month-sales-navigation button:hover:not(:disabled) {
+    background: #eff6ff;
+}
+
+.month-sales-navigation button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+#monthSalesTitle {
+    flex: 1 1 8rem;
+    color: #182b4b;
+    font-size: 0.95rem;
+    font-weight: 800;
+    text-align: center;
+    text-transform: capitalize;
+}
+
+.month-sales-navigation .month-sales-current {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+}
+
+.month-sales-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 1rem 1.25rem 0.25rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid #dbeafe;
+    border-radius: 0.9rem;
+    background: #eff6ff;
+}
+
+.month-sales-total-label {
+    color: #5278b6;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.month-sales-total-value {
+    margin-top: 0.2rem;
+    color: #1e3a8a;
+    font-size: 1.65rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+
+.month-sales-total > i {
+    color: #93c5fd;
+    font-size: 1.8rem;
+}
+
+.month-sales-list {
+    flex: 1 1 auto;
+    min-height: 8rem;
+    overflow-y: auto;
+    padding: 0.75rem 1.25rem 1.25rem;
+}
+
+.month-sales-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #edf1f6;
+    border-radius: 0.8rem;
+    background: #f8fafc;
+}
+
+.month-sales-row > span {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    color: #475569;
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+.month-sales-row i {
+    color: #3b82f6;
+}
+
+.month-sales-row strong {
+    color: #1e3a8a;
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
+.month-sales-empty {
+    display: flex;
+    min-height: 8rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    padding: 1.5rem;
+    color: #64748b;
+    font-size: 0.875rem;
+    text-align: center;
+}
+
+.month-sales-empty > i {
+    color: #94a3b8;
+    font-size: 1.35rem;
+}
+
+.month-sales-error {
+    color: #b91c1c;
+}
+
+@media (max-width: 640px) {
+    #monthSalesModal:not([hidden]) {
+        align-items: flex-end;
+        padding: 0.65rem;
+    }
+
+    #monthSalesDialog {
+        width: 100%;
+        max-height: 90vh;
+        border-radius: 1.15rem 1.15rem 0.75rem 0.75rem;
+    }
+
+    .month-sales-navigation {
+        justify-content: center;
+        padding-inline: 0.75rem;
+    }
+
+    #monthSalesTitle {
+        order: -1;
+        flex-basis: 100%;
+    }
+
+    .month-sales-total {
+        margin-inline: 0.75rem;
+    }
+
+    .month-sales-list {
+        padding-inline: 0.75rem;
+    }
+}
+
+/* ===== ADMIN PENDING ORDERS ===== */
+.pending-panel {
+    min-width: 0;
+}
+
+.pending-panel-header,
+.pending-panel-tools {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.pending-panel-header {
+    margin-bottom: 0.85rem;
+}
+
+.pending-panel-header h3 {
+    margin: 0;
+}
+
+.pending-panel-tools {
+    flex: 0 0 auto;
+}
+
+.pending-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid #fde68a;
+    border-radius: 999px;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 0.75rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.pending-refresh,
+.pending-pagination button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.25rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 0.65rem;
+    background: #fff;
+    color: #334155;
+    font-size: 0.75rem;
+    font-weight: 700;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.pending-refresh:hover,
+.pending-pagination button:hover:not(:disabled) {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+}
+
+.pending-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.pending-table {
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.pending-table th {
+    padding: 0.65rem 0.6rem;
+    color: #64748b;
+    font-size: 0.67rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.pending-table td {
+    padding: 0.75rem 0.6rem;
+    border-bottom: 1px solid #edf1f6;
+    color: #334155;
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+    vertical-align: middle;
+}
+
+.pending-table th:nth-child(1) { width: 30%; }
+.pending-table th:nth-child(2) { width: 25%; }
+.pending-table th:nth-child(3) { width: 12%; }
+.pending-table th:nth-child(4) { width: 18%; }
+.pending-table th:nth-child(5) { width: 15%; }
+
+.pending-customer,
+.pending-item {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.pending-customer strong {
+    color: #1e293b;
+    font-weight: 700;
+}
+
+.pending-customer span {
+    color: #64748b;
+    font-size: 0.7rem;
+    overflow-wrap: anywhere;
+}
+
+.pending-item {
+    align-items: flex-start;
+}
+
+.pending-kind {
+    padding: 0.18rem 0.45rem;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.62rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.pending-amount {
+    color: #1e3a8a !important;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.pending-date {
+    color: #64748b !important;
+    font-size: 0.72rem !important;
+}
+
+.pending-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.pending-actions button {
+    min-height: 2rem;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid transparent;
+    border-radius: 0.55rem;
+    font-size: 0.7rem;
+    font-weight: 800;
+}
+
+.pending-actions button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
+.pending-approve {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.pending-approve:hover:not(:disabled) {
+    background: #bbf7d0;
+}
+
+.pending-remove {
+    border-color: #fee2e2 !important;
+    background: #fff7f7;
+    color: #b91c1c;
+}
+
+.pending-remove:hover:not(:disabled) {
+    background: #fee2e2;
+}
+
+.pending-state {
+    padding: 2rem 1rem !important;
+    color: #64748b !important;
+    text-align: center;
+}
+
+.pending-state i {
+    margin-right: 0.4rem;
+}
+
+.pending-state-error {
+    color: #b91c1c !important;
+}
+
+.pending-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.85rem;
+    padding-top: 0.85rem;
+}
+
+.pending-pagination span {
+    min-width: 6.5rem;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.pending-pagination button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+@media (max-width: 640px) {
+    .pending-panel {
+        padding: 0.85rem !important;
+    }
+
+    .pending-panel-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .pending-panel-tools {
+        justify-content: space-between;
+    }
+
+    .pending-table-wrap {
+        overflow: visible;
+    }
+
+    .pending-table,
+    .pending-table tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .pending-table thead {
+        display: none;
+    }
+
+    .pending-table tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 0.65rem 0.85rem;
+        margin: 0.65rem 0;
+        padding: 0.85rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.85rem;
+        background: #fff;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+
+    .pending-table td {
+        display: block;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        font-size: 0.78rem;
+    }
+
+    .pending-table td::before {
+        display: block;
+        margin-bottom: 0.2rem;
+        color: #94a3b8;
+        content: attr(data-label);
+        font-size: 0.61rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .pending-table td:nth-child(1),
+    .pending-table td:nth-child(2),
+    .pending-table td:nth-child(5) {
+        grid-column: 1 / -1;
+    }
+
+    .pending-table td:nth-child(5) {
+        padding-top: 0.55rem;
+        border-top: 1px solid #edf1f6;
+    }
+
+    .pending-actions button {
+        flex: 1 1 6rem;
+    }
+}

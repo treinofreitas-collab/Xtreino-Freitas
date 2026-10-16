@@ -28,6 +28,8 @@ function setup(overrides = {}) {
         showSuccessToast: () => {},
         ...overrides,
     };
+    context.getActiveScheduleConfig = eventType => context.scheduleConfig[eventType] || {};
+    context.getActiveEventRegistrationMetadata = () => ({});
     vm.createContext(context);
     new vm.Script(tokens).runInContext(context);
     return { context, calls };
@@ -60,12 +62,15 @@ function setupSubmission(result) {
         scheduleConfig: { 'modo-liga': { label: 'MODO LIGA', price: 3 } },
         selectedDates: ['2026-10-13'], selectedTimes: selected, teams: [],
         appliedScheduleCoupon: null,
+        isValidScheduleDate: () => true,
         waitForFirebase: async () => { calls.push('ready'); },
         checkMultipleSlotAvailability: async () => { calls.push('check'); return result; },
         getEventPrice: () => 3,
         useTokensForEvent: async (...args) => { calls.push('tokens'); context.proof = args[6]; },
         alert: () => { calls.push('blocked'); },
     };
+    context.getActiveScheduleConfig = eventType => context.scheduleConfig[eventType] || {};
+    context.getActiveEventRegistrationMetadata = () => ({});
     vm.createContext(context);
     new vm.Script(submission).runInContext(context);
     return { context, calls, elements };

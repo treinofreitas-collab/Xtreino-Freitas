@@ -1811,6 +1811,23 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   function brl(n){ try {return n.toLocaleString('pt-BR', {style:'currency',currency:'BRL'})} catch(_) {return `R$ ${Number(n||0).toFixed(2)}`;} }
 
+  async function loadMonthSalesCollection(period, collectionName) {
+    const uid = window.firebaseAuth?.currentUser?.uid;
+    if (!uid) throw new Error('Entre novamente no painel administrativo.');
+    adminReportCache.setScope(uid);
+
+    return adminReportCache.read(`month-sales:${period.key}:${collectionName}`, async () => {
+      const { collection, query, where, getDocsFromServer } =
+        await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      const monthQuery = query(
+        collection(window.firebaseDb, collectionName),
+        where('createdAt', '>=', period.start),
+        where('createdAt', '<', period.end)
+      );
+      return getDocsFromServer(monthQuery);
+    });
+  }
+
   async function loadKpis(){
     // KPIs financeiros só para CEO e sócio
     const _roleLower = (window.adminRoleLower || '').toLowerCase().trim();
@@ -1822,16 +1839,16 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const kpiActiveEl = document.getElementById('kpiActiveUsers');
     if (!kpiTodayEl || !kpiMonthEl || !kpiRecEl) return;
 
-    const { collection, query, where, getDocsFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const { collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const today = new Date(); today.setHours(0,0,0,0);
     const firstMonth = new Date(); firstMonth.setDate(1); firstMonth.setHours(0,0,0,0);
+    const monthPeriod = getMonthSalesPeriod(firstMonth);
 
     let sumToday = 0, sumMonth = 0, receivable = 0;
 
     // ── Orders (produtos, camisas — não eventos, não tokens usados) ──
     try {
-      const ordersCol = collection(window.firebaseDb, 'orders');
-      const monthOrd = await getDocsFromServer(query(ordersCol, where('createdAt', '>=', firstMonth)));
+      const monthOrd = await loadMonthSalesCollection(monthPeriod, 'orders');
       const todayOrd = monthOrd.docs.filter(d => {
         const value = d.data().createdAt;
         return (value?.toDate ? value.toDate() : new Date(value)) >= today;
@@ -1857,8 +1874,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
     // ── Registrations (apenas MP/PIX — excluir paidWithTokens) ──
     try {
-      const regsCol = collection(window.firebaseDb, 'registrations');
-      const monthRegs = await getDocsFromServer(query(regsCol, where('createdAt', '>=', firstMonth)));
+      const monthRegs = await loadMonthSalesCollection(monthPeriod, 'registrations');
       const todayRegs = monthRegs.docs.filter(d => {
         const value = d.data().createdAt;
         return (value?.toDate ? value.toDate() : new Date(value)) >= today;
@@ -1899,87 +1915,157 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }
   }
 
-  async function openMonthSalesModal() {
-    const modal   = document.getElementById('monthSalesModal');
-    const listEl  = document.getElementById('monthSalesList');
-    const totalEl = document.getElementById('monthSalesTotal');
-    const titleEl = document.getElementById('monthSalesTitle');
-    if (!modal || !window.firebaseDb) return;
+  function getMonthSalesPeriod(date) {
+    const start = new Date(date.getFullYear(), date.getMonth(), 1);
+    const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+    const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+    const label = start.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    return { start, end, key, label: label.charAt(0).toUpperCase() + label.slice(1) };
+  }
 
-    modal.classList.remove('hidden');
-    if (listEl) listEl.innerHTML = '<div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>Carregando...</div>';
+  function shiftMonthSalesDate(selected, offset, now = new Date()) {
+    const shifted = new Date(selected.getFullYear(), selected.getMonth() + offset, 1);
+    const current = new Date(now.getFullYear(), now.getMonth(), 1);
+    return shifted > current ? current : shifted;
+  }
 
-    try {
-      const now = new Date();
-      const mesNome = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-      if (titleEl) titleEl.textContent = mesNome.charAt(0).toUpperCase() + mesNome.slice(1);
+  function buildMonthSalesSummary(registrationsSnap, ordersSnap, period) {
+    const byDay = new Map();
+    const paidStatuses = new Set(['paid', 'approved', 'confirmed']);
 
-      const firstMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-
-      const byDay = {}; // "DD/MM" → total
-
-      // Registrations (eventos pagos no mês)
+    function addSale(data, amountValue) {
+      if (data.paidWithTokens) return;
+      const rawDate = data.createdAt ?? data.timestamp;
+      let date;
       try {
-        const regsSnap = await getDocs(query(collection(window.firebaseDb, 'registrations'), where('createdAt', '>=', firstMonth)));
-        regsSnap.forEach(d => {
-          const r = d.data();
-          const status = (r.status || '').toLowerCase();
-          if (status !== 'paid' && status !== 'approved' && status !== 'confirmed') return;
-          const ts = r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.timestamp || 0);
-          const dia = ts.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-          byDay[dia] = (byDay[dia] || 0) + Number(r.price || 0);
-        });
-      } catch(_) {}
-
-      // Orders (produtos, tokens — sem duplicar eventos)
-      try {
-        const ordSnap = await getDocs(collection(window.firebaseDb, 'orders'));
-        ordSnap.forEach(d => {
-          const o = d.data();
-          if ((o.type || '').toLowerCase() === 'event') return;
-          const status = (o.status || '').toLowerCase();
-          if (status !== 'paid' && status !== 'approved' && status !== 'confirmed') return;
-          const ts = o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.timestamp || 0);
-          if (ts < firstMonth) return;
-          const dia = ts.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-          byDay[dia] = (byDay[dia] || 0) + Number(o.amount || o.total || 0);
-        });
-      } catch(_) {}
-
-      // Ordenar por data decrescente
-      const entradas = Object.entries(byDay).sort((a, b) => {
-        const [dA, mA] = a[0].split('/').map(Number);
-        const [dB, mB] = b[0].split('/').map(Number);
-        if (mA !== mB) return mB - mA;
-        return dB - dA;
-      });
-
-      const total = entradas.reduce((s, [, v]) => s + v, 0);
-      if (totalEl) totalEl.textContent = brl(total);
-
-      if (entradas.length === 0) {
-        if (listEl) listEl.innerHTML = '<div class="text-center py-10 text-gray-400"><i class="fas fa-inbox text-3xl mb-3 block opacity-40"></i>Nenhuma venda confirmada este mês.</div>';
+        date = rawDate?.toDate ? rawDate.toDate() : new Date(rawDate);
+      } catch (_) {
         return;
       }
+      if (!(date instanceof Date) || !Number.isFinite(date.getTime()) ||
+          date < period.start || date >= period.end) return;
+      const amount = Number(amountValue);
+      if (!Number.isFinite(amount)) return;
 
-      if (listEl) listEl.innerHTML = entradas.map(([dia, val]) => `
-        <div class="flex items-center justify-between py-2.5 px-3 rounded-xl bg-gray-50 hover:bg-blue-50 transition-colors">
-          <div class="flex items-center gap-2.5">
-            <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <i class="fas fa-calendar-day text-blue-500 text-sm"></i>
-            </div>
-            <span class="font-semibold text-gray-700 text-sm">${dia}</span>
-          </div>
-          <span class="font-bold text-blue-800">${brl(val)}</span>
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const existing = byDay.get(key);
+      byDay.set(key, {
+        date,
+        amount: (existing?.amount || 0) + amount
+      });
+    }
+
+    registrationsSnap?.forEach(doc => {
+      const registration = doc.data();
+      if (!paidStatuses.has(String(registration.status || '').toLowerCase())) return;
+      addSale(registration, registration.price);
+    });
+    ordersSnap?.forEach(doc => {
+      const order = doc.data();
+      if (String(order.type || '').toLowerCase() === 'event') return;
+      if (!paidStatuses.has(String(order.status || '').toLowerCase())) return;
+      addSale(order, order.amount ?? order.total);
+    });
+
+    const entries = [...byDay.values()]
+      .sort((a, b) => b.date - a.date)
+      .map(entry => ({
+        label: entry.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        amount: entry.amount
+      }));
+    return { entries, total: entries.reduce((sum, entry) => sum + entry.amount, 0) };
+  }
+
+  let selectedMonthSalesDate = null;
+  let monthSalesRequestVersion = 0;
+
+  async function loadMonthSalesData(date) {
+    const period = getMonthSalesPeriod(date);
+    const [registrationsSnap, ordersSnap] = await Promise.all([
+      loadMonthSalesCollection(period, 'registrations'),
+      loadMonthSalesCollection(period, 'orders')
+    ]);
+    return buildMonthSalesSummary(registrationsSnap, ordersSnap, period);
+  }
+
+  function updateMonthSalesNavigation() {
+    if (!selectedMonthSalesDate) return;
+    const period = getMonthSalesPeriod(selectedMonthSalesDate);
+    const currentPeriod = getMonthSalesPeriod(new Date());
+    const titleEl = document.getElementById('monthSalesTitle');
+    const nextButton = document.getElementById('monthSalesNextBtn');
+    const currentButton = document.getElementById('monthSalesCurrentBtn');
+    if (titleEl) titleEl.textContent = period.label;
+    if (nextButton) nextButton.disabled = period.key === currentPeriod.key;
+    if (currentButton) currentButton.hidden = period.key === currentPeriod.key;
+  }
+
+  async function renderSelectedMonthSales() {
+    const listEl = document.getElementById('monthSalesList');
+    const totalEl = document.getElementById('monthSalesTotal');
+    if (!selectedMonthSalesDate || !listEl) return;
+    const requestVersion = ++monthSalesRequestVersion;
+    const period = getMonthSalesPeriod(selectedMonthSalesDate);
+    updateMonthSalesNavigation();
+    if (totalEl) totalEl.textContent = '—';
+    listEl.innerHTML = '<div class="month-sales-empty"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>Carregando vendas...</span></div>';
+
+    try {
+      const summary = await loadMonthSalesData(selectedMonthSalesDate);
+      if (requestVersion !== monthSalesRequestVersion ||
+          document.getElementById('monthSalesModal')?.hidden) return;
+      if (totalEl) totalEl.textContent = brl(summary.total);
+      if (summary.entries.length === 0) {
+        listEl.innerHTML = `<div class="month-sales-empty">Nenhuma venda confirmada em ${period.label}.</div>`;
+        return;
+      }
+      listEl.innerHTML = summary.entries.map(entry => `
+        <div class="month-sales-row">
+          <span><i class="fas fa-calendar-day" aria-hidden="true"></i>${entry.label}</span>
+          <strong>${brl(entry.amount)}</strong>
         </div>
       `).join('');
-
-    } catch(err) {
-      if (listEl) listEl.innerHTML = `<div class="text-center py-8 text-red-400">Erro ao carregar: ${err.message || err}</div>`;
+    } catch (_) {
+      if (requestVersion !== monthSalesRequestVersion) return;
+      if (totalEl) totalEl.textContent = '—';
+      listEl.innerHTML = '<div class="month-sales-empty month-sales-error">Não foi possível carregar este período. Verifique a conexão e tente novamente.</div>';
     }
   }
+
+  function openMonthSalesModal() {
+    const modal = document.getElementById('monthSalesModal');
+    if (!modal || !window.firebaseDb) return;
+    const now = new Date();
+    selectedMonthSalesDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    modal.hidden = false;
+    void renderSelectedMonthSales();
+  }
+
+  function closeMonthSalesModal() {
+    const modal = document.getElementById('monthSalesModal');
+    if (modal) modal.hidden = true;
+    monthSalesRequestVersion++;
+  }
+
+  function changeMonthSales(offset) {
+    if (!selectedMonthSalesDate) {
+      const now = new Date();
+      selectedMonthSalesDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    selectedMonthSalesDate = shiftMonthSalesDate(selectedMonthSalesDate, Number(offset) || 0);
+    void renderSelectedMonthSales();
+  }
+
+  function showCurrentMonthSales() {
+    const now = new Date();
+    selectedMonthSalesDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    void renderSelectedMonthSales();
+  }
+
   window.openMonthSalesModal = openMonthSalesModal;
+  window.closeMonthSalesModal = closeMonthSalesModal;
+  window.changeMonthSales = changeMonthSales;
+  window.showCurrentMonthSales = showCurrentMonthSales;
 
   async function renderSalesChart(){
     const canvas = document.getElementById('salesChart');
@@ -2485,109 +2571,361 @@ window.showWarningToast = function(message, title = 'Atenção') {
     
     if (count) count.textContent = `${recentItems.length} pedidos`;
   }
-  // Pendências (orders.status === 'pending' OU registrations.status === 'pending')
-  async function loadPending(isManager){
+  // Pedidos pendentes carregados em páginas para evitar ler e renderizar todo o histórico de uma vez.
+  const PENDING_PAGE_SIZE = 10;
+  const PENDING_FETCH_BATCH_SIZE = 10;
+  let pendingPaginationState = null;
+
+  function getPendingTotalPages(totalCount, pageSize = PENDING_PAGE_SIZE) {
+    return Math.max(1, Math.ceil(Number(totalCount || 0) / pageSize));
+  }
+
+  function createPendingPaginationState(roleKey, isManager) {
+    return {
+      roleKey,
+      isManager,
+      page: 1,
+      pageSize: PENDING_PAGE_SIZE,
+      counts: null,
+      countAttempted: false,
+      totalPages: null,
+      pages: new Map(),
+      streams: {
+        orders: { cursor: null, buffer: [], fetched: 0, exhausted: false },
+        registrations: { cursor: null, buffer: [], fetched: 0, exhausted: false },
+      },
+      loading: false,
+    };
+  }
+
+  function pendingDate(value) {
+    const date = value?.toDate ? value.toDate() : value instanceof Date ? value : value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date : null;
+  }
+
+  function escapePendingHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[character]);
+  }
+
+  function normalizePendingRecord(source, docSnapshot) {
+    const data = docSnapshot.data();
+    const email = data.buyerEmail || data.email || (String(data.customer || '').includes('@') ? data.customer : '');
+    const customer = data.customerName || data.name || (String(data.customer || '').includes('@') ? '' : data.customer) || email || 'Cliente não informado';
+    const eventType = String(data.eventType || '').toLowerCase();
+    const eventNames = {
+      'modo-liga': 'Modo Liga',
+      'xtreino-tokens': 'XTreino Tokens',
+      'xtreino': 'XTreino Tokens',
+      'semanal-freitas': 'Semanal Freitas',
+      'semanal': 'Semanal Freitas',
+      'camp-freitas': 'Camp Freitas',
+      'camp': 'Camp Freitas',
+    };
+    const item = source === 'registration'
+      ? data.title || eventNames[eventType] || data.eventType || 'Reserva de evento'
+      : data.itemName || data.item || data.title || data.productName || eventNames[eventType] || data.eventType || 'Pedido';
+
+    return {
+      id: docSnapshot.id,
+      source,
+      customer,
+      email,
+      phone: data.phone || data.contact || '',
+      team: data.teamName || data.team || data.squadName || '',
+      item,
+      amount: Number(source === 'registration' ? data.price || 0 : data.amount ?? data.total ?? data.price ?? 0),
+      createdAt: pendingDate(data.createdAt || data.timestamp),
+    };
+  }
+
+  function comparePendingRecordsNewestFirst(left, right) {
+    const leftTime = left.createdAt?.getTime?.() ?? Number.NEGATIVE_INFINITY;
+    const rightTime = right.createdAt?.getTime?.() ?? Number.NEGATIVE_INFINITY;
+    if (leftTime !== rightTime) return rightTime - leftTime;
+    return String(left.id).localeCompare(String(right.id));
+  }
+
+  function renderPendingRecord(row) {
+    const sourceLabel = row.source === 'registration' ? 'Reserva' : 'Pedido';
+    const dateLabel = row.createdAt ? row.createdAt.toLocaleString('pt-BR') : 'Data não informada';
+    const customerDetails = [
+      row.email && row.email !== row.customer ? row.email : '',
+      row.phone,
+      row.team ? `Time: ${row.team}` : '',
+    ].filter(Boolean).join(' · ');
+
+    return `<tr>
+      <td data-label="Cliente">
+        <div class="pending-customer">
+          <strong>${escapePendingHtml(row.customer)}</strong>
+          ${customerDetails ? `<span>${escapePendingHtml(customerDetails)}</span>` : ''}
+        </div>
+      </td>
+      <td data-label="Item">
+        <div class="pending-item">
+          <span class="pending-kind">${sourceLabel}</span>
+          <span>${escapePendingHtml(row.item)}</span>
+        </div>
+      </td>
+      <td data-label="Valor" class="pending-amount">${escapePendingHtml(brl(row.amount))}</td>
+      <td data-label="Data da compra" class="pending-date">${escapePendingHtml(dateLabel)}</td>
+      <td data-label="Ações">
+        <div class="pending-actions">
+          <button type="button" data-pending-action="approve" data-source="${row.source}" data-id="${escapePendingHtml(row.id)}" class="pending-approve">Confirmar</button>
+          <button type="button" data-pending-action="remove" data-source="${row.source}" data-id="${escapePendingHtml(row.id)}" class="pending-remove">Remover</button>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function updatePendingPaginationControls(state, hasMore) {
+    const pageInfo = document.getElementById('pendingPageInfo');
+    const previous = document.getElementById('pendingPrevious');
+    const next = document.getElementById('pendingNext');
+    if (pageInfo) pageInfo.textContent = state.totalPages
+      ? `Página ${state.page} de ${state.totalPages}`
+      : `Página ${state.page}`;
+    if (previous) previous.disabled = state.loading || state.page <= 1;
+    if (next) next.disabled = state.loading || (state.totalPages ? state.page >= state.totalPages : !hasMore);
+  }
+
+  function bindPendingActions(tbody) {
+    if (tbody.dataset.pendingActionsBound === 'true') return;
+    tbody.dataset.pendingActionsBound = 'true';
+    tbody.addEventListener('click', async event => {
+      const button = event.target.closest('[data-pending-action]');
+      if (!button || !tbody.contains(button)) return;
+      const action = button.dataset.pendingAction;
+      const source = button.dataset.source;
+      const id = button.dataset.id;
+      const isManager = pendingPaginationState?.isManager;
+      if (!id || !['order', 'registration'].includes(source)) return;
+      if (action === 'remove' && !window.confirm('Remover este pedido pendente?')) return;
+
+      button.disabled = true;
+      try {
+        const {
+          collection, doc, setDoc, deleteDoc, getDoc, addDoc, serverTimestamp,
+        } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const collectionName = source === 'registration' ? 'registrations' : 'orders';
+        const recordRef = doc(collection(window.firebaseDb, collectionName), id);
+        if (action === 'approve' && source === 'order') {
+          await setDoc(recordRef, { status: 'paid', updatedAt: Date.now() }, { merge: true });
+        } else if (action === 'approve' && source === 'registration') {
+          await setDoc(recordRef, { status: 'paid', paidAt: Date.now() }, { merge: true });
+          const snapshot = await getDoc(recordRef);
+          if (snapshot.exists()) {
+            const record = snapshot.data();
+            await addDoc(collection(window.firebaseDb, 'orders'), {
+              itemName: record.title || record.eventType || 'Reserva',
+              amount: Number(record.price || 0),
+              customerName: record.email || '-',
+              ownerId: record.userId || null,
+              status: 'paid',
+              createdAt: serverTimestamp(),
+            });
+          }
+        } else if (action === 'remove') {
+          await deleteDoc(recordRef);
+        } else {
+          return;
+        }
+
+        await refreshDashboard();
+        pendingPaginationState = createPendingPaginationState(
+          `${isManager ? 'all' : 'own'}:${window.firebaseAuth?.currentUser?.uid || ''}`,
+          isManager
+        );
+        await loadPending(isManager);
+      } catch (error) {
+        console.error('Falha ao atualizar pedido pendente:', error);
+        window.alert('Não foi possível concluir a ação. Atualize a lista e tente novamente.');
+        button.disabled = false;
+      }
+    });
+  }
+
+  async function loadPending(isManager, { reset = false } = {}) {
     const tbody = document.getElementById('pendingTbody');
     const countEl = document.getElementById('pendingCount');
     if (!tbody) return;
-    tbody.innerHTML = '';
-    let total = 0;
-    try{
-      const clauses = [ where('status','==','pending') ];
-      if (!isManager && window.firebaseAuth?.currentUser?.uid){
-        clauses.push(where('ownerId','==', window.firebaseAuth.currentUser.uid));
+
+    const uid = window.firebaseAuth?.currentUser?.uid || '';
+    const roleKey = `${isManager ? 'all' : 'own'}:${uid}`;
+    if (reset || !pendingPaginationState || pendingPaginationState.roleKey !== roleKey) {
+      pendingPaginationState = createPendingPaginationState(roleKey, isManager);
+    }
+    const state = pendingPaginationState;
+    const page = state.page;
+    bindPendingActions(tbody);
+    state.loading = true;
+    tbody.innerHTML = '<tr><td colspan="5" class="pending-state"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Carregando esta página...</td></tr>';
+    updatePendingPaginationControls(state, false);
+
+    let firestore;
+    try {
+      firestore = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    } catch (error) {
+      state.loading = false;
+      tbody.innerHTML = '<tr><td colspan="5" class="pending-state pending-state-error">Não foi possível conectar ao Firestore. Atualize para tentar novamente.</td></tr>';
+      updatePendingPaginationControls(state, false);
+      console.error('Falha ao carregar o Firestore para a lista de pedidos pendentes:', error);
+      return;
+    }
+    if (pendingPaginationState !== state || state.page !== page) return;
+    const { collection, getDocs, getCountFromServer, query, where, orderBy, limit, startAfter } = firestore;
+    const orderClauses = [where('status', '==', 'pending')];
+    const registrationClauses = [where('status', '==', 'pending')];
+    if (!isManager && uid) {
+      orderClauses.push(where('ownerId', '==', uid));
+      registrationClauses.push(where('userId', '==', uid));
+    }
+
+    if (!state.countAttempted) {
+      state.countAttempted = true;
+      const [ordersCountResult, registrationsCountResult] = await Promise.allSettled([
+        getCountFromServer(query(collection(window.firebaseDb, 'orders'), ...orderClauses)),
+        getCountFromServer(query(collection(window.firebaseDb, 'registrations'), ...registrationClauses)),
+      ]);
+      if (ordersCountResult.status === 'fulfilled' && registrationsCountResult.status === 'fulfilled') {
+        state.counts = {
+          orders: ordersCountResult.value.data().count,
+          registrations: registrationsCountResult.value.data().count,
+        };
+        state.totalPages = getPendingTotalPages(
+          state.counts.orders + state.counts.registrations,
+          state.pageSize
+        );
+        if (state.counts.orders === 0) state.streams.orders.exhausted = true;
+        if (state.counts.registrations === 0) state.streams.registrations.exhausted = true;
+      } else {
+        console.warn('Não foi possível obter a contagem de pedidos pendentes.', {
+          orders: ordersCountResult.status,
+          registrations: registrationsCountResult.status,
+        });
       }
-      const ordSnap = await getDocs(query(collection(window.firebaseDb,'orders'), ...clauses));
-      ordSnap.forEach(d=>{
-        const o = d.data();
-        const tr = document.createElement('tr');
-        const created = new Date(o.createdAt||o.timestamp||Date.now()).toLocaleString('pt-BR');
-        tr.innerHTML = `
-          <td class="py-2">${o.customer||o.buyerEmail||'-'}</td>
-          <td class="py-2">${o.item||o.productName||'-'}</td>
-          <td class="py-2">${brl(Number(o.amount||o.total||0))}</td>
-          <td class="py-2">${created}</td>
-          <td class="py-2 space-x-2">
-            <button class="px-2 py-1 bg-green-600 text-white rounded text-xs" data-approve="${d.id}">Aprovar</button>
-            <button class="px-2 py-1 bg-red-600 text-white rounded text-xs" data-remove="${d.id}">Remover</button>
-          </td>`;
-        tbody.appendChild(tr); total++;
-      });
-    }catch(_){}
-    try{
-      const regClauses = [ where('status','==','pending') ];
-      if (!isManager && window.firebaseAuth?.currentUser?.uid){
-        regClauses.push(where('userId','==', window.firebaseAuth.currentUser.uid));
-      }
-      const regSnap = await getDocs(query(collection(window.firebaseDb,'registrations'), ...regClauses));
-      regSnap.forEach(d=>{
-        const r = d.data();
-        const tr = document.createElement('tr');
-        const created = new Date(r.createdAt?.toDate ? r.createdAt.toDate() : (r.timestamp||Date.now())).toLocaleString('pt-BR');
-        tr.innerHTML = `
-          <td class="py-2">${r.email||'-'}</td>
-          <td class="py-2">${r.title||r.eventType||'-'}</td>
-          <td class="py-2">${brl(Number(r.price||0))}</td>
-          <td class="py-2">${created}</td>
-          <td class="py-2 space-x-2">
-            <button class="px-2 py-1 bg-green-600 text-white rounded text-xs" data-approve-reg="${d.id}">Aprovar</button>
-            <button class="px-2 py-1 bg-red-600 text-white rounded text-xs" data-remove-reg="${d.id}">Remover</button>
-          </td>`;
-        tbody.appendChild(tr); total++;
-      });
-    }catch(_){ }
-    if (countEl) countEl.textContent = `${total} pendentes`;
-    tbody.addEventListener('click', async (e)=>{
-      const approve = e.target.closest('[data-approve]');
-      const approveReg = e.target.closest('[data-approve-reg]');
-      const remove = e.target.closest('[data-remove]');
-      const removeReg = e.target.closest('[data-remove-reg]');
-      try{
-        if (approve){
-          const id = approve.getAttribute('data-approve');
-          const { doc, setDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-          await setDoc(doc(collection(window.firebaseDb,'orders'), id), { status:'paid', updatedAt: Date.now() }, { merge:true });
-          approve.closest('tr')?.remove();
-          // atualizar métricas e recentes
-          await refreshDashboard();
-        } else if (approveReg){
-          const id = approveReg.getAttribute('data-approve-reg');
-          const { doc, setDoc, collection, getDoc, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-          // marca registro como pago
-          await setDoc(doc(collection(window.firebaseDb,'registrations'), id), { status:'paid', paidAt: Date.now() }, { merge:true });
-          // cria um pedido em 'orders' para alimentar métricas e lista
-          try{
-            const snap = await getDoc(doc(collection(window.firebaseDb,'registrations'), id));
-            if (snap.exists()){
-              const r = snap.data();
-              await addDoc(collection(window.firebaseDb,'orders'), {
-                itemName: r.title || r.eventType || 'Reserva',
-                amount: Number(r.price||0),
-                customerName: r.email || '-',
-                ownerId: r.userId || null,
-                status: 'paid',
-                createdAt: serverTimestamp()
-              });
-            }
-          }catch(_){ }
-          approveReg.closest('tr')?.remove();
-          await refreshDashboard();
-        } else if (remove){
-          const id = remove.getAttribute('data-remove');
-          const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-          await deleteDoc(doc(collection(window.firebaseDb,'orders'), id));
-          remove.closest('tr')?.remove();
-          await refreshDashboard();
-        } else if (removeReg){
-          const id = removeReg.getAttribute('data-remove-reg');
-          const { doc, deleteDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-          await deleteDoc(doc(collection(window.firebaseDb,'registrations'), id));
-          removeReg.closest('tr')?.remove();
-          await refreshDashboard();
+    }
+    if (pendingPaginationState !== state || state.page !== page) return;
+
+    if (countEl) {
+      countEl.textContent = state.counts
+        ? `${state.counts.orders + state.counts.registrations} pendentes`
+        : 'Contagem indisponível';
+    }
+
+    let pageData = state.pages.get(page);
+    if (!pageData) {
+      try {
+        const sources = [
+          { collectionName: 'orders', source: 'order', clauses: orderClauses },
+          { collectionName: 'registrations', source: 'registration', clauses: registrationClauses },
+        ];
+        const fetchNextBatch = async ({ collectionName, source, clauses }) => {
+          const stream = state.streams[collectionName];
+          if (stream.exhausted) return;
+          const totalCount = state.counts?.[collectionName];
+          const remainingCount = Number.isFinite(totalCount) ? totalCount - stream.fetched : null;
+          if (remainingCount !== null && remainingCount <= 0) {
+            stream.exhausted = true;
+            return;
+          }
+          const batchLimit = remainingCount === null
+            ? PENDING_FETCH_BATCH_SIZE
+            : Math.min(PENDING_FETCH_BATCH_SIZE, remainingCount);
+          const constraints = [...clauses];
+          if (stream.cursor) constraints.push(startAfter(stream.cursor));
+          constraints.push(orderBy('createdAt', 'desc'));
+          constraints.push(limit(batchLimit));
+          const snapshot = await getDocs(query(collection(window.firebaseDb, collectionName), ...constraints));
+          const docs = snapshot.docs || [];
+          if (docs.length) {
+            stream.cursor = docs[docs.length - 1];
+            stream.fetched += docs.length;
+            stream.buffer.push(...docs.map(docSnapshot => normalizePendingRecord(source, docSnapshot)));
+          }
+          stream.exhausted = docs.length < batchLimit ||
+            (Number.isFinite(totalCount) && stream.fetched >= totalCount);
+        };
+
+        const records = [];
+        while (records.length < state.pageSize) {
+          await Promise.all(sources.map(source => {
+            const stream = state.streams[source.collectionName];
+            return !stream.buffer.length && !stream.exhausted
+              ? fetchNextBatch(source)
+              : Promise.resolve();
+          }));
+          const next = sources
+            .map(source => ({
+              source,
+              stream: state.streams[source.collectionName],
+              record: state.streams[source.collectionName].buffer[0],
+            }))
+            .filter(candidate => candidate.record)
+            .sort((left, right) => comparePendingRecordsNewestFirst(left.record, right.record))[0];
+          if (!next) break;
+          next.stream.buffer.shift();
+          records.push(next.record);
         }
-      }catch(_){ alert('Ação falhou'); }
-    });
+        pageData = {
+          records,
+          hasMore: sources.some(({ collectionName }) => {
+            const stream = state.streams[collectionName];
+            return stream.buffer.length > 0 || !stream.exhausted;
+          }),
+        };
+        if (pendingPaginationState !== state || state.page !== page) return;
+        state.pages.set(page, pageData);
+      } catch (error) {
+        if (pendingPaginationState !== state || state.page !== page) return;
+        state.loading = false;
+        const message = error?.code === 'failed-precondition'
+          ? 'O Firestore precisa ativar o índice de ordenação para esta lista. Depois da ativação, use “Atualizar”.'
+          : 'Não foi possível carregar os pedidos pendentes. Use “Atualizar” para tentar de novo.';
+        tbody.innerHTML = `<tr><td colspan="5" class="pending-state pending-state-error">${message}</td></tr>`;
+        if (countEl && !state.counts) countEl.textContent = 'Contagem indisponível';
+        updatePendingPaginationControls(state, false);
+        console.error('Erro ao carregar a página de pedidos pendentes:', {
+          code: error?.code,
+          message: error?.message,
+          error,
+        });
+        return;
+      }
+    }
+
+    state.loading = false;
+    if (countEl) {
+      countEl.textContent = state.counts
+        ? `${state.counts.orders + state.counts.registrations} pendentes`
+        : 'Contagem indisponível';
+    }
+    if (!pageData.records.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="pending-state">Nenhum pedido pendente nesta página.</td></tr>';
+    } else {
+      tbody.innerHTML = pageData.records.map(renderPendingRecord).join('');
+    }
+    updatePendingPaginationControls(state, pageData.hasMore);
   }
+
+  window.changePendingPage = direction => {
+    const state = pendingPaginationState;
+    if (!state || state.loading) return;
+    const targetPage = state.page + Number(direction);
+    if (targetPage < 1 || (state.totalPages && targetPage > state.totalPages)) return;
+    const currentPageData = state.pages.get(state.page);
+    if (targetPage > state.page && !state.totalPages && !currentPageData?.hasMore) return;
+    state.page = targetPage;
+    void loadPending(state.isManager);
+  };
+
+  window.refreshPendingOrders = () => {
+    const isManager = pendingPaginationState?.isManager ??
+      ['ceo', 'gerente', 'socio'].includes((window.adminRoleLower || '').toLowerCase());
+    return loadPending(isManager, { reset: true });
+  };
 
   async function loadRecentSchedules(){
     const tbody = document.getElementById('schedulesTbody');
@@ -4885,87 +5223,10 @@ async function loadConfirmedOrders() {
 
 // Função para carregar pedidos pendentes
 async function loadPendingOrders() {
-    try {
-        const { collection, getDocs, query, where, orderBy, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        
-        // Buscar pedidos com status 'pending' - sem orderBy para evitar erro de índice
-        const ordersRef = collection(window.firebaseDb, 'orders');
-        const q = query(
-            ordersRef,
-            where('status', '==', 'pending'),
-            limit(50)
-        );
-        
-        const snapshot = await getDocs(q);
-        const pendingTbody = document.getElementById('pendingTbody');
-        const pendingCount = document.getElementById('pendingCount');
-        
-        if (pendingTbody) {
-            pendingTbody.innerHTML = '';
-            
-            if (snapshot.empty) {
-                pendingTbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">Nenhum pedido pendente encontrado</td></tr>';
-            } else {
-                // Ordenar manualmente por data
-                const orders = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    orders.push({ id: doc.id, ...data });
-                });
-                
-                orders.sort((a, b) => {
-                    const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-                    const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-                    return dateB - dateA;
-                });
-                
-                // Função auxiliar para obter nome do item/evento
-                const getItemName = (order) => {
-                  // Se tiver eventType, mapear para nome legível
-                  if (order.eventType) {
-                    const eventMap = {
-                      'modo-liga': 'Modo Liga',
-                      'xtreino-tokens': 'XTreino Tokens',
-                      'xtreino': 'XTreino Tokens',
-                      'semanal-freitas': 'Semanal Freitas',
-                      'semanal': 'Semanal Freitas',
-                      'camp-freitas': 'Camp Freitas',
-                      'camp': 'Camp Freitas'
-                    };
-                    return eventMap[order.eventType.toLowerCase()] || order.eventType;
-                  }
-                  // Tentar outros campos
-                  return order.title || order.item || order.productName || 'Item não informado';
-                };
-                
-                orders.forEach(order => {
-                    const row = document.createElement('tr');
-                    const nameDisplay = order.customerName || order.name || order.customer || '-';
-                    const contactDisplay = order.phone || order.contact || '-';
-                    const teamDisplay = order.teamName || order.team || '-';
-                    const emailDisplay = order.buyerEmail || order.customer || '-';
-                    row.innerHTML = `
-                        <td class="py-2 text-sm"><strong>${nameDisplay}</strong></td>
-                        <td class="py-2 text-sm">${contactDisplay}</td>
-                        <td class="py-2 text-sm">${teamDisplay}</td>
-                        <td class="py-2 text-sm">${emailDisplay}</td>
-                        <td class="py-2 text-sm">${getItemName(order)}</td>
-                        <td class="py-2 text-sm">
-                            <button onclick="approveOrder('${order.id}')" class="text-green-600 hover:text-green-800 text-xs">Aprovar</button>
-                        </td>
-                    `;
-                    pendingTbody.appendChild(row);
-                });
-            }
-        }
-        
-        if (pendingCount) {
-            pendingCount.textContent = `${snapshot.size} pedidos`;
-        }
-        
-    } catch (error) {
-        console.error('Erro ao carregar pedidos pendentes:', error);
+    if (typeof window.refreshPendingOrders === 'function') {
+        return window.refreshPendingOrders();
     }
+    console.warn('A lista paginada de pedidos pendentes ainda não foi inicializada.');
 }
 
 // Função para aprovar pedido
@@ -11171,9 +11432,13 @@ function validateEventForm(category) {
     const name = document.getElementById('evtName').value.trim();
     const modo = document.getElementById('evtModo').value;
     const vagas = parseInt(document.getElementById('evtVagas').value, 10);
+    const urlType = document.getElementById('evtEventType')?.value || '';
 
     if (!name) return 'Informe o nome do evento.';
     if (!vagas || vagas < 1) return 'Informe a quantidade de vagas.';
+    if (urlType === 'camp-season-7' && (category !== 'camp' || !isCampSeason7EventName(name))) {
+        return 'A URL /camp-season-7 só pode ser usada pelo evento Camp Season 7.';
+    }
 
     if (modo === 'NORMAL') {
         if (vagas % 12 !== 0) return `Modo NORMAL: a quantidade de vagas deve ser múltiplo de 12. Você informou ${vagas}.`;
@@ -11187,6 +11452,11 @@ function validateEventForm(category) {
     }
 
     return null;
+}
+
+function isCampSeason7EventName(value) {
+    const normalized = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return normalized.includes('camp') && /\bseason\s*7\b/.test(normalized);
 }
 
 let _isSavingEvent = false;
@@ -11297,11 +11567,14 @@ async function saveEventForm() {
     const editId = document.getElementById('evtEditId').value;
     const bannerSizeEl = document.querySelector('input[name="evtBannerSize"]:checked');
     const entrada = document.getElementById('evtEntrada').value;
+    const selectedUrlType = (document.getElementById('evtEventType')?.value || '').trim();
+    const usesCampSeason7Url = selectedUrlType === 'camp-season-7';
 
     const data = {
         category,
         name: document.getElementById('evtName').value.trim(),
-        eventType: (document.getElementById('evtEventType')?.value || '').trim() || null,
+        eventType: usesCampSeason7Url ? 'camp-freitas' : (selectedUrlType || null),
+        urlSlug: usesCampSeason7Url ? 'camp-season-7' : null,
         tipo: document.getElementById('evtTipo').value,
         modo: document.getElementById('evtModo').value,
         formato: (document.getElementById('evtFormato')?.value || 'MISTO').toUpperCase(),
@@ -11343,6 +11616,19 @@ async function saveEventForm() {
     if (existingImageUrl) data.imageUrl = existingImageUrl;
 
     try {
+        if (data.urlSlug) {
+            const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const existingSlug = await getDocs(query(
+                collection(window.firebaseDb, 'adminEvents'),
+                where('urlSlug', '==', data.urlSlug)
+            ));
+            if (existingSlug.docs.some(item => item.id !== editId)) {
+                errorEl.textContent = 'Essa URL já está vinculada a outro evento. Escolha outro endereço.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+        }
+
         // Fazer upload da imagem se uma nova foi selecionada
         const imageFile = document.getElementById('evtImageInput').files?.[0];
         if (imageFile && window.firebaseStorage) {
@@ -11417,6 +11703,9 @@ async function loadEventsList(category) {
             const statusCls = statusColors[ev.status] || 'bg-gray-100 text-gray-600';
             const dateStr = ev.eventDate ? new Date(ev.eventDate).toLocaleString('pt-BR') : '—';
             const gruposStr = category === 'camp' && ev.grupos ? `<span class="text-xs text-gray-500">Grupos: <b>${ev.grupos}</b></span>` : '';
+            const eventPageUrl = ev.urlSlug === 'camp-season-7'
+                ? 'camp-season-7'
+                : `evento.html?id=${encodeURIComponent(d.id)}`;
             return `<div class="bg-white border border-gray-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div class="flex-1 min-w-0">
                     <div class="flex flex-wrap items-center gap-2 mb-1">
@@ -11436,7 +11725,7 @@ async function loadEventsList(category) {
                 </div>
                 <div class="flex gap-2 flex-shrink-0 flex-wrap">
                     ${category === 'camp' ? `<button onclick="openCampGroupsModal('${d.id}', this.dataset.name)" data-name="${escapeAdminHtml(ev.name || '')}" title="Gerenciar grupos" class="px-3 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-xs font-semibold hover:bg-orange-100"><i class="fas fa-users mr-1"></i>Grupos</button>` : ''}
-                    <a href="evento.html?event=${encodeURIComponent(ev.eventType || d.id)}" target="_blank" class="px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-100 inline-flex items-center" title="Ver página do evento">
+                    <a href="${eventPageUrl}" target="_blank" class="px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-100 inline-flex items-center" title="Ver página do evento">
                         <i class="fas fa-external-link-alt mr-1"></i>Ver Página
                     </a>
                     <button onclick="openEventSlotsModal('${d.id}', this.dataset.name)" data-name="${escapeAdminHtml(ev.name || '')}" title="Ver slots por horário" class="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-100">
@@ -11469,7 +11758,11 @@ async function editEventItem(eventId) {
         document.getElementById('evtFormTitle').textContent = 'Editar Evento';
         document.getElementById('evtName').value = ev.name || '';
         const evtEventTypeEl = document.getElementById('evtEventType');
-        if (evtEventTypeEl) evtEventTypeEl.value = ev.eventType || '';
+        if (evtEventTypeEl) {
+            evtEventTypeEl.value = ev.urlSlug === 'camp-season-7' || (ev.category === 'camp' && isCampSeason7EventName(ev.name))
+                ? 'camp-season-7'
+                : (ev.eventType || '');
+        }
         document.getElementById('evtTipo').value = ev.tipo || 'SOLO';
         document.getElementById('evtModo').value = ev.modo || 'NORMAL';
         const fmtEl = document.getElementById('evtFormato');

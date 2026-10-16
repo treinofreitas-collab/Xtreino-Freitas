@@ -263,6 +263,24 @@ test("free override ISO timestamps are honored; optional paid participation uses
   assert.equal((await eventPrice(currentDb, registration, true)).cents, 300);
 });
 
+test("Camp Season 7 uses its exact catalog event and rejects bookings before 15/11/2026", async () => {
+  currentDb = fakeDatabase({
+    "adminEvents/camp-freitas": { name: "Camp Freitas", eventType: "camp-freitas", preco: 8, status: "Aberto" },
+    "adminEvents/Season7Event": {
+      name: "CAMPEONATO SEASON 7 - INÍCIO: 15/11",
+      eventType: "camp-freitas", preco: 3, status: "Aberto",
+    },
+  });
+  const registration = {
+    eventType: "camp-freitas", adminEventId: "Season7Event", eventLinkDateScoped: true,
+    title: "CAMPEONATO SEASON 7 - INÍCIO: 15/11 - Slot 1",
+    date: "2026-11-14", schedule: "Sábado - 19h",
+  };
+  await assert.rejects(eventPrice(currentDb, registration), /começam em 15\/11\/2026/);
+  registration.date = "2026-11-15";
+  assert.equal((await eventPrice(currentDb, registration)).cents, 300);
+});
+
 test("a different approved payment for an already-paid purchase is flagged for review", async () => {
   currentDb = fakeDatabase(productSeed());
   await preparePurchase("buyer", { external_reference: "digital_one" }, "mercadopago");

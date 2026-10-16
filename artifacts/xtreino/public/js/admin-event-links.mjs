@@ -1,7 +1,8 @@
-// Admin: Links dos eventos (links fixos por evento + horário)
+// Admin: links recorrentes por evento/horário e links por data/horário para o Camp Season 7.
 import { eventAccessRequest } from './event-access-client.mjs';
 
 const CACHE_TTL = 60 * 1000;
+const CAMP_SEASON_7_START_DATE = '2026-11-15';
 const MANAGER_ROLES = ['ceo', 'admin', 'gerente'];
 const VIEWER_ROLES = ['socio', 'sócio'];
 
@@ -44,8 +45,33 @@ function normSchedule(raw) {
 function validUrl(u) {
   try { const x = new URL(String(u).trim()); return (x.protocol === 'http:' || x.protocol === 'https:') && !!x.hostname; } catch { return false; }
 }
+function isCampSeason7(event) {
+  const name = String(event?.label || event?.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return name.includes('camp') && /\bseason\s*7\b/.test(name);
+}
+function selectedEvent() { return state.events.find(e => e.id === $('eventLinksEvent')?.value); }
+function formatDate(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
+function syncDateField() {
+  const event = selectedEvent();
+  const wrap = $('eventLinksDateWrap');
+  const input = $('eventLinksDate');
+  if (!wrap || !input) return;
+  const dateScoped = isCampSeason7(event);
+  wrap.classList.toggle('hidden', !dateScoped);
+  const help = $('eventLinksHelp');
+  if (help) help.textContent = dateScoped
+    ? 'No Camp Season 7, o link vale somente para esta data e horário. A data inicial é 15/11/2026.'
+    : 'O link vale para todas as datas do evento naquele horário. Aceita qualquer URL http ou https.';
+  if (!dateScoped) { input.value = ''; return; }
+  input.min = CAMP_SEASON_7_START_DATE;
+  if (!input.value || input.value < CAMP_SEASON_7_START_DATE) input.value = CAMP_SEASON_7_START_DATE;
+}
 function eventLabel(link) {
-  const ev = state.events.find(e => e.id === link.eventType || e.eventType === link.eventType);
+  const ev = state.events.find(e => e.id === link.eventId)
+    || state.events.find(e => e.id === link.eventType || e.eventType === link.eventType);
   return ev?.label || link.label || link.eventType;
 }
 function scheduleSortKey(s) { const m = String(s).match(/^(\d{1,2})(?:[h:](\d{2}))?/); return m ? (+m[1]) * 60 + (+(m[2] || 0)) : 9999; }
@@ -94,7 +120,8 @@ function fillForm(link) {
   state.editingId = link ? link.id : null;
   let evId = state.eventId;
   if (link) {
-    const ev = state.events.find(e => e.id === link.eventType || e.eventType === link.eventType);
+    const ev = state.events.find(e => e.id === link.eventId)
+      || state.events.find(e => e.id === link.eventType || e.eventType === link.eventType);
     evId = ev ? ev.id : '';
   }
   sel.value = evId;
@@ -102,6 +129,8 @@ function fillForm(link) {
   $('eventLinksSchedule').value = link ? link.schedule : '';
   $('eventLinksUrl').value = link ? link.url : '';
   $('eventLinksActive').checked = link ? link.active !== false : true;
+  $('eventLinksDate').value = link?.date || '';
+  syncDateField();
   $('eventLinksFormTitle').textContent = link ? 'Editar link' : 'Novo link';
   $('eventLinksSubmit').textContent = link ? 'Salvar alterações' : 'Adicionar link';
   $('eventLinksCancel').classList.toggle('hidden', !link);
@@ -139,30 +168,40 @@ async function submitForm(ev) {
   const errEl = $('eventLinksFormError');
   const fail = (m) => { errEl.textContent = m; errEl.classList.remove('hidden'); };
   const eventType = $('eventLinksEvent').value;
+  const event = state.events.find(e => e.id === eventType);
   const schedule = normSchedule($('eventLinksSchedule').value);
   const url = $('eventLinksUrl').value.trim();
   if (!eventType) return fail('Selecione o evento.');
   if (!schedule) return fail('Horário inválido. Use o formato 19h ou 19:30.');
   if (!validUrl(url)) return fail('Informe uma URL válida começando com http:// ou https://.');
+  const dateScoped = isCampSeason7(event);
+  const date = dateScoped ? $('eventLinksDate').value : undefined;
+  if (dateScoped && (!date || date < CAMP_SEASON_7_START_DATE)) {
+    return fail('O Camp Season 7 aceita links a partir de 15/11/2026. Informe uma data válida.');
+  }
   errEl.classList.add('hidden');
   const editing = state.editingId;
-  const ok = await save({ eventType, schedule, url, active: $('eventLinksActive').checked, previousId: editing || undefined },
+  const ok = await save({ eventType, schedule, url, ...(date ? { date } : {}),
+    active: $('eventLinksActive').checked, previousId: editing || undefined },
     editing ? 'Link atualizado.' : 'Link adicionado.');
   if (ok) fillForm(null);
 }
 
 async function toggle(id) {
   const link = state.links.find(l => l.id === id); if (!link) return;
-  const ev = state.events.find(e => e.id === link.eventType || e.eventType === link.eventType);
-  await save({ eventType: ev ? ev.id : link.eventType, schedule: link.schedule, url: link.url, active: link.active === false },
+  const ev = state.events.find(e => e.id === link.eventId)
+    || state.events.find(e => e.id === link.eventType || e.eventType === link.eventType);
+  await save({ eventType: ev ? ev.id : link.eventType, schedule: link.schedule, url: link.url,
+    ...(link.date ? { date: link.date } : {}), active: link.active === false },
     link.active === false ? 'Link reativado.' : 'Link desativado.');
 }
 
 async function remove(id) {
   const link = state.links.find(l => l.id === id); if (!link || !canEdit() || state.busy) return;
   const uid = window.firebaseAuth?.currentUser?.uid;
+  const when = link.date ? ` em ${formatDate(link.date)}` : '';
   const ok = typeof window.showConfirm === 'function'
-    ? await window.showConfirm('Excluir link', `Excluir o link de ${eventLabel(link)} às ${link.schedule}? Esta ação não pode ser desfeita.`, 'Excluir')
+    ? await window.showConfirm('Excluir link', `Excluir o link de ${eventLabel(link)}${when} às ${link.schedule}? Esta ação não pode ser desfeita.`, 'Excluir')
     : window.confirm('Excluir este link?');
   if (!ok || uid !== window.firebaseAuth?.currentUser?.uid || !canEdit()) return;
   state.busy = true; setStatus(); render();
@@ -190,6 +229,7 @@ function render() {
   sel.innerHTML = `<option value="">${prompt}</option>` +
     state.events.map(e => `<option value="${esc(e.id)}">${esc(e.label || e.id)}</option>`).join('');
   sel.value = cur;
+  syncDateField();
   const scope = $('eventLinksScope');
   scope.innerHTML = `<option value="">Selecione um evento para ver os links</option>` +
     state.events.map(e => `<option value="${esc(e.id)}">${esc(e.label || e.id)}</option>`).join('');
@@ -226,9 +266,12 @@ function render() {
   const selectedEvent = state.events.find(e => e.id === state.eventId);
   const f = state.filter.trim().toLowerCase();
   const rows = state.links
-    .filter(l => l.eventType === selectedEvent.id || l.eventType === selectedEvent.eventType)
-    .filter(l => !f || `${eventLabel(l)} ${l.schedule} ${l.url}`.toLowerCase().includes(f))
-    .sort((a, b) => eventLabel(a).localeCompare(eventLabel(b)) || scheduleSortKey(a.schedule) - scheduleSortKey(b.schedule));
+    .filter(l => isCampSeason7(selectedEvent)
+      ? l.eventId === selectedEvent.id
+      : !l.eventId && (l.eventType === selectedEvent.id || l.eventType === selectedEvent.eventType))
+    .filter(l => !f || `${eventLabel(l)} ${l.date || ''} ${l.schedule} ${l.url}`.toLowerCase().includes(f))
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))
+      || scheduleSortKey(a.schedule) - scheduleSortKey(b.schedule));
   $('eventLinksCount').textContent = `${rows.length} links, ${rows.filter(l => l.active !== false).length} ativos`;
   if (!rows.length) {
     list.innerHTML = `<div class="border border-dashed border-gray-300 rounded-xl p-8 text-center">
@@ -247,7 +290,10 @@ function render() {
         <button data-act="remove" data-id="${esc(l.id)}" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50" ${state.busy ? 'disabled' : ''}>Excluir</button>
       </div>` : '';
     return `<div class="flex flex-col md:flex-row md:items-center gap-3 p-3 rounded-lg border ${editing ? 'border-blue-400 bg-blue-50/50' : 'border-gray-200'} ${on ? '' : 'opacity-70'}">
-      <div class="w-16 shrink-0 text-center"><div class="text-lg font-bold text-gray-800 tabular-nums">${esc(l.schedule)}</div></div>
+      <div class="w-24 shrink-0 text-center">
+        ${l.date ? `<div class="text-xs font-semibold text-gray-600">${esc(formatDate(l.date))}</div>` : ''}
+        <div class="text-lg font-bold text-gray-800 tabular-nums">${esc(l.schedule)}</div>
+      </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="font-semibold text-sm text-gray-800">${esc(eventLabel(l))}</span>
@@ -274,18 +320,20 @@ function build(root) {
       <form id="eventLinksForm" class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end" novalidate>
         <label class="md:col-span-3 text-xs font-medium text-gray-600">Evento
           <select id="eventLinksEvent" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"></select></label>
+        <label id="eventLinksDateWrap" class="hidden md:col-span-2 text-xs font-medium text-gray-600">Data
+          <input id="eventLinksDate" type="date" min="${CAMP_SEASON_7_START_DATE}" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"></label>
         <label class="md:col-span-2 text-xs font-medium text-gray-600">Horário
           <input id="eventLinksSchedule" type="text" placeholder="19h ou 19:30" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"></label>
-        <label class="md:col-span-4 text-xs font-medium text-gray-600">URL de acesso
+        <label class="md:col-span-3 text-xs font-medium text-gray-600">URL de acesso
           <input id="eventLinksUrl" type="url" placeholder="https://..." class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"></label>
         <label class="md:col-span-1 flex items-center gap-2 text-xs font-medium text-gray-600 pb-2.5">
           <input id="eventLinksActive" type="checkbox" checked class="rounded"> Ativo</label>
-        <div class="md:col-span-2 flex gap-2">
+        <div class="md:col-span-1 flex gap-2">
           <button id="eventLinksSubmit" type="submit" class="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700">Adicionar link</button>
           <button id="eventLinksCancel" type="button" class="hidden px-3 py-2 border border-gray-300 bg-white rounded-lg text-xs font-semibold hover:bg-gray-100">Cancelar</button>
         </div>
       </form>
-      <p class="text-[11px] text-gray-500 mt-2">O link vale para todas as datas do evento naquele horário. Aceita qualquer URL http ou https.</p>
+      <p id="eventLinksHelp" class="text-[11px] text-gray-500 mt-2">O link vale para todas as datas do evento naquele horário. Aceita qualquer URL http ou https.</p>
       <div id="eventLinksFormError" class="hidden mt-2 text-xs text-red-600"></div>
     </div>
     <div class="flex flex-wrap items-end gap-3 mb-3">
@@ -293,7 +341,7 @@ function build(root) {
         <select id="eventLinksScope" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"></select>
       </label>
       <label class="flex-1 min-w-[180px] text-xs font-medium text-gray-600">Buscar neste evento
-        <input id="eventLinksFilter" type="search" placeholder="Horário ou URL" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+      <input id="eventLinksFilter" type="search" placeholder="Data, horário ou URL" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
       </label>
       <span id="eventLinksCount" class="text-xs text-gray-500 whitespace-nowrap"></span>
     </div>
@@ -303,7 +351,10 @@ function build(root) {
   $('eventLinksRetry').addEventListener('click', () => load(true));
   $('eventLinksRefresh').addEventListener('click', () => load(true));
   $('eventLinksFilter').addEventListener('input', (e) => { state.filter = e.target.value; render(); });
-  $('eventLinksEvent').addEventListener('change', (e) => { state.eventId = e.target.value; state.filter = ''; $('eventLinksFilter').value = ''; render(); });
+  $('eventLinksEvent').addEventListener('change', (e) => {
+    state.eventId = e.target.value; state.filter = ''; $('eventLinksFilter').value = '';
+    fillForm(null); render();
+  });
   $('eventLinksScope').addEventListener('change', (e) => { state.eventId = e.target.value; state.filter = ''; $('eventLinksFilter').value = ''; fillForm(null); render(); });
   $('eventLinksList').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-act]'); if (!b) return;

@@ -4,6 +4,7 @@ const MANAGERS = new Set(["ceo", "admin", "gerente"]);
 const VIEWERS = new Set([...MANAGERS, "socio"]);
 const CONFIRMED = new Set(["paid", "confirmed", "approved", "lisagem_gratis"]);
 const ID = /^[a-zA-Z0-9_-]{1,160}$/;
+const CAMP_SEASON_7_START_DATE = "2026-11-15";
 const expiryOffset = new Intl.DateTimeFormat("en", {
   timeZone: "America/Sao_Paulo", timeZoneName: "longOffset",
 });
@@ -47,6 +48,17 @@ function normalizeSchedule(value) {
   return `${Number(match[1])}h${Number(match[2] || 0) ? match[2] : ""}`;
 }
 
+function isCampSeason7(value) {
+  const normalized = String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return normalized.includes("camp") && /\bseason\s*7\b/.test(normalized);
+}
+
+function validIsoDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
+}
+
 function safeUrl(value) {
   if (typeof value !== "string" || value.length > 2048) fail("Link inválido.");
   let url;
@@ -57,14 +69,21 @@ function safeUrl(value) {
   return url.href;
 }
 
-function linkKey(eventType, schedule) {
-  return `${normalizeEventType(eventType)}__${normalizeSchedule(schedule)}`;
+function linkKey(eventType, schedule, date = null, eventId = null) {
+  const key = `${normalizeEventType(eventType)}__${normalizeSchedule(schedule)}`;
+  if (date == null && eventId == null) return key;
+  if (!validIsoDate(date) || typeof eventId !== "string" || !ID.test(eventId)) {
+    fail("Informe uma data e um evento válidos para este link.");
+  }
+  return `${normalizeEventType(eventType)}__${eventId}__${date}__${normalizeSchedule(schedule)}`;
 }
 
 function serializeLink(doc) {
   const data = doc.data();
   return { id: doc.id, eventType: data.eventType, schedule: data.schedule,
-    label: data.label || data.eventType, url: data.url, active: data.active === true };
+    label: data.label || data.eventType, url: data.url, active: data.active === true,
+    ...(data.eventId ? { eventId: data.eventId } : {}),
+    ...(data.date ? { date: data.date } : {}) };
 }
 
 function catalogEvent(doc) {
@@ -123,10 +142,17 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser, now = Date.now
         if (!catalog.exists) fail("Evento não encontrado.", 404);
         const selectedEvent = catalogEvent(catalog);
         const eventType = selectedEvent.eventType;
-        const id = linkKey(eventType, schedule);
+        const dateSpecific = isCampSeason7(selectedEvent.label);
+        const date = dateSpecific ? body.date : null;
+        if (dateSpecific && (!validIsoDate(date) || date < CAMP_SEASON_7_START_DATE)) {
+          fail("O Camp Season 7 aceita links a partir de 15/11/2026. Informe uma data válida.");
+        }
+        const eventId = dateSpecific ? selectedEvent.id : null;
+        const id = dateSpecific ? linkKey(eventType, schedule, date, eventId) : linkKey(eventType, schedule);
         const data = {
           eventType, schedule, url, active: body.active,
           label: selectedEvent.label,
+          ...(dateSpecific ? { eventId, date } : {}),
           updatedBy: user.uid, updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         };
         if (body.previousId && body.previousId !== id) {
@@ -141,7 +167,8 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser, now = Date.now
         } else {
           await links.doc(id).set(data);
         }
-        return respond(200, { link: { id, eventType, schedule, url, active: data.active, label: data.label } });
+        return respond(200, { link: { id, eventType, schedule, url, active: data.active, label: data.label,
+          ...(dateSpecific ? { eventId, date } : {}) } });
       }
 
       const checkouts = new Map();
@@ -190,7 +217,14 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser, now = Date.now
         if (!expiresAt) return { ...base, status: "needs_review" };
         const details = { ...base, eventType, schedule, eventDate, expiresAt };
         if (now() >= Date.parse(expiresAt)) return { ...details, status: "expired" };
-        const key = linkKey(eventType, schedule);
+        const dateSpecific = data.eventLinkDateScoped === true || isCampSeason7(data.title);
+        if (dateSpecific && (!validIsoDate(eventDate) || eventDate < CAMP_SEASON_7_START_DATE ||
+            typeof data.adminEventId !== "string" || !ID.test(data.adminEventId))) {
+          return { ...details, status: "not_configured" };
+        }
+        const key = dateSpecific
+          ? linkKey(eventType, schedule, eventDate, data.adminEventId)
+          : linkKey(eventType, schedule);
         if (!configurations.has(key)) configurations.set(key, links.doc(key).get());
         const configuration = await configurations.get(key);
         if (!configuration.exists) return { ...details, status: "not_configured" };

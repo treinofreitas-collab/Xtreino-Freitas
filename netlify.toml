@@ -21,6 +21,11 @@
   status = 200
 
 [[redirects]]
+  from = "/camp-season-7"
+  to = "/evento.html?slug=camp-season-7"
+  status = 200
+
+[[redirects]]
   from = "/campeonato"
   to = "/evento.html"
   status = 200

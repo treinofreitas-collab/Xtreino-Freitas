@@ -202,6 +202,8 @@ const _rawHash = location.hash.replace('#', '').split('?')[0];
 const _pathEventType = URL_SLUG_MAP[location.pathname] || null;
 // ?event=eventType (gerado pelos links novos)
 const _queryEventType = _searchParams.get('event') || null;
+// Slug exclusivo persistido no evento, por exemplo ?slug=camp-season-7
+const _querySlug = _searchParams.get('slug') || (location.pathname.replace(/\/+$/, '').endsWith('/camp-season-7') ? 'camp-season-7' : null);
 // Tipo resolvido — path tem prioridade
 const _resolvedEventType = _pathEventType || _queryEventType || null;
 // ID legado (doc ID ou hash) — mantido para retrocompatibilidade
@@ -235,14 +237,14 @@ function hideCtaRegistered() {
     if (hBtn) { hBtn.textContent = '✓ INSCRITO'; hBtn.disabled = true; hBtn.className = 'bg-green-700 text-white text-sm font-bold px-4 py-2 rounded-lg cursor-default'; }
 }
 
-async function checkUserRegistration(evId) {
+async function checkUserRegistration(eventType, adminEventId) {
     if (!_auth || !_db) return;
     const user = _auth.currentUser;
     if (!user) return;
     try {
         const snap = await getDocs(query(
             collection(_db, 'registrations'),
-            where('eventType', '==', evId),
+            where(adminEventId ? 'adminEventId' : 'eventType', '==', adminEventId || eventType),
             where('userId', '==', user.uid),
             where('status', 'in', ['confirmed', 'paid', 'approved', 'pending'])
         ));
@@ -304,7 +306,7 @@ function extractYoutubeId(url) {
 }
 
 async function loadEvent() {
-    if (!_resolvedEventType && !eventId) { showError('Nenhum evento selecionado. Volte à página inicial e abra um evento.'); return; }
+    if (!_resolvedEventType && !_querySlug && !eventId) { showError('Nenhum evento selecionado. Volte à página inicial e abra um evento.'); return; }
 
     // Timeout de 12s caso Firebase demore muito
     const timeout = setTimeout(() => showError('Tempo esgotado ao carregar o evento. Verifique sua conexão e tente novamente.'), 12000);
@@ -314,7 +316,17 @@ async function loadEvent() {
         if (!db) { clearTimeout(timeout); showError('Erro ao conectar ao banco de dados.'); return; }
 
         let snap;
-        if (_resolvedEventType) {
+        if (_querySlug) {
+            // Slug exclusivo: resolve somente o documento configurado para essa URL.
+            const slugSnap = await getDocs(query(collection(db, 'adminEvents'), where('urlSlug', '==', _querySlug)));
+            if (slugSnap.empty) {
+                clearTimeout(timeout);
+                showError('Este endereço ainda não está vinculado a um evento. Salve a URL limpa no painel administrativo e tente novamente.');
+                return;
+            }
+            snap = slugSnap.docs[0];
+        }
+        if (!snap && _resolvedEventType) {
             // URL limpa (/treinofreitas) ou ?event= → buscar por campo eventType
             const qSnap = await getDocs(query(collection(db, 'adminEvents'), where('eventType', '==', _resolvedEventType)));
             if (!qSnap.empty) {
@@ -323,7 +335,7 @@ async function loadEvent() {
                 // Fallback: tentar como doc ID direto (retrocompatibilidade)
                 snap = await getDoc(doc(db, 'adminEvents', _resolvedEventType));
             }
-        } else {
+        } else if (!snap) {
             snap = await getDoc(doc(db, 'adminEvents', eventId));
         }
 
@@ -405,7 +417,7 @@ async function loadEvent() {
             // Verificar se usuário já está inscrito (aguarda auth resolver)
             onAuthStateChanged(_auth, (user) => {
                 window.currentUser = user || null;
-                if (user) checkUserRegistration(eventId);
+                if (user) checkUserRegistration(ev.eventType || _resolvedEventType || _currentEventId, _currentEventId);
             });
         }
 
@@ -469,13 +481,9 @@ window.loadPublicGroups = async function(phase) {
 
 window.goRegister = function() {
     const eid = window._currentEventId;
-    if (_resolvedEventType) {
-        // Sempre redireciona para index.html com o tipo canônico do evento.
-        // O modal de agendamento está em index.html (script.js) e é aberto via ?openEvent=
-        window.location.href = `index.html?openEvent=${encodeURIComponent(_resolvedEventType)}#eventos`;
-        return;
-    }
-    window.location.href = eid ? `index.html?openEvent=${encodeURIComponent(eid)}#eventos` : 'index.html#eventos';
+    // Usar o ID exato do cadastro para manter data, preço e links do evento correto.
+    const target = eid || _resolvedEventType;
+    window.location.href = target ? `index.html?openEvent=${encodeURIComponent(target)}#eventos` : 'index.html#eventos';
 };
 
 loadEvent();

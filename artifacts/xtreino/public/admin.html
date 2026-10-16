@@ -189,7 +189,7 @@
                     <div class="text-xs text-green-600">via MP / PIX</div>
                 </div>
                 <!-- Vendas Mês -->
-                <div onclick="openMonthSalesModal()" class="cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-100 border-l-4 border-blue-500 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-200 select-none">
+                <div onclick="openMonthSalesModal()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openMonthSalesModal()}" role="button" tabindex="0" aria-label="Ver faturamento do mês atual e meses anteriores" class="cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-100 border-l-4 border-blue-500 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-200 select-none">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-xs font-semibold text-blue-700 uppercase tracking-wide">Vendas Mês</div>
                         <div class="w-9 h-9 bg-blue-500 rounded-lg flex items-center justify-center shadow-sm">
@@ -200,25 +200,6 @@
                     <div class="text-xs text-blue-600">mês atual · clique para detalhar</div>
                 </div>
 
-                <!-- Modal: Breakdown diário de vendas do mês -->
-                <div id="monthSalesModal" class="hidden fixed inset-0 z-[9999] bg-black/60 flex items-end sm:items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
-                    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col">
-                        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                            <h3 class="font-bold text-gray-800 text-sm">📊 Faturamento Diário — <span id="monthSalesTitle">Mês Atual</span></h3>
-                            <button onclick="document.getElementById('monthSalesModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-2xl leading-none w-8 h-8 flex items-center justify-center">&times;</button>
-                        </div>
-                        <div class="px-5 py-3 border-b bg-blue-50 flex items-center justify-between">
-                            <div>
-                                <div class="text-xs text-blue-500 font-semibold uppercase tracking-wide mb-0.5">Total confirmado</div>
-                                <div id="monthSalesTotal" class="text-2xl font-black text-blue-800">R$ 0,00</div>
-                            </div>
-                            <i class="fas fa-calendar-alt text-blue-300 text-3xl"></i>
-                        </div>
-                        <div id="monthSalesList" class="overflow-y-auto flex-1 p-4 space-y-2">
-                            <div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin text-xl mb-2 block"></i>Carregando...</div>
-                        </div>
-                    </div>
-                </div>
                 <!-- A Receber -->
                 <div class="bg-gradient-to-br from-yellow-50 to-amber-100 border-l-4 border-yellow-500 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-200">
                     <div class="flex items-center justify-between mb-2">
@@ -397,31 +378,40 @@
                         </div>
                     </div>
                 </div>
-                <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="font-bold text-sm">Pedidos Pendentes</h3>
-                        <div class="flex items-center gap-2 text-xs text-gray-500">
-                            <span id="pendingCount">0 pedidos</span>
-                            <span id="pendingPageInfo">Página 1 de 1</span>
+                <div class="pending-panel bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <div class="pending-panel-header">
+                        <div>
+                            <h3 class="font-bold text-sm text-gray-900">Pedidos pendentes</h3>
+                            <p class="mt-1 text-xs text-gray-500">Mais recentes primeiro · até 10 por página</p>
+                        </div>
+                        <div class="pending-panel-tools">
+                            <span id="pendingCount" class="pending-count">Carregando...</span>
+                            <button type="button" class="pending-refresh" onclick="refreshPendingOrders()" aria-label="Atualizar pedidos pendentes" title="Atualizar">
+                                <i class="fas fa-sync-alt" aria-hidden="true"></i>
+                                <span>Atualizar</span>
+                            </button>
                         </div>
                     </div>
-                    <div class="overflow-x-auto text-xs">
-                        <table class="w-full">
+                    <div class="pending-table-wrap">
+                        <table class="pending-table w-full">
                             <thead>
-                                <tr class="text-left text-gray-600 bg-yellow-50">
-                                    <th class="py-2">Nome</th>
-                                    <th class="py-2">Contato</th>
-                                    <th class="py-2">Time</th>
-                                    <th class="py-2">Email</th>
-                                    <th class="py-2">Item</th>
-                                    <th class="py-2">Ações</th>
+                                <tr class="text-left text-gray-500 bg-gray-50">
+                                    <th>Cliente</th>
+                                    <th>Item</th>
+                                    <th>Valor</th>
+                                    <th>Data da compra</th>
+                                    <th>Ações</th>
                                 </tr>
                             </thead>
-                            <tbody id="pendingTbody" class="divide-y"></tbody>
+                            <tbody id="pendingTbody">
+                                <tr><td colspan="5" class="pending-state">Carregando pedidos pendentes...</td></tr>
+                            </tbody>
                         </table>
                     </div>
-                    <div id="pendingPagination" class="flex justify-center mt-3 gap-1">
-                        <!-- Pagination buttons will be added here -->
+                    <div class="pending-pagination" id="pendingPagination">
+                        <button type="button" id="pendingPrevious" onclick="changePendingPage(-1)" disabled>‹ Anterior</button>
+                        <span id="pendingPageInfo" aria-live="polite">Página 1</span>
+                        <button type="button" id="pendingNext" onclick="changePendingPage(1)" disabled>Próxima ›</button>
                     </div>
                 </div>
                 <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
@@ -1461,7 +1451,7 @@
                 <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                     <div>
                         <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-link text-blue-600"></i> Links dos eventos</h3>
-                        <p class="text-xs text-gray-500 mt-0.5">Link de acesso fixo por evento e horário, entregue aos inscritos.</p>
+                        <p class="text-xs text-gray-500 mt-0.5">Links fixos por evento e horário; no Camp Season 7, um link individual por data e horário.</p>
                     </div>
                     <button id="eventLinksRefresh" type="button" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-50 flex items-center gap-1.5"><i class="fas fa-sync-alt"></i><span>Atualizar</span></button>
                 </div>
@@ -2228,6 +2218,7 @@
                         <option value="modo-liga">modo-liga → /modoliga</option>
                         <option value="semanal-freitas">semanal-freitas → /semanal</option>
                         <option value="camp-freitas">camp-freitas → /campeonato</option>
+                        <option value="camp-season-7">Camp Season 7 → /camp-season-7</option>
                         <option value="acesso">acesso → /acesso</option>
                     </select>
                     <p class="text-xs text-gray-400 mt-1">Define a URL amigável da página pública</p>
@@ -2566,6 +2557,37 @@
                 <i class="fas fa-wrench"></i>Corrigir Slots Duplicados
             </button>
             <button onclick="closeEventSlotsModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: faturamento mensal — fora de grids e contêineres com transformação -->
+<div id="monthSalesModal" class="month-sales-overlay" hidden
+     role="dialog" aria-modal="true" aria-labelledby="monthSalesHeading"
+     onclick="if(event.target===this)closeMonthSalesModal()">
+    <div id="monthSalesDialog" class="month-sales-dialog" onclick="event.stopPropagation()">
+        <div class="month-sales-header">
+            <div>
+                <h3 id="monthSalesHeading">Faturamento por dia</h3>
+                <p>Vendas confirmadas no período selecionado</p>
+            </div>
+            <button type="button" onclick="closeMonthSalesModal()" aria-label="Fechar faturamento mensal" class="month-sales-close">&times;</button>
+        </div>
+        <div class="month-sales-navigation">
+            <button type="button" id="monthSalesPreviousBtn" onclick="changeMonthSales(-1)" aria-label="Ver mês anterior">‹ Anterior</button>
+            <span id="monthSalesTitle">Mês atual</span>
+            <button type="button" id="monthSalesNextBtn" onclick="changeMonthSales(1)" aria-label="Ver próximo mês">Próximo ›</button>
+            <button type="button" id="monthSalesCurrentBtn" class="month-sales-current" onclick="showCurrentMonthSales()">Mês atual</button>
+        </div>
+        <div class="month-sales-total">
+            <div>
+                <div class="month-sales-total-label">Total confirmado</div>
+                <div id="monthSalesTotal" class="month-sales-total-value">R$ 0,00</div>
+            </div>
+            <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+        </div>
+        <div id="monthSalesList" class="month-sales-list" aria-live="polite">
+            <div class="month-sales-empty">Abra o resumo para carregar as vendas do mês.</div>
         </div>
     </div>
 </div>
