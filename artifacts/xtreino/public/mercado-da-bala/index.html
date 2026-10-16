@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12201f">
+  <meta name="description" content="Mercado da Bala — encontre jogadores e oportunidades competitivas no Free Fire.">
+  <title>Mercado da Bala | Plataforma Freitas</title>
+  <link rel="icon" type="image/png" href="../assets/images/Logo - Xtreino Freitas.png">
+  <link rel="stylesheet" href="./mercado.css">
+    <script>
+      var _marketFirebaseKey = ["AIzaSyBzD0iWNI", "fZwuzWN-Xhjbg2", "2OfCHv1Qwjo"].join("");
+      window.FIREBASE_CONFIG = {
+        apiKey: _marketFirebaseKey,
+        authDomain: "orgfreitas-ofc.firebaseapp.com",
+        projectId: "orgfreitas-ofc",
+        storageBucket: "orgfreitas-ofc.firebasestorage.app",
+        messagingSenderId: "493859004030",
+        appId: "1:493859004030:web:a1cba415344e4a7567822f",
+        measurementId: "G-WZCYZL5VC0"
+      };
+    </script>
+    <script type="module" src="../config/firebase.js"></script>
+  <script type="module" src="./mercado.js"></script>
+</head>
+<body>
+  <div class="mb-shell">
+    <div class="mb-topline"></div>
+    <header class="mb-header">
+      <div class="mb-header-inner">
+        <a class="mb-brand" href="../index.html" aria-label="Voltar à Plataforma Freitas">
+          <img src="../assets/images/Logo - Xtreino Freitas.png" alt="X-Treino Freitas">
+          <span class="mb-brand-copy"><strong>Mercado da Bala</strong><span>Plataforma Freitas · Free Fire</span></span>
+        </a>
+        <div class="mb-top-actions">
+          <span id="sessionLabel" class="mb-user">Navegação pública</span>
+          <button id="signInButton" class="mb-button yellow small" type="button">Entrar para anunciar</button>
+        </div>
+      </div>
+    </header>
+    <section class="mb-hero">
+      <div class="mb-wrap mb-hero-grid">
+        <div>
+          <div class="mb-eyebrow">Recrutamento competitivo, sem enrolação</div>
+          <h1>Seu próximo <em>squad</em><br>começa aqui.</h1>
+          <p>Encontre jogadores comprometidos ou uma equipe que combine com seu jogo. Perfis e vagas públicos; candidaturas e gestão ficam no espaço privado de cada usuário.</p>
+        </div>
+        <aside class="mb-hero-aside"><strong>Jogo sério. Respeito sempre.</strong>Novos talentos são bem-vindos. Nenhum ranking ou estatística é presumido: cada perfil fala por si.</aside>
+      </div>
+    </section>
+
+    <main class="mb-wrap mb-main">
+      <div id="globalAlert" class="mb-alert" role="alert"></div>
+      <nav class="mb-nav" aria-label="Navegação do Mercado da Bala">
+        <button class="mb-tab active" type="button" data-tab="players">Encontrar jogadores</button>
+        <button class="mb-tab" type="button" data-tab="vacancies">Encontrar equipes</button>
+        <button class="mb-tab" type="button" data-tab="my-space">Meu espaço</button>
+        <button class="mb-tab" type="button" data-tab="applications">Candidaturas</button>
+        <button class="mb-tab" type="button" data-tab="favorites">Favoritos</button>
+        <button class="mb-tab mb-hidden" type="button" data-tab="moderation" id="moderationTab">Moderação</button>
+      </nav>
+
+      <section class="mb-panel active" id="panel-players">
+        <div class="mb-panel-head">
+          <div><h2>Encontrar jogadores</h2><p>Busque por função, região e disponibilidade. Sem ranking automático.</p></div>
+          <button class="mb-button" type="button" data-action="edit-profile">Criar meu currículo</button>
+        </div>
+        <div class="mb-filters" id="playerFilters">
+          <input class="mb-control search" name="q" placeholder="Buscar nickname, equipe ou conquista" aria-label="Buscar jogadores">
+          <select class="mb-control" name="role" aria-label="Filtrar por função"><option value="">Todas as funções</option><option>Rushador</option><option>Suporte</option><option>Fragger</option><option>Capitão</option><option>Coringa</option><option>Reserva</option><option>Coach</option><option>Analista</option></select>
+          <select class="mb-control" name="state" aria-label="Filtrar por estado"><option value="">Todos os estados</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option></select>
+          <select class="mb-control" name="availability" aria-label="Filtrar disponibilidade"><option value="">Qualquer disponibilidade</option><option value="looking">Procurando equipe</option><option value="open">Aberto a propostas</option><option value="evaluating">Em avaliação</option><option value="unavailable">Temporariamente indisponível</option><option value="contracted">Já contratado</option></select>
+          <button class="mb-button secondary" type="button" data-action="clear-player-filters">Limpar</button>
+        </div>
+        <div class="mb-results-meta"><span id="playerCount">Carregando currículos…</span><span class="mb-filter-count">Os dados exibidos vêm dos perfis publicados.</span></div>
+        <div class="mb-grid" id="playersList" aria-live="polite"><div class="mb-skeleton"></div><div class="mb-skeleton"></div><div class="mb-skeleton"></div></div>
+      </section>
+
+      <section class="mb-panel" id="panel-vacancies">
+        <div class="mb-panel-head">
+          <div><h2>Encontrar equipes</h2><p>Vagas abertas por capitães e responsáveis. Candidate-se com uma mensagem curta.</p></div>
+          <button class="mb-button" type="button" data-action="new-vacancy">Publicar vaga</button>
+        </div>
+        <div class="mb-filters" id="vacancyFilters">
+          <input class="mb-control search" name="q" placeholder="Buscar time, função ou requisito" aria-label="Buscar vagas">
+          <select class="mb-control" name="role" aria-label="Filtrar vagas por função"><option value="">Todas as funções</option><option>Rushador</option><option>Suporte</option><option>Fragger</option><option>Capitão</option><option>Coringa</option><option>Reserva</option><option>Coach</option><option>Analista</option></select>
+          <select class="mb-control" name="level" aria-label="Nível competitivo"><option value="">Todos os níveis</option><option>Iniciante</option><option>Amador</option><option>Semiprofissional</option><option>Profissional</option></select>
+          <select class="mb-control" name="state" aria-label="Região/estado"><option value="">Qualquer região</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option></select>
+          <button class="mb-button secondary" type="button" data-action="clear-vacancy-filters">Limpar</button>
+        </div>
+        <div class="mb-results-meta"><span id="vacancyCount">Carregando vagas…</span><span class="mb-filter-count">Candidaturas são privadas para você e o responsável pela vaga.</span></div>
+        <div class="mb-grid" id="vacanciesList" aria-live="polite"><div class="mb-skeleton"></div><div class="mb-skeleton"></div></div>
+      </section>
+
+      <section class="mb-panel" id="panel-my-space">
+        <div class="mb-panel-head"><div><h2>Meu espaço</h2><p>Gerencie seu currículo e as vagas publicadas pela sua equipe.</p></div></div>
+        <div id="mySpaceContent"><div class="mb-state"><h3>Carregando seu espaço</h3><p>Estamos verificando sua sessão.</p></div></div>
+      </section>
+
+      <section class="mb-panel" id="panel-applications">
+        <div class="mb-panel-head"><div><h2>Candidaturas</h2><p>Seu pipeline é privado. Só você e o responsável autorizado veem essas informações.</p></div></div>
+        <div class="mb-toolbar"><div class="mb-segment" id="applicationMode"><button type="button" class="active" data-mode="received">Recebidas</button><button type="button" data-mode="sent">Enviadas</button></div><span id="applicationCount" class="mb-filter-count"></span></div>
+        <div id="applicationsList"><div class="mb-state"><h3>Carregando candidaturas</h3></div></div>
+      </section>
+
+      <section class="mb-panel" id="panel-favorites">
+        <div class="mb-panel-head"><div><h2>Jogadores favoritos</h2><p>Uma lista privada para acompanhar talentos que chamaram sua atenção.</p></div></div>
+        <div id="favoritesList"><div class="mb-state"><h3>Carregando favoritos</h3></div></div>
+      </section>
+
+      <section class="mb-panel" id="panel-moderation">
+        <div class="mb-panel-head"><div><h2>Fila de moderação</h2><p>Acesso reservado às funções autorizadas pela Plataforma Freitas.</p></div></div>
+        <div id="moderationList"><div class="mb-state"><h3>Carregando fila</h3></div></div>
+      </section>
+    </main>
+
+    <footer class="mb-footer"><div class="mb-wrap mb-footer-inner"><span>Mercado da Bala · Plataforma Freitas</span><span>Protegemos seus dados: nenhum telefone ou e-mail é publicado por padrão.</span><a href="../index.html">Voltar à plataforma</a></div></footer>
+  </div>
+  <div class="mb-modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="mb-dialog">
+      <div class="mb-dialog-head"><div><h2 id="modalTitle"></h2><p id="modalSubtitle"></p></div><button type="button" class="mb-dialog-close" data-action="close-modal" aria-label="Fechar">×</button></div>
+      <div class="mb-dialog-body" id="modalBody"></div>
+      <div class="mb-dialog-foot" id="modalFoot"></div>
+    </div>
+  </div>
+  <div class="mb-toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -313,6 +313,13 @@ function openLoginModal() {
 function closeLoginModal() {
     const m = document.getElementById('loginModal');
     if (m) m.classList.add('hidden');
+    if (!window.isLoggedIn) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('marketplaceLogin')) {
+            url.searchParams.delete('marketplaceLogin');
+            window.history.replaceState({}, '', url);
+        }
+    }
 }
 function showAuthTab(tab) {
     const tabs = ['login', 'register', 'reset'];
@@ -450,6 +457,7 @@ async function sendPasswordReset() {
 }
 
 function onAuthLogged(user) {
+    const returnToMarketplace = new URLSearchParams(window.location.search).get('marketplaceLogin') === '1';
     // Atualiza lastLogin no Firestore
     try {
         if (window.firebaseReady && window.firebaseDb && user?.uid) {
@@ -469,6 +477,13 @@ function onAuthLogged(user) {
     toggleAccountButtons(true);
     closeLoginModal();
     updateAdminLinkVisibility();
+    if (returnToMarketplace) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('marketplaceLogin');
+        window.history.replaceState({}, '', url);
+        window.location.href = 'mercado-da-bala/';
+        return;
+    }
     // registra lastLogin
     try {
         if (window.firebaseReady && window.firebaseAuth?.currentUser) {
