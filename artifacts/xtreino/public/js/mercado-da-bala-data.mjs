@@ -455,6 +455,9 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
       }
       const profile = profileSnapshot.data();
       const validAvailability = MARKET_AVAILABILITY.includes(profile.availability) ? profile.availability : "";
+      const hasLegacyContact = Array.isArray(profile.socialLinks) && profile.socialLinks.some(link =>
+        isSafeMarketUrl(typeof link === "string" ? link : link?.url)
+      );
       return {
         id: profileSnapshot.id,
         uid: profileSnapshot.id,
@@ -470,7 +473,7 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
         championships: boundedText(profile.championships, 400),
         achievements: boundedText(profile.achievements, 400),
         bio: boundedText(profile.bio, 700),
-        contactAvailable: profile.contactAvailable === true
+        contactAvailable: profile.contactAvailable === true || hasLegacyContact
       };
     },
 

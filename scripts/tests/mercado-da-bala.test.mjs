@@ -239,7 +239,7 @@ test("avaliador só abre o currículo publicado do candidato ligado à própria 
       championships: "Copa Regional",
       achievements: "Finalista",
       bio: "Atleta focado.",
-      contactAvailable: true,
+      contactAvailable: false,
       socialLinks: [{ url: "https://example.com/private" }],
       email: "private@example.com",
       status: "published"
@@ -285,6 +285,7 @@ test("avaliador só abre o currículo publicado do candidato ligado à própria 
   });
   assert.equal("socialLinks" in profile, false);
   assert.equal("email" in profile, false);
+  assert.equal(JSON.stringify(profile).includes("example.com"), false);
 
   documents.set("market_applications/vacancy-1__player-1", {
     vacancyOwnerUid: "another-team",
@@ -357,6 +358,8 @@ test("candidaturas recebidas oferecem uma ação para abrir o currículo do cand
   assert.match(marketUi, /case "view-applicant-profile"/);
   assert.match(marketUi, /isReceived \? `[\s\S]*data-action="view-applicant-profile"/);
   assert.match(marketUi, /getApplicantProfile\(appState\.user\.uid, applicationId, profileUid\)/);
+  assert.match(marketUi, /profileDetail\(profile, \{ allowContactCheck: true \}\)/);
+  assert.match(marketUi, /"Clique para verificar os links de contato compartilhados pelo jogador\."/);
 });
 
 test("Firestore mantém os links privados e o admin tem uma fila de denúncias do Mercado da Bala", () => {

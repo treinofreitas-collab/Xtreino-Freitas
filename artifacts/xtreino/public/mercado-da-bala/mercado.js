@@ -206,7 +206,7 @@ function closeModal() {
   $("#modal").classList.remove("open");
   document.body.style.overflow = "";
 }
-function profileDetail(profile) {
+function profileDetail(profile, { allowContactCheck = false } = {}) {
   const name = profileName(profile);
   const uid = recordId(profile);
   const place = [first(profile, ["city"], ""), first(profile, ["state", "uf", "region"], "")].filter(Boolean).join(", ");
@@ -216,12 +216,12 @@ function profileDetail(profile) {
   const tournaments = first(profile, ["championships", "tournaments"], "");
   const schedule = first(profile, ["availabilitySchedule", "trainingAvailability", "schedule"], "");
   const hasContact = profile.contactAvailable === true || linkList(profile).length > 0;
-  const contactSection = hasContact
+  const contactSection = hasContact || allowContactCheck
     ? `<section class="mb-contact-section" aria-label="Contato do jogador">
         <h4>CONTATO</h4>
         ${appState.user
           ? `<button class="mb-button yellow mb-contact-button" type="button" data-action="contact-profile" data-id="${esc(uid)}" data-name="${esc(name)}">CONTATO</button>
-             <p class="mb-contact-help">Acesse somente os links que este jogador escolheu compartilhar.</p>`
+             <p class="mb-contact-help">${hasContact ? "Acesse somente os links que este jogador escolheu compartilhar." : "Clique para verificar os links de contato compartilhados pelo jogador."}</p>`
           : `<button class="mb-button yellow mb-contact-button" type="button" disabled aria-disabled="true">CONTATO</button>
              <p class="mb-contact-help">Entre em uma conta cadastrada para habilitar o contato.</p>
              <button class="mb-button secondary small" type="button" data-action="signin">Entrar na plataforma</button>`}
@@ -424,7 +424,7 @@ async function viewApplicantProfile(applicationId, profileUid, name = "Candidato
   try {
     const profile = await appState.service.getApplicantProfile(appState.user.uid, applicationId, profileUid);
     if (request !== appState.profileModalRequest || !$("#modal").classList.contains("open")) return;
-    $("#modalBody").innerHTML = profileDetail(profile);
+    $("#modalBody").innerHTML = profileDetail(profile, { allowContactCheck: true });
   } catch (error) {
     if (request !== appState.profileModalRequest || !$("#modal").classList.contains("open")) return;
     $("#modalBody").innerHTML = `<div class="mb-state"><h3>Não foi possível abrir o currículo</h3><p>${esc(friendlyError(error))}</p></div>`;
