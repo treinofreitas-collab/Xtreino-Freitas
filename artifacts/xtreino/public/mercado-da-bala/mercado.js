@@ -112,14 +112,6 @@ function linkList(profile) {
   if (Array.isArray(links)) return links.map(entry => typeof entry === "string" ? { label: "Contato", url: entry } : entry);
   return Object.entries(links || {}).map(([label, url]) => ({ label, url }));
 }
-function renderLinks(profile) {
-  return linkList(profile).map(link => {
-    const raw = typeof link === "string" ? link : first(link, ["url", "href", "link"]);
-    const href = safeUrl(raw);
-    const label = typeof link === "string" ? "Contato" : first(link, ["label", "platform", "name"], "Contato");
-    return href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>` : "";
-  }).filter(Boolean).join("");
-}
 function profileName(profile) { return first(profile, ["nickname", "displayName", "name", "playerName"], "Jogador"); }
 function profileRole(profile) { return first(profile, ["mainRole", "primaryRole", "role", "position"], "Função não informada"); }
 function profileAvailability(profile) {
@@ -214,13 +206,28 @@ function closeModal() {
 }
 function profileDetail(profile) {
   const name = profileName(profile);
+  const uid = recordId(profile);
   const place = [first(profile, ["city"], ""), first(profile, ["state", "uf", "region"], "")].filter(Boolean).join(", ");
   const group = (heading, value) => value ? `<div class="mb-detail-block"><h4>${esc(heading)}</h4><p>${esc(asText(value))}</p></div>` : "";
   const roles = list(first(profile, ["secondaryRoles", "otherRoles", "roles"], []));
   const history = first(profile, ["teamHistory", "teamsHistory", "previousTeams", "teams"], "");
   const tournaments = first(profile, ["championships", "tournaments"], "");
   const schedule = first(profile, ["availabilitySchedule", "trainingAvailability", "schedule"], "");
-  const links = renderLinks(profile);
+  const hasContact = profile.contactAvailable === true || linkList(profile).length > 0;
+  const contactSection = hasContact
+    ? `<section class="mb-contact-section" aria-label="Contato do jogador">
+        <h4>CONTATO</h4>
+        ${appState.user
+          ? `<button class="mb-button yellow mb-contact-button" type="button" data-action="contact-profile" data-id="${esc(uid)}">CONTATO</button>
+             <p class="mb-contact-help">Acesse somente os links que este jogador escolheu compartilhar.</p>`
+          : `<button class="mb-button yellow mb-contact-button" type="button" disabled aria-disabled="true">CONTATO</button>
+             <p class="mb-contact-help">Entre em uma conta cadastrada para habilitar o contato.</p>
+             <button class="mb-button secondary small" type="button" data-action="signin">Entrar na plataforma</button>`}
+      </section>`
+    : `<section class="mb-contact-section" aria-label="Contato do jogador">
+        <h4>CONTATO</h4>
+        <p class="mb-contact-help">Este jogador ainda não compartilhou um link de contato.</p>
+      </section>`;
   return `<div class="mb-person" style="margin-bottom:18px"><div class="mb-avatar" style="width:52px;height:52px;font-size:24px">${esc(initials(name))}</div><div><h3 style="margin:0;font:800 27px var(--mb-display);text-transform:uppercase">${esc(name)}</h3><p style="margin:3px 0;color:#687970;font-size:12px">${esc([profileRole(profile), place].filter(Boolean).join(" · "))}</p></div></div>
   <div class="mb-detail-grid">
     ${group("Funções secundárias", roles)}
@@ -232,8 +239,8 @@ function profileDetail(profile) {
     ${group("Conquistas", first(profile, ["achievements", "highlights", "accomplishments"], ""))}
     ${group("Sobre e objetivo", first(profile, ["bio", "description", "objectives", "about"], ""))}
   </div>
-  ${links ? `<div class="mb-detail-block" style="margin-top:16px"><h4>Links compartilhados pelo jogador</h4><div class="mb-contact-links">${links}</div></div>` : ""}
-  <p class="mb-help" style="margin-top:17px">Contato pessoal não é exibido. Use apenas os links que o próprio jogador escolheu compartilhar.</p>`;
+  ${contactSection}
+  <p class="mb-help" style="margin-top:12px">Contato pessoal não é exibido. Os links ficam disponíveis somente para usuários conectados.</p>`;
 }
 function viewProfile(id) {
   const profile = appState.profiles.find(item => recordId(item) === id) || appState.favorites.find(item => recordId(item) === id);
@@ -374,8 +381,9 @@ function renderApplication(application) {
   const who = isReceived ? applicantName(application) : first(application, ["teamName", "vacancyTitle", "title"], "Equipe");
   const message = first(application, ["message", "coverMessage", "note"], "");
   const id = appId(application);
+  const applicantUid = first(application, ["applicantUid", "profileUid"], "");
   const statuses = [["new", "Novo candidato"], ["reviewing", "Em análise"], ["trial_scheduled", "Teste agendado"], ["approved", "Aprovado"], ["rejected", "Não selecionado"]];
-  return `<article class="mb-applicant"><div><div class="mb-inline"><h3>${esc(who)}</h3><span class="mb-status-pill ${esc(status)}">${esc(APP_STATUS[status] || status)}</span></div><p>${esc(message || "Sem mensagem adicional.")}</p></div><div class="mb-inline">${isReceived ? `<select class="mb-control" data-status-select="${esc(id)}" aria-label="Etapa da candidatura">${statuses.map(([value, label]) => `<option value="${value}" ${value === status ? "selected" : ""}>${label}</option>`).join("")}</select><button class="mb-button small" type="button" data-action="update-application" data-id="${esc(id)}">Atualizar etapa</button>` : ""}</div></article>`;
+  return `<article class="mb-applicant"><div><div class="mb-inline"><h3>${esc(who)}</h3><span class="mb-status-pill ${esc(status)}">${esc(APP_STATUS[status] || status)}</span></div><p>${esc(message || "Sem mensagem adicional.")}</p></div><div class="mb-applicant-actions">${isReceived && applicantUid ? `<button class="mb-button yellow small" type="button" data-action="contact-applicant" data-profile-uid="${esc(applicantUid)}" data-name="${esc(applicantName(application))}">Entrar em contato</button>` : ""}${isReceived ? `<select class="mb-control" data-status-select="${esc(id)}" aria-label="Etapa da candidatura">${statuses.map(([value, label]) => `<option value="${value}" ${value === status ? "selected" : ""}>${label}</option>`).join("")}</select><button class="mb-button small" type="button" data-action="update-application" data-id="${esc(id)}">Atualizar etapa</button>` : ""}</div></article>`;
 }
 async function loadApplications() {
   const root = $("#applicationsList");
@@ -403,6 +411,28 @@ async function updateApplication(id) {
     toast("Etapa da candidatura atualizada.");
     await loadApplications();
   } catch (error) { toast(friendlyError(error)); }
+}
+async function openContactLinks(profileUid, name = "jogador") {
+  if (!appState.user) {
+    toast("Entre em uma conta cadastrada para acessar os links de contato.");
+    signIn();
+    return;
+  }
+  try {
+    const result = await appState.service.getProfileContactLinks(appState.user.uid, profileUid);
+    const links = normalizeResults(result, ["links", "items", "results"])
+      .map(link => {
+        const href = safeUrl(first(link, ["url", "href", "link"], ""));
+        return href ? `<a class="mb-button yellow mb-contact-open-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(first(link, ["label", "platform", "name"], "Abrir contato"))}</a>` : "";
+      })
+      .filter(Boolean);
+    if (!links.length) return toast("Este jogador não tem links de contato disponíveis.");
+    openModal(`Contato · ${name}`, "Links escolhidos e compartilhados pelo próprio jogador.", `<div class="mb-contact-options">${links.join("")}</div>`, [
+      { label: "Fechar", action: "close-modal", class: "secondary" }
+    ]);
+  } catch (error) {
+    toast(friendlyError(error));
+  }
 }
 async function loadFavorites() {
   const root = $("#favoritesList");
@@ -580,6 +610,8 @@ function updateAdminRole() {
   tab.classList.toggle("mb-hidden", !allowed);
 }
 async function onUserChanged(user) {
+  const accountChanged = (appState.user?.uid || null) !== (user?.uid || null);
+  if (accountChanged && $("#modal").classList.contains("open")) closeModal();
   appState.user = user || null;
   appState.role = "";
   appState.ownProfile = null;
@@ -617,7 +649,7 @@ document.addEventListener("click", async event => {
     if (event.target === $("#modal")) closeModal();
     return;
   }
-  const { action: name, id, kind, status } = action.dataset;
+  const { action: name, id, kind, status, profileUid } = action.dataset;
   switch (name) {
     case "signin": signIn(); break;
     case "close-modal": closeModal(); break;
@@ -631,6 +663,12 @@ document.addEventListener("click", async event => {
     case "set-profile-status": await setProfileStatus(status); break;
     case "delete-profile": await deleteProfile(); break;
     case "view-profile": viewProfile(id); break;
+    case "contact-profile": {
+      const profile = appState.profiles.find(item => recordId(item) === id) || appState.favorites.find(item => recordId(item) === id);
+      await openContactLinks(id, profile ? profileName(profile) : "jogador");
+      break;
+    }
+    case "contact-applicant": await openContactLinks(profileUid, action.dataset.name || "candidato"); break;
     case "view-vacancy": event.preventDefault(); viewVacancy(id); break;
     case "favorite": await toggleFavorite(id); break;
     case "apply": await applyToVacancy(id); break;

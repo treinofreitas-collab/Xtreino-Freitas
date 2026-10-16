@@ -95,13 +95,13 @@ service cloud.firestore {
       return request.resource.data.keys().hasAll([
           'uid', 'nickname', 'mainRole', 'secondaryRoles', 'city', 'state',
           'experience', 'availability', 'availabilitySchedule', 'teamHistory',
-          'championships', 'achievements', 'bio', 'socialLinks', 'status',
+          'championships', 'achievements', 'bio', 'contactAvailable', 'status',
           'createdAt', 'updatedAt'
         ]) &&
         request.resource.data.keys().hasOnly([
           'uid', 'nickname', 'mainRole', 'secondaryRoles', 'city', 'state',
           'experience', 'availability', 'availabilitySchedule', 'teamHistory',
-          'championships', 'achievements', 'bio', 'socialLinks', 'status',
+          'championships', 'achievements', 'bio', 'contactAvailable', 'status',
           'createdAt', 'updatedAt'
         ]) &&
         request.resource.data.uid == profileId &&
@@ -128,8 +128,7 @@ service cloud.firestore {
         request.resource.data.achievements.size() <= 400 &&
         request.resource.data.bio is string &&
         request.resource.data.bio.size() <= 700 &&
-        request.resource.data.socialLinks is list &&
-        request.resource.data.socialLinks.size() <= 4 &&
+        request.resource.data.contactAvailable is bool &&
         request.resource.data.status in ['draft', 'published', 'paused'] &&
         request.resource.data.createdAt is timestamp &&
         request.resource.data.updatedAt is timestamp;
@@ -532,6 +531,23 @@ service cloud.firestore {
          request.resource.data.createdAt == resource.data.createdAt);
       allow delete: if isMarketModerator() ||
         (isSignedIn() && request.auth.uid == profileId && resource.data.status != 'suspended');
+    }
+
+    // Links de contato ficam fora do currículo público e só podem ser lidos por contas autenticadas.
+    match /market_contact_links/{profileId} {
+      allow get: if isSignedIn() &&
+        (request.auth.uid == profileId ||
+         (exists(/databases/$(database)/documents/market_profiles/$(profileId)) &&
+          get(/databases/$(database)/documents/market_profiles/$(profileId)).data.status == 'published'));
+      allow list: if false;
+      allow create, update: if isSelf(profileId) &&
+        request.resource.data.keys().hasAll(['ownerUid', 'links', 'updatedAt']) &&
+        request.resource.data.keys().hasOnly(['ownerUid', 'links', 'updatedAt']) &&
+        request.resource.data.ownerUid == profileId &&
+        request.resource.data.links is list &&
+        request.resource.data.links.size() <= 4 &&
+        request.resource.data.updatedAt == request.time;
+      allow delete: if isSelf(profileId);
     }
 
     // Vagas abertas são públicas; rascunhos e demais estados ficam com o dono/admin.

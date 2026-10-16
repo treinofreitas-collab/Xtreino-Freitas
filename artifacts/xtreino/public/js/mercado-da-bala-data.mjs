@@ -8,11 +8,6 @@ export const MARKET_AVAILABILITY = Object.freeze([
   "looking", "open", "evaluating", "unavailable", "contracted"
 ]);
 
-const PROFILE_FIELDS = Object.freeze([
-  "nickname", "mainRole", "secondaryRoles", "city", "state", "experience",
-  "availability", "availabilitySchedule", "teamHistory", "championships",
-  "achievements", "bio", "socialLinks"
-]);
 const VACANCY_FIELDS = Object.freeze([
   "teamName", "title", "roles", "level", "state", "slots", "schedule",
   "requirements", "championships", "compensation", "description", "validityDays"
@@ -88,7 +83,8 @@ export function sanitizeMarketplaceProfile(input = {}) {
     championships: boundedText(input.championships, 400),
     achievements: boundedText(input.achievements, 400),
     bio: boundedText(input.bio, 700),
-    socialLinks
+    socialLinks,
+    contactAvailable: socialLinks.length > 0
   };
 }
 
@@ -170,8 +166,48 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
   async function ownProfile(uid) {
     requireCurrentUser(auth, uid);
     const sdk = await getFirestoreSdk();
-    const snapshot = await sdk.getDoc(sdk.doc(db, "market_profiles", uid));
-    return snapshot.exists() ? { id: snapshot.id, uid: snapshot.id, ...snapshot.data() } : null;
+    const profileRef = sdk.doc(db, "market_profiles", uid);
+    const contactRef = sdk.doc(db, "market_contact_links", uid);
+    const [snapshot, contactSnapshot] = await Promise.all([
+      sdk.getDoc(profileRef),
+      sdk.getDoc(contactRef)
+    ]);
+    if (!snapshot.exists()) return null;
+
+    const stored = snapshot.data();
+    const privateLinks = contactSnapshot.exists()
+      ? (Array.isArray(contactSnapshot.data().links) ? contactSnapshot.data().links : [])
+      : [];
+    let links = privateLinks;
+    let profileData = stored;
+
+    // Move legacy links out of the public profile the next time its owner opens Meu Espaço.
+    if (Object.hasOwn(stored, "socialLinks")) {
+      const sanitized = sanitizeMarketplaceProfile(stored);
+      links = contactSnapshot.exists() ? privateLinks : sanitized.socialLinks;
+      const { socialLinks: _legacyLinks, ...publicProfile } = sanitized;
+      profileData = {
+        ...publicProfile,
+        contactAvailable: links.length > 0,
+        status: stored.status,
+        createdAt: stored.createdAt,
+        updatedAt: sdk.serverTimestamp()
+      };
+      const batch = sdk.writeBatch(db);
+      batch.set(profileRef, { uid, ...profileData });
+      if (!contactSnapshot.exists() && links.length) {
+        batch.set(contactRef, { ownerUid: uid, links, updatedAt: sdk.serverTimestamp() });
+      }
+      await batch.commit();
+    }
+
+    return {
+      id: snapshot.id,
+      uid: snapshot.id,
+      ...profileData,
+      contactAvailable: links.length > 0,
+      socialLinks: links
+    };
   }
 
   async function roleFor(uid) {
@@ -243,15 +279,46 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
       const existing = snapshot.exists() ? snapshot.data() : null;
       if (existing?.status === "suspended") throw new Error("Este currículo está suspenso e precisa de análise da equipe.");
       const profile = sanitizeMarketplaceProfile(input);
-      await sdk.setDoc(ref, {
-        ...profile,
+      const { socialLinks, ...publicProfile } = profile;
+      const batch = sdk.writeBatch(db);
+      batch.set(ref, {
+        ...publicProfile,
         uid,
+        contactAvailable: socialLinks.length > 0,
         status: existing?.status || "draft",
         createdAt: existing?.createdAt || sdk.serverTimestamp(),
         updatedAt: sdk.serverTimestamp()
       });
+      const contactRef = sdk.doc(db, "market_contact_links", uid);
+      if (socialLinks.length) {
+        batch.set(contactRef, { ownerUid: uid, links: socialLinks, updatedAt: sdk.serverTimestamp() });
+      } else {
+        batch.delete(contactRef);
+      }
+      await batch.commit();
       invalidatePublic("profiles");
       return { id: uid, uid, ...profile, status: existing?.status || "draft" };
+    },
+
+    async getProfileContactLinks(uid, profileUid) {
+      requireCurrentUser(auth, uid);
+      const id = safeTargetId(profileUid);
+      const sdk = await getFirestoreSdk();
+      const snapshot = await sdk.getDoc(sdk.doc(db, "market_contact_links", id));
+      let sourceLinks = snapshot.exists() && Array.isArray(snapshot.data().links) ? snapshot.data().links : null;
+      if (!sourceLinks) {
+        // Authenticated fallback for profiles saved before contact links were moved to the private collection.
+        const legacyProfile = await sdk.getDoc(sdk.doc(db, "market_profiles", id));
+        sourceLinks = legacyProfile.exists() && Array.isArray(legacyProfile.data().socialLinks)
+          ? legacyProfile.data().socialLinks
+          : [];
+      }
+      return sourceLinks
+        .map(item => ({
+          label: boundedText(item?.label || "Contato", 30) || "Contato",
+          url: plainText(item?.url, 240)
+        }))
+        .filter(item => isSafeMarketUrl(item.url));
     },
 
     async setProfileStatus(uid, status) {
@@ -453,13 +520,14 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
       return reportId;
     },
 
-    async listModerationQueue(uid) {
+    async listModerationQueue(uid, status = "open") {
       requireCurrentUser(auth, uid);
       await requireModerator(uid);
+      if (!["open", "resolved"].includes(status)) throw new Error("Filtro de denúncias inválido.");
       const sdk = await getFirestoreSdk();
       const results = await sdk.getDocs(sdk.query(
         sdk.collection(db, "market_reports"),
-        sdk.where("status", "==", "open"),
+        sdk.where("status", "==", status),
         sdk.limit(MAX_PUBLIC_RESULTS)
       ));
       return snapshotData(results).sort(newestFirst);

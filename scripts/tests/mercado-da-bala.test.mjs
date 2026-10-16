@@ -13,6 +13,18 @@ const firestoreRules = readFileSync(
   new URL("../../artifacts/xtreino/public/config/firestore.rules", import.meta.url),
   "utf8"
 );
+const marketUi = readFileSync(
+  new URL("../../artifacts/xtreino/public/mercado-da-bala/mercado.js", import.meta.url),
+  "utf8"
+);
+const adminHtml = readFileSync(
+  new URL("../../artifacts/xtreino/public/admin.html", import.meta.url),
+  "utf8"
+);
+const adminJs = readFileSync(
+  new URL("../../artifacts/xtreino/public/admin.js", import.meta.url),
+  "utf8"
+);
 
 test("currículo só aceita funções conhecidas e remove contatos de texto público", () => {
   const profile = sanitizeMarketplaceProfile({
@@ -43,6 +55,7 @@ test("currículo só aceita funções conhecidas e remove contatos de texto púb
   assert.equal("email" in profile, false);
   assert.equal("phone" in profile, false);
   assert.deepEqual(profile.socialLinks, [{ label: "Contato", url: "https://instagram.com/player" }]);
+  assert.equal(profile.contactAvailable, true);
 });
 
 test("perfil exige nickname, função e disponibilidade válidos", () => {
@@ -163,6 +176,117 @@ test("regras do Firestore vinculam favoritos ao dono e ao currículo escolhido",
 test("regras mantêm desativadas as coleções antigas de notificações", () => {
   assert.match(firestoreRules, /match \/notifications\/\{notifId\}\s*\{\s*allow read, write: if false;/);
   assert.match(firestoreRules, /match \/notificationReads\/\{readId\}\s*\{\s*allow read, write: if false;/);
+});
+
+test("links de contato são gravados fora do currículo público e exigem sessão para leitura", async () => {
+  const documents = new Map();
+  const key = ref => `${ref.collection}/${ref.id}`;
+  const auth = { currentUser: { uid: "player-1" } };
+  const sdk = {
+    doc: (_db, collection, id) => ({ collection, id }),
+    getDoc: async ref => ({
+      exists: () => documents.has(key(ref)),
+      data: () => documents.get(key(ref))
+    }),
+    writeBatch: () => {
+      const operations = [];
+      return {
+        set: (ref, data) => operations.push(() => documents.set(key(ref), data)),
+        delete: ref => operations.push(() => documents.delete(key(ref))),
+        commit: async () => operations.forEach(operation => operation())
+      };
+    },
+    serverTimestamp: () => "server-time"
+  };
+  const service = createMercadoDaBalaService({ auth, db: {}, sdk });
+  await service.saveMyProfile("player-1", {
+    nickname: "Falcão",
+    mainRole: "Fragger",
+    availability: "looking",
+    socialLinks: [{ url: "https://instagram.com/falcao" }]
+  });
+
+  const publicProfile = documents.get("market_profiles/player-1");
+  assert.equal("socialLinks" in publicProfile, false);
+  assert.equal(publicProfile.contactAvailable, true);
+  assert.deepEqual(documents.get("market_contact_links/player-1").links, [
+    { label: "Contato", url: "https://instagram.com/falcao" }
+  ]);
+  assert.deepEqual(await service.getProfileContactLinks("player-1", "player-1"), [
+    { label: "Contato", url: "https://instagram.com/falcao" }
+  ]);
+
+  auth.currentUser = null;
+  await assert.rejects(service.getProfileContactLinks("player-1", "player-1"), /Entre na sua conta/);
+});
+
+test("abrir o espaço próprio migra links de perfis legados para a coleção privada", async () => {
+  const documents = new Map([
+    ["market_profiles/player-legacy", {
+      uid: "player-legacy",
+      nickname: "Atleta legado",
+      mainRole: "Suporte",
+      secondaryRoles: [],
+      city: "",
+      state: "",
+      experience: "",
+      availability: "looking",
+      availabilitySchedule: "",
+      teamHistory: "",
+      championships: "",
+      achievements: "",
+      bio: "",
+      socialLinks: [{ label: "Contato", url: "https://instagram.com/legacy" }],
+      status: "published",
+      createdAt: "created",
+      updatedAt: "updated"
+    }]
+  ]);
+  const key = ref => `${ref.collection}/${ref.id}`;
+  const sdk = {
+    doc: (_db, collection, id) => ({ collection, id }),
+    getDoc: async ref => ({
+      exists: () => documents.has(key(ref)),
+      data: () => documents.get(key(ref))
+    }),
+    writeBatch: () => {
+      const operations = [];
+      return {
+        set: (ref, data) => operations.push(() => documents.set(key(ref), data)),
+        delete: ref => operations.push(() => documents.delete(key(ref))),
+        commit: async () => operations.forEach(operation => operation())
+      };
+    },
+    serverTimestamp: () => "server-time"
+  };
+  const service = createMercadoDaBalaService({
+    auth: { currentUser: { uid: "player-legacy" } },
+    db: {},
+    sdk
+  });
+
+  const ownProfile = await service.getMyProfile("player-legacy");
+  assert.equal("socialLinks" in documents.get("market_profiles/player-legacy"), false);
+  assert.deepEqual(documents.get("market_contact_links/player-legacy").links, [
+    { label: "Contato", url: "https://instagram.com/legacy" }
+  ]);
+  assert.equal(ownProfile.contactAvailable, true);
+  assert.equal(ownProfile.socialLinks[0].url, "https://instagram.com/legacy");
+});
+
+test("Firestore mantém os links privados e o admin tem uma fila de denúncias do Mercado da Bala", () => {
+  const profileRules = firestoreRules.split("function validMarketProfile")[1].split("function validMarketVacancy")[0];
+  assert.doesNotMatch(profileRules, /socialLinks/);
+  assert.match(firestoreRules, /match \/market_contact_links\/\{profileId\}/);
+  assert.match(firestoreRules, /allow list: if false;/);
+  assert.match(firestoreRules, /request\.auth\.uid == profileId/);
+  assert.match(adminHtml, /id="sectionMarketReports"/);
+  assert.match(adminHtml, /Denúncias Mercado da Bala/);
+  assert.match(adminHtml, /admin-market-reports\.mjs/);
+  assert.match(adminJs, /'sectionMarketReports'/);
+  assert.match(marketUi, /data-action="contact-applicant"/);
+  assert.match(marketUi, /data-action="contact-profile"/);
+  assert.match(marketUi, /disabled aria-disabled="true">CONTATO/);
 });
 
 test("redator remove e-mail e telefone brasileiros em texto livre", () => {

@@ -329,7 +329,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
           'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
           'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
           'sectionPasseBooyah','sectionHighlights','sectionNews',
-          'sectionProducts','sectionEvents','sectionShirtOrders',
+          'sectionProducts','sectionEvents','sectionMarketReports','sectionShirtOrders',
           'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData'],
     // SOCIO: tudo, somente visualização (sem reset)
     socio: ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
@@ -353,7 +353,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
                'sectionProducts'],
     // ADMIN: gerenciador de eventos + horários
-    admin: ['sectionEvents','sectionSchedules','sectionEventLinks'],
+    admin: ['sectionEvents','sectionMarketReports','sectionSchedules','sectionEventLinks'],
     // STAFF: eventos
     staff: ['sectionEvents'],
     // MODERADOR: igual ao staff
@@ -376,6 +376,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons','sectionCouponUsage',
     'sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts','sectionAffiliatePanel','sectionPasseBooyah',
     'sectionHighlights','sectionNews','sectionProducts','sectionEvents','sectionShirtOrders',
+    'sectionMarketReports',
     'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData',
   ];
 
