@@ -276,12 +276,10 @@
                 </div>
                 <div id="sectionUsers" class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow" style="display:none">
                     <div class="mb-4">
-                        <h3 class="font-bold text-sm text-gray-800">🏆 Top Produtos</h3>
-                        <p class="text-xs text-gray-400 mt-0.5">Por faturamento no período</p>
+                        <h3 class="font-bold text-sm text-gray-800">Top produtos</h3>
+                        <p class="text-xs text-gray-400 mt-0.5">Vendas pagas por MP/PIX ou tokens · vagas gratuitas não entram</p>
                     </div>
-                    <div class="relative w-full h-72">
-                        <canvas id="topProductsChart" class="w-full h-full"></canvas>
-                    </div>
+                    <div id="topProductsChart" class="top-products-chart"></div>
                 </div>
             </div>
 
@@ -414,42 +412,58 @@
                         <button type="button" id="pendingNext" onclick="changePendingPage(1)" disabled>Próxima ›</button>
                     </div>
                 </div>
-                <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="font-bold text-sm">Pedidos Confirmados</h3>
-                        <div class="flex items-center gap-2 text-xs text-gray-500">
-                            <span id="confirmedCount">0 pedidos</span>
-                            <span id="confirmedPageInfo">Página 1 de 1</span>
+                <div class="confirmed-orders-panel">
+                    <div class="confirmed-panel-header">
+                        <div class="confirmed-title-group">
+                            <span class="confirmed-title-icon" aria-hidden="true"><i class="fas fa-receipt"></i></span>
+                            <div>
+                                <h3>Pedidos confirmados</h3>
+                                <p>Compras aprovadas, organizadas por cliente, produto, valor e data.</p>
+                            </div>
                         </div>
+                        <span id="confirmedCount" class="confirmed-count" aria-live="polite">0 pedidos</span>
                     </div>
-                    <div class="overflow-x-auto text-xs">
-                        <table class="w-full">
+                    <div class="confirmed-orders-toolbar">
+                        <label class="confirmed-search-box">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input id="confirmedSearch" type="search" placeholder="Buscar cliente, e-mail ou evento" autocomplete="off">
+                        </label>
+                        <span id="confirmedPageInfo" class="confirmed-page-info" aria-live="polite">Página 1 de 1</span>
+                    </div>
+                    <div class="confirmed-orders-table-wrap">
+                        <table class="confirmed-orders-table">
                             <thead>
-                                <tr class="text-left text-gray-600 bg-green-50">
-                                    <th class="py-2">Nome</th>
-                                    <th class="py-2">Contato</th>
-                                    <th class="py-2">Time</th>
-                                    <th class="py-2">Email</th>
-                                    <th class="py-2">Item</th>
+                                <tr>
+                                    <th scope="col">Cliente</th>
+                                    <th scope="col">Contato</th>
+                                    <th scope="col">Produto / evento</th>
+                                    <th scope="col">Valor</th>
+                                    <th scope="col">Data da compra</th>
                                 </tr>
                             </thead>
-                            <tbody id="confirmedTbody" class="divide-y"></tbody>
+                            <tbody id="confirmedTbody">
+                                <tr><td colspan="5" class="confirmed-state">Carregando pedidos confirmados...</td></tr>
+                            </tbody>
                         </table>
                     </div>
-                    <div id="confirmedPagination" class="flex justify-center mt-3 gap-1">
+                    <div id="confirmedPagination" class="confirmed-pagination" aria-label="Paginação dos pedidos">
                         <!-- Pagination buttons will be added here -->
                     </div>
                 </div>
-                <div class="bg-white border border-gray-200 rounded-xl p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="font-bold text-sm">Horários mais procurados</h3>
-                        <button id="resetFiltersBtn" class="text-xs text-blue-600 hover:text-blue-800">Limpar filtros</button>
+                <div class="bg-white border border-gray-200 rounded-xl p-4 popular-hours-card">
+                    <div class="popular-hours-header">
+                        <div>
+                            <span class="popular-hours-kicker">Procura</span>
+                            <h3 class="font-bold text-sm">Horários mais procurados</h3>
+                            <p class="popular-hours-description">Reservas confirmadas por horário</p>
+                        </div>
+                        <button id="resetFiltersBtn" type="button" class="popular-hours-reset">Limpar filtros</button>
                     </div>
                     
                     <!-- Filtros -->
                     <div class="flex flex-wrap gap-3 mb-4">
                         <div class="flex-1 min-w-[140px]">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Dia da semana</label>
+                            <label for="dayFilter" class="block text-xs font-medium text-gray-700 mb-1">Dia da semana</label>
                             <select id="dayFilter" class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="">Todos os dias</option>
                                 <option value="monday">Segunda-feira</option>
@@ -460,16 +474,29 @@
                             </select>
                         </div>
                         <div class="flex-1 min-w-[140px]">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Evento</label>
+                            <label for="eventFilter" class="block text-xs font-medium text-gray-700 mb-1">Evento</label>
                             <select id="eventFilter" class="w-full px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="">Todos os eventos</option>
                                 <!-- Opções serão carregadas dinamicamente -->
                             </select>
                         </div>
                     </div>
-                    
-                    <div class="relative h-64 w-full overflow-x-auto">
-                        <canvas id="popularHoursChart" class="min-w-[400px]"></canvas>
+
+                    <div id="popularHoursInsight" class="popular-hours-insight" style="display:none">
+                        <span class="popular-hours-insight-label">Pico de procura</span>
+                        <strong id="popularHoursPeak"></strong>
+                    </div>
+                    <div id="popularHoursEmpty" class="chart-empty-state" role="status" style="display:none">
+                        <strong>Nenhuma reserva confirmada encontrada</strong>
+                        <span>Tente outro dia ou evento para ver os horários.</span>
+                    </div>
+                    <div id="popularHoursError" class="chart-error-state" role="alert" style="display:none">
+                        <strong>Não foi possível carregar os horários</strong>
+                        <span>Verifique sua conexão e tente atualizar o gráfico.</span>
+                        <button id="retryPopularHoursBtn" type="button">Tentar novamente</button>
+                    </div>
+                    <div id="popularHoursCanvasWrap" class="popular-hours-canvas">
+                        <canvas id="popularHoursChart" aria-label="Reservas confirmadas por horário" role="img"></canvas>
                     </div>
                 </div>
             </div>

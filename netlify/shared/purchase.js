@@ -369,6 +369,7 @@ async function settlePurchase(transaction, reference, {
         ...patch, type: "event", title: checkout.title, item: checkout.title,
         userId: checkout.userId, uid: checkout.userId,
         customer: first.email || "", customerName: first.teamName || "",
+        phone: first.phone || first.teamPhone || first.contact || "",
         eventType: first.eventType || "", eventDate: first.date || "", schedule: first.schedule || "",
         amount: debit, total: debit, quantity: sources.length, createdAt: timestamp,
       });

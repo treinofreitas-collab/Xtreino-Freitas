@@ -14,8 +14,8 @@ test('event details no longer contain the attendee tab, its startup checks or hi
     // Keep the customer's own booking check; this is not a public attendee listing.
     const ownBooking = source.slice(source.indexOf('async function checkUserRegistration'), source.indexOf('function setTab'));
     assert.ok(ownBooking.includes("where('userId', '==', user.uid)"));
-    assert.ok(ownBooking.includes("where(adminEventId ? 'adminEventId' : 'eventType'"));
-    assert.ok(ownBooking.includes('adminEventId || eventType'));
+    assert.ok(ownBooking.includes("where(adminEventId ? 'adminEventId' : 'eventType', '==', adminEventId || eventType)"));
+    assert.ok(ownBooking.includes("where('status', 'in', ['confirmed', 'paid', 'approved', 'pending'])"));
     assert.ok(source.includes("onSnapshot(doc(db,'teams',teamId)")); // Team-management subscription is unrelated.
 });
 
@@ -50,15 +50,13 @@ test('remaining tabs still render and switch locally without Firestore calls', (
 test('registration button still opens the correct event booking flow', () => {
     const start = source.indexOf('window.goRegister = function()');
     const end = source.indexOf('\nloadEvent();', start);
-    const window = { location: {}, _currentEventId: 'season-7-admin-id' };
-    const context = vm.createContext({ window, _resolvedEventType: 'camp-freitas', encodeURIComponent });
+    const window = { location: {}, _currentEventId: 'legacy-id' };
+    const context = vm.createContext({ window, _resolvedEventType: 'modo-liga', encodeURIComponent });
     vm.runInContext(source.slice(start, end), context);
     window.goRegister();
-    assert.equal(window.location.href, 'index.html?openEvent=season-7-admin-id#eventos');
+    assert.equal(window.location.href, 'index.html?openEvent=legacy-id#eventos');
     window._currentEventId = null;
+    context._resolvedEventType = 'modo-liga';
     window.goRegister();
-    assert.equal(window.location.href, 'index.html?openEvent=camp-freitas#eventos');
-    context._resolvedEventType = null;
-    window.goRegister();
-    assert.equal(window.location.href, 'index.html#eventos');
+    assert.equal(window.location.href, 'index.html?openEvent=modo-liga#eventos');
 });

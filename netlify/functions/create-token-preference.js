@@ -76,6 +76,7 @@ exports.handler = async (event) => {
     const title = `${quantity} Token${quantity === 1 ? "" : "s"} XTreino`;
     const customerName = userData.name || decoded.name || null;
     const customerEmail = decoded.email || userData.email || null;
+    const customerPhone = userData.phone || userData.phoneNumber || null;
     const affiliateCode = typeof body.affiliateCode === "string"
       ? body.affiliateCode.trim().slice(0, 200)
       : null;
@@ -94,6 +95,7 @@ exports.handler = async (event) => {
       customer: customerEmail,
       customerName,
       buyerEmail: customerEmail,
+      customerPhone,
       userId: decoded.uid,
       uid: decoded.uid,
       external_reference: orderRef.id,

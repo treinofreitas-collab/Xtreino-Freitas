@@ -1,0 +1,43 @@
+.admin-charts-preview {
+  min-height: 100vh;
+  background: #eef2f7;
+  color: #1f2937;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.admin-charts-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.admin-chart-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e1e7ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgb(31 41 55 / 5%);
+}
+
+.admin-chart-canvas {
+  position: relative;
+  height: 220px;
+}
+
+.admin-chart-canvas--short {
+  height: 210px;
+}
+
+@media (min-width: 760px) {
+  .admin-charts-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-chart-canvas,
+  .admin-chart-canvas--short {
+    height: 200px;
+  }
+}

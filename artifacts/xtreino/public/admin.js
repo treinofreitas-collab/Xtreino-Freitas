@@ -609,7 +609,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
   
   let confirmedOrdersData = [];
   let confirmedOrdersPage = 1;
-  const confirmedOrdersPerPage = 5;
+  const confirmedOrdersPerPage = 10;
+  let confirmedOrdersSearchTerm = '';
 
   // Função para carregar usuários do Firestore
   async function carregarUsuarios() {
@@ -954,100 +955,215 @@ window.showWarningToast = function(message, title = 'Atenção') {
         console.error('❌ Firebase não inicializado - carregarPedidosConfirmados');
         return;
       }
-      
-      
-      // Buscar pedidos confirmados
-      const ordersRef = collection(window.firebaseDb, 'orders');
+      const searchInput = document.getElementById('confirmedSearch');
+      if (searchInput && searchInput.dataset.confirmedSearchBound !== 'true') {
+        searchInput.dataset.confirmedSearchBound = 'true';
+        searchInput.addEventListener('input', () => {
+          confirmedOrdersSearchTerm = searchInput.value || '';
+          confirmedOrdersPage = 1;
+          mostrarPedidosConfirmadosPagina(1);
+        });
+      }
+
+      // Reutiliza o cache atual da coleção; a busca abaixo é somente em memória.
       const ordersSnapshot = await readAdminReportCollection('orders');
-      
-      
-      // Função auxiliar para obter nome do item/evento
-      const getItemName = (order) => {
-        // Se tiver eventType, mapear para nome legível
-        if (order.eventType) {
-          const eventMap = {
-            'modo-liga': 'Modo Liga',
-            'xtreino-tokens': 'XTreino Tokens',
-            'xtreino': 'XTreino Tokens',
-            'semanal-freitas': 'Semanal Freitas',
-            'semanal': 'Semanal Freitas',
-            'camp-freitas': 'Camp Freitas',
-            'camp': 'Camp Freitas'
-          };
-          return eventMap[order.eventType.toLowerCase()] || order.eventType;
-        }
-        // Tentar outros campos
-        return order.title || order.item || order.productName || 'Item não informado';
-      };
-      
+
       confirmedOrdersData = [];
       ordersSnapshot.forEach(doc => {
-        const order = doc.data();
-        // Log detalhado removido
-        if (['paid','approved','confirmed'].includes(String(order.status||'').toLowerCase())) {
-          const originalDate = order.createdAt ? (order.createdAt.seconds ? new Date(order.createdAt.seconds * 1000) : new Date(order.createdAt)) : new Date(0);
-          confirmedOrdersData.push({
-            id: doc.id,
-            cliente: order.customer || order.customerName || order.buyerEmail || 'Cliente não informado',
-            item: getItemName(order),
-            valor: order.amount || order.total || 0,
-            data: originalDate.toLocaleDateString('pt-BR'),
-            originalDate: originalDate
-          });
-        }
+        const order = doc.data() || {};
+        if (!['paid', 'approved', 'confirmed'].includes(String(order.status || '').toLowerCase())) return;
+        confirmedOrdersData.push(normalizeConfirmedOrder(order, doc.id));
       });
       
       // Ordenar por data (mais recentes primeiro)
       confirmedOrdersData.sort((a, b) => {
-        const dateA = a.originalDate || new Date(0);
-        const dateB = b.originalDate || new Date(0);
-        return dateB - dateA;
+        return (b.originalDate?.getTime() || 0) - (a.originalDate?.getTime() || 0);
       });
-      
-      // Atualizar contador
-      document.getElementById('confirmedCount').textContent = `${confirmedOrdersData.length} pedidos`;
-      // 
-      
+
       // Mostrar primeira página
       mostrarPedidosConfirmadosPagina(1);
       
     } catch (error) {
       console.error('Erro ao carregar pedidos confirmados:', error);
+      const tbody = document.getElementById('confirmedTbody');
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="5" class="confirmed-state confirmed-state-error">Não foi possível carregar os pedidos confirmados. Atualize o painel para tentar novamente.</td></tr>';
+      }
     }
+  }
+  window.reloadConfirmedOrders = () => carregarPedidosConfirmados();
+
+  function normalizeConfirmedOrder(order, id) {
+    const firstText = (...values) => values
+      .map(value => String(value ?? '').trim())
+      .find(value => value && value !== '[object Object]') || '';
+    const isEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+    const isPhone = value => {
+      const text = String(value ?? '').trim();
+      const digits = text.replace(/\D/g, '');
+      return digits.length >= 8 && digits.length <= 15 && /^[+\d().\s-]+$/.test(text);
+    };
+    const customerField = firstText(order.customer);
+    const eventOrder = String(order.type || '').toLowerCase() === 'event' || Boolean(order.eventType);
+    const email = firstText(
+      isEmail(order.buyerEmail) ? order.buyerEmail : '',
+      isEmail(order.customerEmail) ? order.customerEmail : '',
+      isEmail(order.userEmail) ? order.userEmail : '',
+      isEmail(order.email) ? order.email : '',
+      isEmail(order.contact) ? order.contact : '',
+      isEmail(order.productOptions?.email) ? order.productOptions.email : '',
+      isEmail(customerField) ? customerField : '',
+    );
+    const phone = firstText(
+      isPhone(order.customerPhone) ? order.customerPhone : '',
+      isPhone(order.buyerPhone) ? order.buyerPhone : '',
+      isPhone(order.phone) ? order.phone : '',
+      isPhone(order.phoneNumber) ? order.phoneNumber : '',
+      isPhone(order.productOptions?.telefone) ? order.productOptions.telefone : '',
+      isPhone(order.productOptions?.phone) ? order.productOptions.phone : '',
+      isPhone(order.contact) ? order.contact : '',
+      isPhone(customerField) ? customerField : '',
+    );
+    const customerName = firstText(
+      !isEmail(order.buyerName) && !isPhone(order.buyerName) ? order.buyerName : '',
+      !isEmail(order.customerFullName) && !isPhone(order.customerFullName) ? order.customerFullName : '',
+      !isEmail(order.name) && !isPhone(order.name) ? order.name : '',
+      !isEmail(order.userName) && !isPhone(order.userName) ? order.userName : '',
+      !eventOrder && !isEmail(order.customerName) && !isPhone(order.customerName) ? order.customerName : '',
+      !isEmail(customerField) && !isPhone(customerField) ? customerField : '',
+    );
+    const team = firstText(order.teamName, order.team, order.squadName, eventOrder ? order.customerName : '');
+    const eventNames = {
+      'modo-liga': 'Modo Liga',
+      'xtreino-tokens': 'XTreino Tokens',
+      xtreino: 'XTreino Tokens',
+      'semanal-freitas': 'Semanal Freitas',
+      semanal: 'Semanal Freitas',
+      'camp-freitas': 'Camp Freitas',
+      camp: 'Camp Freitas',
+    };
+    const eventType = firstText(order.eventType);
+    const item = firstText(
+      order.itemName,
+      order.item,
+      order.title,
+      order.productName,
+      eventNames[eventType.toLowerCase()] || eventType,
+    );
+    const rawAmount = order.amount ?? order.total ?? order.price
+      ?? (order.amountCents != null ? Number(order.amountCents) / 100 : null);
+    const parsedAmount = rawAmount == null || rawAmount === '' ? null : Number(rawAmount);
+    const originalDate = parseConfirmedOrderDate(order.createdAt ?? order.paidAt ?? order.approvedAt ?? order.timestamp);
+
+    return {
+      id,
+      customerName,
+      email,
+      phone,
+      team,
+      item: item || 'Item não informado',
+      amount: Number.isFinite(parsedAmount) ? parsedAmount : null,
+      originalDate,
+    };
+  }
+
+  function parseConfirmedOrderDate(value) {
+    if (!value) return null;
+    let date;
+    if (typeof value.toDate === 'function') date = value.toDate();
+    else if (value instanceof Date) date = value;
+    else if (Number.isFinite(value.seconds)) date = new Date(value.seconds * 1000);
+    else if (typeof value === 'number') date = new Date(value < 1e12 ? value * 1000 : value);
+    else date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
 
   // Função para mostrar pedidos confirmados da página específica
   function mostrarPedidosConfirmadosPagina(pagina) {
     const tbody = document.getElementById('confirmedTbody');
-    const startIndex = (pagina - 1) * confirmedOrdersPerPage;
+    if (!tbody) return;
+
+    const query = confirmedOrdersSearchTerm.trim().toLocaleLowerCase('pt-BR');
+    const filteredOrders = query
+      ? confirmedOrdersData.filter(pedido => [
+          pedido.customerName, pedido.email, pedido.phone, pedido.team, pedido.item,
+        ].some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(query)))
+      : confirmedOrdersData;
+    const totalPages = Math.max(1, Math.ceil(filteredOrders.length / confirmedOrdersPerPage));
+    const currentPage = Math.min(Math.max(1, Number(pagina) || 1), totalPages);
+    confirmedOrdersPage = currentPage;
+    const startIndex = (currentPage - 1) * confirmedOrdersPerPage;
     const endIndex = startIndex + confirmedOrdersPerPage;
-    const pedidosPagina = confirmedOrdersData.slice(startIndex, endIndex);
+    const pedidosPagina = filteredOrders.slice(startIndex, endIndex);
     
     // Limpar tabela
     tbody.innerHTML = '';
-    
+
+    const count = document.getElementById('confirmedCount');
+    if (count) {
+      count.textContent = query
+        ? `${filteredOrders.length} de ${confirmedOrdersData.length} pedidos`
+        : `${confirmedOrdersData.length} pedidos`;
+    }
+
     // Adicionar pedidos da página
+    if (!pedidosPagina.length) {
+      const message = query ? 'Nenhum pedido corresponde à busca.' : 'Nenhum pedido confirmado encontrado.';
+      tbody.innerHTML = `<tr><td colspan="5" class="confirmed-state">${message}</td></tr>`;
+    }
     pedidosPagina.forEach(pedido => {
       const row = document.createElement('tr');
-      row.className = 'border-b border-gray-100 hover:bg-gray-50';
-      
+      row.className = 'confirmed-order-row';
+      const purchaseDate = pedido.originalDate
+        ? pedido.originalDate.toLocaleString('pt-BR', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
+          })
+        : 'Data não informada';
+      const contact = pedido.phone
+        ? [
+            `<span class="confirmed-phone"><i class="fas fa-phone" aria-hidden="true"></i>${escapePendingHtml(pedido.phone)}</span>`,
+            pedido.email ? `<span class="confirmed-secondary">E-mail: ${escapePendingHtml(pedido.email)}</span>` : '',
+          ].join('')
+        : pedido.email
+          ? [
+              `<span class="confirmed-primary">${escapePendingHtml(pedido.email)}</span>`,
+              '<span class="confirmed-secondary confirmed-contact-fallback">E-mail alternativo · sem celular informado</span>',
+            ].join('')
+          : '<span class="confirmed-secondary">Contato não informado</span>';
+      const itemDetails = [
+        `<span class="confirmed-primary">${escapePendingHtml(pedido.item)}</span>`,
+        pedido.team ? `<span class="confirmed-secondary">Time: ${escapePendingHtml(pedido.team)}</span>` : '',
+      ].join('');
       row.innerHTML = `
-        <td class="py-1 px-1 text-xs">${pedido.cliente}</td>
-        <td class="py-1 px-1 text-xs">${pedido.item}</td>
-        <td class="py-1 px-1 text-xs">${pedido.valor}</td>
-        <td class="py-1 px-1 text-xs">${pedido.data}</td>
+        <td data-label="Cliente"><span class="confirmed-primary ${pedido.customerName ? '' : 'confirmed-empty-name'}">${escapePendingHtml(pedido.customerName || 'Nome não informado')}</span></td>
+        <td data-label="Contato"><div class="confirmed-cell-stack">${contact}</div></td>
+        <td data-label="Produto / evento"><div class="confirmed-cell-stack">${itemDetails}</div></td>
+        <td data-label="Valor" class="confirmed-amount">${pedido.amount == null ? '—' : escapePendingHtml(brl(pedido.amount))}</td>
+        <td data-label="Data da compra" class="confirmed-date">${escapePendingHtml(purchaseDate)}</td>
       `;
       
       tbody.appendChild(row);
     });
     
     // Atualizar informações de paginação
-    const totalPages = Math.ceil(confirmedOrdersData.length / confirmedOrdersPerPage);
-    document.getElementById('confirmedPageInfo').textContent = `Página ${pagina} de ${totalPages}`;
+    const pageInfo = document.getElementById('confirmedPageInfo');
+    if (pageInfo) pageInfo.textContent = `Página ${currentPage} de ${totalPages} · ${confirmedOrdersPerPage} por página`;
     
     // Gerar botões de paginação
-    gerarBotoesPaginacao('confirmedPagination', pagina, totalPages, (p) => mostrarPedidosConfirmadosPagina(p));
+    gerarBotoesPaginacao('confirmedPagination', currentPage, totalPages, (p) => mostrarPedidosConfirmadosPagina(p));
   }
+
+  window.upsertConfirmedOrder = (id, order) => {
+    if (!order || !['paid', 'approved', 'confirmed'].includes(String(order.status || '').toLowerCase())) return false;
+    const normalized = normalizeConfirmedOrder(order, id);
+    const existingIndex = confirmedOrdersData.findIndex(pedido => pedido.id === id);
+    if (existingIndex >= 0) confirmedOrdersData[existingIndex] = normalized;
+    else confirmedOrdersData.push(normalized);
+    confirmedOrdersData.sort((a, b) => (b.originalDate?.getTime() || 0) - (a.originalDate?.getTime() || 0));
+    mostrarPedidosConfirmadosPagina(1);
+    return true;
+  };
 
   // Submissão manual de equipe/cadastro rápido (confirma vaga sem pagamento)
   let _isSavingTeam = false;
@@ -1478,8 +1594,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
     return EVENT_NAMES_MAP[key] || fallback || eventType;
   }
 
-  // Unifica pedidos: registrations (eventos) + orders de produtos (sem duplicar eventos)
-  async function fetchUnifiedOrders() {
+  // Unifica reservas e pedidos. O ranking pode incluir os recibos de evento
+  // para faturamento, sem fazer uma consulta Firestore adicional.
+  async function fetchUnifiedOrders(options = {}) {
+    const includeEventOrders = options.includeEventOrders === true;
     const items = [];
     const seenExternalRefs = new Set();
     try {
@@ -1503,6 +1621,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
             source: 'registrations',
             docId: d.id,
             externalRef: extRef,
+            quantity: Math.max(1, Math.floor(Number(r.quantity) || 1)),
+            tokensUsed: Number(r.tokensUsed) || 0,
+            isFreeEvent: r.isFreeEvent === true || r.status === 'lisagem_gratis',
+            verifiedOnServer: r.verifiedOnServer === true,
             schedule: r.schedule || null,
             teamName: r.teamName || null
           });
@@ -1517,10 +1639,30 @@ window.showWarningToast = function(message, title = 'Atenção') {
         ords.forEach(d => {
           const o = d.data();
           const type = (o.type || '').toLowerCase();
-          // Pular orders de evento (já estão em registrations)
-          if (type === 'event') return;
+          const extRef = o.external_reference || o.externalRef || d.id.replace(/^event_/, '');
+          if (type === 'event') {
+            // Esses documentos têm o total efetivamente conciliado pelo servidor.
+            // O ranking os usa para faturamento; o volume continua vindo de cada reserva.
+            if (includeEventOrders) {
+              const ts = (o.createdAt?.toDate ? o.createdAt.toDate() : (o.timestamp ? new Date(o.timestamp) : new Date()));
+              items.push({
+                ts,
+                amount: Number(o.amount || o.total || 0),
+                item: resolveEventName(o.eventType, o.title || o.item || 'Evento'),
+                customer: (o.customer || o.customerName || '-'),
+                status: (o.status || ''),
+                paymentMethod: (o.paidWithTokens ? 'tokens' : 'mercado_pago'),
+                source: 'event-orders',
+                docId: d.id,
+                externalRef: extRef,
+                quantity: Math.max(1, Math.floor(Number(o.quantity) || 1)),
+                verifiedOnServer: o.verifiedOnServer === true,
+                tokensUsed: Number(o.tokensUsed) || 0
+              });
+            }
+            return;
+          }
           // Pular orders com external_reference já visto em registrations
-          const extRef = o.external_reference || o.externalRef || d.id;
           if (seenExternalRefs.has(extRef)) return;
           const ts = (o.createdAt?.toDate ? o.createdAt.toDate() : (o.timestamp ? new Date(o.timestamp) : new Date()));
           const rawItem = o.title || o.item || o.description || 'Produto';
@@ -1534,6 +1676,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
             source: 'orders',
             docId: d.id,
             externalRef: extRef,
+            quantity: Math.max(1, Math.floor(Number(o.quantity) || 1)),
+            tokensUsed: Number(o.tokensUsed) || 0,
+            isFreeEvent: o.isFreeEvent === true,
+            verifiedOnServer: o.verifiedOnServer === true,
             productId: o.productId || null
           });
         });
@@ -1543,7 +1689,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
     // Aplicar filtro de tipo
     if (typeof activeFilterType !== 'undefined') {
-      if (activeFilterType === 'events')   return items.filter(i => i.source === 'registrations');
+      if (activeFilterType === 'events')   return items.filter(i => i.source === 'registrations' || i.source === 'event-orders');
       if (activeFilterType === 'products') return items.filter(i => i.source === 'orders');
     }
     return items;
@@ -2255,114 +2401,114 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   async function renderTopProducts(){
-    const canvas = document.getElementById('topProductsChart');
-    if (!canvas) return;
-    const all = await fetchUnifiedOrders();
-    
-    // Agrupar por external_reference primeiro (transações únicas)
-    const transactionsByRef = new Map();
-    
-    all.forEach(o => {
-      if ((o.status||'').toLowerCase() !== 'paid' && (o.status||'').toLowerCase() !== 'confirmed') return;
-      
-      const externalRef = o.externalRef || o.docId || 'no-ref';
-      const rawName = o.item || 'Produto Diverso';
-      const normalizedName = normalizeProductName(rawName);
-      const amount = Number(o.amount || 0);
-      
-      if (transactionsByRef.has(externalRef)) {
-        const existing = transactionsByRef.get(externalRef);
-        existing.amount += amount;
-        // Se o produto normalizado for diferente, manter o primeiro ou combinar
-        if (!existing.products.includes(normalizedName)) {
-          existing.products.push(normalizedName);
-        }
-      } else {
-        transactionsByRef.set(externalRef, {
-          amount: amount,
-          products: [normalizedName]
-        });
-      }
-    });
-    
-    // Agregar por produto a partir das transações únicas
-    const revenueMap = {}; // Faturamento por produto
-    const quantityMap = {}; // Quantidade de transações por produto
-    
-    transactionsByRef.forEach(transaction => {
-      // Se uma transação tem múltiplos produtos, distribuir o valor igualmente
-      const amountPerProduct = transaction.amount / transaction.products.length;
-      transaction.products.forEach(productName => {
-        revenueMap[productName] = (revenueMap[productName] || 0) + amountPerProduct;
-        quantityMap[productName] = (quantityMap[productName] || 0) + 1;
-      });
-    });
-    
-    // Ordenar por faturamento e pegar top 5
-    const entries = Object.entries(revenueMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, revenue]) => ({
-        name,
-        revenue,
-        quantity: quantityMap[name] || 0
-      }));
-    
-    try { if (charts.top) { charts.top.destroy(); } } catch(_){}
+    const container = document.getElementById('topProductsChart');
+    if (!container) return;
+    const all = await fetchUnifiedOrders({ includeEventOrders: true });
+    const countableStatuses = new Set(['paid', 'confirmed', 'approved']);
+    const products = new Map();
+    const verifiedPaidEventRefs = new Set(all
+      .filter(order => order.source === 'event-orders'
+        && order.verifiedOnServer === true
+        && ['mercado_pago', 'tokens'].includes(order.paymentMethod)
+        && countableStatuses.has(String(order.status || '').toLowerCase())
+        && Math.max(Number(order.amount) || 0, Number(order.tokensUsed) || 0) > 0)
+      .map(order => order.externalRef)
+      .filter(Boolean));
 
-    const BAR_COLORS = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444'];
-    charts.top = new Chart(canvas.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: entries.map(e => e.name.length > 18 ? e.name.slice(0,16)+'…' : e.name),
-        datasets: [{
-          label: 'Faturamento (R$)',
-          data: entries.map(e => e.revenue),
-          backgroundColor: entries.map((_, i) => BAR_COLORS[i % BAR_COLORS.length] + 'cc'),
-          borderColor: entries.map((_, i) => BAR_COLORS[i % BAR_COLORS.length]),
-          borderWidth: 2,
-          borderRadius: 8,
-          borderSkipped: false
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 600, easing: 'easeInOutQuart' },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: 'rgba(15,23,42,0.92)',
-            bodyFont: { size: 12 },
-            padding: 12,
-            cornerRadius: 10,
-            callbacks: {
-              label: ctx => {
-                const e = entries[ctx.dataIndex];
-                return [`R$ ${e.revenue.toFixed(2).replace('.',',')}`, `${e.quantity} venda${e.quantity!==1?'s':''}`];
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            beginAtZero: true,
-            grid: { color: 'rgba(148,163,184,0.15)' },
-            ticks: {
-              color: '#94a3b8',
-              font: { size: 10 },
-              callback: v => 'R$' + (v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0))
-            },
-            border: { display: false }
-          },
-          y: {
-            grid: { display: false },
-            ticks: { color: '#374151', font: { size: 11, weight: '600' } }
-          }
+    const getProduct = (order, isEvent) => {
+      const name = normalizeProductName(order.item || 'Produto Diverso');
+      if (!products.has(name)) {
+        products.set(name, { name, quantity: 0, revenue: 0, unreconciled: 0, isEvent: false });
+      }
+      const product = products.get(name);
+      if (isEvent) product.isEvent = true;
+      return product;
+    };
+
+    all.forEach(order => {
+      const status = String(order.status || '').toLowerCase();
+      const amount = Number(order.amount) || 0;
+
+      if (order.source === 'event-orders') {
+        if (order.verifiedOnServer === true
+          && ['mercado_pago', 'tokens'].includes(order.paymentMethod)
+          && countableStatuses.has(status)
+          && Math.max(amount, Number(order.tokensUsed) || 0) > 0) {
+          const product = getProduct(order, true);
+          product.revenue += Math.max(amount, Number(order.tokensUsed) || 0);
         }
+        return;
+      }
+
+      if (order.source !== 'registrations' && order.source !== 'orders') return;
+      if (!countableStatuses.has(status)) return;
+
+      const isEvent = order.source === 'registrations';
+      const product = getProduct(order, isEvent);
+      const quantity = Math.max(1, Math.floor(Number(order.quantity) || 1));
+      const paymentValue = Math.max(amount, Number(order.tokensUsed) || 0);
+      if (order.isFreeEvent === true || paymentValue <= 0) return;
+      product.quantity += quantity;
+
+      if (isEvent) {
+        // Registros tokenizados legados podem não ter um documento separado em
+        // orders; tokensUsed é o valor efetivamente debitado pelo servidor.
+        if (order.paymentMethod === 'tokens'
+          && order.verifiedOnServer === true
+          && Number(order.tokensUsed) > 0
+          && !verifiedPaidEventRefs.has(order.externalRef)) {
+          product.revenue += Number(order.tokensUsed);
+          return;
+        }
+        if (!verifiedPaidEventRefs.has(order.externalRef)) product.unreconciled += quantity;
+      } else if (order.verifiedOnServer === true
+        && ['mercado_pago', 'tokens'].includes(order.paymentMethod)) {
+        product.revenue += paymentValue;
+      } else {
+        product.unreconciled += quantity;
       }
     });
+
+    // Volume é contado por reserva/unidade. Faturamento usa somente totais
+    // conciliados no servidor (MP/PIX ou tokens); vagas gratuitas ficam fora.
+    const entries = Array.from(products.values())
+      .filter(product => product.quantity > 0 || product.revenue > 0)
+      .sort((a, b) => b.revenue - a.revenue || b.quantity - a.quantity)
+      .slice(0, 5);
+    
+    try { if (charts.top) charts.top.destroy(); } catch(_){}
+    charts.top = null;
+
+    if (!entries.length) {
+      container.innerHTML = '<div class="chart-empty-state" role="status"><strong>Nenhuma reserva ou venda confirmada encontrada</strong><span>O ranking aparecerá quando houver atividade confirmada.</span></div>';
+      return;
+    }
+
+    const maxRevenue = Math.max(0, ...entries.map(entry => Number(entry.revenue) || 0));
+    container.innerHTML = `<ol class="top-products-list" aria-label="Produtos ordenados pelo faturamento">${entries.map((entry, index) => {
+      const name = escapePendingHtml(entry.name);
+      const revenue = Number(entry.revenue) || 0;
+      const quantity = Number(entry.quantity) || 0;
+      const width = maxRevenue > 0 ? Math.max(0, Math.min(100, revenue / maxRevenue * 100)) : 0;
+      const rank = String(index + 1).padStart(2, '0');
+      const quantityLabel = entry.isEvent
+        ? `${quantity} reserva${quantity === 1 ? '' : 's'}`
+        : `${quantity} unidade${quantity === 1 ? '' : 's'}`;
+      const reconciliationLabel = entry.unreconciled > 0
+        ? `<span class="top-product-unreconciled">${entry.unreconciled} sem pagamento conciliado</span>`
+        : '';
+      return `<li class="top-product-item" role="listitem">
+        <div class="top-product-heading">
+          <div class="top-product-label">
+            <span class="top-product-rank" aria-hidden="true">${rank}</span>
+            <span class="top-product-name" title="${name}">${name}</span>
+          </div>
+          <strong class="top-product-revenue">${currencyBRL(revenue)}</strong>
+        </div>
+        <div class="top-product-track" aria-hidden="true"><span class="top-product-track-fill${index === 0 ? ' is-top' : ''}" style="width:${width.toFixed(2)}%"></span></div>
+        <div class="top-product-footer"><span>${quantityLabel}</span>${reconciliationLabel}</div>
+      </li>`;
+    }).join('')}</ol>`;
   }
 
   // Renderizar gráfico de formas de pagamento
@@ -4764,7 +4910,7 @@ async function loadPopularHoursData(dayFilter = '', eventFilter = '') {
     try {
         if (!window.firebaseDb) {
             console.warn('Firebase não inicializado ainda');
-            return { labels: [], data: [] };
+            return { labels: [], data: [], error: true };
         }
         
         const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -4804,11 +4950,12 @@ async function loadPopularHoursData(dayFilter = '', eventFilter = '') {
         
         return {
             labels: entries.map(([h]) => h),
-            data: entries.map(([, c]) => c)
+            data: entries.map(([, c]) => c),
+            error: false
         };
     } catch (error) {
         console.error('Erro ao carregar dados de horários:', error);
-        return { labels: [], data: [] };
+        return { labels: [], data: [], error: true };
     }
 }
 
@@ -4819,41 +4966,98 @@ async function renderPopularHours() {
         const eventFilter = document.getElementById('eventFilter')?.value || '';
         
         const chartData = await loadPopularHoursData(dayFilter, eventFilter);
-        const ctx = document.getElementById('popularHoursChart');
+        const canvas = document.getElementById('popularHoursChart');
+        const canvasWrap = document.getElementById('popularHoursCanvasWrap');
+        const emptyState = document.getElementById('popularHoursEmpty');
+        const errorState = document.getElementById('popularHoursError');
+        const insight = document.getElementById('popularHoursInsight');
+        const peak = document.getElementById('popularHoursPeak');
         
-        if (!ctx) return;
+        if (!canvas) return;
         
         // Destruir gráfico existente se houver
         if (popularHoursChart) {
             popularHoursChart.destroy();
+            popularHoursChart = null;
         }
-        
-        // Criar novo gráfico
-        popularHoursChart = new Chart(ctx, {
+
+        const labels = Array.isArray(chartData?.labels) ? chartData.labels : [];
+        const values = Array.isArray(chartData?.data) ? chartData.data.map(value => Number(value) || 0) : [];
+        const hasData = labels.length > 0 && values.some(value => value > 0);
+
+        if (!hasData) {
+            if (canvasWrap) canvasWrap.style.display = 'none';
+            const hasError = Boolean(chartData?.error);
+            if (emptyState) emptyState.style.display = hasError ? 'none' : 'flex';
+            if (errorState) errorState.style.display = hasError ? 'flex' : 'none';
+            if (insight) insight.style.display = 'none';
+            return;
+        }
+
+        if (canvasWrap) canvasWrap.style.display = '';
+        if (emptyState) emptyState.style.display = 'none';
+        if (errorState) errorState.style.display = 'none';
+
+        const maxValue = Math.max(...values);
+        const peakIndex = values.indexOf(maxValue);
+        const peakLabel = labels[peakIndex];
+        if (peak && insight) {
+            peak.textContent = `${peakLabel} · ${maxValue.toLocaleString('pt-BR')} ${maxValue === 1 ? 'reserva' : 'reservas'}`;
+            insight.style.display = 'flex';
+        }
+
+        const valueLabelsPlugin = {
+            id: 'popularHoursValueLabels',
+            afterDatasetsDraw(chart) {
+                const meta = chart.getDatasetMeta(0);
+                const ctx = chart.ctx;
+                ctx.save();
+                ctx.fillStyle = '#334155';
+                ctx.font = '600 11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                meta.data.forEach((bar, index) => {
+                    const position = bar.getProps(['x', 'y'], true);
+                    ctx.fillText(String(values[index]), position.x, position.y - 6);
+                });
+                ctx.restore();
+            }
+        };
+        const stepSize = maxValue <= 15 ? 2 : Math.max(1, Math.ceil(maxValue / 6));
+        const suggestedMax = maxValue + Math.max(2, stepSize);
+
+        popularHoursChart = new Chart(canvas, {
             type: 'bar',
             data: {
-                labels: chartData.labels,
+                labels,
                 datasets: [{
-                    label: 'Demanda',
-                    data: chartData.data,
-                    backgroundColor: '#4a90e2',
-                    borderColor: '#357abd',
-                    borderWidth: 1,
-                    borderRadius: 4
+                    label: 'Reservas confirmadas',
+                    data: values,
+                    backgroundColor: values.map(value => value === maxValue ? '#f97316' : '#3b82f6'),
+                    borderRadius: 7,
+                    borderSkipped: false,
+                    maxBarThickness: 42
                 }]
             },
+            plugins: [valueLabelsPlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                aspectRatio: 2.5,
+                animation: { duration: 350 },
+                layout: { padding: { top: 18, right: 8, bottom: 2, left: 2 } },
                 plugins: {
-                    legend: {
-                        display: false
-                    },
+                    legend: { display: false },
                     tooltip: {
+                        displayColors: false,
+                        backgroundColor: 'rgba(15,23,42,0.94)',
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#fff',
+                        padding: 11,
+                        cornerRadius: 9,
                         callbacks: {
-                            label: function(context) {
-                                return `Demanda: ${context.parsed.y} reservas`;
+                            label(context) {
+                                const count = Number(context.parsed.y) || 0;
+                                return `${count.toLocaleString('pt-BR')} ${count === 1 ? 'reserva confirmada' : 'reservas confirmadas'}`;
                             }
                         }
                     }
@@ -4861,26 +5065,39 @@ async function renderPopularHours() {
                 scales: {
                     y: {
                         beginAtZero: true,
+                        suggestedMax,
                         ticks: {
-                            stepSize: 1,
-                            font: {
-                                size: 10
-                            }
-                        }
+                            stepSize,
+                            color: '#8492a6',
+                            font: { size: 10 },
+                            padding: 7
+                        },
+                        grid: { color: 'rgba(148,163,184,0.18)' },
+                        border: { display: false }
                     },
                     x: {
+                        grid: { display: false },
                         ticks: {
-                            maxRotation: 45,
-                            font: {
-                                size: 10
-                            }
-                        }
+                            maxRotation: 0,
+                            color: '#5e718a',
+                            font: { size: 10, weight: '600' },
+                            padding: 7
+                        },
+                        border: { display: false }
                     }
                 }
             }
         });
     } catch (error) {
         console.error('Erro ao renderizar gráfico de horários:', error);
+        const canvasWrap = document.getElementById('popularHoursCanvasWrap');
+        const emptyState = document.getElementById('popularHoursEmpty');
+        const errorState = document.getElementById('popularHoursError');
+        const insight = document.getElementById('popularHoursInsight');
+        if (canvasWrap) canvasWrap.style.display = 'none';
+        if (emptyState) emptyState.style.display = 'none';
+        if (errorState) errorState.style.display = 'flex';
+        if (insight) insight.style.display = 'none';
     }
 }
 
@@ -4889,6 +5106,7 @@ function setupPopularHoursFilters() {
     const dayFilter = document.getElementById('dayFilter');
     const eventFilter = document.getElementById('eventFilter');
     const resetBtn = document.getElementById('resetFiltersBtn');
+    const retryBtn = document.getElementById('retryPopularHoursBtn');
     
     if (dayFilter) {
         dayFilter.addEventListener('change', renderPopularHours);
@@ -4904,6 +5122,10 @@ function setupPopularHoursFilters() {
             if (eventFilter) eventFilter.value = '';
             renderPopularHours();
         });
+    }
+
+    if (retryBtn) {
+        retryBtn.addEventListener('click', renderPopularHours);
     }
 }
 // ===== FIM DO SISTEMA DE FILTROS =====
@@ -5141,84 +5363,10 @@ async function main() {
 
 // Função para carregar pedidos confirmados
 async function loadConfirmedOrders() {
-    try {
-        const { collection, getDocs, query, where, orderBy, limit } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        
-        // Buscar pedidos com status 'paid' ou 'approved' - sem orderBy para evitar erro de índice
-        const ordersRef = collection(window.firebaseDb, 'orders');
-        const q = query(
-            ordersRef,
-            where('status', 'in', ['paid', 'approved', 'confirmed']),
-            limit(50)
-        );
-        
-        const snapshot = await getDocs(q);
-        const confirmedTbody = document.getElementById('confirmedTbody');
-        const confirmedCount = document.getElementById('confirmedCount');
-        
-        if (confirmedTbody) {
-            confirmedTbody.innerHTML = '';
-            
-            if (snapshot.empty) {
-                confirmedTbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">Nenhum pedido confirmado encontrado</td></tr>';
-            } else {
-                // Ordenar manualmente por data
-                const orders = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    orders.push({ id: doc.id, ...data });
-                });
-                
-                orders.sort((a, b) => {
-                    const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-                    const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-                    return dateB - dateA;
-                });
-                
-                // Função auxiliar para obter nome do item/evento
-                const getItemName = (order) => {
-                  // Se tiver eventType, mapear para nome legível
-                  if (order.eventType) {
-                    const eventMap = {
-                      'modo-liga': 'Modo Liga',
-                      'xtreino-tokens': 'XTreino Tokens',
-                      'xtreino': 'XTreino Tokens',
-                      'semanal-freitas': 'Semanal Freitas',
-                      'semanal': 'Semanal Freitas',
-                      'camp-freitas': 'Camp Freitas',
-                      'camp': 'Camp Freitas'
-                    };
-                    return eventMap[order.eventType.toLowerCase()] || order.eventType;
-                  }
-                  // Tentar outros campos
-                  return order.title || order.item || order.productName || 'Item não informado';
-                };
-                
-                orders.forEach(order => {
-                    const row = document.createElement('tr');
-                    const nameDisplay = order.customerName || order.name || order.customer || '-';
-                    const contactDisplay = order.phone || order.contact || '-';
-                    const teamDisplay = order.teamName || order.team || '-';
-                    const emailDisplay = order.buyerEmail || order.customer || '-';
-                    row.innerHTML = `
-                        <td class="py-2 text-sm"><strong>${nameDisplay}</strong></td>
-                        <td class="py-2 text-sm">${contactDisplay}</td>
-                        <td class="py-2 text-sm">${teamDisplay}</td>
-                        <td class="py-2 text-sm">${emailDisplay}</td>
-                        <td class="py-2 text-sm">${getItemName(order)}</td>
-                    `;
-                    confirmedTbody.appendChild(row);
-                });
-            }
-        }
-        
-        if (confirmedCount) {
-            confirmedCount.textContent = `${snapshot.size} pedidos`;
-        }
-        
-    } catch (error) {
-        console.error('Erro ao carregar pedidos confirmados:', error);
+    if (typeof window.reloadConfirmedOrders === 'function') {
+        return window.reloadConfirmedOrders();
     }
+    console.warn('A lista atualizada de pedidos confirmados ainda não foi inicializada.');
 }
 
 // Função para carregar pedidos pendentes
@@ -5258,7 +5406,12 @@ async function approveOrder(orderId) {
 
         alert('Pedido aprovado com sucesso!');
         await loadPendingOrders();
-        await loadConfirmedOrders();
+        const updatedOrder = { ...orderData, ...patch };
+        if (typeof window.upsertConfirmedOrder === 'function') {
+            window.upsertConfirmedOrder(orderId, updatedOrder);
+        } else {
+            await loadConfirmedOrders();
+        }
     } catch (error) {
         console.error('Erro ao aprovar pedido:', error);
         alert('Erro ao aprovar pedido');
@@ -13098,3 +13251,4 @@ window.repairDateSlots = async function(eventType, targetDate) {
         alert('Erro: ' + (err.message || err));
     }
 };
+

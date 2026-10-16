@@ -13,11 +13,16 @@ const registrations = extract('createRegistrationsForEvent', '// --- Edição de
     .replace(/await import\('https:\/\/www\.gstatic\.com\/firebasejs\/10\.13\.0\/firebase-firestore\.js'\)/g, 'sdk');
 const selected = [{ date: '2026-10-13', schedule: 'Terça - 19h' }];
 const team = [{ name: 'Equipe teste', email: 'teste@example.test', phone: '11999999999' }];
+const scheduleConfig = {
+    'modo-liga': { label: 'MODO LIGA', price: 3, modo: 'LIGA', vagas: 12, grupos: 1 },
+};
 function setup(overrides = {}) {
     const calls = [];
     const context = {
         console, appliedScheduleCoupon: null, scheduleOriginalTotal: 3,
-        scheduleConfig: { 'modo-liga': { label: 'MODO LIGA', price: 3 } }, scheduleCache: {},
+        scheduleConfig, scheduleCache: {},
+        getActiveScheduleConfig: eventType => scheduleConfig[eventType],
+        getActiveEventRegistrationMetadata: () => ({}),
         canSpendTokens: () => true,
         checkMultipleSlotAvailability: async () => { calls.push('check'); return { available: true }; },
         createRegistrationsForEvent: async () => { calls.push('persist'); return { regIds: ['r1'], assignedSlots: [{ team: 'Equipe teste', schedule: '19h' }] }; },
@@ -28,8 +33,6 @@ function setup(overrides = {}) {
         showSuccessToast: () => {},
         ...overrides,
     };
-    context.getActiveScheduleConfig = eventType => context.scheduleConfig[eventType] || {};
-    context.getActiveEventRegistrationMetadata = () => ({});
     vm.createContext(context);
     new vm.Script(tokens).runInContext(context);
     return { context, calls };
@@ -59,7 +62,8 @@ function setupSubmission(result) {
                 },
             }],
         },
-        scheduleConfig: { 'modo-liga': { label: 'MODO LIGA', price: 3 } },
+        scheduleConfig,
+        getActiveScheduleConfig: eventType => scheduleConfig[eventType],
         selectedDates: ['2026-10-13'], selectedTimes: selected, teams: [],
         appliedScheduleCoupon: null,
         isValidScheduleDate: () => true,
@@ -69,8 +73,6 @@ function setupSubmission(result) {
         useTokensForEvent: async (...args) => { calls.push('tokens'); context.proof = args[6]; },
         alert: () => { calls.push('blocked'); },
     };
-    context.getActiveScheduleConfig = eventType => context.scheduleConfig[eventType] || {};
-    context.getActiveEventRegistrationMetadata = () => ({});
     vm.createContext(context);
     new vm.Script(submission).runInContext(context);
     return { context, calls, elements };

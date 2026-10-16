@@ -302,13 +302,14 @@ test("approved event confirms every reservation and creates the paid order autom
   currentDb = fakeDatabase({
     "users/buyer": { tokens: 10 },
     "adminEvents/event": { name: "XTreino Tokens", eventType: "xtreino-tokens", preco: 1, status: "Aberto" },
-    "registrations/a": { userId: "buyer", status: "pending", eventType: "xtreino-tokens", date: "2026-10-14", schedule: "Quarta - 21h", external_reference: "schedule_event" },
+    "registrations/a": { userId: "buyer", status: "pending", eventType: "xtreino-tokens", date: "2026-10-14", schedule: "Quarta - 21h", phone: "+55 11 90000-0001", external_reference: "schedule_event" },
   });
   await preparePurchase("buyer", { external_reference: "schedule_event", unit_price: 1 }, "mercadopago");
   const result = await completePurchase("schedule_event", { payment: { ...payment("schedule_event"), transaction_amount: 1 } });
   assert.equal(result.status, "paid");
   assert.equal(currentDb.read("registrations/a").status, "paid");
   assert.equal(currentDb.read("orders/event_schedule_event").total, 1);
+  assert.equal(currentDb.read("orders/event_schedule_event").phone, "+55 11 90000-0001");
   assert.equal(currentDb.read("users/buyer").tokens, 10);
 });
 

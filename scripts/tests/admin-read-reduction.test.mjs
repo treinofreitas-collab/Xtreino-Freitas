@@ -142,7 +142,7 @@ test('actual report callers share full historical data without truncating legacy
     const data = {
         registrations: snapshot([{ eventType: 'modo-liga', price: 1, email: 'team', status: 'paid', external_reference: 'one' }]),
         orders: snapshot([
-            { type: 'event', external_reference: 'one', amount: 1 },
+            { type: 'event', external_reference: 'one', amount: 1, status: 'paid', verifiedOnServer: true },
             { title: 'Legacy product', amount: 2, timestamp: 1, status: 'paid' },
         ]),
     };
@@ -154,7 +154,7 @@ test('actual report callers share full historical data without truncating legacy
         loadKpis: async () => {},
         renderActiveUsers: async () => {},
     });
-    vm.runInContext(snippet('  async function fetchUnifiedOrders()', '  async function loadReports()'), context);
+    vm.runInContext(snippet('  async function fetchUnifiedOrders(options = {})', '  async function loadReports()'), context);
     vm.runInContext(snippet('  async function loadReports()', '  // ===== Paginação de salto'), context);
     const all = [];
     for (const name of ['renderSalesChart', 'renderTopProducts', 'renderPaymentMethodsChart']) {
@@ -167,6 +167,10 @@ test('actual report callers share full historical data without truncating legacy
     assert.deepEqual(reads.sort(), ['orders', 'registrations']);
     assert.equal(all.length, 3);
     assert.ok(all.every(rows => rows.length === 2 && rows.some(row => row.item === 'Legacy product')));
+    const withEventReceipts = await context.fetchUnifiedOrders({ includeEventOrders: true });
+    assert.equal(withEventReceipts.length, 3);
+    assert.ok(withEventReceipts.some(row => row.source === 'event-orders' && row.verifiedOnServer));
+    assert.deepEqual(reads.sort(), ['orders', 'registrations']);
 });
 
 function pageHarness() {
