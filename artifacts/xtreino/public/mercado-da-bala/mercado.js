@@ -11,7 +11,7 @@ const APP_STATUS = {
 const appState = {
   service: null, user: null, role: "", profiles: [], vacancies: [], favorites: [],
   ownProfile: null, ownVacancies: [], applications: [], moderation: [], mode: "received",
-  loading: false
+  loading: false, profileModalRequest: 0
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -192,6 +192,7 @@ async function loadVacancies() {
 }
 
 function openModal(title, subtitle, body, buttons = []) {
+  appState.profileModalRequest += 1;
   $("#modalTitle").textContent = title;
   $("#modalSubtitle").textContent = subtitle || "";
   $("#modalBody").innerHTML = body;
@@ -201,6 +202,7 @@ function openModal(title, subtitle, body, buttons = []) {
   setTimeout(() => $("input,select,textarea", $("#modalBody"))?.focus(), 40);
 }
 function closeModal() {
+  appState.profileModalRequest += 1;
   $("#modal").classList.remove("open");
   document.body.style.overflow = "";
 }
@@ -218,7 +220,7 @@ function profileDetail(profile) {
     ? `<section class="mb-contact-section" aria-label="Contato do jogador">
         <h4>CONTATO</h4>
         ${appState.user
-          ? `<button class="mb-button yellow mb-contact-button" type="button" data-action="contact-profile" data-id="${esc(uid)}">CONTATO</button>
+          ? `<button class="mb-button yellow mb-contact-button" type="button" data-action="contact-profile" data-id="${esc(uid)}" data-name="${esc(name)}">CONTATO</button>
              <p class="mb-contact-help">Acesse somente os links que este jogador escolheu compartilhar.</p>`
           : `<button class="mb-button yellow mb-contact-button" type="button" disabled aria-disabled="true">CONTATO</button>
              <p class="mb-contact-help">Entre em uma conta cadastrada para habilitar o contato.</p>
@@ -383,7 +385,12 @@ function renderApplication(application) {
   const id = appId(application);
   const applicantUid = first(application, ["applicantUid", "profileUid"], "");
   const statuses = [["new", "Novo candidato"], ["reviewing", "Em análise"], ["trial_scheduled", "Teste agendado"], ["approved", "Aprovado"], ["rejected", "Não selecionado"]];
-  return `<article class="mb-applicant"><div><div class="mb-inline"><h3>${esc(who)}</h3><span class="mb-status-pill ${esc(status)}">${esc(APP_STATUS[status] || status)}</span></div><p>${esc(message || "Sem mensagem adicional.")}</p></div><div class="mb-applicant-actions">${isReceived && applicantUid ? `<button class="mb-button yellow small" type="button" data-action="contact-applicant" data-profile-uid="${esc(applicantUid)}" data-name="${esc(applicantName(application))}">Entrar em contato</button>` : ""}${isReceived ? `<select class="mb-control" data-status-select="${esc(id)}" aria-label="Etapa da candidatura">${statuses.map(([value, label]) => `<option value="${value}" ${value === status ? "selected" : ""}>${label}</option>`).join("")}</select><button class="mb-button small" type="button" data-action="update-application" data-id="${esc(id)}">Atualizar etapa</button>` : ""}</div></article>`;
+  const applicantActions = isReceived ? `
+    ${applicantUid && id ? `<button class="mb-button secondary small" type="button" data-action="view-applicant-profile" data-id="${esc(id)}" data-profile-uid="${esc(applicantUid)}" data-name="${esc(applicantName(application))}">Ver currículo</button>` : ""}
+    ${applicantUid ? `<button class="mb-button yellow small" type="button" data-action="contact-applicant" data-profile-uid="${esc(applicantUid)}" data-name="${esc(applicantName(application))}">Entrar em contato</button>` : ""}
+    <select class="mb-control" data-status-select="${esc(id)}" aria-label="Etapa da candidatura">${statuses.map(([value, label]) => `<option value="${value}" ${value === status ? "selected" : ""}>${label}</option>`).join("")}</select>
+    <button class="mb-button small" type="button" data-action="update-application" data-id="${esc(id)}">Atualizar etapa</button>` : "";
+  return `<article class="mb-applicant"><div><div class="mb-inline"><h3>${esc(who)}</h3><span class="mb-status-pill ${esc(status)}">${esc(APP_STATUS[status] || status)}</span></div><p>${esc(message || "Sem mensagem adicional.")}</p></div><div class="mb-applicant-actions">${applicantActions}</div></article>`;
 }
 async function loadApplications() {
   const root = $("#applicationsList");
@@ -401,6 +408,26 @@ async function loadApplications() {
       emptyState(appState.mode === "received" ? "Nenhuma candidatura recebida" : "Nenhuma candidatura enviada", appState.mode === "received" ? "Quando alguém se candidatar às suas vagas, o processo aparecerá aqui." : "Demonstre interesse em uma vaga para acompanhar sua candidatura aqui.");
   } catch (error) {
     root.innerHTML = `<div class="mb-state"><h3>Não foi possível carregar</h3><p>${esc(friendlyError(error))}</p><button class="mb-button secondary" type="button" data-action="retry">Tentar novamente</button></div>`;
+  }
+}
+async function viewApplicantProfile(applicationId, profileUid, name = "Candidato") {
+  const application = appState.applications.find(item => appId(item) === applicationId);
+  if (!appState.user || appState.mode !== "received" || !application ||
+      first(application, ["applicantUid", "profileUid"], "") !== profileUid) {
+    return toast("Não foi possível confirmar esta candidatura.");
+  }
+
+  openModal(`Currículo · ${name}`, "Detalhes do perfil compartilhados pelo candidato.", `
+    <div class="mb-state" aria-live="polite"><h3>Carregando currículo</h3><p>Buscando os detalhes do perfil.</p></div>`,
+  [{ label: "Fechar", action: "close-modal", class: "secondary" }]);
+  const request = appState.profileModalRequest;
+  try {
+    const profile = await appState.service.getApplicantProfile(appState.user.uid, applicationId, profileUid);
+    if (request !== appState.profileModalRequest || !$("#modal").classList.contains("open")) return;
+    $("#modalBody").innerHTML = profileDetail(profile);
+  } catch (error) {
+    if (request !== appState.profileModalRequest || !$("#modal").classList.contains("open")) return;
+    $("#modalBody").innerHTML = `<div class="mb-state"><h3>Não foi possível abrir o currículo</h3><p>${esc(friendlyError(error))}</p></div>`;
   }
 }
 async function updateApplication(id) {
@@ -665,10 +692,11 @@ document.addEventListener("click", async event => {
     case "view-profile": viewProfile(id); break;
     case "contact-profile": {
       const profile = appState.profiles.find(item => recordId(item) === id) || appState.favorites.find(item => recordId(item) === id);
-      await openContactLinks(id, profile ? profileName(profile) : "jogador");
+      await openContactLinks(id, action.dataset.name || (profile ? profileName(profile) : "jogador"));
       break;
     }
     case "contact-applicant": await openContactLinks(profileUid, action.dataset.name || "candidato"); break;
+    case "view-applicant-profile": await viewApplicantProfile(id, profileUid, action.dataset.name || "Candidato"); break;
     case "view-vacancy": event.preventDefault(); viewVacancy(id); break;
     case "favorite": await toggleFavorite(id); break;
     case "apply": await applyToVacancy(id); break;

@@ -437,6 +437,43 @@ export function createMercadoDaBalaService({ auth, db, sdk } = {}) {
       return snapshotData(results).sort(newestFirst);
     },
 
+    async getApplicantProfile(uid, applicationId, profileUid) {
+      requireCurrentUser(auth, uid);
+      const appId = safeTargetId(applicationId);
+      const playerId = safeTargetId(profileUid);
+      const sdk = await getFirestoreSdk();
+      const applicationSnapshot = await sdk.getDoc(sdk.doc(db, "market_applications", appId));
+      if (!applicationSnapshot.exists()) throw new Error("Candidatura não encontrada.");
+      const application = applicationSnapshot.data();
+      if (application.vacancyOwnerUid !== uid || application.applicantUid !== playerId) {
+        throw new Error("Esta candidatura não pertence a uma vaga sua.");
+      }
+
+      const profileSnapshot = await sdk.getDoc(sdk.doc(db, "market_profiles", playerId));
+      if (!profileSnapshot.exists() || profileSnapshot.data().status !== "published") {
+        throw new Error("O currículo não está mais disponível.");
+      }
+      const profile = profileSnapshot.data();
+      const validAvailability = MARKET_AVAILABILITY.includes(profile.availability) ? profile.availability : "";
+      return {
+        id: profileSnapshot.id,
+        uid: profileSnapshot.id,
+        nickname: boundedText(profile.nickname, 36),
+        mainRole: MARKET_ROLES.includes(profile.mainRole) ? profile.mainRole : "",
+        secondaryRoles: normalizedRoles(profile.secondaryRoles),
+        city: boundedText(profile.city, 60),
+        state: boundedText(profile.state, 40).toUpperCase(),
+        experience: boundedText(profile.experience, 70),
+        availability: validAvailability,
+        availabilitySchedule: boundedText(profile.availabilitySchedule, 100),
+        teamHistory: boundedText(profile.teamHistory, 500),
+        championships: boundedText(profile.championships, 400),
+        achievements: boundedText(profile.achievements, 400),
+        bio: boundedText(profile.bio, 700),
+        contactAvailable: profile.contactAvailable === true
+      };
+    },
+
     async updateApplicationStatus(uid, applicationId, status) {
       requireCurrentUser(auth, uid);
       if (!["reviewing", "trial_scheduled", "approved", "rejected"].includes(status)) {

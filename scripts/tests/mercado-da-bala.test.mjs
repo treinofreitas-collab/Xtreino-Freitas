@@ -220,6 +220,84 @@ test("links de contato são gravados fora do currículo público e exigem sessã
   await assert.rejects(service.getProfileContactLinks("player-1", "player-1"), /Entre na sua conta/);
 });
 
+test("avaliador só abre o currículo publicado do candidato ligado à própria vaga", async () => {
+  const documents = new Map([
+    ["market_applications/vacancy-1__player-1", {
+      vacancyOwnerUid: "team-1",
+      applicantUid: "player-1"
+    }],
+    ["market_profiles/player-1", {
+      nickname: "Falcão",
+      mainRole: "Fragger",
+      secondaryRoles: ["Suporte", "Desconhecida"],
+      city: "São Paulo",
+      state: "sp",
+      experience: "2 temporadas",
+      availability: "looking",
+      availabilitySchedule: "Seg–Sex, 19h",
+      teamHistory: "Alpha",
+      championships: "Copa Regional",
+      achievements: "Finalista",
+      bio: "Atleta focado.",
+      contactAvailable: true,
+      socialLinks: [{ url: "https://example.com/private" }],
+      email: "private@example.com",
+      status: "published"
+    }]
+  ]);
+  const calls = [];
+  const key = ref => `${ref.collection}/${ref.id}`;
+  const auth = { currentUser: { uid: "team-1" } };
+  const sdk = {
+    doc: (_db, collection, id) => ({ collection, id }),
+    getDoc: async ref => {
+      calls.push(key(ref));
+      return {
+        id: ref.id,
+        exists: () => documents.has(key(ref)),
+        data: () => documents.get(key(ref))
+      };
+    }
+  };
+  const service = createMercadoDaBalaService({ auth, db: {}, sdk });
+  const profile = await service.getApplicantProfile("team-1", "vacancy-1__player-1", "player-1");
+
+  assert.deepEqual(calls, [
+    "market_applications/vacancy-1__player-1",
+    "market_profiles/player-1"
+  ]);
+  assert.deepEqual(profile, {
+    id: "player-1",
+    uid: "player-1",
+    nickname: "Falcão",
+    mainRole: "Fragger",
+    secondaryRoles: ["Suporte"],
+    city: "São Paulo",
+    state: "SP",
+    experience: "2 temporadas",
+    availability: "looking",
+    availabilitySchedule: "Seg–Sex, 19h",
+    teamHistory: "Alpha",
+    championships: "Copa Regional",
+    achievements: "Finalista",
+    bio: "Atleta focado.",
+    contactAvailable: true
+  });
+  assert.equal("socialLinks" in profile, false);
+  assert.equal("email" in profile, false);
+
+  documents.set("market_applications/vacancy-1__player-1", {
+    vacancyOwnerUid: "another-team",
+    applicantUid: "player-1"
+  });
+  calls.length = 0;
+  await assert.rejects(service.getApplicantProfile("team-1", "vacancy-1__player-1", "player-1"), /não pertence a uma vaga sua/);
+  assert.deepEqual(calls, ["market_applications/vacancy-1__player-1"]);
+
+  auth.currentUser = null;
+  await assert.rejects(service.getApplicantProfile("team-1", "vacancy-1__player-1", "player-1"), /Entre na sua conta/);
+});
+
 test("abrir o espaço próprio migra links de perfis legados para a coleção privada", async () => {
   const documents = new Map([
     ["market_profiles/player-legacy", {
@@ -272,6 +350,13 @@ test("abrir o espaço próprio migra links de perfis legados para a coleção pr
   ]);
   assert.equal(ownProfile.contactAvailable, true);
   assert.equal(ownProfile.socialLinks[0].url, "https://instagram.com/legacy");
+});
+
+test("candidaturas recebidas oferecem uma ação para abrir o currículo do candidato", () => {
+  assert.match(marketUi, /data-action="view-applicant-profile"/);
+  assert.match(marketUi, /case "view-applicant-profile"/);
+  assert.match(marketUi, /isReceived \? `[\s\S]*data-action="view-applicant-profile"/);
+  assert.match(marketUi, /getApplicantProfile\(appState\.user\.uid, applicationId, profileUid\)/);
 });
 
 test("Firestore mantém os links privados e o admin tem uma fila de denúncias do Mercado da Bala", () => {
