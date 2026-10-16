@@ -147,7 +147,7 @@ test('rendered rows align every value with its matching column label', () => {
   assert.match(markup, /data-label="Contato"[^>]*>[\s\S]*confirmed-phone[\s\S]*\+55 11 90000-0001[\s\S]*E-mail: gamer@example\.test/);
   assert.match(markup, /data-label="Produto \/ evento"[^>]*>[\s\S]*Campeonato Season 7[\s\S]*Time: Camp Freitas/);
   assert.match(markup, /data-label="Valor"[^>]*>R\$ 3\.00/);
-  assert.match(markup, /data-label="Data da compra"[^>]*>15\/10\/2026, 15:40/);
+  assert.match(markup, /data-label="Data da compra"[^>]*>[\s\S]*class="confirmed-date-day">15\/10\/2026[\s\S]*class="confirmed-date-time">15:40/);
 
   const emailFallback = helpers.normalizeConfirmedOrder({
     customer: 'backup@example.test',
@@ -169,6 +169,10 @@ test('confirmed orders have aligned fields, local search, and a mobile card layo
   assert.match(adminJs, /data-label="Contato"/);
   assert.match(adminJs, /const confirmedOrdersPerPage = 10/);
   assert.match(adminCss, /@media \(max-width: 640px\)[\s\S]*?\.confirmed-orders-table tbody tr/);
+  assert.match(adminCss, /\.confirmed-orders-table-wrap\s*{[^}]*overflow-x:\s*auto/s);
+  assert.match(adminCss, /\.confirmed-orders-table\s*{[^}]*min-width:\s*760px/s);
+  assert.match(adminCss, /\.confirmed-date-day,\s*\.confirmed-date-time\s*{\s*display:\s*block;/);
+  assert.match(adminCss, /@media \(max-width: 640px\)[\s\S]*?\.confirmed-orders-table\s*{\s*min-width:\s*0;/);
 });
 
 test('typing in search filters the cached data without running another Firestore query', () => {

@@ -1471,13 +1471,15 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 
 .confirmed-orders-table-wrap {
     margin: 0 0.85rem;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     border: 1px solid #e8edf4;
     border-radius: 0.75rem;
 }
 
 .confirmed-orders-table {
     width: 100%;
+    min-width: 760px;
     table-layout: fixed;
     border-collapse: collapse;
 }
@@ -1565,7 +1567,17 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 .confirmed-date {
     color: #475569 !important;
     font-size: 0.7rem !important;
-    white-space: nowrap;
+    white-space: normal;
+    line-height: 1.35;
+}
+
+.confirmed-date-day,
+.confirmed-date-time { display: block; }
+
+.confirmed-date-time {
+    margin-top: 0.15rem;
+    color: #64748b;
+    font-size: 0.66rem;
 }
 
 .confirmed-state {
@@ -1627,6 +1639,7 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
     .confirmed-orders-table-wrap { margin: 0 0.6rem; overflow: visible; border: 0; }
     .confirmed-orders-table,
     .confirmed-orders-table tbody { display: block; width: 100%; }
+    .confirmed-orders-table { min-width: 0; }
     .confirmed-orders-table thead { display: none; }
 
     .confirmed-orders-table tbody tr {

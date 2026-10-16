@@ -1115,11 +1115,20 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const row = document.createElement('tr');
       row.className = 'confirmed-order-row';
       const purchaseDate = pedido.originalDate
-        ? pedido.originalDate.toLocaleString('pt-BR', {
+        ? pedido.originalDate.toLocaleDateString('pt-BR', {
             day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
+            timeZone: 'America/Sao_Paulo',
           })
-        : 'Data não informada';
+        : null;
+      const purchaseTime = pedido.originalDate
+        ? pedido.originalDate.toLocaleTimeString('pt-BR', {
+            hour: '2-digit', minute: '2-digit', hour12: false,
+            timeZone: 'America/Sao_Paulo',
+          })
+        : null;
+      const purchaseDateMarkup = purchaseDate
+        ? `<span class="confirmed-date-day">${escapePendingHtml(purchaseDate)}</span><span class="confirmed-date-time">${escapePendingHtml(purchaseTime)}</span>`
+        : '<span class="confirmed-date-missing">Data não informada</span>';
       const contact = pedido.phone
         ? [
             `<span class="confirmed-phone"><i class="fas fa-phone" aria-hidden="true"></i>${escapePendingHtml(pedido.phone)}</span>`,
@@ -1140,7 +1149,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         <td data-label="Contato"><div class="confirmed-cell-stack">${contact}</div></td>
         <td data-label="Produto / evento"><div class="confirmed-cell-stack">${itemDetails}</div></td>
         <td data-label="Valor" class="confirmed-amount">${pedido.amount == null ? '—' : escapePendingHtml(brl(pedido.amount))}</td>
-        <td data-label="Data da compra" class="confirmed-date">${escapePendingHtml(purchaseDate)}</td>
+        <td data-label="Data da compra" class="confirmed-date">${purchaseDateMarkup}</td>
       `;
       
       tbody.appendChild(row);
