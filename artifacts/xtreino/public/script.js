@@ -4330,30 +4330,24 @@ function handlePlatformChange() {
 
 // Função para adicionar opções específicas de cada produto
 function addProductOptions(productId) {
-    // Limpar opções anteriores
-    const optionsContainer = document.getElementById('productOptions');
-    if (optionsContainer) {
-        optionsContainer.innerHTML = '';
-    } else {
-        // Criar container se não existir
-        const container = document.createElement('div');
+    const form = document.getElementById('schedForm');
+    let container = document.getElementById('productOptions');
+    if (!container) {
+        container = document.createElement('div');
         container.id = 'productOptions';
-        container.className = 'mt-6';
-
-        // Inserir antes da seção "Finalizar Reservas" (Payment Section)
-        const paymentSection = document.querySelector('#schedForm .bg-white.rounded-2xl.p-6.border.border-gray-200:last-child');
-        if (paymentSection) {
-            paymentSection.parentNode.insertBefore(container, paymentSection);
-        } else {
-            // Fallback: inserir no final do formulário
-            const form = document.getElementById('schedForm');
-            if (form) {
-                form.appendChild(container);
-            }
-        }
     }
 
-    const container = document.getElementById('productOptions');
+    // Chamado somente para cfg.isProduct: deixar os dados do produto como item 1 do modal.
+    container.className = '';
+    container.innerHTML = '';
+    const selectedTimeInput = form?.querySelector('#schedSelectedTime');
+    if (form) {
+        if (selectedTimeInput?.parentElement === form) {
+            selectedTimeInput.after(container);
+        } else {
+            form.prepend(container);
+        }
+    }
 
     switch (productId) {
         case 'sensibilidades':
@@ -5012,6 +5006,14 @@ function openScheduleModal(eventType, options = {}) {
 
         // Mostrar modal
         modal.classList.remove('hidden');
+        const resetProductModalScroll = () => {
+            modal.scrollTop = 0;
+            modal.querySelectorAll('.overflow-y-auto').forEach(scrollArea => {
+                scrollArea.scrollTop = 0;
+            });
+        };
+        resetProductModalScroll();
+        requestAnimationFrame(resetProductModalScroll);
         return;
     }
 
@@ -9333,9 +9335,36 @@ async function loadProductsFromFirestore() {
             return;
         }
 
+        const normalizeProductOrderText = value => String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+        const getProductDisplayRank = (productId, product) => {
+            const id = normalizeProductOrderText(productId);
+            const name = normalizeProductOrderText(product.name || product.label);
+            const category = normalizeProductOrderText(product.category);
+            const searchable = `${id} ${name} ${category}`;
+            if (searchable.includes('sensibilidade')) return 0;
+            if (searchable.includes('passe') || searchable.includes('booyah')) return 1;
+            if (searchable.includes('imagem') || searchable.includes('aerea')) return 2;
+            if (searchable.includes('planilha')) return 3;
+            if (searchable.includes('camisa') || searchable.includes('manto org')) return 4;
+            return 5;
+        };
+        const orderedProducts = snapshot.docs
+            .map((doc, originalIndex) => {
+                const product = doc.data();
+                return {
+                    doc,
+                    product,
+                    originalIndex,
+                    rank: getProductDisplayRank(doc.id, product)
+                };
+            })
+            .sort((a, b) => a.rank - b.rank || a.originalIndex - b.originalIndex);
+
         let html = '';
-        snapshot.forEach(doc => {
-            const product = doc.data();
+        orderedProducts.forEach(({ doc, product }) => {
             const productId = doc.id;
  
             setScheduleConfig(productId, product);
