@@ -405,15 +405,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
     // Mostrar seções permitidas
     // Usar display='' (remove override inline) para que Tailwind/CSS natural seja respeitado
     // Seções grid ficam como grid, seções block ficam como block
+    window._adminAllowedSections = allowed.slice();
     allowed.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
         el.style.display = '';
         el.classList.remove('hidden');
-        // Carregar eventos se necessário
-        if (id === 'sectionEvents' && typeof loadEventsPreview === 'function') {
-          loadEventsPreview();
-        }
       }
     });
 
@@ -443,6 +440,63 @@ window.showWarningToast = function(message, title = 'Atenção') {
         label.style.display = hasVisible ? '' : 'none';
       }
     });
+
+    // A primeira tela depende do cargo e da rota solicitada. Admins começam em
+    // Conteúdo > Horários; os demais cargos começam no primeiro menu permitido.
+    const pageNames = ['principal', 'usuarios', 'financeiro', 'conteudo', 'operacoes', 'campeonato'];
+    const hashPage = (window.location.hash || '').replace(/^#/, '').trim();
+    const validHashPage = pageNames.includes(hashPage);
+    const sectionForButton = (button) => {
+      const match = button?.getAttribute('onclick')?.match(/adminNav\s*\(\s*['"][^'"]*['"]\s*,\s*['"](\w+)['"]/);
+      return match?.[1] || null;
+    };
+    const pageForSection = (sectionId) => pageNames.find(page => {
+      const pageElement = document.getElementById('page-' + page);
+      const sectionElement = document.getElementById(sectionId);
+      return pageElement && sectionElement && pageElement.contains(sectionElement);
+    }) || (sectionId === 'sectionAffiliatePanel' ? 'financeiro' : null);
+    const permittedLinks = Array.from(document.querySelectorAll('.sidebar-link[data-page]'))
+      .map(button => ({ button, page: button.dataset.page, sectionId: sectionForButton(button) }))
+      .filter(item => item.sectionId && allowed.includes(item.sectionId)
+        && item.button.closest('li')?.style.display !== 'none');
+
+    let selectedSection = window._activeAdminSection;
+    let selectedPage = window._activeAdminPage;
+    const selectedPageElement = selectedPage && document.getElementById('page-' + selectedPage);
+    const selectedSectionElement = selectedSection && document.getElementById(selectedSection);
+    const selectedMatchesRoute = !validHashPage
+      || (selectedPage === hashPage && selectedPageElement?.contains(selectedSectionElement));
+
+    if (resolvedRole === 'afiliado') {
+      selectedSection = 'sectionAffiliatePanel';
+      selectedPage = 'financeiro';
+    } else if (!allowed.includes(selectedSection) || !selectedMatchesRoute) {
+      const scheduleLink = permittedLinks.find(item => item.sectionId === 'sectionSchedules');
+      const requestedPageLink = validHashPage
+        ? permittedLinks.find(item => item.page === hashPage)
+        : null;
+      const contentScheduleLink = permittedLinks.find(item =>
+        item.page === 'conteudo' && item.sectionId === 'sectionSchedules');
+      const fallback = (!validHashPage || hashPage === 'conteudo')
+        ? (contentScheduleLink || scheduleLink || requestedPageLink || permittedLinks[0])
+        : (requestedPageLink || permittedLinks[0]);
+      selectedSection = fallback?.sectionId || allowed[0] || null;
+      selectedPage = fallback?.page || pageForSection(selectedSection) || 'conteudo';
+    }
+
+    if (selectedSection && selectedPage) {
+      window._activeAdminSection = selectedSection;
+      window._activeAdminPage = selectedPage;
+      window._adminActiveSections = window._adminActiveSections || {};
+      window._adminActiveSections[selectedPage] = selectedSection;
+      // Se a rota solicitada não é permitida para este cargo, encaminhar para
+      // a primeira seção autorizada em vez de mostrar uma página vazia.
+      if (validHashPage && selectedPage !== hashPage) {
+        try {
+          history.replaceState(null, '', `${location.pathname}${location.search}#${selectedPage}`);
+        } catch (_) {}
+      }
+    }
 
     // Para compatibilidade - manter variáveis antigas
     const sectionKPIs = document.getElementById('sectionKPIs');
@@ -1398,6 +1452,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
       window.adminDataUid = user?.uid || null;
       window.adminDataReady = false;
       window._adminPages = { initialized: new Set(), pending: new Map(), loadedAt: new Map() };
+      window._adminSections = { initialized: new Set(), pending: new Map(), loadedAt: new Map() };
+      window._adminUsersSnapshot = null;
+      window._activeAdminPage = null;
+      window._activeAdminSection = null;
+      window._adminActiveSections = {};
       stopCouponUsage();
       resetAffiliateSalesCache();
       resetAffiliatePayoutsCache();
@@ -1407,6 +1466,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
       window.adminDataReady = false;
       window._adminPages?.initialized.clear();
       window._adminPages?.loadedAt.clear();
+      window._adminSections?.initialized.clear();
+      window._adminSections?.loadedAt.clear();
+      window._adminUsersSnapshot = null;
       stopCouponUsage();
       window.dispatchEvent(new Event('admin:pagechange'));
       authGate.classList.remove('hidden');
@@ -1465,11 +1527,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
     
     // Other pages load only after navigation, not merely because their DOM exists.
     
-    // Se for afiliado, carregar dados do painel de afiliado
-    if (isAffiliate) {
-      await loadAffiliatePanelData(user.uid);
-    }
-    
     // Se for staff, configurar interface restrita
     if (isStaff) {
       // Forçar evento para xtreino-tokens e desabilitar seleção
@@ -1487,12 +1544,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
         btnClearLocks.style.display = 'none';
       }
       
-      // Carregar board automaticamente com evento correto
-      setTimeout(() => {
-        if (window.loadBoard) {
-          loadBoard();
-        }
-      }, 500);
     }
     
     // Controla visibilidade conforme o papel - REMOVIDO para evitar conflito com controlSectionVisibility
@@ -1510,27 +1561,42 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const formAddTeam = document.getElementById('formAddTeam');
     if (formAddTeam) formAddTeam.onsubmit = submitAddTeam;
 
-    // Bind filtros do histórico de cupons - configurar após DOM estar pronto
-    setupCouponUsageFilters();
     // Inicializa período como "hoje" (sincroniza com botão Hoje ativo por padrão)
     parsePeriodFromValue('today');
-    window.loadPrincipalAdminData = async () => {
-      await loadReports();
-      if (canViewAll) {
-        await loadTokensData();
-        await carregarPedidosConfirmados();
-      }
-      await loadPending(canViewAll);
-      if (!window._popularHoursFiltersBound) {
-        window._popularHoursFiltersBound = true;
-        await loadEventOptions();
-        setupPopularHoursFilters();
+    window.loadPrincipalAdminData = async (sectionId = window._activeAdminSection) => {
+      if (sectionId === 'sectionKPIs') {
+        await loadKpis();
+      } else if (sectionId === 'sectionCharts') {
+        await renderSalesChart();
+        await renderTopProducts();
+        await renderPaymentMethodsChart();
+        await window.renderPopularHours();
+        if (!window._popularHoursFiltersBound) {
+          window._popularHoursFiltersBound = true;
+          await loadEventOptions();
+          setupPopularHoursFilters();
+        }
+      } else if (sectionId === 'sectionUsers') {
+        await renderActiveUsers();
+      } else if (sectionId === 'sectionOrders') {
+        await loadRecentOrders();
+      } else if (sectionId === 'sectionTokenStats') {
+        if (canViewAll) {
+          await loadTokensData();
+          await carregarPedidosConfirmados();
+        }
+        await loadPending(canViewAll);
       }
     };
     window.adminDataReady = true;
-    const requestedPage = (window.location.hash || '#principal').slice(1);
-    const activePage = document.getElementById('page-' + requestedPage) ? requestedPage : 'principal';
-    await window.loadPageData(activePage);
+    const requestedPage = (window.location.hash || '').replace(/^#/, '').trim();
+    const activePage = document.getElementById('page-' + requestedPage)
+      ? requestedPage
+      : (window._activeAdminPage || 'conteudo');
+    const activeSection = window._pendingSection
+      || window._adminActiveSections?.[activePage]
+      || (window._activeAdminPage === activePage ? window._activeAdminSection : null);
+    await window.loadPageData(activePage, activeSection);
     
     // APLICAR CONTROLE DE VISIBILIDADE APÓS CARREGAMENTO DE TODOS OS DADOS
     // Usar um delay maior e garantir que seja a última chamada
@@ -1707,13 +1773,27 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   async function loadReports(){
     try{
-      await loadKpis().catch(()=>{});
-      // await loadTokensData().catch(()=>{}); // Desabilitado - usando novas funções de paginação
-      await renderSalesChart().catch(()=>{});
-      await renderTopProducts().catch(()=>{});
-      await renderPaymentMethodsChart().catch(()=>{});
-      await window.renderPopularHours().catch(()=>{});
-      await renderActiveUsers().catch(()=>{});
+      const activeSection = window._activeAdminSection;
+      if (activeSection === 'sectionFilters') {
+        // Os filtros só atualizam o estado. Os gráficos/KPIs consultam o banco
+        // quando o administrador abrir a seção correspondente.
+        for (const id of ['sectionKPIs', 'sectionCharts', 'sectionUsers', 'sectionOrders', 'sectionTokenStats']) {
+          window._adminSections?.initialized.delete(id);
+          window._adminSections?.loadedAt.delete(id);
+        }
+        return;
+      }
+      if (activeSection === 'sectionKPIs') {
+        await loadKpis().catch(()=>{});
+      } else if (activeSection === 'sectionCharts') {
+        await window.loadPrincipalAdminData?.('sectionCharts');
+      } else if (activeSection === 'sectionUsers') {
+        await renderActiveUsers().catch(()=>{});
+      } else if (activeSection === 'sectionOrders') {
+        await loadRecentOrders().catch(()=>{});
+      } else if (activeSection === 'sectionTokenStats') {
+        await window.loadPrincipalAdminData?.('sectionTokenStats');
+      }
     }catch(e){ console.error('Erro ao carregar relatórios', e); }
   }
 
@@ -2631,11 +2711,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
   // Atualiza todos os componentes do dashboard
   async function refreshDashboard(){
     window.invalidateAdminReports();
-    try { await loadKpis(); } catch(_){ }
-    try { await renderSalesChart(); } catch(_){ }
-    try { await renderTopProducts(); } catch(_){ }
-    try { await renderPaymentMethodsChart(); } catch(_){ }
-    try { await loadTokensData(); } catch(_){ }
+    try {
+      await window.loadPrincipalAdminData?.(window._activeAdminSection);
+    } catch (_) {}
   }
 
   async function loadRecentOrders(){
@@ -3671,6 +3749,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   const syncBoardVisibility = () => _boardPoller?.sync();
   document.addEventListener('visibilitychange', syncBoardVisibility);
   window.addEventListener('admin:pagechange', syncBoardVisibility);
+  window.addEventListener('admin:sectionchange', syncBoardVisibility);
   const boardVisibilityObserver = new MutationObserver(syncBoardVisibility);
   for (const id of ['page-conteudo', 'sectionSchedules', 'dashboard']) {
     const element = document.getElementById(id);
@@ -3843,6 +3922,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
           const section = document.getElementById('sectionSchedules');
           return document.visibilityState !== 'hidden'
             && liveUid === window.firebaseAuth.currentUser?.uid
+              && window._activeAdminSection === 'sectionSchedules'
             && !document.getElementById('dashboard')?.classList.contains('hidden')
             && !!section?.getClientRects().length;
         },
@@ -7600,6 +7680,7 @@ function couponUsageIsVisible() {
     return document.visibilityState !== 'hidden'
         && !!window.firebaseAuth?.currentUser
         && window.adminDataReady
+        && window._activeAdminSection === 'sectionCouponUsage'
         && !document.getElementById('dashboard')?.classList.contains('hidden')
         && !!document.getElementById('page-financeiro')
         && !document.getElementById('page-financeiro').classList.contains('hidden');
@@ -7611,10 +7692,10 @@ function stopCouponUsage() {
 }
 function syncCouponUsageVisibility() {
     if (!couponUsageIsVisible()) stopCouponUsage();
-    else if (!_couponUsageUnsubscribe && window._adminPages?.initialized.has('financeiro')) void loadCouponUsage();
 }
 document.addEventListener('visibilitychange', syncCouponUsageVisibility);
 window.addEventListener('admin:pagechange', syncCouponUsageVisibility);
+window.addEventListener('admin:sectionchange', syncCouponUsageVisibility);
 
 // Carregar cupons
 async function loadCoupons() {
@@ -12875,68 +12956,156 @@ window.onEvtImageUrlInput = onEvtImageUrlInput;
 window.clearEvtImage = clearEvtImage;
 window.onEvtEntradaChange = onEvtEntradaChange;
 // ========== ADMIN PAGE LAZY LOADING ==========
-// Coalesce navigation requests and reuse pages briefly, without losing freshness on return.
+// Cada menu carrega seus próprios dados sob demanda e reutiliza a leitura por 60s.
 window._adminPages = { initialized: new Set(), pending: new Map(), loadedAt: new Map() };
+window._adminSections = { initialized: new Set(), pending: new Map(), loadedAt: new Map() };
+window._adminUsersSnapshot = null;
 
-window.loadPageData = async function(page) {
+async function getAdminUsersSnapshot(uid) {
+    const cached = window._adminUsersSnapshot;
+    if (cached?.uid === uid && Date.now() - cached.loadedAt < 60000) return cached.snapshot;
+    const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const snapshot = await getDocs(collection(window.firebaseDb, 'users'));
+    if (window.firebaseAuth.currentUser?.uid === uid) {
+        window._adminUsersSnapshot = { uid, snapshot, loadedAt: Date.now() };
+    }
+    return snapshot;
+}
+
+window.loadPageData = async function(page, requestedSectionId) {
     if (!window.firebaseDb || !window.firebaseAuth?.currentUser || !window.adminDataReady) return;
     const pageElement = document.getElementById('page-' + page);
     if (!pageElement || pageElement.classList.contains('hidden')) return;
-    if (page !== 'financeiro' && _couponUsageUnsubscribe) {
+
+    const sectionId = requestedSectionId
+        || window._adminActiveSections?.[page]
+        || (window._activeAdminPage === page ? window._activeAdminSection : null);
+    if (!sectionId) return;
+    if (window._activeAdminPage && window._activeAdminPage !== page) return;
+    if (window._activeAdminSection && window._activeAdminSection !== sectionId) return;
+
+    const role = (window.adminRoleLower || '').toLowerCase();
+    const allowedSections = window._adminAllowedSections || [];
+    if (sectionId !== 'sectionAffiliatePanel'
+        && allowedSections.length
+        && !allowedSections.includes(sectionId)) return;
+    if (sectionId === 'sectionAffiliatePanel' && role !== 'afiliado') return;
+
+    if (sectionId !== 'sectionCouponUsage' && _couponUsageUnsubscribe) {
         stopCouponUsage();
     }
-    const state = window._adminPages;
-    if (state.pending.has(page)) return state.pending.get(page);
-    if (state.initialized.has(page) && Date.now() - state.loadedAt.get(page) < 60000) {
-        if (page === 'financeiro' && !_couponUsageUnsubscribe) await loadCouponUsage();
+    const state = window._adminSections;
+    if (state.pending.has(sectionId)) return state.pending.get(sectionId);
+    if (state.initialized.has(sectionId) && Date.now() - state.loadedAt.get(sectionId) < 60000) {
+        if (sectionId === 'sectionCouponUsage' && !_couponUsageUnsubscribe) await loadCouponUsage();
         return;
     }
 
-    const role = (window.adminRoleLower || '').toLowerCase();
     const uid = window.firebaseAuth.currentUser.uid;
     const request = (async () => {
-
-    if (page === 'principal') {
-        await window.loadPrincipalAdminData();
-
-    } else if (page === 'usuarios') {
-        // One fresh snapshot fills all three tables. Mutation refreshes remain fresh.
-        const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const users = await getDocs(collection(window.firebaseDb, 'users'));
-        await loadUsersForTables(users);
-        await loadPermissionsUsers(users);
-        await loadTokensUsers(users);
-        await loadAdminHistory();
-        try { setupRoleGuards(); } catch(e) {}
-
-    } else if (page === 'financeiro') {
-        await loadCoupons();
-        await loadCouponUsage();
-        await loadAffiliates();
-        await loadPasseBooyahControls();
-        try { setupCouponUsageFilters(); } catch(e) {}
-
-    } else if (page === 'conteudo') {
-        await loadHighlights();
-        await loadNews();
-        await loadProducts();
-        await loadEventsPreview();
-        await loadShirtOrders();
-        await window.loadDynamicEventsIntoBoard();
-
-    } // The reset/operations page does not need an automatic database scan.
+        if (page === 'principal') {
+            await window.loadPrincipalAdminData(sectionId);
+        } else {
+            switch (sectionId) {
+                case 'sectionUsersManagement': {
+                    const users = await getAdminUsersSnapshot(uid);
+                    await loadUsersForTables(users);
+                    await loadPermissionsUsers(users);
+                    try { setupRoleGuards(); } catch (_) {}
+                    break;
+                }
+                case 'sectionTokens': {
+                    const users = await getAdminUsersSnapshot(uid);
+                    await loadTokensUsers(users);
+                    break;
+                }
+                case 'sectionAdminHistory':
+                    await loadAdminHistory();
+                    break;
+                case 'sectionCoupons':
+                    await loadCoupons();
+                    break;
+                case 'sectionCouponUsage':
+                    setupCouponUsageFilters();
+                    await loadCouponUsage();
+                    break;
+                case 'sectionAffiliates':
+                case 'sectionAffiliateSales':
+                    await loadAffiliates();
+                    break;
+                case 'sectionAffiliatePayouts':
+                    await loadAffiliatePayouts();
+                    break;
+                case 'sectionPasseBooyah':
+                    await loadPasseBooyahControls();
+                    break;
+                case 'sectionAffiliatePanel':
+                    await loadAffiliatePanelData(uid);
+                    break;
+                case 'sectionHighlights':
+                    await loadHighlights();
+                    break;
+                case 'sectionNews':
+                    await loadNews();
+                    break;
+                case 'sectionProducts':
+                    await loadProducts();
+                    break;
+                case 'sectionEvents':
+                    await loadEventsPreview();
+                    break;
+                case 'sectionMarketReports':
+                    if (typeof window.loadMarketReports === 'function') {
+                        await window.loadMarketReports();
+                    }
+                    break;
+                case 'sectionSchedules':
+                    await window.loadDynamicEventsIntoBoard();
+                    if (document.getElementById('boardDate')?.value
+                        && document.getElementById('boardEventType')?.value
+                        && typeof loadBoard === 'function') {
+                        await loadBoard();
+                    }
+                    break;
+                case 'sectionEventLinks':
+                    if (typeof window.openEventLinksAdmin === 'function') {
+                        await window.openEventLinksAdmin();
+                    }
+                    break;
+                case 'sectionShirtOrders':
+                    await loadShirtOrders();
+                    break;
+                case 'sectionTokenStats':
+                    if (['ceo', 'socio'].includes(role)) {
+                        await loadTokensData();
+                        await carregarPedidosConfirmados();
+                    }
+                    await loadPending(['ceo', 'socio'].includes(role));
+                    break;
+                case 'sectionOrders':
+                    await loadRecentOrders();
+                    break;
+                case 'sectionUsers':
+                    await renderActiveUsers();
+                    break;
+                // Filtros, reset e formulários estáticos não precisam consultar o banco
+                // até que o administrador execute uma ação.
+            }
+        }
     if (window.firebaseAuth.currentUser?.uid === uid) {
-        state.initialized.add(page);
-        state.loadedAt.set(page, Date.now());
+        state.initialized.add(sectionId);
+        state.loadedAt.set(sectionId, Date.now());
+        window._adminPages.initialized.add(page);
+        window._adminPages.loadedAt.set(page, Date.now());
     }
     })();
-    state.pending.set(page, request);
+    state.pending.set(sectionId, request);
     try { await request; }
     catch (error) {
-        console.error('[Admin] Falha ao carregar a página:', page, error);
+        console.error('[Admin] Falha ao carregar a seção:', sectionId, error);
         showToast('error', 'Não foi possível carregar todos os dados. Abra esta seção novamente para tentar de novo.');
     } finally {
-        if (state.pending.get(page) === request) state.pending.delete(page);
+        if (state.pending.get(sectionId) === request) state.pending.delete(sectionId);
     }
 };
 

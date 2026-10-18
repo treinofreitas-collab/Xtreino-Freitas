@@ -1792,8 +1792,41 @@
         }
         syncSidebar();
 
-        /* Show a page, hide all others */
-        function showPage(page) {
+        function sectionForLink(button) {
+            var match = button && button.getAttribute('onclick')
+                ? button.getAttribute('onclick').match(/adminNav\s*\(\s*['"][^'"]*['"]\s*,\s*['"](\w+)['"]/)
+                : null;
+            return match ? match[1] : null;
+        }
+
+        function defaultSectionForPage(page) {
+            var remembered = window._adminActiveSections && window._adminActiveSections[page];
+            if (remembered) return remembered;
+            var visibleLinks = Array.from(document.querySelectorAll('.sidebar-link[data-page]'))
+                .filter(function(link) {
+                    return link.dataset.page === page && link.closest('li')?.style.display !== 'none';
+                });
+            if (page === 'conteudo') {
+                var scheduleLink = visibleLinks.find(function(link) {
+                    return sectionForLink(link) === 'sectionSchedules';
+                });
+                if (scheduleLink) return 'sectionSchedules';
+            }
+            return visibleLinks.length ? sectionForLink(visibleLinks[0]) : null;
+        }
+
+        function setActiveRoute(page, sectionId) {
+            window._activeAdminPage = page;
+            if (!sectionId) return;
+            window._activeAdminSection = sectionId;
+            window._adminActiveSections = window._adminActiveSections || {};
+            window._adminActiveSections[page] = sectionId;
+        }
+
+        /* Show a page, then load only the selected menu section */
+        function showPage(page, sectionId) {
+            sectionId = sectionId || defaultSectionForPage(page);
+            setActiveRoute(page, sectionId);
             PAGES.forEach(function(p) {
                 var el = document.getElementById('page-' + p);
                 if (!el) return;
@@ -1804,18 +1837,19 @@
                 }
             });
             window.scrollTo({ top: 0, behavior: 'instant' });
+            window.dispatchEvent(new Event('admin:sectionchange'));
             window.dispatchEvent(new Event('admin:pagechange'));
-            /* Lazy-load data for this page */
+            /* Load only this section; retry once Firebase is ready. */
             if (typeof window.loadPageData === 'function' && window.firebaseDb) {
-                window.loadPageData(page);
+                window.loadPageData(page, sectionId);
             } else {
-                /* Retry once Firebase is ready */
                 setTimeout(function() {
                     if (typeof window.loadPageData === 'function' && window.firebaseDb) {
-                        window.loadPageData(page);
+                        window.loadPageData(page, sectionId);
                     }
                 }, 1500);
             }
+            if (sectionId) scrollToSection(sectionId);
         }
 
         /* Navigate: update hash → triggers hashchange → showPage */
@@ -1828,10 +1862,14 @@
             if (btn) btn.classList.add('sidebar-active');
             /* Close sidebar on mobile */
             if (isMobile()) sidebar.classList.remove('active');
+            setActiveRoute(page, sectionId);
             /* Navigate */
             if (window.location.hash === '#' + page) {
-                /* Already on page — just scroll to section */
+                window.dispatchEvent(new Event('admin:sectionchange'));
                 scrollToSection(sectionId);
+                if (typeof window.loadPageData === 'function') {
+                    window.loadPageData(page, sectionId);
+                }
             } else {
                 /* Store pending section for after hashchange */
                 window._pendingSection = sectionId;
@@ -1848,20 +1886,6 @@
                     if (window.showErrorToast) window.showErrorToast('Não foi possível carregar Links dos eventos.');
                 });
         };
-        (function() {
-            var baseNav = window.adminNav;
-            window.adminNav = function(page, sectionId, btn) {
-                baseNav(page, sectionId, btn);
-                if (sectionId === 'sectionEventLinks') window.openEventLinksAdmin();
-                if (sectionId === 'sectionMarketReports' && typeof window.loadMarketReports === 'function') {
-                    window.loadMarketReports();
-                }
-                if (sectionId === 'sectionAffiliatePayouts' && typeof window.loadAffiliatePayouts === 'function') {
-                    window.loadAffiliatePayouts();
-                }
-            };
-        })();
-
         /* Scroll to a specific section within the active page */
         function scrollToSection(id) {
             if (!id) return;
@@ -1903,17 +1927,25 @@
         /* Handle hash changes */
         function onHashChange() {
             var hash = (window.location.hash || '').replace('#', '').trim();
-            if (PAGES.indexOf(hash) === -1) hash = 'principal';
-            showPage(hash);
+            if (PAGES.indexOf(hash) === -1) {
+                hash = PAGES.indexOf(window._activeAdminPage) !== -1
+                    ? window._activeAdminPage
+                    : 'conteudo';
+            }
+            var sectionId = window._pendingSection
+                || (window._adminActiveSections && window._adminActiveSections[hash])
+                || (window._activeAdminPage === hash ? window._activeAdminSection : null)
+                || defaultSectionForPage(hash);
+            showPage(hash, sectionId);
             /* Highlight matching sidebar link */
             document.querySelectorAll('.sidebar-link').forEach(function(l) {
                 l.classList.remove('sidebar-active');
             });
-            var first = document.querySelector('.sidebar-link[data-page="' + hash + '"]');
-            if (first) first.classList.add('sidebar-active');
-            /* Scroll to pending section (from adminNav cross-page) */
+            var matching = Array.from(document.querySelectorAll('.sidebar-link[data-page]')).find(function(link) {
+                return link.dataset.page === hash && sectionForLink(link) === sectionId;
+            });
+            if (matching) matching.classList.add('sidebar-active');
             if (window._pendingSection) {
-                scrollToSection(window._pendingSection);
                 window._pendingSection = null;
             }
         }
