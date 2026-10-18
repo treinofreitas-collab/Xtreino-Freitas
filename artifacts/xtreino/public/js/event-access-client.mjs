@@ -155,7 +155,8 @@ function paint(container, rows, onRefresh) {
             container.append(text);
         }
     }
-    if (onRefresh) retry(container, onRefresh);
+    const hasNonExpiredAccess = current.some(row => row.status !== 'expired');
+    if (onRefresh && hasNonExpiredAccess) retry(container, onRefresh);
     const deadlines = current.filter(row => row.status === 'available').map(row => Date.parse(row.expiresAt));
     if (deadlines.length) {
         const timer = setTimeout(() => {
