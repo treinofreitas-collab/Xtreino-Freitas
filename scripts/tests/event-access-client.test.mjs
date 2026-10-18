@@ -166,3 +166,27 @@ test('a stale visible link cannot navigate after expiry even if a background tim
     assert.ok(!container.children.some(child => child.tag === 'a'));
     assert.equal(calls.length, 1);
 });
+
+test('expired reservations hide link refresh while pending review can still be retried', async t => {
+    const oldDocument = globalThis.document;
+    globalThis.document = { createElement: tag => ({ tag }) };
+    t.after(() => { globalThis.document = oldDocument; });
+    setup(t, async body => ({
+        access: [{
+            registrationId: body.externalReference,
+            status: body.externalReference === 'expired' ? 'expired' : 'needs_review',
+            eventDate: '2026-06-23',
+            schedule: '21h',
+        }],
+    }));
+
+    const expired = fakeContainer();
+    await mountReferenceAccess(expired, 'expired');
+    assert.ok(expired.children.some(child => child.textContent?.includes('Link expirado')));
+    assert.ok(!expired.children.some(child => child.tag === 'button' && child.textContent === 'Atualizar link'));
+
+    const pendingReview = fakeContainer();
+    await mountReferenceAccess(pendingReview, 'pending-review');
+    assert.ok(pendingReview.children.some(child => child.textContent?.includes('conferência da organização')));
+    assert.ok(pendingReview.children.some(child => child.tag === 'button' && child.textContent === 'Atualizar link'));
+});

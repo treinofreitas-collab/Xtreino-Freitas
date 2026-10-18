@@ -288,6 +288,22 @@ test("expiry is precisely 00:01 the next day in Brasilia, including month/year/l
   for (const date of [null, "", "11/11/2026", "2026-02-29", "2026-11-31"]) assert.equal(bookingExpiry(date), null);
 });
 
+test("past confirmed reservations expire before an unverified checkout can keep them in review", async () => {
+  const env = setup({
+    "registrations/legacy": {
+      date: "2026-06-23", userId: "buyer", eventType: "modo-liga",
+      schedule: "21h", status: "paid",
+    },
+  }, () => Date.parse("2026-06-24T03:01:00.000Z"));
+  const row = (await env.call({ action: "resolve", registrationIds: ["legacy"] })).body.access[0];
+  assert.equal(row.status, "expired");
+  assert.equal(row.eventDate, "2026-06-23");
+  assert.equal(row.expiresAt, "2026-06-24T03:01:00.000Z");
+  assert.equal(row.schedule, "21h");
+  assert.equal(row.url, undefined);
+  assert.ok(!env.reads.some(path => path.startsWith("purchase_checkouts/")));
+});
+
 test("server denies expired links exactly at the deadline, including reference and member access", async () => {
   let now = Date.parse("2026-11-12T03:00:59.999Z");
   const env = setup({}, () => now);

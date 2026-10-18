@@ -199,6 +199,16 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser, now = Date.now
         const member = Array.isArray(data.membrosUids) && data.membrosUids.includes(user.uid);
         if (owner !== user.uid && !member) return { ...base, status: "not_authorized" };
         if (!CONFIRMED.has(String(data.status || "").toLowerCase())) return { ...base, status: "not_confirmed" };
+        const eventDate = data.date || data.eventDate;
+        const expiresAt = bookingExpiry(eventDate);
+        if (expiresAt && now() >= Date.parse(expiresAt)) {
+          const schedule = typeof data.schedule === "string" ? data.schedule
+            : typeof data.hour === "string" ? data.hour : undefined;
+          return { ...base,
+            ...(typeof data.eventType === "string" ? { eventType: data.eventType } : {}),
+            ...(schedule ? { schedule } : {}),
+            eventDate, expiresAt, status: "expired" };
+        }
         const reference = data.external_reference;
         if (typeof reference !== "string" || !ID.test(reference)) return { ...base, status: "needs_review" };
         const checkout = await checkoutFor(reference);
@@ -212,8 +222,6 @@ function createEventAccessHandler({ getAdmin, verifyFirebaseUser, now = Date.now
         try { eventType = normalizeEventType(data.eventType); schedule = normalizeSchedule(data.schedule || data.hour); }
         catch { return { ...base, status: "not_configured" }; }
         // Expiry belongs to this paid reservation, never to the recurring URL configuration.
-        const eventDate = data.date || data.eventDate;
-        const expiresAt = bookingExpiry(eventDate);
         if (!expiresAt) return { ...base, status: "needs_review" };
         const details = { ...base, eventType, schedule, eventDate, expiresAt };
         if (now() >= Date.parse(expiresAt)) return { ...details, status: "expired" };
