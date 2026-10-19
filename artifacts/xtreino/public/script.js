@@ -6168,6 +6168,12 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
     }
 
     if (!response.ok) {
+      if (response.status === 400) {
+        const failure = await response.json().catch(() => null);
+        if (typeof failure?.message === 'string' && failure.message.trim()) {
+          return { available: false, message: failure.message };
+        }
+      }
       return unavailable();
     }
 

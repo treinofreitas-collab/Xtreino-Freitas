@@ -137,6 +137,21 @@ test("Modo Liga accepts midnight reservations on weekends", async () => {
   assert.equal((await checkAvailability(db, saturdayMidnightLiga)).available, true);
 });
 
+test("Modo Liga midnight availability uses the event catalog, not only its Firestore document ID", async () => {
+  const events = [
+    ["EventDocumentAa", { name: "TREINO MODO LIGA", eventType: "modo-liga" }],
+    ["EventDocumentAb", { name: "TREINO MODO LIGA" }],
+  ];
+  for (const [eventId, config] of events) {
+    const db = database({
+      [`adminEvents/${eventId}`]: { ...config, status: "Aberto", vagas: 15 },
+    });
+    assert.equal((await checkAvailability(db, {
+      ...saturdayMidnightLiga, eventType: eventId,
+    })).available, true);
+  }
+});
+
 test("Modo Liga midnight slot still respects manual admin locks", async () => {
   const db = database({
     "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
@@ -147,9 +162,28 @@ test("Modo Liga midnight slot still respects manual admin locks", async () => {
   assert.match(result.message, /bloqueado pelo administrador/);
 });
 
-test("midnight reservations are restricted to Modo Liga", () => {
-  assert.throws(
-    () => validateRequest({ ...saturdayMidnightLiga, eventType: "treino-freitas" }),
+test("midnight reservations are restricted using the resolved event type", async () => {
+  const db = database({
+    "adminEvents/EventDocumentBb": {
+      name: "TREINO FREITAS", eventType: "xtreino-tokens", status: "Aberto", vagas: 12,
+    },
+  });
+  await assert.rejects(
+    checkAvailability(db, { ...saturdayMidnightLiga, eventType: "EventDocumentBb" }),
     /apenas no Modo Liga/,
   );
+});
+
+test("availability endpoint accepts 00h after resolving a Modo Liga event document", async () => {
+  handlerDb = database({
+    "adminEvents/EventDocumentAa": {
+      name: "TREINO MODO LIGA", eventType: "modo-liga", status: "Aberto", vagas: 15,
+    },
+  });
+  const response = await handler({
+    httpMethod: "POST",
+    body: JSON.stringify({ ...saturdayMidnightLiga, eventType: "EventDocumentAa" }),
+  });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), { available: true });
 });

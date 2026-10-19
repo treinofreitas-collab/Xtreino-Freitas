@@ -31,7 +31,6 @@ function validateRequest(body) {
   if (!Array.isArray(selectedTimes) || selectedTimes.length < 1 || selectedTimes.length > 10
       || selectedTimes.some(time => typeof time !== "string" || time.length > 80)) invalid("Selecione horários válidos.");
   const hours = selectedTimes.map(hourOf);
-  if (!isModoLigaType(eventType) && hours.includes(0)) invalid("O horário 00h00 está disponível apenas no Modo Liga.");
   if (hours.some(hour => hour == null || hour < 0 || hour > 23)
       || new Set(hours).size !== hours.length) invalid("Selecione horários válidos, sem repetições.");
   const numberOfTeams = Number(body.numberOfTeams);
@@ -54,7 +53,11 @@ async function checkAvailability(db, body) {
     return { available: false, message: "Este evento não está disponível para reservas." };
   }
 
-  const canonicalType = config?.eventType || eventType;
+  const isModoLiga = [
+    eventType, config?.eventType, config?.name, config?.label, config?.title, config?.modo,
+  ].some(isModoLigaType);
+  if (!isModoLiga && hours.includes(0)) invalid("O horário 00h00 está disponível apenas no Modo Liga.");
+  const canonicalType = isModoLiga ? "modo-liga" : (config?.eventType || eventType);
   const types = [...new Set([eventType, canonicalType])];
   const [registrations, overrides, hourLocks, globalLocks] = await Promise.all([
     db.collection("registrations").where("date", "==", date).where("eventType", "==", eventType).get(),
