@@ -3249,6 +3249,19 @@ function normalizeEventType(t) {
     if (s === 'camp-final' || s === 'final' || s.includes('camp-final') || s.includes('camp final')) return 'camp-final';
     return s;
 }
+function matchesPermanentHourLock(lockData, eventType, eventConfig = {}) {
+    if (!lockData || lockData.locked !== true) return false;
+    if (!lockData.eventType) return true;
+    const lockType = normalizeEventType(lockData.eventType);
+    return [
+        eventType,
+        eventConfig.eventType,
+        eventConfig.name,
+        eventConfig.label,
+        eventConfig.modo,
+        eventConfig.adminEventId
+    ].filter(Boolean).some(candidate => normalizeEventType(candidate) === lockType);
+}
 function parseHourFromText(text) {
     const t = String(text || '').toLowerCase();
     const m1 = t.match(/\b(\d{1,2})\s*h\b/); if (m1) { const h = parseInt(m1[1], 10); if (h >= 0 && h <= 23) return `${h}h`; }
@@ -5729,11 +5742,7 @@ async function renderScheduleTimes() {
                 const hours = new Set();
                 snap.forEach(d => {
                     const data = d.data();
-                    if (data.locked !== true) return;
-                    const docEv = (data.eventType || '').toLowerCase().replace(/[\s_]/g, '-');
-                    const curEv = (eventType || '').toLowerCase().replace(/[\s_]/g, '-');
-                    const match = !data.eventType || docEv === curEv || d.id.startsWith(curEv) || d.id.startsWith(eventType || '');
-                    if (!match) return;
+                    if (!matchesPermanentHourLock(data, eventType, cfg)) return;
                     const h = parseInt(String(data.hour || ''), 10);
                     if (!isNaN(h) && h >= 0 && h <= 23) hours.add(h);
                 });

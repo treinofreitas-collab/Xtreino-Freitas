@@ -358,3 +358,26 @@ test('automatic startup scans are removed and board keeps manual overrides on li
     context.apply({ '17:00': 3, '18:00': 1 });
     assert.deepEqual(applied, [['17:00', 'Restam 7'], ['18:00', 'Lotado']]);
 });
+
+test('permanent hour locks match canonical event types and the raw Firestore event ID', () => {
+    const from = source.indexOf('  function permanentLockMatchesEvent(');
+    const to = source.indexOf('\n\n  function permanentLockHour(', from);
+    assert.ok(from >= 0 && to > from);
+    const context = vm.createContext({
+        canonicalType(value) {
+            const normalized = String(value || '').toLowerCase().replace(/[\s_]/g, '-');
+            return normalized === 'liga' || normalized.includes('modo-liga')
+                ? 'modo-liga'
+                : normalized;
+        },
+        resolveAliases(value) {
+            return [value, 'modo-liga', 'liga', 'modo liga'];
+        },
+    });
+    vm.runInContext(source.slice(from, to), context);
+    const matches = context.permanentLockMatchesEvent;
+    assert.equal(matches({ eventType: 'event-document-id' }, 'modo-liga', 'event-document-id'), true);
+    assert.equal(matches({ eventType: 'TREINO MODO LIGA' }, 'modo-liga', 'event-document-id'), true);
+    assert.equal(matches({ eventType: 'treino-freitas' }, 'modo-liga', 'event-document-id'), false);
+    assert.equal(matches({}, 'modo-liga', 'event-document-id'), true);
+});

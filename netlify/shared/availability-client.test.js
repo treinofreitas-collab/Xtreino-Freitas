@@ -15,6 +15,14 @@ function checkWith(fetch) {
   vm.runInContext(source.slice(start, end), context);
   return context.checkMultipleSlotAvailability;
 }
+function permanentLockMatcher() {
+  const from = source.indexOf("function normalizeEventType(t) {");
+  const to = source.indexOf("\nfunction parseHourFromText(", from);
+  assert.ok(from >= 0 && to > from);
+  const context = vm.createContext({});
+  vm.runInContext(source.slice(from, to), context);
+  return context.matchesPermanentHourLock;
+}
 const args = ["2026-10-14", ["Quarta - 17h"], "custom-event", 2];
 
 test("client never approves failed HTTP, network, timeout, JSON or invalid contracts", async () => {
@@ -48,4 +56,14 @@ test("client accepts only explicit server approval and preserves an insufficient
 test("invalid client input never starts the request", async () => {
   const check = checkWith(async () => { throw new Error("must not request"); });
   assert.equal((await check("", [], null, 0)).available, false);
+});
+
+test("customer calendar matches permanent locks by canonical type and Firestore event ID", () => {
+  const matches = permanentLockMatcher();
+  const config = { eventType: "event-document-id", label: "TREINO MODO LIGA" };
+  assert.equal(matches({ locked: true, eventType: "modo-liga" }, "event-document-id", config), true);
+  assert.equal(matches({ locked: true, eventType: "event-document-id" }, "event-document-id", config), true);
+  assert.equal(matches({ locked: true, eventType: "treino-freitas" }, "event-document-id", config), false);
+  assert.equal(matches({ locked: true }, "event-document-id", config), true);
+  assert.equal(matches({ locked: false, eventType: "modo-liga" }, "event-document-id", config), false);
 });

@@ -3485,21 +3485,39 @@ window.showWarningToast = function(message, title = 'Atenção') {
     return overrides;
   }
 
-  async function fetchPermanentLockedHours(eventType) {
-    const lockedHours = new Set();
+  function permanentLockMatchesEvent(data, eventType, rawEventType = null, rawEventId = null) {
+    const lockEventType = data?.eventType || data?.event_type || '';
+    if (!lockEventType) return true; // Compatibilidade com travas legadas sem tipo, que o servidor trata como globais.
+    const targetCanonical = canonicalType(eventType);
+    const candidates = [eventType, rawEventType, rawEventId, ...resolveAliases(eventType)].filter(Boolean);
+    return candidates.some(candidate =>
+      String(candidate) === String(lockEventType)
+      || canonicalType(candidate) === targetCanonical && canonicalType(lockEventType) === targetCanonical
+    );
+  }
+
+  function permanentLockHour(data) {
+    return parseInt(String(data?.hour || '').match(/^(\d+)/)?.[1] || '', 10);
+  }
+
+  async function fetchPermanentLockDocs(eventType, rawEventType = null, rawEventId = null) {
     try {
-      const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      const snap = await getDocs(query(
-        collection(window.firebaseDb, 'event_hour_locks'),
-        where('eventType', '==', eventType)
-      ));
-      snap.forEach(d => {
-        const data = d.data();
-        if (data.locked !== true) return;
-        const hour = parseInt(String(data.hour || '').match(/^(\d+)/)?.[1] || '', 10);
-        if (!isNaN(hour)) lockedHours.add(hour);
-      });
-    } catch (_) {}
+      const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      const snap = await getDocs(collection(window.firebaseDb, 'event_hour_locks'));
+      return snap.docs.filter(d => permanentLockMatchesEvent(d.data(), eventType, rawEventType, rawEventId));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  async function fetchPermanentLockedHours(eventType, rawEventType = null, rawEventId = null) {
+    const lockedHours = new Set();
+    const docs = await fetchPermanentLockDocs(eventType, rawEventType, rawEventId);
+    docs.forEach(d => {
+      const data = d.data();
+      const hour = permanentLockHour(data);
+      if (data.locked === true && !isNaN(hour)) lockedHours.add(hour);
+    });
     return lockedHours;
   }
 
@@ -3862,7 +3880,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const [occupancyMap, overridesMap, permLockedHours] = await Promise.all([
         fetchRegistrationsByDate(date, evFieldType, ovEventType, rawEventId),
         fetchScheduleOverrides(date, ovEventType, rawEventId),
-        fetchPermanentLockedHours(ovEventType)
+        fetchPermanentLockedHours(ovEventType, rawEvType, rawEventId)
       ]);
       
       // Aplicar travas fixas do Modo Liga
@@ -4016,7 +4034,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const btnPermLock = e.target.closest('[data-toggle-perm-lock]');
         if (btnPermLock) {
           const h = btnPermLock.getAttribute('data-toggle-perm-lock');
-          await handleTogglePermanentLock(h, ovEventType);
+          await handleTogglePermanentLock(h, ovEventType, rawEvType, rawEventId);
         }
         const btnFree = e.target.closest('[data-toggle-free]');
         if (btnFree) {
@@ -4082,27 +4100,42 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Trava permanente de horário individual (sem data)
-  async function handleTogglePermanentLock(hour, ovEventType) {
+  async function handleTogglePermanentLock(hour, ovEventType, rawEventType = null, rawEventId = null) {
     const hNum = parseInt(String(hour).match(/^(\d+)/)?.[1] || '', 10);
     console.log('[Fixar] chamado', { hour, hNum, ovEventType });
     if (isNaN(hNum)) { showToast('error','Horário inválido.','Erro'); return; }
-    const docId = `${ovEventType}__${hNum}`;
     try {
-      const { doc, getDoc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      const ref = doc(window.firebaseDb, 'event_hour_locks', docId);
-      console.log('[Fixar] lendo estado atual, docId:', docId);
-      const snap = await getDoc(ref);
-      const isCurrentlyLocked = snap.exists() && snap.data().locked === true;
-      console.log('[Fixar] estado atual:', { exists: snap.exists(), isCurrentlyLocked });
+      const { doc, setDoc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      const matchingDocs = await fetchPermanentLockDocs(ovEventType, rawEventType, rawEventId);
+      const hourDocs = matchingDocs.filter(d => permanentLockHour(d.data()) === hNum);
+      const lockedDocs = hourDocs.filter(d => d.data()?.locked === true);
+      const isCurrentlyLocked = lockedDocs.length > 0;
+      const hasUnscopedLock = lockedDocs.some(d => !(d.data()?.eventType || d.data()?.event_type));
+      console.log('[Fixar] estado atual:', { hour: hNum, isCurrentlyLocked, matchedDocs: hourDocs.length });
       const msg = isCurrentlyLocked
-        ? `🔓 Destravar o horário ${hNum}h de "${ovEventType}" em TODAS as datas?`
+        ? hasUnscopedLock
+          ? `⚠️ A trava de ${hNum}h não está associada a um evento específico e pode afetar outros eventos. Destravá-la poderá liberar esse horário globalmente. Deseja continuar?`
+          : `🔓 Destravar o horário ${hNum}h de "${ovEventType}" em TODAS as datas?`
         : `🔒 Travar o horário ${hNum}h de "${ovEventType}" em TODAS as datas permanentemente?\n\nOs clientes não poderão reservar este horário em nenhuma data até você destravar.`;
       const ok = await showConfirm('Confirmar', msg);
       console.log('[Fixar] confirmação:', ok);
       if (!ok) return;
-      console.log('[Fixar] gravando no Firestore...');
-      await setDoc(ref, { eventType: ovEventType, hour: String(hNum), locked: !isCurrentlyLocked, updatedAt: Date.now() });
-      console.log('[Fixar] gravado com sucesso');
+      if (isCurrentlyLocked) {
+        await Promise.all(lockedDocs.map(d =>
+          updateDoc(doc(window.firebaseDb, 'event_hour_locks', d.id), { locked: false, updatedAt: Date.now() })
+        ));
+      } else {
+        const existingScopedDoc = hourDocs.find(d => d.data()?.eventType || d.data()?.event_type);
+        const docId = existingScopedDoc?.id || `${ovEventType}__${hNum}`;
+        const previous = existingScopedDoc?.data() || {};
+        await setDoc(doc(window.firebaseDb, 'event_hour_locks', docId), {
+          ...previous,
+          eventType: previous.eventType || ovEventType,
+          hour: String(hNum),
+          locked: true,
+          updatedAt: Date.now()
+        }, { merge: true });
+      }
       showToast('success', isCurrentlyLocked ? `Horário ${hNum}h destravado em todas as datas.` : `Horário ${hNum}h travado permanentemente em todas as datas.`, isCurrentlyLocked ? 'Destravado' : 'Fixado');
       await loadBoard();
     } catch(err) {
