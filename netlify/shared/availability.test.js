@@ -180,6 +180,30 @@ test("midnight locks stored as numeric zero are interpreted as 00:00", async () 
   assert.match(lockedDateHour.message, /horário 0h está bloqueado/);
 });
 
+test("legacy snake_case lock types stay scoped to their event and Modo Liga aliases", async () => {
+  const eventConfig = {
+    "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
+  };
+  for (const lock of [
+    { "event_hour_locks/other-event": { event_type: "xtreino-tokens", hour: 0, locked: true } },
+    { "schedule_overrides/other-event": {
+      date: saturdayMidnightLiga.date, event_type: "xtreino-tokens", hour: 0, locked: true,
+    } },
+  ]) {
+    assert.equal((await checkAvailability(database({ ...eventConfig, ...lock }), saturdayMidnightLiga)).available, true);
+  }
+
+  for (const lock of [
+    { "event_hour_locks/legacy-modo-liga": { event_type: "TREINO MODO LIGA", hour: 0, locked: true } },
+    { "schedule_overrides/legacy-modo-liga": {
+      date: saturdayMidnightLiga.date, event_type: "TREINO MODO LIGA", hour: 0, locked: true,
+    } },
+    { "event_hour_locks/global": { hour: 0, locked: true } },
+  ]) {
+    assert.equal((await checkAvailability(database({ ...eventConfig, ...lock }), saturdayMidnightLiga)).available, false);
+  }
+});
+
 test("midnight reservations are restricted using the resolved event type", async () => {
   const db = database({
     "adminEvents/EventDocumentBb": {

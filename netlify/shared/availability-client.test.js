@@ -81,7 +81,7 @@ test("calendar lock scope matches the server's canonical event mapping", () => {
   assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "modo-liga" }, "EventDocumentBb", config), true);
   assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "treino-freitas" }, "EventDocumentBb", config), false);
   assert.equal(helpers.bookingLockAppliesToEvent({}, "EventDocumentBb", config), true);
-  assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "TREINO MODO LIGA" }, "EventDocumentBb", config), false);
+  assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "TREINO MODO LIGA" }, "EventDocumentBb", config), true);
 });
 
 test("initial and refreshed customer calendars use the same lock matching rules", () => {

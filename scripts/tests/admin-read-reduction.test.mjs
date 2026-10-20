@@ -414,6 +414,22 @@ test('admin canonicalizes Modo Liga from its name even when eventType is a custo
     assert.ok(source.includes('const canon = canonicalAdminEventType(ev, d.id);'));
 });
 
+test('booking lock matching respects legacy event_type without treating another event as global', () => {
+    const from = bookingSource.indexOf('function normalizeEventType(');
+    const to = bookingSource.indexOf('\nfunction matchesPermanentHourLock(', from);
+    assert.ok(from >= 0 && to > from);
+    const context = vm.createContext({});
+    vm.runInContext(bookingSource.slice(from, to), context);
+    const applies = context.bookingLockAppliesToEvent;
+    const config = { eventType: 'modo-liga', name: 'TREINO MODO LIGA' };
+
+    assert.equal(applies({ event_type: 'xtreino-tokens' }, 'modo-liga', config), false);
+    assert.equal(applies({ eventType: 'xtreino-tokens' }, 'modo-liga', config), false);
+    assert.equal(applies({ event_type: 'TREINO MODO LIGA' }, 'modo-liga', config), true);
+    assert.equal(applies({ eventType: 'modo-liga' }, 'modo-liga', config), true);
+    assert.equal(applies({}, 'modo-liga', config), true);
+});
+
 test('numeric midnight values are preserved by booking and admin hour normalization', () => {
     for (const [fileSource, helperName, endMarker] of [
         [bookingSource, 'bookingLockHourValue', '\nfunction parseHourFromText'],

@@ -3202,8 +3202,11 @@ function bookingLockEventTypes(eventType, eventConfig = {}) {
     return [...new Set([eventType, canonicalType].filter(Boolean))];
 }
 function bookingLockAppliesToEvent(lockData, eventType, eventConfig = {}) {
-    if (!lockData || !lockData.eventType) return true;
-    return bookingLockEventTypes(eventType, eventConfig).includes(lockData.eventType);
+    const lockType = lockData?.eventType || lockData?.event_type || '';
+    if (!lockType) return true;
+    const eventTypes = bookingLockEventTypes(eventType, eventConfig);
+    return eventTypes.includes(lockType)
+        || (eventTypes.includes('modo-liga') && normalizeEventType(lockType) === 'modo-liga');
 }
 function matchesPermanentHourLock(lockData, eventType, eventConfig = {}) {
     if (!lockData || lockData.locked !== true) return false;

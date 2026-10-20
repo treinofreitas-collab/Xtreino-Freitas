@@ -62,14 +62,18 @@ async function checkAvailability(db, body) {
   const [registrations, overrides, hourLocks, globalLocks] = await Promise.all([
     db.collection("registrations").where("date", "==", date).where("eventType", "==", eventType).get(),
     db.collection("schedule_overrides").where("date", "==", date).get(),
-    // This small configuration collection includes legacy generic locks without eventType.
+    // This small configuration collection includes legacy generic locks without an event type.
     db.collection("event_hour_locks").get(),
     Promise.all(types.map(type => db.collection("event_global_locks").doc(type).get())),
   ]);
   if (globalLocks.some(lock => lock.exists && lock.data().locked === true)) {
     return { available: false, message: "Este evento está temporariamente suspenso." };
   }
-  const applies = record => !record.eventType || types.includes(record.eventType);
+  const applies = record => {
+    const recordType = record.eventType || record.event_type || "";
+    if (!recordType) return true;
+    return types.includes(recordType) || (isModoLiga && isModoLigaType(recordType));
+  };
   const counts = {};
   for (const doc of registrations.docs) {
     const record = doc.data();
