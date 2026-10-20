@@ -3454,7 +3454,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Busca overrides (travas e ocupações extras)
-  async function fetchScheduleOverrides(date, eventType, rawEventId = null) {
+  async function fetchScheduleOverrides(date, eventType, rawEventId = null, rawEventType = null) {
     const overrides = {};
     try {
       const { collection: c, query: q, where: w, getDocsFromServer: g } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -3467,6 +3467,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const canonEvent = canonicalType(eventType);
       const aliases = new Set(resolveAliases(eventType).filter(Boolean));
       if (rawEventId) aliases.add(rawEventId);
+      if (rawEventType) aliases.add(rawEventType);
 
       allSnap.forEach(d => {
         const raw = d.data() || {};
@@ -3589,12 +3590,13 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Busca todos os overrides para um horário (consolidado)
-  async function findAllOverridesForHour(date, eventType, hh, rawEventId = null) {
+  async function findAllOverridesForHour(date, eventType, hh, rawEventId = null, rawEventType = null) {
     const { collection: c, query: q, where: w, getDocsFromServer: g } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const ovRef = c(window.firebaseDb, 'schedule_overrides');
     const variants = resolveAliases(eventType);
     const canon = canonicalType(eventType);
     if (rawEventId && rawEventId !== eventType && !variants.includes(rawEventId)) variants.push(rawEventId);
+    if (rawEventType && !variants.includes(rawEventType)) variants.push(rawEventType);
 
     // Uma leitura atual da data encontra também horas numéricas e aliases legados.
     const snap = await g(q(ovRef, w('date', '==', date)));
@@ -3844,7 +3846,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // Inscrições, ajustes e travas permanentes são independentes: buscar em paralelo.
       const [occupancyMap, overridesMap, permLockedHours] = await Promise.all([
         fetchRegistrationsByDate(date, evFieldType, ovEventType, rawEventId),
-        fetchScheduleOverrides(date, ovEventType, rawEventId),
+        fetchScheduleOverrides(date, ovEventType, rawEventId, rawEvType),
         fetchPermanentLockedHours(ovEventType, rawEvType, rawEventId)
       ]);
       
@@ -3994,7 +3996,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         } 
         else if (btnToggle) {
           const h = btnToggle.getAttribute('data-toggle-lock');
-          await handleToggleLock(h, date, eventType, ovEventType, rawEventId);
+          await handleToggleLock(h, date, eventType, ovEventType, rawEventId, rawEventType);
         }
         const btnPermLock = e.target.closest('[data-toggle-perm-lock]');
         if (btnPermLock) {
@@ -4112,7 +4114,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Handler para toggle de travamento de horário
-  async function handleToggleLock(hour, date, eventType, ovEventType, rawEventId = null) {
+  async function handleToggleLock(hour, date, eventType, ovEventType, rawEventId = null, rawEventType = null) {
     
     const isFixedLock = false // (canonicalType(eventType) === 'modo-liga' && (hour === '16:00' || hour === '17:00'));
     
@@ -4140,7 +4142,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         return;
       }      
 
-      const docsArr = await findAllOverridesForHour(date, ovEventType, hh, rawEventId);       
+      const docsArr = await findAllOverridesForHour(date, ovEventType, hh, rawEventId, rawEventType);
       if (docsArr.length > 0) {        
         // Verificar estado atual
         const anyLocked = docsArr.some(d => d.data()?.locked === true);

@@ -485,11 +485,70 @@ test('admin lock inspection reads current server data and surfaces read failures
     await assert.rejects(context.fetchPermanentLockDocs('modo-liga'), /offline/);
 });
 
+test('schedule board includes the raw booking event type when reading date overrides', async () => {
+    let reads = 0;
+    const rows = [
+        { id: 'booking-event-midnight', data: () => ({
+            date: '2026-10-21',
+            eventType: 'booking-custom',
+            hour: 0,
+            locked: false,
+            extraOccupied: 2,
+        }) },
+        { id: 'other-event-midnight', data: () => ({
+            date: '2026-10-21',
+            eventType: 'other-custom',
+            hour: 0,
+            locked: true,
+            extraOccupied: 9,
+        }) },
+    ];
+    const context = vm.createContext({
+        window: { firebaseDb: {} },
+        canonicalType(value) {
+            const normalized = String(value || '').toLowerCase().replace(/[\s_]/g, '-');
+            return normalized.includes('modo-liga') || normalized === 'liga' ? 'modo-liga' : normalized;
+        },
+        resolveAliases: () => ['modo-liga', 'liga', 'TREINO MODO LIGA'],
+        scheduleOverrideHourValue(record) {
+            if (record.hour === 0) return 0;
+            if (record.hour !== undefined && record.hour !== null && record.hour !== '') return record.hour;
+            return record.hh ?? '';
+        },
+        firebase: async () => ({
+            collection: () => 'schedule_overrides',
+            query: (...args) => args,
+            where: (...args) => args,
+            getDocsFromServer: async () => { reads++; return { forEach: fn => rows.forEach(fn) }; },
+        }),
+    });
+    const parserFrom = source.indexOf('  function extractHour(');
+    const parserTo = source.indexOf('\n\n  // Busca overrides', parserFrom);
+    assert.ok(parserFrom >= 0 && parserTo > parserFrom);
+    vm.runInContext(source.slice(parserFrom, parserTo), context);
+    vm.runInContext(snippet(
+        '  async function fetchScheduleOverrides(',
+        '\n\n  function permanentLockMatchesEvent',
+    ), context);
+
+    assert.match(source, /fetchScheduleOverrides\(date,\s*ovEventType,\s*rawEventId,\s*rawEvType\)/);
+    const overrides = await context.fetchScheduleOverrides(
+        '2026-10-21',
+        'modo-liga',
+        'firestore-event-id',
+        'booking-custom'
+    );
+    assert.equal(reads, 1);
+    assert.equal(overrides['00:00']?.lockedAny, false);
+    assert.equal(overrides['00:00']?.extraOccupied, 2);
+});
+
 test('unlocking a midnight date override finds the numeric record with one fresh date query', async () => {
     let reads = 0;
     const rows = [
         { id: 'global-midnight', data: () => ({ date: '2026-10-21', hour: 0, locked: true }) },
         { id: 'modo-alias-midnight', data: () => ({ date: '2026-10-21', eventType: 'TREINO MODO LIGA', hh: '00:00', locked: true }) },
+        { id: 'booking-event-midnight', data: () => ({ date: '2026-10-21', eventType: 'booking-custom', hour: 0, locked: true }) },
         { id: 'other-event-midnight', data: () => ({ date: '2026-10-21', eventType: 'treino-freitas', hour: 0, locked: true }) },
         { id: 'modo-next-hour', data: () => ({ date: '2026-10-21', eventType: 'modo-liga', hour: 1, locked: true }) },
     ];
@@ -520,7 +579,13 @@ test('unlocking a midnight date override finds the numeric record with one fresh
         '  async function findAllOverridesForHour(',
         '\n\n  // Carrega quadro de horários por data/evento',
     ), context);
-    const result = await context.findAllOverridesForHour('2026-10-21', 'modo-liga', '00', 'event-id');
+    const result = await context.findAllOverridesForHour(
+        '2026-10-21',
+        'modo-liga',
+        '00',
+        'event-id',
+        'booking-custom'
+    );
     assert.equal(reads, 1);
-    assert.equal(result.map(doc => doc.id).join(','), 'global-midnight,modo-alias-midnight');
+    assert.equal(result.map(doc => doc.id).join(','), 'global-midnight,modo-alias-midnight,booking-event-midnight');
 });

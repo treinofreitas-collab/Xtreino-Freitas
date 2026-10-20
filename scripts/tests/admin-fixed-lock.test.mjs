@@ -55,3 +55,58 @@ test('fixed unlock forwards the selected event type to the permanent-lock handle
 
     assert.deepEqual(calls, [['00:00', 'canonical-event', 'raw-event-type', 'raw-event-id']]);
 });
+
+test('date-specific unlock forwards the raw booking event type to its handler', async () => {
+    assert.match(
+        source,
+        /handleToggleLock\(h,\s*date,\s*eventType,\s*ovEventType,\s*rawEventId,\s*rawEventType\)/
+    );
+
+    const calls = [];
+    const context = {
+        console,
+        handleToggleLock: async (...args) => { calls.push(args); },
+    };
+    vm.createContext(context);
+    new vm.Script(bindingFunction).runInContext(context);
+
+    let clickHandler;
+    const replacementTbody = {
+        addEventListener: (eventName, handler) => {
+            assert.equal(eventName, 'click');
+            clickHandler = handler;
+        },
+    };
+    const tbody = {
+        parentNode: { replaceChild: (replacement, original) => {
+            assert.equal(replacement, replacementTbody);
+            assert.equal(original, tbody);
+        } },
+        cloneNode: () => replacementTbody,
+    };
+
+    context.bindBoardTableActions(
+        tbody,
+        '2026-10-21',
+        'selected-event',
+        'canonical-event',
+        'raw-event-id',
+        'event-field-type',
+        'raw-event-type'
+    );
+
+    const button = {
+        getAttribute: name => name === 'data-toggle-lock' ? '00:00' : null,
+        closest: selector => selector === '[data-toggle-lock]' ? button : null,
+    };
+    await clickHandler({ target: button });
+
+    assert.deepEqual(calls, [[
+        '00:00',
+        '2026-10-21',
+        'selected-event',
+        'canonical-event',
+        'raw-event-id',
+        'raw-event-type',
+    ]]);
+});
