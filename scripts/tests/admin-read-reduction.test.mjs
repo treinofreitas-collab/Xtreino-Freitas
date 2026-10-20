@@ -389,6 +389,31 @@ test('permanent hour locks match canonical event types and the raw Firestore eve
     assert.equal(matches({}, 'modo-liga', 'event-document-id'), true);
 });
 
+test('admin canonicalizes Modo Liga from its name even when eventType is a custom value', () => {
+    const from = source.indexOf('  function canonicalAdminEventType(');
+    const to = source.indexOf('\n\n  // Resolve aliases para um tipo de evento', from);
+    assert.ok(from >= 0 && to > from);
+    const context = vm.createContext({
+        canonicalType(value) {
+            const normalized = String(value || '').toLowerCase().replace(/[\s_]/g, '-');
+            return normalized === 'liga' || normalized.includes('modo-liga')
+                ? 'modo-liga'
+                : normalized;
+        },
+    });
+    vm.runInContext(source.slice(from, to), context);
+
+    assert.equal(context.canonicalAdminEventType({
+        eventType: 'legacy-event-key',
+        name: 'TREINO MODO LIGA',
+    }, 'firestore-document-id'), 'modo-liga');
+    assert.equal(context.canonicalAdminEventType({
+        eventType: 'liga',
+        name: 'Nome legado',
+    }, 'firestore-document-id'), 'modo-liga');
+    assert.ok(source.includes('const canon = canonicalAdminEventType(ev, d.id);'));
+});
+
 test('numeric midnight values are preserved by booking and admin hour normalization', () => {
     for (const [fileSource, helperName, endMarker] of [
         [bookingSource, 'bookingLockHourValue', '\nfunction parseHourFromText'],

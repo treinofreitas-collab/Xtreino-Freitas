@@ -3318,6 +3318,15 @@ window.showWarningToast = function(message, title = 'Atenção') {
     return t;
   }
 
+  function canonicalAdminEventType(event, docId) {
+    const values = [event?.eventType, event?.name, event?.label, event?.title, event?.modo].filter(Boolean);
+    const isModoLiga = values.some(value => {
+      const type = String(value || '').toLowerCase().trim().replace(/[\s_]+/g, '-');
+      return type === 'liga' || type === 'acesso' || type.includes('modo-liga');
+    });
+    return isModoLiga ? 'modo-liga' : canonicalType(event?.eventType || event?.name || docId);
+  }
+
   // Resolve aliases para um tipo de evento
   function resolveAliases(t) {
     const canon = canonicalType(t);
@@ -3380,7 +3389,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         opt.textContent = ev.name || d.id;
         // Tipo canônico: preferir campo eventType; se vazio, derivar do nome do evento; fallback: doc ID
         // CRÍTICO: 'XTreino Freitas' → canonicalType → 'xtreino-tokens' (mesmo valor que o booking flow salva em r.eventType)
-        const canon = canonicalType(ev.eventType || ev.name || d.id);
+        const canon = canonicalAdminEventType(ev, d.id);
         opt.dataset.canonicalType = canon;
         opt.dataset.rawEventId = d.id;
         // evFieldType = tipo canônico que o booking flow usa ao salvar em r.eventType
