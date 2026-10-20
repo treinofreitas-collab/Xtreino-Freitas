@@ -3448,7 +3448,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // Busca e normaliza horário em string
   function extractHour(hourStr) {
-    const match = String(hourStr || '').match(/(\d{1,2})/);
+    const match = String(hourStr ?? '').match(/(\d{1,2})/);
     if (!match) return null;
     return String(parseInt(match[1], 10)).padStart(2, '0');
   }

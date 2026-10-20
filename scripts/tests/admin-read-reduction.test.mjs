@@ -403,6 +403,55 @@ test('numeric midnight values are preserved by booking and admin hour normalizat
         assert.equal(context[helperName]({ hh: 0 }), 0);
         assert.equal(context[helperName]({ hour: '', hh: '00:00' }), '00:00');
     }
+
+    const parserFrom = source.indexOf('  function extractHour(');
+    const parserTo = source.indexOf('\n\n  // Busca overrides', parserFrom);
+    assert.ok(parserFrom >= 0 && parserTo > parserFrom);
+    const parserContext = vm.createContext({});
+    vm.runInContext(source.slice(parserFrom, parserTo), parserContext);
+    assert.equal(parserContext.extractHour(0), '00');
+    assert.equal(parserContext.extractHour('00:00'), '00');
+});
+
+test('date override with numeric hour zero appears locked in the admin board', async () => {
+    let reads = 0;
+    const context = vm.createContext({
+        window: { firebaseDb: {} },
+        canonicalType: () => 'modo-liga',
+        resolveAliases: () => ['modo-liga', 'TREINO MODO LIGA'],
+        scheduleOverrideHourValue: record => record.hour ?? record.hh ?? '',
+        firebase: async () => ({
+            collection: () => 'schedule_overrides',
+            query: (...args) => args,
+            where: (...args) => args,
+            getDocsFromServer: async () => {
+                reads++;
+                return {
+                    forEach: fn => fn({
+                        id: 'numeric-midnight',
+                        data: () => ({
+                            date: '2026-10-21',
+                            eventType: 'modo-liga',
+                            hour: 0,
+                            locked: true,
+                        }),
+                    }),
+                };
+            },
+        }),
+    });
+    const parserFrom = source.indexOf('  function extractHour(');
+    const parserTo = source.indexOf('\n\n  // Busca overrides', parserFrom);
+    assert.ok(parserFrom >= 0 && parserTo > parserFrom);
+    vm.runInContext(source.slice(parserFrom, parserTo), context);
+    vm.runInContext(snippet(
+        '  async function fetchScheduleOverrides(',
+        '\n\n  function permanentLockMatchesEvent',
+    ), context);
+
+    const overrides = await context.fetchScheduleOverrides('2026-10-21', 'modo-liga');
+    assert.equal(reads, 1);
+    assert.equal(overrides['00:00']?.lockedAny, true);
 });
 
 test('admin lock inspection reads current server data and surfaces read failures', async () => {
@@ -456,10 +505,6 @@ test('unlocking a midnight date override finds the numeric record with one fresh
             if (record.hour !== undefined && record.hour !== null && record.hour !== '') return record.hour;
             return record.hh ?? '';
         },
-        extractHour(value) {
-            const match = String(value ?? '').match(/(\d{1,2})/);
-            return match ? String(parseInt(match[1], 10)).padStart(2, '0') : null;
-        },
         firebase: async () => ({
             collection: () => 'schedule_overrides',
             where: (...args) => args,
@@ -467,6 +512,10 @@ test('unlocking a midnight date override finds the numeric record with one fresh
             getDocsFromServer: async () => { reads++; return { forEach: fn => rows.forEach(fn) }; },
         }),
     });
+    const parserFrom = source.indexOf('  function extractHour(');
+    const parserTo = source.indexOf('\n\n  // Busca overrides', parserFrom);
+    assert.ok(parserFrom >= 0 && parserTo > parserFrom);
+    vm.runInContext(source.slice(parserFrom, parserTo), context);
     vm.runInContext(snippet(
         '  async function findAllOverridesForHour(',
         '\n\n  // Carrega quadro de horários por data/evento',
