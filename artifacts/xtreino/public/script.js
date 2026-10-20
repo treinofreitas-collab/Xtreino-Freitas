@@ -356,6 +356,7 @@ async function loginWithEmailPassword() {
 }
 
 async function registerWithEmailPassword() {
+    let profileSyncStatus = 'not-started';
     try {
         if (!window.firebaseReady) { throw new Error('Firebase não inicializado'); }
         const email = document.getElementById('regEmail').value.trim();
@@ -383,33 +384,57 @@ async function registerWithEmailPassword() {
             throw new Error('Idade deve ser entre 12 e 100 anos');
         }
 
+        window._registeringNewAccount = true;
         const { createUserWithEmailAndPassword, updateProfile } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
         const cred = await createUserWithEmailAndPassword(window.firebaseAuth, email, pass);
-        await updateProfile(cred.user, { displayName: name });
-
-        // salva perfil completo no Firestore
         try {
-            if (window.firebaseReady) {
-                const { collection, doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                const ref = doc(collection(window.firebaseDb, 'users'), cred.user.uid);
-                await setDoc(ref, {
-                    name,
-                    email,
-                    phone,
-                    nickname,
-                    teamName: team,
-                    age,
-                    role: 'Usuario',
-                    level: 'Associado Treino',
-                    tokens: 0,
-                    createdAt: Date.now()
-                }, { merge: true });
-            }
-        } catch (e) {
-            
+            await updateProfile(cred.user, { displayName: name });
+        } catch (profileError) {
+            console.warn('[Auth] Não foi possível atualizar o nome no Firebase Authentication:', profileError?.code || 'unknown');
         }
+
+        const registrationData = {
+            name,
+            email: cred.user.email || email,
+            phone,
+            nickname,
+            teamName: team,
+            age,
+            role: 'Usuario',
+            level: 'Associado Treino',
+            tokens: 0,
+            createdAt: Date.now()
+        };
+
+        const syncResult = await saveUserProfileWithFallback(cred.user.uid, cred.user, registrationData);
+        profileSyncStatus = syncResult.status;
+        if (syncResult.status === 'failed') {
+            console.error(
+                '[Auth] Falha ao salvar o perfil completo e o perfil básico no Firestore:',
+                syncResult.recoveryError?.code || syncResult.originalError?.code || 'unknown'
+            );
+        } else if (syncResult.status === 'recovered') {
+            console.warn(
+                '[Auth] Perfil básico salvo após falha no perfil completo:',
+                syncResult.originalError?.code || 'unknown'
+            );
+        }
+
         onAuthLogged(cred.user);
+
+        if (profileSyncStatus === 'recovered') {
+            window.showWarningToast?.(
+                'Sua conta foi criada, mas alguns dados complementares do cadastro podem precisar ser atualizados.',
+                'Cadastro parcialmente sincronizado'
+            );
+        } else if (profileSyncStatus === 'failed') {
+            window.showErrorToast?.(
+                'Seu login foi criado, mas o perfil não foi sincronizado. O sistema tentará corrigir isso quando você entrar novamente.',
+                'Perfil não sincronizado'
+            );
+        }
     } catch (e) { document.getElementById('authMsg').textContent = e.message || 'Não foi possível criar a conta.'; }
+    finally { window._registeringNewAccount = false; }
 }
 
 async function sendPasswordReset() {
@@ -963,6 +988,67 @@ async function checkAuthState() {
     }
 }
 
+async function saveUserProfileRecord(uid, authUser, registrationData = {}) {
+    if (!window.firebaseReady || !window.firebaseDb) {
+        throw new Error('Firestore não está pronto para salvar o perfil.');
+    }
+
+    const [firestore, profileSync] = await Promise.all([
+        import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js'),
+        import('./js/user-profile-sync.mjs')
+    ]);
+    return profileSync.writeUserProfileRecord({
+        uid,
+        authUser,
+        registrationData,
+        db: window.firebaseDb,
+        firestore
+    });
+}
+
+async function saveUserProfileWithFallback(uid, authUser, registrationData = {}) {
+    if (!window.firebaseReady || !window.firebaseDb) {
+        return { status: 'failed', originalError: new Error('Firestore não está pronto para salvar o perfil.') };
+    }
+
+    try {
+        const [firestore, profileSync] = await Promise.all([
+            import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js'),
+            import('./js/user-profile-sync.mjs')
+        ]);
+        return await profileSync.writeUserProfileWithFallback({
+            uid,
+            authUser,
+            registrationData,
+            db: window.firebaseDb,
+            firestore
+        });
+    } catch (error) {
+        return { status: 'failed', originalError: error };
+    }
+}
+
+function ensureMissingUserProfileRecord(uid, authUser, { allowDuringRegistration = false, registrationData = {} } = {}) {
+    if (!uid || !authUser || authUser.uid !== uid) return Promise.resolve(false);
+    if (window._registeringNewAccount && !allowDuringRegistration) return Promise.resolve(false);
+
+    const attempts = window._userProfileSeedAttempts || (window._userProfileSeedAttempts = new Map());
+    if (attempts.has(uid)) return attempts.get(uid);
+
+    const attempt = saveUserProfileRecord(uid, authUser, registrationData)
+        .then(() => true)
+        .catch(error => {
+            console.error('[Auth] Falha ao sincronizar perfil ausente no Firestore:', error?.code || 'unknown');
+            return false;
+        })
+        .finally(() => {
+            if (attempts.get(uid) === attempt) attempts.delete(uid);
+        });
+
+    attempts.set(uid, attempt);
+    return attempt;
+}
+
 async function loadUserProfile(uid) {
     try {
         // Sempre priorizar Firestore: usar listener onSnapshot para receber atualizações em tempo real
@@ -972,28 +1058,43 @@ async function loadUserProfile(uid) {
             window._userProfileUnsubscribe = null;
         }
         if (window.firebaseReady) {
-            const { doc, collection, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+            const [firestore, profileSync] = await Promise.all([
+                import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js'),
+                import('./js/user-profile-sync.mjs')
+            ]);
+            const { doc, collection, onSnapshot } = firestore;
             const ref = doc(collection(window.firebaseDb, 'users'), uid);
             // onSnapshot will call immediately with current data and on further updates
             window._userProfileUnsubscribe = onSnapshot(ref, (snap) => {
-                if (snap.exists && typeof snap.data === 'function') {
-                    window.currentUserProfile = snap.data();
-                    
+                if (profileSync.hasUserProfileDocument(snap)) {
+                    window.currentUserProfile = snap.data() || {};
                 } else {
-                    // Criar perfil básico em memória se não existir
+                    // Exibir um perfil básico e persistir um documento para que
+                    // o usuário também apareça nas telas administrativas.
+                    const authUser = window.firebaseAuth?.currentUser;
                     window.currentUserProfile = {
                         uid: uid,
-                        email: window.firebaseAuth.currentUser?.email || '',
-                        name: window.firebaseAuth.currentUser?.displayName || 'Usuário',
+                        email: authUser?.email || '',
+                        name: authUser?.displayName || authUser?.email?.split('@')[0] || 'Usuário',
                         tokens: 0,
                         role: 'Usuario',
                         level: 'Associado Treino'
                     };
-                    
+
+                    if (authUser?.uid === uid && !window._registeringNewAccount) {
+                        ensureMissingUserProfileRecord(uid, authUser).then(saved => {
+                            if (!saved && window.firebaseAuth?.currentUser?.uid === uid) {
+                                window.showWarningToast?.(
+                                    'Seu login está ativo, mas o perfil ainda não foi sincronizado. Atualize a página para tentar novamente.',
+                                    'Perfil pendente'
+                                );
+                            }
+                        });
+                    }
                 }
                 updateHeaderTokenBadges();
             }, (err) => {
-                
+                console.error('[Auth] Não foi possível ler o perfil no Firestore:', err?.code || 'unknown');
             });
         } else {
             // Fallback: cria perfil básico se Firebase não estiver pronto (em memória)
