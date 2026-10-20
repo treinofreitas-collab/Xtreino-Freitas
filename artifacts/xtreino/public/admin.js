@@ -3930,7 +3930,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       });
 
       // ===== Bind dos botões de ação =====
-      bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId, evFieldType);
+      bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId, evFieldType, rawEvType);
 
       // Keep automatic updates while this page is visible; refresh immediately on return.
       const _liveDate = date, _liveField = evFieldType, _liveOv = ovEventType, _liveRaw = rawEventId;
@@ -3982,7 +3982,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Binda ações dos botões da tabela
-  function bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId = null, evFieldType = null) {
+  function bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId = null, evFieldType = null, rawEventType = null) {
     // Remover listeners antigos para evitar duplicação
     if (!tbody || !tbody.parentNode) return;
     const newTbody = tbody.cloneNode(true);
@@ -4034,7 +4034,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const btnPermLock = e.target.closest('[data-toggle-perm-lock]');
         if (btnPermLock) {
           const h = btnPermLock.getAttribute('data-toggle-perm-lock');
-          await handleTogglePermanentLock(h, ovEventType, rawEvType, rawEventId);
+          await handleTogglePermanentLock(h, ovEventType, rawEventType, rawEventId);
         }
         const btnFree = e.target.closest('[data-toggle-free]');
         if (btnFree) {
