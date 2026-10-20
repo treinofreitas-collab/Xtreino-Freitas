@@ -15,13 +15,16 @@ function checkWith(fetch) {
   vm.runInContext(source.slice(start, end), context);
   return context.checkMultipleSlotAvailability;
 }
-function permanentLockMatcher() {
+function lockHelperContext() {
   const from = source.indexOf("function normalizeEventType(t) {");
   const to = source.indexOf("\nfunction parseHourFromText(", from);
   assert.ok(from >= 0 && to > from);
   const context = vm.createContext({});
   vm.runInContext(source.slice(from, to), context);
-  return context.matchesPermanentHourLock;
+  return context;
+}
+function permanentLockMatcher() {
+  return lockHelperContext().matchesPermanentHourLock;
 }
 const args = ["2026-10-14", ["Quarta - 17h"], "custom-event", 2];
 
@@ -66,4 +69,32 @@ test("customer calendar matches permanent locks by canonical type and Firestore 
   assert.equal(matches({ locked: true, eventType: "treino-freitas" }, "event-document-id", config), false);
   assert.equal(matches({ locked: true }, "event-document-id", config), true);
   assert.equal(matches({ locked: false, eventType: "modo-liga" }, "event-document-id", config), false);
+});
+
+test("calendar lock scope matches the server's canonical event mapping", () => {
+  const helpers = lockHelperContext();
+  const config = { name: "TREINO MODO LIGA" };
+  assert.deepEqual(
+    Array.from(helpers.bookingLockEventTypes("EventDocumentBb", config)),
+    ["EventDocumentBb", "modo-liga"],
+  );
+  assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "modo-liga" }, "EventDocumentBb", config), true);
+  assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "treino-freitas" }, "EventDocumentBb", config), false);
+  assert.equal(helpers.bookingLockAppliesToEvent({}, "EventDocumentBb", config), true);
+  assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "TREINO MODO LIGA" }, "EventDocumentBb", config), false);
+});
+
+test("initial and refreshed customer calendars use the same lock matching rules", () => {
+  const renderStart = source.indexOf("async function renderScheduleTimes(");
+  const renderEnd = source.indexOf("function highlightSelectedSlot(", renderStart);
+  const refreshStart = source.indexOf("async function updateOccupiedAndRefreshButtons(");
+  const refreshEnd = source.indexOf("\nfunction addTeam(", refreshStart);
+  assert.ok(renderStart >= 0 && renderEnd > renderStart);
+  assert.ok(refreshStart >= 0 && refreshEnd > refreshStart);
+  const initialRender = source.slice(renderStart, renderEnd);
+  const refresh = source.slice(refreshStart, refreshEnd);
+  assert.match(initialRender, /bookingLockAppliesToEvent\(ov,\s*eventType,\s*cfg\)/);
+  assert.match(refresh, /matchesPermanentHourLock\(data,\s*eventType,\s*eventConfig\)/);
+  assert.match(refresh, /bookingLockAppliesToEvent\(ov,\s*eventType,\s*eventConfig\)/);
+  assert.doesNotMatch(refresh, /docEv === curEv/);
 });

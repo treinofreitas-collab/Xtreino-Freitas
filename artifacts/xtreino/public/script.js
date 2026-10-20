@@ -3185,18 +3185,29 @@ function normalizeEventType(t) {
     if (s === 'camp-final' || s === 'final' || s.includes('camp-final') || s.includes('camp final')) return 'camp-final';
     return s;
 }
-function matchesPermanentHourLock(lockData, eventType, eventConfig = {}) {
-    if (!lockData || lockData.locked !== true) return false;
-    if (!lockData.eventType) return true;
-    const lockType = normalizeEventType(lockData.eventType);
-    return [
+function bookingLockEventTypes(eventType, eventConfig = {}) {
+    const values = [
         eventType,
         eventConfig.eventType,
         eventConfig.name,
         eventConfig.label,
-        eventConfig.modo,
-        eventConfig.adminEventId
-    ].filter(Boolean).some(candidate => normalizeEventType(candidate) === lockType);
+        eventConfig.title,
+        eventConfig.modo
+    ].filter(Boolean);
+    const isModoLiga = values.some(value => {
+        const type = String(value || '').toLowerCase().trim().replace(/[\s_]+/g, '-');
+        return type === 'liga' || type === 'acesso' || type.includes('modo-liga');
+    });
+    const canonicalType = isModoLiga ? 'modo-liga' : (eventConfig.eventType || eventType);
+    return [...new Set([eventType, canonicalType].filter(Boolean))];
+}
+function bookingLockAppliesToEvent(lockData, eventType, eventConfig = {}) {
+    if (!lockData || !lockData.eventType) return true;
+    return bookingLockEventTypes(eventType, eventConfig).includes(lockData.eventType);
+}
+function matchesPermanentHourLock(lockData, eventType, eventConfig = {}) {
+    if (!lockData || lockData.locked !== true) return false;
+    return bookingLockAppliesToEvent(lockData, eventType, eventConfig);
 }
 function bookingLockHourValue(record) {
     if (!record) return '';
@@ -5772,9 +5783,7 @@ async function renderScheduleTimes() {
                 const _ovHourM = String(bookingLockHourValue(ov)).match(/^(\d{1,2})/);
                 const ovHour = _ovHourM ? parseInt(_ovHourM[1], 10) : NaN;
                 if (isNaN(ovHour)) return;
-                const ovEv = ov.eventType || null;
-                const match = !ovEv || !eventType || ovEv === eventType || normalizeEventType(ovEv) === normalizeEventType(eventType);
-                if (!match) return;
+                if (!bookingLockAppliesToEvent(ov, eventType, cfg)) return;
                 if (ov.locked === true) lockedHours.add(ovHour);
                 const extraOccupied = Number(ov.extraOccupied || 0);
                 if (extraOccupied > 0) {
@@ -6163,6 +6172,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
 async function updateOccupiedAndRefreshButtons(day, date, eventType, container) {
     const normalizedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
     if (!normalizedDate) return;
+    const eventConfig = getActiveScheduleConfig(eventType) || {};
 
     const cacheKey = `${normalizedDate}__${eventType || 'all'}`;
     const lastDate = window.__lastScheduleDate || null;
@@ -6194,11 +6204,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
             const hours = new Set();
             snap.forEach(doc => {
                 const data = doc.data();
-                if (data.locked !== true) return;
-                const docEv = (data.eventType || '').toLowerCase().replace(/[\s_]/g, '-');
-                const curEv = (eventType || '').toLowerCase().replace(/[\s_]/g, '-');
-                const match = !data.eventType || docEv === curEv || doc.id.startsWith(curEv) || doc.id.startsWith(eventType || '');
-                if (!match) return;
+                if (!matchesPermanentHourLock(data, eventType, eventConfig)) return;
                 const h = parseInt(String(bookingLockHourValue(data)), 10);
                 if (!isNaN(h) && h >= 0 && h <= 23) hours.add(h);
             });
@@ -6222,9 +6228,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
             const _m = String(bookingLockHourValue(ov)).match(/^(\d{1,2})/);
             const ovHour = _m ? parseInt(_m[1], 10) : NaN;
             if (isNaN(ovHour)) return;
-            const ovEv = ov.eventType || null;
-            const match = !ovEv || !eventType || ovEv === eventType || normalizeEventType(ovEv) === normalizeEventType(eventType);
-            if (!match) return;
+            if (!bookingLockAppliesToEvent(ov, eventType, eventConfig)) return;
             if (ov.locked === true) lockedHours.add(ovHour);
             const extraOccupied = Number(ov.extraOccupied || 0);
             if (extraOccupied > 0) {
