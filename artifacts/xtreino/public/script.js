@@ -3198,6 +3198,13 @@ function matchesPermanentHourLock(lockData, eventType, eventConfig = {}) {
         eventConfig.adminEventId
     ].filter(Boolean).some(candidate => normalizeEventType(candidate) === lockType);
 }
+function bookingLockHourValue(record) {
+    if (!record) return '';
+    if (record.hour === 0) return 0;
+    if (record.hour !== undefined && record.hour !== null && record.hour !== '') return record.hour;
+    if (record.hh === 0) return 0;
+    return record.hh ?? '';
+}
 function parseHourFromText(text) {
     const t = String(text || '').toLowerCase();
     const m1 = t.match(/\b(\d{1,2})\s*h\b/); if (m1) { const h = parseInt(m1[1], 10); if (h >= 0 && h <= 23) return `${h}h`; }
@@ -5342,7 +5349,7 @@ async function loadLockedDatesForCalendar(eventType) {
         ovSnap.forEach(d => {
             const data = d.data();
             if (data.eventType !== eventType || !data.locked || !data.date) return;
-            const hh = String(data.hour || data.hh || '').replace(/\D/g, '');
+            const hh = String(bookingLockHourValue(data)).replace(/\D/g, '');
             if (!hh) return;
             if (!lockedByDate[data.date]) lockedByDate[data.date] = new Set();
             lockedByDate[data.date].add(hh);
@@ -5682,7 +5689,7 @@ async function renderScheduleTimes() {
                 snap.forEach(d => {
                     const data = d.data();
                     if (!matchesPermanentHourLock(data, eventType, cfg)) return;
-                    const h = parseInt(String(data.hour || ''), 10);
+                    const h = parseInt(String(bookingLockHourValue(data)), 10);
                     if (!isNaN(h) && h >= 0 && h <= 23) hours.add(h);
                 });
                 window[_initHlCacheKey] = { hours, ts: Date.now() };
@@ -5762,7 +5769,7 @@ async function renderScheduleTimes() {
             _initOvSnap.forEach(doc => {
                 const ov = doc.data();
                 if (ov.date !== date) return;
-                const _ovHourM = String(ov.hour || ov.hh || '').match(/^(\d{1,2})/);
+                const _ovHourM = String(bookingLockHourValue(ov)).match(/^(\d{1,2})/);
                 const ovHour = _ovHourM ? parseInt(_ovHourM[1], 10) : NaN;
                 if (isNaN(ovHour)) return;
                 const ovEv = ov.eventType || null;
@@ -5954,7 +5961,7 @@ async function fetchOccupiedForDate(day, date, eventType) {
                     return; // Ignorar override de data diferente
                 }
 
-                const _hnM = String(ov.hour || ov.hh || '').match(/^(\d{1,2})/);
+                const _hnM = String(bookingLockHourValue(ov)).match(/^(\d{1,2})/);
                 const hourNum = _hnM ? parseInt(_hnM[1], 10) : NaN;
                 if (Number.isNaN(hourNum)) return;
 
@@ -6035,7 +6042,7 @@ async function checkSlotAvailability(date, schedule, eventType) {
                     return; // Ignorar override de data diferente
                 }
 
-                const _ohM = String(ov.hour || ov.hh || '').match(/^(\d{1,2})/);
+                const _ohM = String(bookingLockHourValue(ov)).match(/^(\d{1,2})/);
                 const ovHour = _ohM ? parseInt(_ohM[1], 10) : NaN;
 
                 // Verificar se é o horário que queremos
@@ -6192,7 +6199,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
                 const curEv = (eventType || '').toLowerCase().replace(/[\s_]/g, '-');
                 const match = !data.eventType || docEv === curEv || doc.id.startsWith(curEv) || doc.id.startsWith(eventType || '');
                 if (!match) return;
-                const h = parseInt(String(data.hour || ''), 10);
+                const h = parseInt(String(bookingLockHourValue(data)), 10);
                 if (!isNaN(h) && h >= 0 && h <= 23) hours.add(h);
             });
             window[_hlCacheKey] = { hours, ts: Date.now() };
@@ -6212,7 +6219,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
         ovSnap.forEach(doc => {
             const ov = doc.data();
             if ((ov.date || '') !== normalizedDate) return;
-            const _m = String(ov.hour || ov.hh || '').match(/^(\d{1,2})/);
+            const _m = String(bookingLockHourValue(ov)).match(/^(\d{1,2})/);
             const ovHour = _m ? parseInt(_m[1], 10) : NaN;
             if (isNaN(ovHour)) return;
             const ovEv = ov.eventType || null;

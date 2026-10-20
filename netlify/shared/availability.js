@@ -12,7 +12,7 @@ function invalid(message) {
 }
 
 function hourOf(value) {
-  const match = String(value || "").match(/(\d{1,2})(?:\s*h|\s*:|$)/);
+  const match = String(value ?? "").match(/(\d{1,2})(?:\s*h|\s*:|$)/);
   return match ? Number(match[1]) : null;
 }
 
@@ -74,7 +74,9 @@ async function checkAvailability(db, body) {
   for (const doc of registrations.docs) {
     const record = doc.data();
     if (!ACTIVE_STATUSES.has(record.status)) continue;
-    const hour = hourOf(record.schedule || record.hour || record.time);
+    const hour = [record.schedule, record.hour, record.time]
+      .map(hourOf)
+      .find(value => value != null);
     if (hour != null) counts[hour] = (counts[hour] || 0) + 1;
   }
 
@@ -84,7 +86,7 @@ async function checkAvailability(db, body) {
       return applies(record) && hourOf(record.hour) === hour && record.locked === true;
     });
     const relevantOverrides = overrides.docs.map(doc => doc.data())
-      .filter(record => applies(record) && hourOf(record.hour || record.hh) === hour);
+      .filter(record => applies(record) && (hourOf(record.hour) ?? hourOf(record.hh)) === hour);
     if (locked || relevantOverrides.some(record => record.locked === true)) {
       return { available: false, message: `O horário ${hour}h está bloqueado pelo administrador.` };
     }

@@ -3349,6 +3349,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
             '20:00','21:00','22:00','23:00'];
   }
 
+  function scheduleOverrideHourValue(record) {
+    if (!record) return '';
+    if (record.hour === 0) return 0;
+    if (record.hour !== undefined && record.hour !== null && record.hour !== '') return record.hour;
+    if (record.hh === 0) return 0;
+    return record.hh ?? '';
+  }
+
   // Carrega eventos dinâmicos (adminEvents) no dropdown do board de horários
   async function loadDynamicEventsIntoBoard() {
     const typeEl = document.getElementById('boardEventType');
@@ -3449,7 +3457,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   async function fetchScheduleOverrides(date, eventType, rawEventId = null) {
     const overrides = {};
     try {
-      const { collection: c, query: q, where: w, getDocs: g } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      const { collection: c, query: q, where: w, getDocsFromServer: g } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const ovRef = c(window.firebaseDb, 'schedule_overrides');
       if (!date) return overrides;
 
@@ -3469,7 +3477,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const hasNoType = !rawEt;
         if (!matchesCanon && !matchesAlias && !matchesRawId && !hasNoType) return;
 
-        const hh = extractHour(raw.hour || raw.hh);
+        const hh = extractHour(scheduleOverrideHourValue(raw));
         if (!hh) return;
         const k = `${hh}:00`;
         const agg = overrides[k] || { lockedAny: false, extraOccupied: 0 };
@@ -3480,6 +3488,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       });
     } catch (e) {
       console.error('Erro ao buscar schedule_overrides:', e);
+      throw e;
     }
     
     return overrides;
@@ -3497,17 +3506,13 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   function permanentLockHour(data) {
-    return parseInt(String(data?.hour || '').match(/^(\d+)/)?.[1] || '', 10);
+    return parseInt(String(scheduleOverrideHourValue(data)).match(/^(\d+)/)?.[1] || '', 10);
   }
 
   async function fetchPermanentLockDocs(eventType, rawEventType = null, rawEventId = null) {
-    try {
-      const { collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      const snap = await getDocs(collection(window.firebaseDb, 'event_hour_locks'));
-      return snap.docs.filter(d => permanentLockMatchesEvent(d.data(), eventType, rawEventType, rawEventId));
-    } catch (_) {
-      return [];
-    }
+    const { collection, getDocsFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const snap = await getDocsFromServer(collection(window.firebaseDb, 'event_hour_locks'));
+    return snap.docs.filter(d => permanentLockMatchesEvent(d.data(), eventType, rawEventType, rawEventId));
   }
 
   async function fetchPermanentLockedHours(eventType, rawEventType = null, rawEventId = null) {
@@ -3585,66 +3590,26 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // Busca todos os overrides para um horário (consolidado)
   async function findAllOverridesForHour(date, eventType, hh, rawEventId = null) {
-    
-    const { collection: c, query: q, where: w, getDocs: g } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const { collection: c, query: q, where: w, getDocsFromServer: g } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const ovRef = c(window.firebaseDb, 'schedule_overrides');
-    const toUpdate = new Map();
     const variants = resolveAliases(eventType);
     const canon = canonicalType(eventType);
-    
-    // Incluir ID bruto como variante extra (retrocompat com docs antigos)
-    if (rawEventId && rawEventId !== eventType && !variants.includes(rawEventId)) {
-      variants.push(rawEventId);
-    }
-    
-    // Query com eventType canônico e variações
-    try {
-      const snap1 = await g(q(ovRef, w('date', '==', date), w('eventType', '==', canon), w('hour', '==', hh)));
-      snap1.forEach(d => toUpdate.set(d.id, d));
-    } catch (e) {
-      console.warn('❌ Erro na query eventType canônico:', e.message);
-    }
-    
-    // Query com hh (formato alternativo)
-    try {
-      const snap2 = await g(q(ovRef, w('date', '==', date), w('eventType', '==', canon), w('hh', '==', hh)));
-      snap2.forEach(d => toUpdate.set(d.id, d));
-    } catch (e) {
-      console.warn('❌ Erro na query hh:', e.message);
-    }
-    
-    // Variações de aliases + ID bruto
-    for (const v of variants) {
-      if (!v) continue;
-      try {
-        const snapV = await g(q(ovRef, w('date', '==', date), w('eventType', '==', v), w('hour', '==', hh)));
-        snapV.forEach(d => toUpdate.set(d.id, d));
-      } catch (e) {
-        console.warn(`  ⚠️ Erro variant ${v}:`, e.message);
-      }
-    }
-    
-    // Fallback: todos os docs da data, filtrar em JS (inclui docs com ID bruto antigo)
-    try {
-      const snapAll = await g(q(ovRef, w('date', '==', date)));
-      snapAll.forEach(d => {
-        const raw = d.data() || {};
-        const hhDoc = extractHour(raw.hour || raw.hh);
-        if (!hhDoc || hhDoc !== hh) return;
-        const rawEt = raw.eventType || raw.event_type || '';
-        const docFamily = canonicalType(rawEt);
-        // Incluir se: canonical bate, ID bruto bate (retrocompat), ou sem eventType
-        const matchesCanon = docFamily === canon;
-        const matchesRawId = rawEventId && (rawEt === rawEventId);
-        const hasNoType = !rawEt;
-        if (!matchesCanon && !matchesRawId && !hasNoType) return;
-        toUpdate.set(d.id, d);
-      });
-    } catch (e) {
-      console.warn('❌ Erro ao buscar overrides fallback:', e.message);
-    }
-    
-    return Array.from(toUpdate.values());
+    if (rawEventId && rawEventId !== eventType && !variants.includes(rawEventId)) variants.push(rawEventId);
+
+    // Uma leitura atual da data encontra também horas numéricas e aliases legados.
+    const snap = await g(q(ovRef, w('date', '==', date)));
+    const matches = [];
+    snap.forEach(d => {
+      const raw = d.data() || {};
+      if (extractHour(scheduleOverrideHourValue(raw)) !== hh) return;
+      const rawEt = raw.eventType || raw.event_type || '';
+      const matchesCanon = rawEt && canonicalType(rawEt) === canon;
+      const matchesAlias = rawEt && variants.includes(rawEt);
+      const matchesRawId = rawEventId && rawEt === rawEventId;
+      if (rawEt && !matchesCanon && !matchesAlias && !matchesRawId) return;
+      matches.push(d);
+    });
+    return matches;
   }
 
   // Carrega quadro de horários por data/evento
@@ -3970,7 +3935,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       console.error('❌ Erro em loadBoard:', e.message || e);
       const errorTbody = document.getElementById('boardTbody');
       if (errorTbody) {
-        errorTbody.innerHTML = '<tr><td class="py-3 text-red-600" colspan="3">Não foi possível carregar os horários. Tente novamente.</td></tr>';
+        errorTbody.innerHTML = '<tr><td class="py-3 text-red-600" colspan="3">Não foi possível confirmar os horários e as travas agora. Clique em Carregar para tentar novamente.</td></tr>';
       }
     } finally {
       _isLoadingBoard = false;

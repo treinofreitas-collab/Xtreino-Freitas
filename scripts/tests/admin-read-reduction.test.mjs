@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 
 const base = '../../artifacts/xtreino/public/';
 const source = readFileSync(new URL(`${base}admin.js`, import.meta.url), 'utf8');
+const bookingSource = readFileSync(new URL(`${base}script.js`, import.meta.url), 'utf8');
 const controls = readFileSync(new URL(`${base}js/admin-read-control.js`, import.meta.url), 'utf8');
 const html = readFileSync(new URL(`${base}admin.html`, import.meta.url), 'utf8');
 const quiet = { error() {}, warn() {}, log() {} };
@@ -386,4 +387,91 @@ test('permanent hour locks match canonical event types and the raw Firestore eve
     assert.equal(matches({ eventType: 'TREINO MODO LIGA' }, 'modo-liga', 'event-document-id'), true);
     assert.equal(matches({ eventType: 'treino-freitas' }, 'modo-liga', 'event-document-id'), false);
     assert.equal(matches({}, 'modo-liga', 'event-document-id'), true);
+});
+
+test('numeric midnight values are preserved by booking and admin hour normalization', () => {
+    for (const [fileSource, helperName, endMarker] of [
+        [bookingSource, 'bookingLockHourValue', '\nfunction parseHourFromText'],
+        [source, 'scheduleOverrideHourValue', '\n\n  // Carrega eventos dinâmicos'],
+    ]) {
+        const from = fileSource.indexOf(`function ${helperName}(`);
+        const to = fileSource.indexOf(endMarker, from);
+        assert.ok(from >= 0 && to > from);
+        const context = vm.createContext({});
+        vm.runInContext(fileSource.slice(from, to), context);
+        assert.equal(context[helperName]({ hour: 0 }), 0);
+        assert.equal(context[helperName]({ hh: 0 }), 0);
+        assert.equal(context[helperName]({ hour: '', hh: '00:00' }), '00:00');
+    }
+});
+
+test('admin lock inspection reads current server data and surfaces read failures', async () => {
+    const from = source.indexOf('  async function fetchPermanentLockDocs(');
+    const to = source.indexOf('\n\n  async function fetchPermanentLockedHours', from);
+    assert.ok(from >= 0 && to > from);
+    let reads = 0;
+    const context = vm.createContext({
+        window: { firebaseDb: {} },
+        permanentLockMatchesEvent: data => data.eventType === 'modo-liga',
+        firebase: async () => ({
+            collection: () => 'event_hour_locks',
+            getDocsFromServer: async () => {
+                reads++;
+                return { docs: [{ id: 'midnight', data: () => ({ eventType: 'modo-liga', hour: 0, locked: true }) }] };
+            },
+        }),
+    });
+    vm.runInContext(snippet(
+        '  async function fetchPermanentLockDocs(',
+        '\n\n  async function fetchPermanentLockedHours',
+    ), context);
+    const result = await context.fetchPermanentLockDocs('modo-liga');
+    assert.equal(reads, 1);
+    assert.equal(result.map(doc => doc.id).join(','), 'midnight');
+
+    context.firebase = async () => ({
+        collection: () => 'event_hour_locks',
+        getDocsFromServer: async () => { throw new Error('offline'); },
+    });
+    await assert.rejects(context.fetchPermanentLockDocs('modo-liga'), /offline/);
+});
+
+test('unlocking a midnight date override finds the numeric record with one fresh date query', async () => {
+    let reads = 0;
+    const rows = [
+        { id: 'global-midnight', data: () => ({ date: '2026-10-21', hour: 0, locked: true }) },
+        { id: 'modo-alias-midnight', data: () => ({ date: '2026-10-21', eventType: 'TREINO MODO LIGA', hh: '00:00', locked: true }) },
+        { id: 'other-event-midnight', data: () => ({ date: '2026-10-21', eventType: 'treino-freitas', hour: 0, locked: true }) },
+        { id: 'modo-next-hour', data: () => ({ date: '2026-10-21', eventType: 'modo-liga', hour: 1, locked: true }) },
+    ];
+    const context = vm.createContext({
+        window: { firebaseDb: {} },
+        canonicalType(value) {
+            const normalized = String(value || '').toLowerCase().replace(/[\s_]/g, '-');
+            return normalized.includes('modo-liga') || normalized === 'liga' ? 'modo-liga' : normalized;
+        },
+        resolveAliases: () => ['modo-liga', 'liga', 'TREINO MODO LIGA'],
+        scheduleOverrideHourValue(record) {
+            if (record.hour === 0) return 0;
+            if (record.hour !== undefined && record.hour !== null && record.hour !== '') return record.hour;
+            return record.hh ?? '';
+        },
+        extractHour(value) {
+            const match = String(value ?? '').match(/(\d{1,2})/);
+            return match ? String(parseInt(match[1], 10)).padStart(2, '0') : null;
+        },
+        firebase: async () => ({
+            collection: () => 'schedule_overrides',
+            where: (...args) => args,
+            query: (...args) => args,
+            getDocsFromServer: async () => { reads++; return { forEach: fn => rows.forEach(fn) }; },
+        }),
+    });
+    vm.runInContext(snippet(
+        '  async function findAllOverridesForHour(',
+        '\n\n  // Carrega quadro de horários por data/evento',
+    ), context);
+    const result = await context.findAllOverridesForHour('2026-10-21', 'modo-liga', '00', 'event-id');
+    assert.equal(reads, 1);
+    assert.equal(result.map(doc => doc.id).join(','), 'global-midnight,modo-alias-midnight');
 });

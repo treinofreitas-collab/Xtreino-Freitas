@@ -162,6 +162,24 @@ test("Modo Liga midnight slot still respects manual admin locks", async () => {
   assert.match(result.message, /bloqueado pelo administrador/);
 });
 
+test("midnight locks stored as numeric zero are interpreted as 00:00", async () => {
+  const lockedEventHour = await checkAvailability(database({
+    "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
+    "event_hour_locks/numeric-midnight": { eventType: "modo-liga", hour: 0, locked: true },
+  }), saturdayMidnightLiga);
+  assert.equal(lockedEventHour.available, false);
+  assert.match(lockedEventHour.message, /horário 0h está bloqueado/);
+
+  const lockedDateHour = await checkAvailability(database({
+    "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
+    "schedule_overrides/numeric-midnight": {
+      date: saturdayMidnightLiga.date, eventType: "modo-liga", hour: 0, locked: true,
+    },
+  }), saturdayMidnightLiga);
+  assert.equal(lockedDateHour.available, false);
+  assert.match(lockedDateHour.message, /horário 0h está bloqueado/);
+});
+
 test("midnight reservations are restricted using the resolved event type", async () => {
   const db = database({
     "adminEvents/EventDocumentBb": {
