@@ -177,6 +177,7 @@ async function buildPurchase(uid, body, method) {
     const checkout = existing.data();
     if (checkout.userId !== uid) fail("Esta compra não pertence à sua conta.", 403);
     if (checkout.method !== method) fail("Esta compra já usa outra forma de pagamento.");
+    if (checkout.status === "cancelled") fail("Este checkout foi cancelado. Inicie uma nova compra.");
     if (body.unit_price != null && toCents(body.unit_price) !== checkout.amountCents) {
       fail("O preço exibido não corresponde a este pedido. Confira a compra antes de continuar.");
     }
