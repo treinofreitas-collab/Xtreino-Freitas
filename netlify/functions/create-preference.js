@@ -11,9 +11,6 @@ exports.handler = async event => {
     const body = parseJsonBody(event);
     const { checkoutRef, checkout } = await preparePurchase(user.uid, body, "mercadopago");
     if (checkout.status === "paid") return jsonResponse(409, { error: "Pedido já pago." });
-    if (checkout.pixPaymentId || checkout.pixPaymentStatus === "creating") {
-      return jsonResponse(409, { error: "Este pedido já tem um Pix em andamento. Continue pelo QR Code aberto." });
-    }
     if (checkout.paymentUrl) return jsonResponse(200, { init_point: checkout.paymentUrl, external_reference: checkout.externalReference });
     const backUrl = safeBackUrl(body.back_url);
     const response = await fetch("https://api.mercadopago.com/checkout/preferences", {

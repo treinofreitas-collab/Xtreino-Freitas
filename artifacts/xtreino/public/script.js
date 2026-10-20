@@ -2272,6 +2272,71 @@ function updateCouponUI() {
             removeBtn.onclick = removeCoupon;
             removeBtn.className = 'px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors';
             removeBtn.innerHTML = '<i class="fas fa-times mr-2"></i>Remover';
+            // Adicionar na mesma div flex que contém o botão Aplicar
+            const applyBtn = couponContainer.querySelector('button[onclick="applyCoupon()"]');
+            if (applyBtn && applyBtn.parentElement) {
+                applyBtn.parentElement.appendChild(removeBtn);
+            } else {
+                couponContainer.appendChild(removeBtn);
+            }
+        }
+        removeBtn.style.display = '';
+    } else {
+        // Ocultar botão se não há cupom
+        if (removeBtn) {
+            removeBtn.style.display = 'none';
+        }
+    }
+}
+
+// Remover cupom aplicado
+function removeCoupon() {
+    if (!appliedCoupon) return;
+
+    const couponCode = appliedCoupon.code;
+    appliedCoupon = null;
+
+    // Recalcular preço sem desconto
+    if (currentProduct) {
+        updatePurchaseTotal(currentProduct);
+    }
+
+    // Limpar campo de input e reabilitar
+    const couponInput = document.getElementById('couponCodeInput');
+    if (couponInput) {
+        couponInput.value = '';
+        couponInput.disabled = false;
+        couponInput.focus();
+    }
+
+    // Atualizar UI
+    updateCouponUI();
+
+    // Mostrar mensagem
+    showCouponMessage(`Cupom "${couponCode}" removido`, 'success');
+
+    
+}
+
+// Atualizar UI do cupom (mostrar/ocultar botão de remover)
+function updateCouponUI() {
+    const couponInput = document.getElementById('couponCodeInput');
+    const couponContainer = couponInput?.parentElement;
+
+    if (!couponContainer) return;
+
+    // Verificar se já existe botão de remover
+    let removeBtn = document.getElementById('removeCouponBtn');
+
+    if (appliedCoupon) {
+        // Se não existe, criar o botão
+        if (!removeBtn) {
+            removeBtn = document.createElement('button');
+            removeBtn.id = 'removeCouponBtn';
+            removeBtn.type = 'button';
+            removeBtn.onclick = removeCoupon;
+            removeBtn.className = 'px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors';
+            removeBtn.innerHTML = '<i class="fas fa-times mr-2"></i>Remover';
             // Adicionar após o botão Aplicar ou campo de input
             const applyBtn = couponContainer.querySelector('button[onclick="applyCoupon()"]');
             if (applyBtn) {
@@ -2298,21 +2363,9 @@ function getDiscountText(coupon) {
     }
 }
 
-function isValidBrazilianCpf(value) {
-    const digits = String(value || '').replace(/\D/g, '');
-    if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
-    const digitAt = length => {
-        let sum = 0;
-        for (let index = 0; index < length; index++) sum += Number(digits[index]) * (length + 1 - index);
-        const remainder = (sum * 10) % 11;
-        return remainder === 10 ? 0 : remainder;
-    };
-    return digitAt(9) === Number(digits[9]) && digitAt(10) === Number(digits[10]);
-}
 
 async function handlePurchase(event) {
     event.preventDefault();
-    const payByPix = event.submitter?.value === 'pix';
     const product = products[currentProduct];
     if (!product) {
         showError('PRODUCT_001', 'PRODUCT_001');
@@ -2358,15 +2411,6 @@ async function handlePurchase(event) {
     const formData = new FormData(event.target);
     const customerName = formData.get('name') || document.querySelector('#purchaseModal input[type="text"]')?.value || '';
     const customerEmail = formData.get('email') || document.querySelector('#purchaseModal input[type="email"]')?.value || '';
-    const pixCpf = document.getElementById('purchasePixCpf')?.value
-        || '';
-    if (payByPix && !isValidBrazilianCpf(pixCpf)) {
-        document.getElementById('purchasePixCpfWrap')?.classList.remove('hidden');
-        document.getElementById('purchasePixCpf')?.focus();
-        showToast('info', 'Informe um CPF válido para gerar o Pix.', 'CPF necessário');
-        return;
-    }
-    if (payByPix) document.getElementById('purchasePixCpfWrap')?.classList.remove('hidden');
 
     // Coletar opções específicas do produto
     let productOptions = {};
@@ -2389,7 +2433,7 @@ async function handlePurchase(event) {
     }
 
     // Pegar botão de submit para mostrar loading
-    const submitBtn = event.submitter || event.target.querySelector('button[type="submit"]');
+    const submitBtn = event.target.querySelector('button[type="submit"]');
     const originalBtnText = submitBtn?.textContent || 'Finalizar (Mercado Pago)';
     if (submitBtn) {
         submitBtn.disabled = true;
@@ -2480,8 +2524,7 @@ async function handlePurchase(event) {
             quantity: 1,
             back_url: `${window.location.origin}/${_affBackParam}`,
             coupon_info: couponInfo,
-            external_reference: externalRef,
-            ...(payByPix ? { payer_cpf: String(pixCpf).replace(/\D/g, '') } : {})
+            external_reference: externalRef
         };
 
         
@@ -2489,8 +2532,7 @@ async function handlePurchase(event) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
 
-        const response = await authenticatedPaymentFetch(
-            payByPix ? '/.netlify/functions/create-pix-payment' : '/.netlify/functions/create-preference', {
+        const response = await authenticatedPaymentFetch('/.netlify/functions/create-preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(preferencePayload),
@@ -2521,15 +2563,9 @@ async function handlePurchase(event) {
         const data = await response.json();
         
 
+        // Verificar se tem init_point ou sandbox_init_point
         const checkoutUrl = data.init_point || data.sandbox_init_point;
-        if (payByPix && data.status !== 'paid' && (!data.qr_code || !data.qr_code_base64)) {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalBtnText;
-            }
-            throw new Error(data.error || 'Não foi possível gerar o QR Code Pix.');
-        }
-        if (!payByPix && !checkoutUrl) {
+        if (!checkoutUrl) {
             
             if (submitBtn) {
                 submitBtn.disabled = false;
@@ -2563,22 +2599,6 @@ async function handlePurchase(event) {
         }
 
         closePurchaseModal();
-
-        if (payByPix) {
-            if (data.status === 'paid') {
-                showToast('success', 'Pagamento já confirmado. Confira sua conta.', 'Compra confirmada');
-                return;
-            }
-            window.openPixModal(
-                data,
-                [],
-                data.external_reference || externalRef,
-                [],
-                { label: product.name, kind: 'product' },
-                totalNum
-            );
-            return;
-        }
 
         // Redireciona para o checkout do Mercado Pago
         try {
@@ -6500,14 +6520,10 @@ function _updateFreeSlotPaymentUI() {
     const eventType = modal.dataset?.eventType || '';
     const cfg = scheduleConfig[eventType] || {};
     const isFreeEvent = (cfg.price === 0 || cfg.isFree === true) && !cfg.isProduct;
+    if (isFreeEvent) return; // evento naturalmente grátis — sem mudança
+
     const payTokensBtn = document.getElementById('schedPayTokens');
     const submitBtn    = document.getElementById('schedSubmit');
-    const pixSubmitBtn = document.getElementById('schedPixSubmit');
-    if (isFreeEvent) {
-        if (pixSubmitBtn) pixSubmitBtn.style.display = 'none';
-        return;
-    }
-    if (pixSubmitBtn) pixSubmitBtn.style.display = '';
     if (!payTokensBtn || !submitBtn) return;
 
     // Verificar se algum horário selecionado é slot liberado manualmente pelo admin
@@ -6541,10 +6557,6 @@ function _updateFreeSlotPaymentUI() {
         submitBtn.className = 'w-full text-white py-3.5 px-4 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 shadow-lg';
         submitBtn.innerHTML = `🏆 ${priceLabel ? `Pagar ${priceLabel} e ` : ''}Concorrer à Premiação`;
         submitBtn.onclick = () => { if (!window._freeSlotChoice) window._freeSlotChoice = 'pagar'; };
-        if (pixSubmitBtn) {
-            pixSubmitBtn.innerHTML = `🏆 ${priceLabel ? `Pagar ${priceLabel} e ` : ''}Concorrer com Pix`;
-            pixSubmitBtn.onclick = () => { window._freeSlotChoice = 'pagar'; };
-        }
     } else {
         // Restaurar botões originais
         payTokensBtn.className = 'w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-yellow-900 py-3 px-4 rounded-xl font-bold transition-colors text-sm flex items-center justify-center gap-2';
@@ -6554,12 +6566,8 @@ function _updateFreeSlotPaymentUI() {
 
         submitBtn.className = 'w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3.5 px-4 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 shadow-lg';
         submitBtn.style.background = '';
-        submitBtn.innerHTML = '<i class="fas fa-lock text-xs"></i> Cartão e outros (Mercado Pago)';
+        submitBtn.innerHTML = '<i class="fas fa-lock text-xs"></i> Pagar com PIX ou Cartão';
         submitBtn.onclick = null;
-        if (pixSubmitBtn) {
-            pixSubmitBtn.innerHTML = '<i class="fas fa-qrcode text-xs"></i> Gerar Pix e pagar neste site';
-            pixSubmitBtn.onclick = null;
-        }
         window._freeSlotChoice = null;
     }
 }
@@ -6742,16 +6750,6 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
             
             return;
         }
-        const pixCpf = document.getElementById('purchasePixCpf')?.value
-            || document.getElementById('schedPixCpf')?.value
-            || '';
-        if (paymentMethod === 'pix' && !isValidBrazilianCpf(pixCpf)) {
-            document.getElementById('schedPixCpfWrap')?.classList.remove('hidden');
-            document.getElementById('schedPixCpf')?.focus();
-            alert('Informe um CPF válido para gerar o Pix.');
-            return;
-        }
-        if (paymentMethod === 'pix') document.getElementById('schedPixCpfWrap')?.classList.remove('hidden');
 
         // Inicializar variáveis
         let docRef = null;
@@ -6821,15 +6819,13 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
             quantity: 1,
             back_url: window.location.origin,
             external_reference: externalRef,
-            couponCode: _prodCoupon?.code || null,
-            ...(paymentMethod === 'pix' ? { payer_cpf: String(pixCpf).replace(/\D/g, '') } : {})
+            couponCode: _prodCoupon?.code || null
         };
 
         
         let response;
         try {
-            response = await authenticatedPaymentFetch(
-                paymentMethod === 'pix' ? '/.netlify/functions/create-pix-payment' : '/.netlify/functions/create-preference', {
+            response = await authenticatedPaymentFetch('/.netlify/functions/create-preference', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(preferencePayload)
@@ -6860,34 +6856,15 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
         const data = await response.json().catch((e) => { return null; });
         
 
+        // Verificar se tem init_point ou sandbox_init_point
         const checkoutUrl = data.init_point || data.sandbox_init_point;
-        if (paymentMethod === 'pix' && data.status !== 'paid' && (!data.qr_code || !data.qr_code_base64)) {
-            storeCheckoutFailure({ location: 'product', payload: preferencePayload, responseStatus: response.status, responseJson: data, errorMessage: 'Pix QR data missing' });
-            throw new Error(data.error || 'Não foi possível gerar o QR Code Pix.');
-        }
-        if (paymentMethod !== 'pix' && !checkoutUrl) {
+        if (!checkoutUrl) {
             
             storeCheckoutFailure({ location: 'product', payload: preferencePayload, responseStatus: response.status, responseJson: data, errorMessage: 'No checkout URL in response' });
             throw new Error('Não foi possível obter o link de pagamento. Verifique se o Mercado Pago está configurado corretamente.');
         }
 
         closeScheduleModal();
-
-        if (paymentMethod === 'pix') {
-            if (data.status === 'paid') {
-                showToast('success', 'Pagamento já confirmado. Confira Meus Produtos.', 'Compra confirmada');
-                return;
-            }
-            window.openPixModal(
-                data,
-                [],
-                data.external_reference || externalRef,
-                [],
-                { ...cfg, label: cfg.label || 'Produto', kind: 'product' },
-                finalPrice
-            );
-            return;
-        }
 
         // Redireciona para o checkout do Mercado Pago
         try {
@@ -6916,14 +6893,9 @@ async function submitSchedule(e, useTokens = false) {
     if (window._scheduleSubmitting) return;
     window._scheduleSubmitting = true;
     const submitBtn = document.getElementById('schedSubmit');
-    const pixSubmitBtn = document.getElementById('schedPixSubmit');
     const tokenBtn = document.getElementById('schedPayTokens');
-    const paymentMethod = useTokens ? 'tokens' : (e.submitter?.value === 'pix' ? 'pix' : 'mercadopago');
-    const paymentButton = paymentMethod === 'pix' ? pixSubmitBtn : submitBtn;
-    const oldText = paymentButton ? paymentButton.textContent : '';
-    if (submitBtn) submitBtn.disabled = true;
-    if (pixSubmitBtn) pixSubmitBtn.disabled = true;
-    if (paymentButton) paymentButton.textContent = 'Processando...';
+    const oldText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Processando...'; }
     if (tokenBtn) tokenBtn.disabled = true;
 
     try {
@@ -6949,8 +6921,9 @@ async function submitSchedule(e, useTokens = false) {
             if (useTokens) {
                 await handleProductPurchaseWithTokens(eventType, productCfg);
             } else {
-                await handleProductPurchase(eventType, productCfg, paymentMethod);
+                await handleProductPurchase(eventType, productCfg);
             }
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
 
@@ -6977,16 +6950,6 @@ async function submitSchedule(e, useTokens = false) {
             alert('Selecione pelo menos um horário.');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
-        }
-        if (paymentMethod === 'pix') {
-            const payerCpf = document.getElementById('schedPixCpf')?.value || '';
-            if (!isValidBrazilianCpf(payerCpf)) {
-                document.getElementById('schedPixCpfWrap')?.classList.remove('hidden');
-                document.getElementById('schedPixCpf')?.focus();
-                alert('Informe um CPF válido para gerar o Pix.');
-                return;
-            }
-            document.getElementById('schedPixCpfWrap')?.classList.remove('hidden');
         }
 
         // --- CAPTURAR DADOS DOS TIMES DIRETAMENTE DO DOM ---
@@ -7197,7 +7160,7 @@ async function submitSchedule(e, useTokens = false) {
                 // continua o fluxo normal de pagamento abaixo com finalPrice corrigido
             } else if (finalPrice === 0) {
                 // Nenhuma escolha capturada e sem pagamento pendente → overlay de segurança
-                _showFreeSlotChoiceModal(rawEventType, cfg, teamsData, datesToUse, selectedTimes, paymentButton, oldText);
+                _showFreeSlotChoiceModal(rawEventType, cfg, teamsData, datesToUse, selectedTimes, submitBtn, oldText);
                 return;
             }
             // Se choice === null mas finalPrice > 0 (slots mistos sem escolha), prossegue normalmente
@@ -7337,9 +7300,6 @@ async function submitSchedule(e, useTokens = false) {
                     back_url: `${_earlyHost}/${_earlyAffParam}`,
                     coupon_info: couponInfo,
                     external_reference: externalRef,
-                    ...(paymentMethod === 'pix' ? {
-                        payer_cpf: String(document.getElementById('schedPixCpf')?.value || '').replace(/\D/g, '')
-                    } : {}),
                     forcePay: window._freeSlotForcePay === true,
                     multiple_reservations: {
                         teams: teamsData.map(t => t.name),
@@ -7349,8 +7309,7 @@ async function submitSchedule(e, useTokens = false) {
                     }
                 };
                 // Só enviar após as reservas serem persistidas; o servidor precisa lê-las.
-                _prefFetchPromise = () => authenticatedPaymentFetch(
-                    paymentMethod === 'pix' ? '/.netlify/functions/create-pix-payment' : '/.netlify/functions/create-preference', {
+                _prefFetchPromise = () => authenticatedPaymentFetch('/.netlify/functions/create-preference', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(_earlyPrefPayload)
@@ -7402,10 +7361,8 @@ async function submitSchedule(e, useTokens = false) {
         };
 
         try {
-            if (paymentButton) paymentButton.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Gerando pagamento...';
-            if (typeof showToast === 'function') {
-                showToast('info', paymentMethod === 'pix' ? 'Gerando QR Code Pix...' : 'Conectando ao Mercado Pago, aguarde...', 'Pagamento', 20000);
-            }
+            if (submitBtn) { submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Aguarde...'; }
+            if (typeof showToast === 'function') showToast('info', 'Conectando ao Mercado Pago, aguarde...', 'Pagamento', 20000);
 
             // As reservas já foram gravadas; agora solicitar o checkout seguro.
             let resp;
@@ -7449,16 +7406,10 @@ async function submitSchedule(e, useTokens = false) {
 
             localStorage.setItem('pendingPaymentRefs', JSON.stringify([externalRef]));
             const checkoutUrl = data.init_point || data.sandbox_init_point;
-            if (paymentMethod === 'pix' && data.status !== 'paid' && (!data.qr_code || !data.qr_code_base64)) {
-                await _cleanupPendingRegs();
-                alert(data.error || 'Não foi possível gerar o QR Code Pix. Tente novamente.');
-                if (paymentButton) { paymentButton.disabled = false; paymentButton.textContent = oldText; }
-                return;
-            }
-            if (paymentMethod !== 'pix' && !checkoutUrl) {
+            if (!checkoutUrl) {
                 await _cleanupPendingRegs();
                 alert('Não foi possível obter o link de pagamento. Tente novamente.');
-                if (paymentButton) { paymentButton.disabled = false; paymentButton.textContent = oldText; }
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
             }
 
@@ -7481,20 +7432,7 @@ async function submitSchedule(e, useTokens = false) {
             }
 
             closeScheduleModal();
-            if (paymentButton) { paymentButton.disabled = false; paymentButton.textContent = oldText; }
-            if (paymentMethod === 'pix') {
-                if (data.status === 'paid') {
-                    showToast('success', 'Pagamento já confirmado. Confira sua conta.', 'Compra confirmada');
-                    return;
-                }
-                window.openPixModal(data, regIds, data.external_reference || externalRef, assignedSlotsData, {
-                    ...cfg,
-                    label: cfg.label || rawEventType,
-                    kind: 'event',
-                    eventType: rawEventType,
-                }, finalPrice);
-                return;
-            }
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             try { sessionStorage.setItem('lastCheckoutUrl', checkoutUrl); } catch (_) {}
             // Redireciona direto na mesma aba — evita bloqueio de popup
             window.location.href = checkoutUrl;
@@ -7512,9 +7450,6 @@ async function submitSchedule(e, useTokens = false) {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
     } finally {
         window._scheduleSubmitting = false;
-        if (submitBtn) submitBtn.disabled = false;
-        if (pixSubmitBtn) pixSubmitBtn.disabled = false;
-        if (paymentButton) paymentButton.textContent = oldText;
         const _tb = document.getElementById('schedPayTokens');
         if (_tb) _tb.disabled = false;
     }
@@ -9702,36 +9637,16 @@ let _pixPollingInterval = null;
 let _pixCountdownInterval = null;
 let _pixCancelFn = null;
 let _pixConfirmFn = null;
-let _pixCurrentReference = null;
-let _pixKind = 'event';
-let _pixEventType = '';
-let _pixPaymentConfirmed = false;
 
 window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, cfg, finalPrice) {
     const modal = document.getElementById('pixPaymentModal');
     if (!modal) return;
-    clearInterval(_pixPollingInterval);
-    clearInterval(_pixCountdownInterval);
-    _pixCurrentReference = externalRef;
-    _pixKind = cfg?.kind || (assignedSlotsData?.length ? 'event' : 'product');
-    _pixEventType = cfg?.eventType || '';
-    _pixPaymentConfirmed = false;
 
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     document.getElementById('pixLoading').classList.add('hidden');
     document.getElementById('pixContent').classList.remove('hidden');
     document.getElementById('pixConfirmed').classList.add('hidden');
-    const cancelButton = document.getElementById('pixCancelButton');
-    const confirmCloseButton = document.getElementById('pixConfirmedCloseButton');
-    if (cancelButton) {
-        cancelButton.disabled = false;
-        cancelButton.textContent = _pixKind === 'event' ? 'Cancelar e liberar vaga' : 'Cancelar pagamento';
-        cancelButton.classList.remove('hidden');
-    }
-    if (confirmCloseButton) {
-        confirmCloseButton.textContent = _pixKind === 'event' ? 'Ver Minha Conta' : 'Fechar';
-    }
 
     const label = (cfg && cfg.label) ? cfg.label : 'Evento';
     document.getElementById('pixEventLabel').textContent = label;
@@ -9745,19 +9660,10 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         document.getElementById('pixCopiaCola').value = pixData.qr_code;
     }
 
-    const expirationMs = Date.parse(pixData.date_of_expiration || '');
-    let secondsLeft = Number.isFinite(expirationMs)
-        ? Math.max(0, Math.floor((expirationMs - Date.now()) / 1000))
-        : 30 * 60;
+    let secondsLeft = 29 * 60 + 59;
+    clearInterval(_pixCountdownInterval);
     _pixCountdownInterval = setInterval(() => {
-        if (secondsLeft <= 0) {
-            clearInterval(_pixCountdownInterval);
-            const cd = document.getElementById('pixCountdown');
-            if (cd) cd.textContent = 'Expirado';
-            const status = document.getElementById('pixStatusText');
-            if (status) status.textContent = 'Pix expirado. Cancele para liberar a vaga e tente novamente.';
-            return;
-        }
+        if (secondsLeft <= 0) { clearInterval(_pixCountdownInterval); const cd = document.getElementById('pixCountdown'); if (cd) cd.textContent = 'Expirado'; return; }
         const m = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
         const s = String(secondsLeft % 60).padStart(2, '0');
         const cd = document.getElementById('pixCountdown');
@@ -9766,33 +9672,16 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     }, 1000);
 
     _pixCancelFn = async () => {
-        const button = document.getElementById('pixCancelButton');
-        if (button) { button.disabled = true; button.textContent = 'Cancelando...'; }
-        try {
-            const response = await authenticatedPaymentFetch('/.netlify/functions/cancel-pix-payment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ external_reference: _pixCurrentReference }),
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data.error || 'Não foi possível cancelar o Pix.');
-            if (data.status === 'paid' || data.status === 'already_paid') {
-                if (typeof _pixConfirmFn === 'function') await _pixConfirmFn();
-                return;
-            }
-            if (data.status !== 'cancelled') throw new Error('O cancelamento ainda não foi confirmado.');
-            clearInterval(_pixPollingInterval);
-            clearInterval(_pixCountdownInterval);
-            const currentModal = document.getElementById('pixPaymentModal');
-            if (currentModal) { currentModal.classList.add('hidden'); currentModal.classList.remove('flex'); }
-            showToast('success', _pixKind === 'event' ? 'Pix cancelado e vaga liberada.' : 'Pix cancelado.', 'Pagamento');
-        } catch (error) {
-            if (button) {
-                button.disabled = false;
-                button.textContent = _pixKind === 'event' ? 'Cancelar e liberar vaga' : 'Cancelar pagamento';
-            }
-            showToast('error', error.message || 'Não foi possível cancelar agora. A reserva continua ativa.', 'Cancelamento');
+        clearInterval(_pixPollingInterval);
+        clearInterval(_pixCountdownInterval);
+        if (regIds && regIds.length) {
+            try {
+                const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+                await Promise.all(regIds.map(id => deleteDoc(doc(window.firebaseDb, 'registrations', id))));
+            } catch (_) {}
         }
+        const modal = document.getElementById('pixPaymentModal');
+        if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
     };
 
     _pixConfirmFn = async () => {
@@ -9804,20 +9693,10 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         if (pixContentEl) pixContentEl.classList.add('hidden');
         if (pixConfirmedEl) pixConfirmedEl.classList.remove('hidden');
         const slotInfoEl = document.getElementById('pixSlotInfo');
-        const titleEl = document.getElementById('pixConfirmedTitle');
-        const descriptionEl = document.getElementById('pixConfirmedDescription');
-        _pixPaymentConfirmed = true;
-        if (titleEl) titleEl.textContent = _pixKind === 'event' ? 'Pagamento confirmado!' : 'Compra confirmada!';
-        if (descriptionEl) descriptionEl.textContent = _pixKind === 'event'
-            ? 'Sua inscrição está garantida.'
-            : 'Pagamento aprovado. Confira o pedido na sua conta.';
-        if (slotInfoEl) slotInfoEl.classList.toggle('hidden', _pixKind !== 'event');
-        const cancelButton = document.getElementById('pixCancelButton');
-        if (cancelButton) cancelButton.classList.add('hidden');
         if (slotInfoEl && assignedSlotsData && assignedSlotsData.length) {
             slotInfoEl.innerHTML = assignedSlotsData.map(function(s) {
                 // Para modo-liga: exibir letra no círculo em vez do número
-                var _isModoLiga = _pixEventType === 'modo-liga';
+                var _isModoLiga = rawEventType === 'modo-liga';
                 var _slotRaw = s.slotDisplay ? s.slotDisplay.replace(/^(Letra\s*|Slot\s*#?|Vaga\s*#?)/i, '').trim() : '';
                 var _slotBadge;
                 if (_isModoLiga) {
@@ -9892,10 +9771,7 @@ function _pixFallbackCopy(input) {
 }
 
 window.cancelPixPayment = function() {
-    const confirmation = _pixKind === 'event'
-        ? 'O Mercado Pago será consultado. A vaga só será liberada depois da confirmação do cancelamento.'
-        : 'O Mercado Pago será consultado antes de cancelar a compra.';
-    if (confirm(confirmation)) {
+    if (confirm('Cancelar o pagamento? Sua inscrição pendente será removida.')) {
         if (typeof _pixCancelFn === 'function') _pixCancelFn();
     }
 };
@@ -9905,9 +9781,7 @@ window.closePixModal = function() {
     clearInterval(_pixCountdownInterval);
     const modal = document.getElementById('pixPaymentModal');
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-    if (_pixPaymentConfirmed && _pixKind === 'event') {
-        try { window.location.href = 'client.html?tab=myRegistrations'; } catch (_) {}
-    }
+    try { window.location.href = 'client.html?tab=myRegistrations'; } catch (_) {}
 };
 
 // ==================== SISTEMA DE TIMES ====================
