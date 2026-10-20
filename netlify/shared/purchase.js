@@ -1,5 +1,6 @@
 const { getAdmin } = require("./firebase-admin");
 const { toCents, validateApprovedPayment } = require("./token-purchase");
+const { findAffiliateRef } = require("./credit-token-order");
 const { isDeepStrictEqual } = require("node:util");
 const CAMP_SEASON_7_START_DATE = "2026-11-15";
 
@@ -207,11 +208,22 @@ async function buildPurchase(uid, body, method) {
   if (body.unit_price != null && toCents(body.unit_price) !== discount.amountCents) {
     fail("O preço mudou. Reabra o produto ou evento antes de pagar.");
   }
+  const affiliateCodes = [...new Set(sources
+    .map(source => source.data().affiliateCode)
+    .filter(code => typeof code === "string" && code.trim())
+    .map(code => code.trim()))];
+  const affiliateRef = affiliateCodes.length === 1
+    ? await findAffiliateRef(db, affiliateCodes[0])
+    : null;
+  const firstSource = sources[0].data();
   const checkout = {
     userId: uid, kind, method, externalReference: reference, orderId: reference,
     sourcePaths: sources.map(s => s.ref.path), sourceAmountCents: prices.map(p => p.cents),
     title: kind === "product" ? product.title : `${prices[0].title} (${sources.length} reserva(s))`,
     originalCents, ...discount, status: "pending", currency: "BRL",
+    ...(affiliateRef ? { affiliateId: affiliateRef.id } : {}),
+    customerEmail: firstSource.email || firstSource.buyerEmail || firstSource.customer || null,
+    customerName: firstSource.teamName || firstSource.customerName || null,
     ...(product ? { downloadLink: product.downloadLink, productCategory: product.productCategory } : {}),
   };
   return { db, checkoutRef, checkout, sources, existing: false };
@@ -246,8 +258,12 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
   const admin = getAdmin();
   const db = admin.firestore();
   const checkoutRef = db.collection("purchase_checkouts").doc(reference);
+  const existingCheckout = await checkoutRef.get();
+  const affiliateRef = existingCheckout.exists && existingCheckout.data().affiliateId
+    ? db.collection("users").doc(existingCheckout.data().affiliateId)
+    : null;
   return db.runTransaction(transaction => settlePurchase(transaction, reference, {
-    payment, uid, admin, db, checkoutRef,
+    payment, uid, admin, db, checkoutRef, affiliateRef,
   }));
 }
 
@@ -256,9 +272,10 @@ async function payPurchaseWithTokens(uid, body) {
   const prepared = await buildPurchase(uid, body, "tokens");
   const { db, checkoutRef, checkout, sources } = prepared;
   const admin = getAdmin();
+  const affiliateRef = checkout.affiliateId ? db.collection("users").doc(checkout.affiliateId) : null;
   return db.runTransaction(transaction => settlePurchase(transaction, checkout.externalReference, {
     uid, admin, db, checkoutRef, preparedCheckout: checkout,
-    preparedSources: sources, expectedTotal: body.unit_price,
+    preparedSources: sources, expectedTotal: body.unit_price, affiliateRef,
   }));
 }
 
@@ -271,7 +288,7 @@ function sourcePricingFields(source) {
 
 async function settlePurchase(transaction, reference, {
   payment = null, uid = null, admin, db, checkoutRef,
-  preparedCheckout = null, preparedSources = null, expectedTotal = null,
+  preparedCheckout = null, preparedSources = null, expectedTotal = null, affiliateRef = null,
 }) {
   const review = (reason, message) => ({ status: "needs_review", reason, message });
     const snapshot = await transaction.get(checkoutRef);
@@ -307,6 +324,13 @@ async function settlePurchase(transaction, reference, {
       transaction.get(userRef),
       transaction.get(receiptRef),
     ]);
+    const affiliateSaleRef = db.collection("affiliate_sales").doc(`purchase_${reference}`);
+    const managerSaleRef = db.collection("affiliate_sales").doc(`manager_purchase_${reference}`);
+    const [affiliateSnap, affiliateSaleSnap, managerSaleSnap] = await Promise.all([
+      affiliateRef ? transaction.get(affiliateRef) : Promise.resolve(null),
+      transaction.get(affiliateSaleRef),
+      transaction.get(managerSaleRef),
+    ]);
     const balance = Number(user.data()?.tokens || 0);
     if (checkout.status === "paid") {
       if (payment && String(checkout.paymentId) !== String(payment.id)) {
@@ -341,6 +365,69 @@ async function settlePurchase(transaction, reference, {
     }
     const debit = checkout.amountCents / 100;
     if (!payment && (!Number.isFinite(balance) || balance < debit)) fail("Saldo de tokens insuficiente.");
+    let affiliateCommission = null;
+    let managerCommission = null;
+    const affiliate = affiliateSnap?.exists ? affiliateSnap.data() : null;
+    const buyerEmail = String(checkout.customerEmail || sources[0]?.data()?.email || "").toLowerCase();
+    const saleTitle = String(checkout.title || "");
+    const isShirt = checkout.kind === "product" && /camisa|manto/i.test(saleTitle);
+    if (
+      affiliate
+      && affiliate.role === "Afiliado"
+      && affiliate.affiliateStatus !== "inactive"
+      && affiliateRef.id !== checkout.userId
+      && String(affiliate.email || "").toLowerCase() !== buyerEmail
+      && !isShirt
+      && !affiliateSaleSnap?.exists
+    ) {
+      const commissionRate = Number(
+        checkout.kind === "event"
+          ? (affiliate.commissionRateEvents || affiliate.commissionRate || 10)
+          : (affiliate.commissionRateProducts || affiliate.commissionRate || 10),
+      );
+      const saleValue = Number(checkout.amountCents) / 100;
+      const commissionAmount = saleValue * commissionRate / 100;
+      if (
+        Number.isFinite(commissionRate)
+        && commissionRate >= 0
+        && commissionRate <= 100
+        && saleValue > 0
+        && commissionAmount > 0
+      ) {
+        affiliateCommission = {
+          affiliateId: affiliateRef.id,
+          saleValue,
+          commissionRate,
+          commissionAmount,
+        };
+        const managerId = affiliate.managerId;
+        const managerCommissionRate = Number(affiliate.managerCommissionRate);
+        if (
+          managerId
+          && managerId !== checkout.userId
+          && managerId !== affiliateRef.id
+          && !managerSaleSnap?.exists
+          && Number.isFinite(managerCommissionRate)
+          && managerCommissionRate > 0
+          && managerCommissionRate <= 100
+        ) {
+          const managerRef = db.collection("users").doc(managerId);
+          const managerSnap = await transaction.get(managerRef);
+          const managerCommissionAmount = commissionAmount * managerCommissionRate / 100;
+          if (managerSnap.exists && managerCommissionAmount > 0) {
+            managerCommission = {
+              affiliateId: managerId,
+              managerEmail: affiliate.managerEmail || null,
+              sourceAffiliateId: affiliateRef.id,
+              saleValue,
+              affiliateCommissionAmount: commissionAmount,
+              commissionRate: managerCommissionRate,
+              commissionAmount: managerCommissionAmount,
+            };
+          }
+        }
+      }
+    }
     const timestamp = admin.firestore.FieldValue.serverTimestamp();
     const patch = {
       status: "paid", paidAt: timestamp,
@@ -376,6 +463,42 @@ async function settlePurchase(transaction, reference, {
     }
     if (!payment) transaction.update(userRef, { tokens: Number((balance - debit).toFixed(2)), updatedAt: timestamp });
     transaction.create(receiptRef, { reference, userId: checkout.userId, amountCents: checkout.amountCents, createdAt: timestamp });
+    if (affiliateCommission) {
+      transaction.create(affiliateSaleRef, {
+        affiliateId: affiliateCommission.affiliateId,
+        orderId: reference,
+        customerEmail: checkout.customerEmail || null,
+        customerName: checkout.customerName || null,
+        productName: checkout.title || "",
+        saleValue: affiliateCommission.saleValue,
+        commissionRate: affiliateCommission.commissionRate,
+        commissionAmount: affiliateCommission.commissionAmount,
+        saleType: checkout.kind,
+        type: "affiliate",
+        status: "pending",
+        createdAt: timestamp,
+      });
+    }
+    if (managerCommission) {
+      transaction.create(managerSaleRef, {
+        affiliateId: managerCommission.affiliateId,
+        managerEmail: managerCommission.managerEmail,
+        sourceAffiliateId: managerCommission.sourceAffiliateId,
+        sourceAffiliateEmail: checkout.customerEmail || null,
+        orderId: reference,
+        customerEmail: checkout.customerEmail || null,
+        customerName: checkout.customerName || null,
+        productName: checkout.title || "",
+        saleValue: managerCommission.saleValue,
+        affiliateCommissionAmount: managerCommission.affiliateCommissionAmount,
+        commissionRate: managerCommission.commissionRate,
+        commissionAmount: managerCommission.commissionAmount,
+        saleType: checkout.kind,
+        type: "manager_commission",
+        status: "pending",
+        createdAt: timestamp,
+      });
+    }
     const paidCheckout = { status: "paid", paidAt: timestamp, ...(payment ? { paymentId: String(payment.id) } : {}) };
     if (snapshot.exists) transaction.update(checkoutRef, paidCheckout);
     else transaction.create(checkoutRef, { ...checkout, ...paidCheckout, createdAt: timestamp });

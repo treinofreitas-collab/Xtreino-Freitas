@@ -135,7 +135,7 @@ test('failed automatic refresh preserves previous occupancy and schedules a retr
     assert.equal(h.timers.size, 1);
 });
 
-test('actual report callers share full historical data without truncating legacy purchases', async () => {
+test('relatórios unificados preservam todo o histórico e reutilizam as mesmas leituras', async () => {
     const reads = [];
     const cache = helpers().createReadCache();
     cache.setScope('admin-a');
@@ -151,22 +151,13 @@ test('actual report callers share full historical data without truncating legacy
         firebase: async () => ({}),
         readAdminReportCollection: name => cache.read(name, async () => { reads.push(name); return data[name]; }),
         resolveEventName: (type, fallback) => type || fallback,
-        loadKpis: async () => {},
-        renderActiveUsers: async () => {},
     });
     vm.runInContext(snippet('  async function fetchUnifiedOrders(options = {})', '  async function loadReports()'), context);
-    vm.runInContext(snippet('  async function loadReports()', '  // ===== Paginação de salto'), context);
-    const all = [];
-    for (const name of ['renderSalesChart', 'renderTopProducts', 'renderPaymentMethodsChart']) {
-        context[name] = async () => all.push(await context.fetchUnifiedOrders());
-    }
-    context.window.renderPopularHours = async () => cache.read('registrations', async () => {
-        reads.push('registrations'); return data.registrations;
-    });
-    await context.loadReports();
+    const all = await context.fetchUnifiedOrders();
     assert.deepEqual(reads.sort(), ['orders', 'registrations']);
-    assert.equal(all.length, 3);
-    assert.ok(all.every(rows => rows.length === 2 && rows.some(row => row.item === 'Legacy product')));
+    assert.equal(all.length, 2);
+    assert.ok(all.some(row => row.item === 'Legacy product'));
+    assert.equal((await context.fetchUnifiedOrders()).length, 2);
     const withEventReceipts = await context.fetchUnifiedOrders({ includeEventOrders: true });
     assert.equal(withEventReceipts.length, 3);
     assert.ok(withEventReceipts.some(row => row.source === 'event-orders' && row.verifiedOnServer));
@@ -181,6 +172,10 @@ function pageHarness() {
     const window = {
         firebaseDb: {}, firebaseAuth: { currentUser: { uid: 'admin-a' } },
         adminDataReady: true, adminRoleLower: 'ceo',
+        _activeAdminPage: 'principal',
+        _activeAdminSection: 'sectionCharts',
+        _adminActiveSections: { principal: 'sectionCharts' },
+        _adminAllowedSections: ['sectionCharts', 'sectionUsersManagement', 'sectionTokens', 'sectionAffiliateSales'],
         loadPrincipalAdminData: async () => calls.push(['principal']),
         loadDynamicEventsIntoBoard: async () => calls.push(['events']),
     };
@@ -201,10 +196,15 @@ function pageHarness() {
         'loadAffiliatePayouts', 'loadPasseBooyahControls', 'setupCouponUsageFilters',
         'loadHighlights', 'loadNews', 'loadProducts', 'loadEventsPreview', 'loadShirtOrders',
     ]) context[name] = async (...args) => calls.push([name, ...args]);
-    vm.runInContext(snippet('// Coalesce navigation requests', '// ===== LIMPEZA: remover inscrições'), context);
+    vm.runInContext(snippet('// ========== ADMIN PAGE LAZY LOADING ==========', '// ===== LIMPEZA: remover inscrições'), context);
     return {
         context, window, calls, users,
-        show(name) { Object.entries(pages).forEach(([key, page]) => { page.hidden = key !== name; }); },
+        show(name, sectionId) {
+            Object.entries(pages).forEach(([key, page]) => { page.hidden = key !== name; });
+            window._activeAdminPage = name;
+            window._activeAdminSection = sectionId;
+            window._adminActiveSections[name] = sectionId;
+        },
     };
 }
 
@@ -214,26 +214,32 @@ test('actual navigation loads only the active page after authorization, with no 
     await h.window.loadPageData('principal');
     assert.equal(h.calls.length, 0);
     h.window.adminDataReady = true;
-    await h.window.loadPageData('usuarios'); // Hidden page is not queried.
+    await h.window.loadPageData('usuarios', 'sectionUsersManagement'); // Hidden page is not queried.
     assert.equal(h.calls.length, 0);
     await h.window.loadPageData('principal');
     assert.deepEqual(h.calls, [['principal']]);
     await h.window.loadPageData('principal');
     assert.equal(h.calls.length, 1);
-    h.show('usuarios');
-    await h.window.loadPageData('usuarios');
+    h.show('usuarios', 'sectionUsersManagement');
+    await h.window.loadPageData('usuarios', 'sectionUsersManagement');
     assert.equal(h.calls.filter(call => call[0] === 'read').length, 1);
-    for (const name of ['loadUsersForTables', 'loadPermissionsUsers', 'loadTokensUsers']) {
+    for (const name of ['loadUsersForTables', 'loadPermissionsUsers']) {
         assert.equal(h.calls.find(call => call[0] === name)[1], h.users);
     }
+    assert.ok(!h.calls.some(call => call[0] === 'loadTokensUsers'),
+        'a tabela de tokens só deve carregar quando sua própria seção for aberta');
     assert.ok(!h.calls.some(call => ['loadCoupons', 'loadAffiliates'].includes(call[0])));
-    h.show('financeiro');
-    await h.window.loadPageData('financeiro');
+    h.show('usuarios', 'sectionTokens');
+    await h.window.loadPageData('usuarios', 'sectionTokens');
+    assert.equal(h.calls.find(call => call[0] === 'loadTokensUsers')[1], h.users);
+    h.show('financeiro', 'sectionAffiliateSales');
+    await h.window.loadPageData('financeiro', 'sectionAffiliateSales');
     assert.ok(!h.calls.some(call => call[0] === 'loadAffiliateSales'), 'históricos de afiliados exigem seleção explícita');
 });
 
 test('concurrent navigation coalesces and failed pages can be retried', async () => {
     const h = pageHarness(), response = deferred();
+    h.show('principal', 'sectionCharts');
     let reads = 0;
     h.window.loadPrincipalAdminData = async () => { reads++; return response.promise; };
     const first = h.window.loadPageData('principal');
@@ -241,13 +247,13 @@ test('concurrent navigation coalesces and failed pages can be retried', async ()
     assert.equal(reads, 1);
     response.resolve();
     await Promise.all([first, second]);
-    h.window._adminPages.initialized.clear();
+    h.window._adminSections.initialized.clear();
     h.window.loadPrincipalAdminData = async () => { throw new Error('offline'); };
     await h.window.loadPageData('principal');
-    assert.equal(h.window._adminPages.initialized.has('principal'), false);
+    assert.equal(h.window._adminSections.initialized.has('sectionCharts'), false);
     h.window.loadPrincipalAdminData = async () => reads++;
     await h.window.loadPageData('principal');
-    assert.equal(h.window._adminPages.initialized.has('principal'), true);
+    assert.equal(h.window._adminSections.initialized.has('sectionCharts'), true);
 });
 
 test('actual coupon listener runs only on the visible financial page and cancels pending subscriptions', async () => {
@@ -260,6 +266,8 @@ test('actual coupon listener runs only on the visible financial page and cancels
     const context = vm.createContext({
         window: {
             firebaseDb: {}, firebaseAuth: { currentUser: { uid: 'admin-a' } }, adminDataReady: true,
+            _activeAdminPage: 'financeiro',
+            _activeAdminSection: 'sectionCouponUsage',
             _adminPages: { initialized: new Set(['financeiro']) }, addEventListener() {},
         },
         document: {
@@ -275,15 +283,13 @@ test('actual coupon listener runs only on the visible financial page and cancels
     await context.loadCouponUsage();
     assert.equal(subscriptions, 0);
     financial = true;
-    context.syncCouponUsageVisibility();
-    await flush();
+    await context.loadCouponUsage();
     assert.equal(subscriptions, 1);
     hidden = true;
     context.syncCouponUsageVisibility();
     assert.equal(stopped, 1);
     hidden = false;
-    context.syncCouponUsageVisibility();
-    await flush();
+    await context.loadCouponUsage();
     assert.equal(subscriptions, 2);
     financial = false;
     context.syncCouponUsageVisibility();

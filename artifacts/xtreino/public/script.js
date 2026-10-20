@@ -1987,9 +1987,6 @@ async function payCurrentProductWithTokens() {
         };
         const docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
         await payOrderWithTokens(`digital_${docRef.id}`, appliedCoupon?.code || null, total);
-        if (_tokenAffCode) {
-            try { await createPendingAffiliateSale(docRef.id, _tokenAffCode, orderData, 'product'); } catch (_) {}
-        }
         closePurchaseModal();
         
         // Mostrar sucesso e redirecionar
@@ -2504,11 +2501,6 @@ async function handlePurchase(event) {
 
                 
                 docRef = await addDoc(collection(window.firebaseDb, 'orders'), orderData);
-                // Dentro de handlePurchase, após orderData ser montado e docRef salvo
-                try {
-                await createPendingAffiliateSale(docRef.id, activeAffiliateCode, orderData, 'product');
-                } catch (e) { /* log, não quebrar fluxo */ }
-
                 // Salvar external_reference para o webhook
                 externalRef = `digital_${docRef.id}`;
                 await updateDoc(docRef, { external_reference: externalRef });
@@ -2638,163 +2630,6 @@ async function handlePurchase(event) {
         } else {
             showToast('error', error.message || 'Erro ao processar pagamento. Tente novamente.', 'Erro');
         }
-    }
-}
-
-async function createPendingAffiliateSale(orderId, affiliateCode, orderData, saleType) {
-    if (!affiliateCode || !orderId) return;
-    console.log('[Afiliado] Iniciando registro de comissão:', { orderId, affiliateCode, saleType });
-
-    try {
-        const { doc, getDoc, collection, query, where, getDocs, addDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const db = window.firebaseDb;
-
-        // Busca perfil do afiliado — OBRIGATÓRIO ter role=Afiliado e affiliateStatus=active
-        let affId = affiliateCode;
-        let commissionRate = null;
-
-        try {
-            const usersRef = collection(db, 'users');
-            const affDocById = await getDoc(doc(usersRef, affiliateCode));
-
-            if (affDocById.exists()) {
-                const d = affDocById.data();
-                // Só prosseguir se for afiliado ativo
-                if (d.role !== 'Afiliado' || d.affiliateStatus === 'inactive') {
-                    console.warn('[Afiliado] Código não pertence a um afiliado ativo — comissão ignorada:', affiliateCode);
-                    return;
-                }
-                commissionRate = saleType === 'event'
-                    ? (d.commissionRateEvents || d.commissionRate || 10)
-                    : (d.commissionRateProducts || d.commissionRate || 10);
-                console.log('[Afiliado] Perfil lido, taxa:', commissionRate + '%');
-            } else {
-                // Fallback por email — também exige afiliado ativo
-                try {
-                    const q = query(usersRef, where('email', '==', affiliateCode));
-                    const snap = await getDocs(q);
-                    if (!snap.empty) {
-                        const d = snap.docs[0].data();
-                        if (d.role !== 'Afiliado' || d.affiliateStatus === 'inactive') {
-                            console.warn('[Afiliado] Email não pertence a um afiliado ativo — comissão ignorada:', affiliateCode);
-                            return;
-                        }
-                        affId = snap.docs[0].id;
-                        commissionRate = saleType === 'event'
-                            ? (d.commissionRateEvents || d.commissionRate || 10)
-                            : (d.commissionRateProducts || d.commissionRate || 10);
-                        console.log('[Afiliado] Perfil por email, taxa:', commissionRate + '%');
-                    } else {
-                        console.warn('[Afiliado] Código não encontrado no sistema — comissão ignorada:', affiliateCode);
-                        return;
-                    }
-                } catch (_) {
-                    console.warn('[Afiliado] Sem permissão para buscar por email — abortando');
-                    return;
-                }
-            }
-        } catch (readErr) {
-            console.warn('[Afiliado] Sem permissão para ler perfil — abortando:', readErr?.code);
-            return;
-        }
-
-        // Segurança extra: commissionRate nunca deve ser null aqui
-        if (commissionRate === null) {
-            console.warn('[Afiliado] Taxa de comissão indefinida — abortando');
-            return;
-        }
-
-        // Bloqueio de comissão para Camisa Oficial Org Freitas
-        const _prodNome = String(orderData.title || orderData.item || orderData.productName || '').toLowerCase();
-        if (saleType === 'product' && (_prodNome.includes('camisa') || _prodNome.includes('manto'))) {
-            console.log('[Afiliado] Comissão bloqueada para produto camisa — clique registrado, comissão = R$ 0,00');
-            return;
-        }
-
-        const saleValue = Number(orderData.amount || 0);
-        const commissionAmount = (saleValue * commissionRate) / 100;
-
-        const salesRef = collection(db, 'affiliate_sales');
-
-        // Verificação de duplicata (best-effort)
-        try {
-            const dupQ = query(salesRef, where('orderId', '==', orderId), where('affiliateId', '==', affId));
-            const dupSnap = await getDocs(dupQ);
-            if (!dupSnap.empty) {
-                console.log('[Afiliado] Duplicata detectada, ignorando');
-                return;
-            }
-        } catch (_dupErr) {
-            // sem permissão de leitura — prosseguir
-        }
-
-        // Criar registro de comissão do afiliado
-        const saleDoc = await addDoc(salesRef, {
-            affiliateId: affId,
-            orderId,
-            customerEmail: orderData.customer || orderData.buyerEmail || null,
-            customerName: orderData.customerName || null,
-            productName: orderData.title || orderData.item || '',
-            saleValue,
-            commissionRate,
-            commissionAmount,
-            saleType,
-            type: 'affiliate',
-            status: 'pending',
-            createdAt: new Date()
-        });
-        console.log('[Afiliado] Comissão registrada! Doc:', saleDoc.id);
-
-        // ── Comissão do Gerente ──────────────────────────────────────────
-        // Buscar dados do gerente no perfil do afiliado (já lido acima)
-        try {
-            let managerData = null;
-            // Reler perfil do afiliado para pegar campos do gerente
-            const affRefDoc = await getDoc(doc(collection(db, 'users'), affId));
-            if (affRefDoc.exists()) {
-                const aff = affRefDoc.data();
-                if (aff.managerId && aff.managerCommissionRate != null) {
-                    const mgrCommissionRate = Number(aff.managerCommissionRate);
-                    const mgrCommissionAmount = (commissionAmount * mgrCommissionRate) / 100;
-                    if (mgrCommissionAmount > 0) {
-                        // Verificar duplicata para o gerente
-                        let isDup = false;
-                        try {
-                            const dupMgr = await getDocs(query(salesRef, where('orderId', '==', orderId), where('affiliateId', '==', aff.managerId), where('type', '==', 'manager_commission')));
-                            isDup = !dupMgr.empty;
-                        } catch (_) {}
-
-                        if (!isDup) {
-                            await addDoc(salesRef, {
-                                affiliateId: aff.managerId,
-                                managerEmail: aff.managerEmail || null,
-                                sourceAffiliateId: affId,
-                                sourceAffiliateEmail: orderData.customer || null,
-                                orderId,
-                                customerEmail: orderData.customer || orderData.buyerEmail || null,
-                                customerName: orderData.customerName || null,
-                                productName: orderData.title || orderData.item || '',
-                                saleValue,
-                                affiliateCommissionAmount: commissionAmount,
-                                commissionRate: mgrCommissionRate,
-                                commissionAmount: mgrCommissionAmount,
-                                saleType,
-                                type: 'manager_commission',
-                                status: 'pending',
-                                createdAt: new Date()
-                            });
-                            console.log('[Gerente] Comissão de gerente registrada! Gerente:', aff.managerId, 'Valor: R$', mgrCommissionAmount.toFixed(2));
-                        }
-                    }
-                }
-            }
-        } catch (mgrErr) {
-            console.warn('[Gerente] Aviso ao registrar comissão de gerente:', mgrErr?.code || mgrErr?.message);
-        }
-        // ────────────────────────────────────────────────────────────────
-
-    } catch (error) {
-        console.error('[Afiliado] ERRO ao registrar comissão:', error?.code || error?.message);
     }
 }
 
@@ -4367,18 +4202,7 @@ function addProductOptions(productId) {
             // Sensibilidades com seleção de plataforma
             container.innerHTML = `
                 <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                    <div class="flex items-center mb-4">
-                        <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                            </svg>
-                        </div>
-                        <h4 class="text-lg font-semibold text-gray-800">Configuração Completa</h4>
-                    </div>
-                    <p class="text-gray-600 text-sm mb-4">Inclui: Sensibilidade otimizada, Pack de Otimização, Configuração Completa, Aprimoramento de Mira e Reação.</p>
-                    
-                    <div class="space-y-3">
+                    <div class="space-y-3 mb-5">
                         <label class="block text-sm font-medium text-gray-700">
                             <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
@@ -4410,6 +4234,17 @@ function addProductOptions(productId) {
                         
                         <p class="text-xs text-gray-500">O arquivo será personalizado para sua plataforma e dispositivo escolhidos</p>
                     </div>
+
+                    <div class="flex items-center mb-4">
+                        <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543-.826-2.37.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </div>
+                        <h4 class="text-lg font-semibold text-gray-800">Configuração Completa</h4>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-4">Inclui: Sensibilidade otimizada, Pack de Otimização, Configuração Completa, Aprimoramento de Mira e Reação.</p>
                 </div>
             `;
             break;
@@ -6963,10 +6798,6 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
                 await updateDoc(docRef, { external_reference: externalRef });
                 try { sessionStorage.setItem('lastExternalRef', externalRef); } catch (_) { }
 
-                // Registrar comissão de afiliado imediatamente (não esperar redirect do MP)
-                if (orderData.affiliateCode) {
-                    try { await createPendingAffiliateSale(docRef.id, orderData.affiliateCode, orderData, 'product'); } catch (_) {}
-                }
             } catch (firebaseError) {
                 
                 // Continua com externalRef gerado acima
@@ -7497,26 +7328,6 @@ async function submitSchedule(e, useTokens = false) {
                 regIds.push(docRef.id);
                 assignedSlotsData.push({ regId: docRef.id, team: m.team, slotNum: m.slotNum, slotDisplay: m.slotDisplay, schedule: m.schedule, date: m.date, whatsappLink: m.whatsappLink });
             });
-
-            // ── Registrar venda de afiliado para cada inscrição (se houver ref ativo) ──
-            try {
-                const _affRef = getActiveAffiliateCode(appliedScheduleCoupon?.affiliateId || null);
-                console.log('[Afiliado sched]', _affRef ? '✓ ' + _affRef.slice(-6) : 'null');
-                if (_affRef) {
-                    // fire-and-forget — não bloqueia o redirect ao Mercado Pago
-                    for (let _ai = 0; _ai < _docRefs.length; _ai++) {
-                        const _p = _regPayloads[_ai];
-                        createPendingAffiliateSale(_docRefs[_ai].id, _affRef, {
-                            amount: _p.price,
-                            title: _p.title || `${cfg.label} - ${_p._meta.schedule}`,
-                            customer: _p.email,
-                            customerName: _p.teamName
-                        }, 'event').catch(e => console.warn('[Afiliado sched] erro:', e?.code || e?.message));
-                    }
-                }
-            } catch (_affErr) {
-                console.error('[Afiliado sched] erro:', _affErr?.code || _affErr?.message);
-            }
 
             if (regIds.length > 0) {
                 try { sessionStorage.setItem('lastRegIds', JSON.stringify(regIds)); } catch (_) { }
@@ -8399,12 +8210,7 @@ async function processSuccessfulPayment(externalRef = null) {
                 const _orderAff = orderData2.affiliateCode
                     || sessionStorage.getItem('xf_pending_aff')
                     || getActiveAffiliateCode(null);
-                if (_orderAff) {
-                    try { sessionStorage.removeItem('xf_pending_aff'); } catch(_) {}
-                    try {
-                        await createPendingAffiliateSale(orderDoc.id, _orderAff, orderData2, 'product');
-                    } catch (_) {}
-                }
+                if (_orderAff) { try { sessionStorage.removeItem('xf_pending_aff'); } catch(_) {} }
                 if (orderData2.couponId && orderData2.couponCode) {
                     try {
                         await recordCouponUsage(
@@ -8846,9 +8652,6 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
     refs.forEach((ref, index) => {
         regIds.push(ref.id);
         assignedSlots[index].regId = ref.id;
-        createPendingAffiliateSale(ref.id, getActiveAffiliateCode(couponInfo?.affiliateId || null),
-            pendingWrites[index].affiliate, 'event')
-            .catch(e => console.warn('[Afiliado token] erro:', e?.code || e?.message));
     });
     return { regIds, assignedSlots };
 }

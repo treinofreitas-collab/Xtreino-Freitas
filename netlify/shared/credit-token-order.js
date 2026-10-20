@@ -3,13 +3,17 @@ const { validateApprovedPayment } = require("./token-purchase");
 
 async function findAffiliateRef(db, affiliateCode) {
   if (!affiliateCode || typeof affiliateCode !== "string") return null;
+  const normalizedCode = affiliateCode.trim().slice(0, 200);
+  if (!normalizedCode) return null;
 
-  const directRef = db.collection("users").doc(affiliateCode);
-  const directSnap = await directRef.get();
-  if (directSnap.exists) return directRef;
+  if (!normalizedCode.includes("/")) {
+    const directRef = db.collection("users").doc(normalizedCode);
+    const directSnap = await directRef.get();
+    if (directSnap.exists) return directRef;
+  }
 
   const byEmail = await db.collection("users")
-    .where("email", "==", affiliateCode)
+    .where("email", "==", normalizedCode)
     .limit(1)
     .get();
   return byEmail.empty ? null : byEmail.docs[0].ref;
@@ -345,6 +349,7 @@ async function findPaymentsByExternalReference(externalReference) {
 }
 
 module.exports = {
+  findAffiliateRef,
   creditApprovedTokenOrder,
   fetchPaymentById,
   findPaymentsByExternalReference,

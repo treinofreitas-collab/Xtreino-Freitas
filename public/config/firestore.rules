@@ -96,10 +96,9 @@ service cloud.firestore {
       ]);
     }
 
-    // users: leitura para staff; afiliados ativos podem ser lidos por qualquer usuário autenticado (necessário para calcular comissão)
+    // users: dados pessoais privados; somente o próprio usuário e funções autorizadas podem ler
     match /users/{userId} {
-      allow read: if isSelf(userId) || canReadAll() ||
-        (isSignedIn() && resource.data.affiliateStatus in ['active', 'pending', 'inactive']);
+      allow read: if isSelf(userId) || canReadAll();
       allow create: if isSelf(userId) || isAdmin();
       allow update: if (isSelf(userId) && hasNoProtectedFieldChanges()) ||
                        (isSelf(userId) &&
@@ -133,7 +132,7 @@ service cloud.firestore {
 
     // registrations
     match /registrations/{registrationId} {
-      allow get: if isSignedIn() && (
+      allow get, list: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
         canReadAll() ||
         (
@@ -143,7 +142,6 @@ service cloud.firestore {
           )
         )
       );
-      allow list: if true;
       allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || canReadAll());
       allow update: if canReadAll() ||
                     (isSignedIn() &&
@@ -288,7 +286,8 @@ service cloud.firestore {
           )
         )
       );
-      allow create: if isSignedIn();
+      // Criações de comissão são feitas pelo servidor após validar o pagamento.
+      allow create: if false;
       allow update: if isAdmin() || isGerente() || isStaff() || isVendedor();
       allow delete: if isAdmin() || isGerente();
     }

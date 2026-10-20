@@ -5,15 +5,45 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../../artifacts/xtreino/public/admin.js', import.meta.url), 'utf8');
 
-function mockElement(initiallyHidden = false) {
+const sectionPages = {
+    sectionKPIs: 'page-principal',
+    sectionFilters: 'page-principal',
+    sectionCharts: 'page-principal',
+    sectionUsers: 'page-principal',
+    sectionOrders: 'page-principal',
+    sectionTokenStats: 'page-principal',
+    sectionUsersManagement: 'page-usuarios',
+    sectionAdminHistory: 'page-usuarios',
+    sectionResetData: 'page-usuarios',
+    sectionCoupons: 'page-financeiro',
+    sectionCouponUsage: 'page-financeiro',
+    sectionAffiliates: 'page-financeiro',
+    sectionAffiliateSales: 'page-financeiro',
+    sectionAffiliatePayouts: 'page-financeiro',
+    sectionAffiliatePanel: 'page-financeiro',
+    sectionPasseBooyah: 'page-financeiro',
+    sectionHighlights: 'page-conteudo',
+    sectionNews: 'page-conteudo',
+    sectionProducts: 'page-conteudo',
+    sectionEvents: 'page-conteudo',
+    sectionShirtOrders: 'page-conteudo',
+    sectionMarketReports: 'page-conteudo',
+    sectionSchedules: 'page-operacoes',
+    sectionEventLinks: 'page-operacoes',
+};
+
+function mockElement(id, initiallyHidden = false) {
     const classes = new Set(initiallyHidden ? ['hidden'] : []);
     return {
+        id,
+        parentPageId: sectionPages[id] || null,
         style: {},
         classList: {
             add: name => classes.add(name),
             remove: name => classes.delete(name),
             contains: name => classes.has(name),
         },
+        contains: child => child?.parentPageId === id,
         closest: () => null,
     };
 }
@@ -23,12 +53,16 @@ function visibilityHarness() {
     const document = {
         documentElement: mockElement(),
         getElementById(id) {
-            if (!elements.has(id)) elements.set(id, mockElement(id === 'sectionAffiliatePanel'));
+            if (!elements.has(id)) elements.set(id, mockElement(id, id === 'sectionAffiliatePanel'));
             return elements.get(id);
         },
         querySelectorAll: () => [],
     };
-    const context = vm.createContext({ document, window: {}, console: { error() {}, log() {} } });
+    const context = vm.createContext({
+        document,
+        window: { location: { hash: '' } },
+        console: { error() {}, log() {} },
+    });
     const start = source.indexOf('// ===== MATRIZ DE PERMISSÕES POR CARGO =====');
     const end = source.indexOf('// ===== SEÇÕES EDITÁVEIS POR CARGO =====', start);
     assert.notEqual(start, -1);

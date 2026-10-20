@@ -229,6 +229,50 @@ test("token debit and paid order are atomic and idempotent, including concurrent
   assert.equal(currentDb.read("orders/one").status, "paid");
 });
 
+test("affiliate commissions are created by the server only after payment and are idempotent", async () => {
+  const seed = productSeed();
+  seed["orders/one"].affiliateCode = "affiliate";
+  seed["users/affiliate"] = {
+    role: "Afiliado",
+    affiliateStatus: "active",
+    email: "affiliate@example.com",
+    commissionRateProducts: 12.5,
+    managerId: "manager",
+    managerCommissionRate: 20,
+    managerEmail: "manager@example.com",
+  };
+  seed["users/manager"] = { role: "Gerente" };
+  currentDb = fakeDatabase(seed);
+
+  await preparePurchase("buyer", { external_reference: "digital_one", unit_price: 8 }, "mercadopago");
+  assert.equal(currentDb.read("affiliate_sales/purchase_digital_one"), undefined);
+
+  const paid = await completePurchase("digital_one", { payment: payment("digital_one") });
+  assert.equal(paid.status, "paid");
+  assert.deepEqual(
+    currentDb.read("affiliate_sales/purchase_digital_one"),
+    {
+      affiliateId: "affiliate",
+      orderId: "digital_one",
+      customerEmail: null,
+      customerName: null,
+      productName: "Planilhas",
+      saleValue: 8,
+      commissionRate: 12.5,
+      commissionAmount: 1,
+      saleType: "product",
+      type: "affiliate",
+      status: "pending",
+      createdAt: 1234,
+    },
+  );
+  assert.equal(currentDb.read("affiliate_sales/manager_purchase_digital_one").commissionAmount, 0.2);
+
+  const retried = await completePurchase("digital_one", { payment: payment("digital_one") });
+  assert.equal(retried.status, "already_paid");
+  assert.equal(currentDb.read("affiliate_sales/purchase_digital_one").commissionAmount, 1);
+});
+
 test("insufficient balance or a missing source rolls back everything", async () => {
   currentDb = fakeDatabase(productSeed(3));
   await preparePurchase("buyer", { external_reference: "digital_one" }, "tokens");

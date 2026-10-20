@@ -89,8 +89,16 @@ test('abertura destaca pedidos pendentes e calcula totais sem misturar históric
 });
 
 test('saques só carregam quando a seção é aberta, não junto ao login do painel', () => {
-    assert.doesNotMatch(source, /id === 'sectionAffiliatePayouts'|await loadAffiliatePayouts\(\);/);
-    assert.match(html, /sectionId === 'sectionAffiliatePayouts'[\s\S]{0,180}window\.loadAffiliatePayouts\(\)/);
+    const authStart = source.indexOf('onAuthStateChanged(window.firebaseAuth, async (user) => {');
+    const authEnd = source.indexOf('// ---- Relatórios ----', authStart);
+    assert.ok(authStart >= 0 && authEnd > authStart);
+    assert.doesNotMatch(source.slice(authStart, authEnd), /loadAffiliatePayouts\s*\(/);
+
+    const lazyStart = source.indexOf('// ========== ADMIN PAGE LAZY LOADING ==========');
+    const lazyEnd = source.indexOf('// ===== LIMPEZA: remover inscrições', lazyStart);
+    assert.ok(lazyStart >= 0 && lazyEnd > lazyStart);
+    assert.match(source.slice(lazyStart, lazyEnd), /case 'sectionAffiliatePayouts':\s*await loadAffiliatePayouts\(\);/);
+    assert.match(html, /data-page="financeiro" onclick="adminNav\('financeiro','sectionAffiliatePayouts'/);
 });
 
 test('busca local filtra por afiliado ou PIX e alterna o histórico sem nova consulta', async () => {

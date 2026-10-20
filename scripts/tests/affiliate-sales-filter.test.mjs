@@ -226,9 +226,10 @@ test('troca de conta descarta cache e resultados em andamento', async () => {
 
 test('abrir o diretório ou o Financeiro não dispara carga de históricos', () => {
     const affiliatesLoader = extract('async function loadAffiliates()', '// Nunca consultar a coleção inteira:');
-    const financeNavigation = extract("} else if (page === 'financeiro') {", "} else if (page === 'conteudo')");
+    const lazyLoader = extract('// ========== ADMIN PAGE LAZY LOADING ==========', '// ===== LIMPEZA: remover inscrições');
     assert.doesNotMatch(affiliatesLoader, /loadAffiliateSales\s*\(/);
-    assert.doesNotMatch(financeNavigation, /loadAffiliateSales\s*\(/);
+    assert.match(lazyLoader, /case 'sectionAffiliates':\s*case 'sectionAffiliateSales':\s*await loadAffiliates\(\);/);
+    assert.doesNotMatch(lazyLoader, /loadAffiliateSales\s*\(/);
     assert.match(source, /affiliateFilter\.addEventListener\('change',[\s\S]*?loadAffiliateSales\(affiliateFilter\.value\)/);
 });
 
