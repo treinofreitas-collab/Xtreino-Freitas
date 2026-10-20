@@ -3292,7 +3292,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   function getEventTypeConfig() {
     return {
       canonical: {
-        'modo-liga': (s) => s === 'liga' || s === 'modo-liga' || s.includes('modo liga') || s.includes('modo-liga'),
+        'modo-liga': (s) => s === 'liga' || s === 'acesso' || s === 'modo-liga' || s.includes('modo liga') || s.includes('modo-liga'),
         'camp-final': (s) => s === 'camp-final' || s.includes('camp final') || s.includes('vaga direto') || s.includes('camp-final'),
         'camp-freitas': (s) => s === 'camp' || s === 'camp-freitas' || s.includes('camp freitas') || s.includes('camp-freitas'),
         'semanal-freitas': (s) => s === 'semanal' || s === 'semanal-freitas' || s.includes('semanal freitas') || s.includes('semanal-freitas'),
@@ -3310,7 +3310,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // Normaliza tipo de evento para forma canônica
   function canonicalType(t) {
-    const s = String(t||'').toLowerCase();
+    const s = String(t||'').toLowerCase().trim().replace(/[\s_]+/g, '-');
     const config = getEventTypeConfig();
     for (const [canonical, matcher] of Object.entries(config.canonical)) {
       if (matcher(s)) return canonical;

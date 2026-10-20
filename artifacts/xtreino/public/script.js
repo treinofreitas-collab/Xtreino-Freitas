@@ -3177,8 +3177,8 @@ function detectEventType(text) {
 }
 // Normaliza qualquer string de eventType para o tipo canônico (retrocompat com IDs do Firestore)
 function normalizeEventType(t) {
-    const s = String(t || '').toLowerCase().replace(/[\s_]/g, '-');
-    if (s === 'modo-liga' || s === 'liga' || s.includes('modo-liga') || s.includes('modo-liga')) return 'modo-liga';
+    const s = String(t || '').toLowerCase().trim().replace(/[\s_]+/g, '-');
+    if (s === 'modo-liga' || s === 'liga' || s === 'acesso' || s.includes('modo-liga')) return 'modo-liga';
     if (s === 'camp-freitas' || s === 'camp' || s.includes('camp-freitas') || s.includes('camp freitas')) return 'camp-freitas';
     if (s === 'semanal-freitas' || s === 'semanal' || s.includes('semanal')) return 'semanal-freitas';
     if (s.includes('xtreino') || s === 'xtreino-tokens') return 'xtreino-tokens';

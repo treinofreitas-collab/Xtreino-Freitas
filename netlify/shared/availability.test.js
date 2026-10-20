@@ -137,6 +137,26 @@ test("Modo Liga accepts midnight reservations on weekends", async () => {
   assert.equal((await checkAvailability(db, saturdayMidnightLiga)).available, true);
 });
 
+test("Modo Liga applies the same per-hour lock check to 19h and 00h", async () => {
+  const catalog = {
+    "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
+  };
+  const requestFor = hour => ({
+    ...saturdayMidnightLiga,
+    selectedTimes: [`Quarta - ${String(hour).padStart(2, "0")}h`],
+  });
+  const unlocked = database(catalog);
+  assert.equal((await checkAvailability(unlocked, requestFor(19))).available, true);
+  assert.equal((await checkAvailability(unlocked, requestFor(0))).available, true);
+
+  const onlyMidnightLocked = database({
+    ...catalog,
+    "event_hour_locks/midnight-alias-lock": { event_type: "acesso", hour: 0, locked: true },
+  });
+  assert.equal((await checkAvailability(onlyMidnightLocked, requestFor(19))).available, true);
+  assert.equal((await checkAvailability(onlyMidnightLocked, requestFor(0))).available, false);
+});
+
 test("Modo Liga midnight availability uses the event catalog, not only its Firestore document ID", async () => {
   const events = [
     ["EventDocumentAa", { name: "TREINO MODO LIGA", eventType: "modo-liga" }],
@@ -195,6 +215,8 @@ test("legacy snake_case lock types stay scoped to their event and Modo Liga alia
 
   for (const lock of [
     { "event_hour_locks/legacy-modo-liga": { event_type: "TREINO MODO LIGA", hour: 0, locked: true } },
+    { "event_hour_locks/underscored-modo-liga": { event_type: "modo_liga", hour: 0, locked: true } },
+    { "event_hour_locks/access-alias": { eventType: "acesso", hour: 0, locked: true } },
     { "schedule_overrides/legacy-modo-liga": {
       date: saturdayMidnightLiga.date, event_type: "TREINO MODO LIGA", hour: 0, locked: true,
     } },

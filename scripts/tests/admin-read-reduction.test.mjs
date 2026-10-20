@@ -414,6 +414,18 @@ test('admin canonicalizes Modo Liga from its name even when eventType is a custo
     assert.ok(source.includes('const canon = canonicalAdminEventType(ev, d.id);'));
 });
 
+test('admin lock canonicalizer matches server Modo Liga aliases', () => {
+    const from = source.indexOf('  function getEventTypeConfig() {');
+    const to = source.indexOf('\n\n  function canonicalAdminEventType(', from);
+    assert.ok(from >= 0 && to > from);
+    const context = vm.createContext({});
+    vm.runInContext(source.slice(from, to), context);
+
+    assert.equal(context.canonicalType('modo_liga'), 'modo-liga');
+    assert.equal(context.canonicalType('acesso'), 'modo-liga');
+    assert.equal(context.canonicalType('TREINO MODO LIGA'), 'modo-liga');
+});
+
 test('booking lock matching respects legacy event_type without treating another event as global', () => {
     const from = bookingSource.indexOf('function normalizeEventType(');
     const to = bookingSource.indexOf('\nfunction matchesPermanentHourLock(', from);
@@ -426,6 +438,8 @@ test('booking lock matching respects legacy event_type without treating another 
     assert.equal(applies({ event_type: 'xtreino-tokens' }, 'modo-liga', config), false);
     assert.equal(applies({ eventType: 'xtreino-tokens' }, 'modo-liga', config), false);
     assert.equal(applies({ event_type: 'TREINO MODO LIGA' }, 'modo-liga', config), true);
+    assert.equal(applies({ event_type: 'modo_liga' }, 'modo-liga', config), true);
+    assert.equal(applies({ eventType: 'acesso' }, 'modo-liga', config), true);
     assert.equal(applies({ eventType: 'modo-liga' }, 'modo-liga', config), true);
     assert.equal(applies({}, 'modo-liga', config), true);
 });
