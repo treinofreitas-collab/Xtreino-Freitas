@@ -4848,6 +4848,7 @@ function openScheduleModal(eventType, options = {}) {
                 || cfg.category === 'physical';
             _prodTokenBtn.style.display = isProdFisico ? 'none' : '';
         }
+        setSchedulePaymentButtonOrder(false);
 
         // Adicionar opções específicas do produto
         addProductOptions(eventType);
@@ -4864,6 +4865,8 @@ function openScheduleModal(eventType, options = {}) {
         requestAnimationFrame(resetProductModalScroll);
         return;
     }
+
+    setSchedulePaymentButtonOrder(true);
 
     // Restaurar título do modal para evento (reserva de horário)
     const _mTitle = document.querySelector('#scheduleModal .schedule-modal-title');
@@ -4899,7 +4902,7 @@ function openScheduleModal(eventType, options = {}) {
     // Restaurar texto original do botão para eventos
     const submitBtn = document.getElementById('schedSubmit');
     if (submitBtn) {
-        submitBtn.textContent = '✅ Confirmar e Pagar';
+        submitBtn.textContent = '✅ Confirmar e pagar (Pix)';
     }
 
     // Detectar evento grátis e ajustar UI (sem pagamento, cupom ou tokens)
@@ -6514,6 +6517,17 @@ function selectTime(schedule, element) {
 }
 
 // Atualiza os botões do passo 4 ao selecionar/deselecionar slot free liberado pelo admin
+function setSchedulePaymentButtonOrder(paymentFirst) {
+    const tokenButton = document.getElementById('schedPayTokens');
+    const paymentButton = document.getElementById('schedSubmit');
+    const container = paymentButton?.parentElement;
+    if (!container || tokenButton?.parentElement !== container) return;
+
+    const firstButton = paymentFirst ? paymentButton : tokenButton;
+    const secondButton = paymentFirst ? tokenButton : paymentButton;
+    container.insertBefore(firstButton, secondButton);
+}
+
 function _updateFreeSlotPaymentUI() {
     const modal = document.getElementById('scheduleModal');
     if (!modal) return;
@@ -6566,7 +6580,7 @@ function _updateFreeSlotPaymentUI() {
 
         submitBtn.className = 'w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3.5 px-4 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 shadow-lg';
         submitBtn.style.background = '';
-        submitBtn.innerHTML = '<i class="fas fa-lock text-xs"></i> Pagar com PIX ou Cartão';
+        submitBtn.innerHTML = '<i class="fas fa-lock text-xs"></i> Confirmar e pagar (Pix)';
         submitBtn.onclick = null;
         window._freeSlotChoice = null;
     }

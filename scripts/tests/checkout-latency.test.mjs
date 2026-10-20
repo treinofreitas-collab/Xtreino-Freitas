@@ -8,6 +8,9 @@ function extract(name, next) {
     const start = source.indexOf(`async function ${name}(`);
     return source.slice(start, source.indexOf(next, start));
 }
+const buttonOrderStart = source.indexOf('function setSchedulePaymentButtonOrder(');
+const buttonOrderEnd = source.indexOf('\nfunction _updateFreeSlotPaymentUI', buttonOrderStart);
+const buttonOrderFunction = source.slice(buttonOrderStart, buttonOrderEnd);
 const tokens = extract('useTokensForEvent', 'async function loadCampSemifinalLinksFromFirestore');
 const registrations = extract('createRegistrationsForEvent', '// --- Edição de Perfil ---')
     .replace(/await import\('https:\/\/www\.gstatic\.com\/firebasejs\/10\.13\.0\/firebase-firestore\.js'\)/g, 'sdk');
@@ -38,6 +41,32 @@ function setup(overrides = {}) {
     return { context, calls };
 }
 const verified = { eventType: 'modo-liga', numberOfTeams: 1, timesByDate: { '2026-10-13': ['Terça - 19h'] } };
+
+test('event modal puts Pix checkout first and keeps token checkout second', () => {
+    const elements = {
+        schedPayTokens: { id: 'schedPayTokens' },
+        schedSubmit: { id: 'schedSubmit' },
+    };
+    const container = {
+        children: [elements.schedPayTokens, elements.schedSubmit],
+        insertBefore(node, reference) {
+            this.children.splice(this.children.indexOf(node), 1);
+            this.children.splice(this.children.indexOf(reference), 0, node);
+        },
+    };
+    Object.values(elements).forEach(button => { button.parentElement = container; });
+    const context = {
+        document: { getElementById: id => elements[id] },
+    };
+    vm.createContext(context);
+    new vm.Script(buttonOrderFunction).runInContext(context);
+
+    context.setSchedulePaymentButtonOrder(true);
+    assert.deepEqual(container.children.map(button => button.id), ['schedSubmit', 'schedPayTokens']);
+    context.setSchedulePaymentButtonOrder(false);
+    assert.deepEqual(container.children.map(button => button.id), ['schedPayTokens', 'schedSubmit']);
+    assert.match(source, /Confirmar e pagar \(Pix\)/);
+});
 
 const submission = extract('submitSchedule', '// ===== Helper: busca registrações');
 function setupSubmission(result) {
