@@ -5,6 +5,10 @@
 - O cliente autenticado salva o pedido/reservas pendentes.
 - `create-preference` calcula o preço a partir do catálogo e dos cupons no servidor.
   O valor enviado pela tela serve somente para detectar mudanças de preço.
+- O pagamento Pix direto das vagas cria uma cobrança autenticada pela API de pagamentos
+  do Mercado Pago. A tela exibe QR Code e Pix Copia e Cola; o servidor grava o ID do
+  pagamento e usa a mesma verificação por webhook e consulta antes de liberar a vaga.
+  A mesma referência não pode iniciar um checkout externo depois de receber um Pix.
 - O servidor salva a referência, proprietário, fontes e valor de cobrança no checkout.
 - O webhook valida a assinatura do Mercado Pago, busca o pagamento na API e confere
   aprovação, referência, moeda e valor. Confirma o pedido sem depender do retorno ao site.

@@ -610,10 +610,92 @@ test("a concurrent conflicting checkout is revalidated inside the token transact
 });
 
 test("payment endpoints reject unauthenticated requests before any data or payment processing", async () => {
-  for (const name of ["create-preference", "create-token-preference", "confirm-purchase", "confirm-token-purchase", "pay-with-tokens", "check-pix-status", "check-payment-status"]) {
+  for (const name of ["create-preference", "create-pix-payment", "create-token-preference", "confirm-purchase", "confirm-token-purchase", "pay-with-tokens", "check-pix-status", "check-payment-status"]) {
     const { handler } = require(`../functions/${name}`);
     const result = await handler({ httpMethod: "POST", headers: {}, body: "{}" });
     assert.equal(result.statusCode, 401, name);
+  }
+});
+
+test("Pix checkout creates one authenticated Mercado Pago payment and reuses its QR on retry", async () => {
+  const path = require.resolve("../functions/create-pix-payment");
+  const verify = firebase.verifyFirebaseUser;
+  const originalFetch = global.fetch;
+  const reference = "schedule_direct_pix";
+  const expirationDate = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const providerPayment = {
+    id: 123456,
+    status: "pending",
+    external_reference: reference,
+    date_of_expiration: expirationDate,
+    point_of_interaction: {
+      transaction_data: { qr_code: "pix-copy-code", qr_code_base64: "png-base64" },
+    },
+  };
+  const requests = [];
+  delete require.cache[path];
+  firebase.verifyFirebaseUser = async () => ({ uid: "buyer", email: "buyer@example.com" });
+  process.env.MP_ACCESS_TOKEN = "test-access";
+  process.env.MP_WEBHOOK_SECRET = "test-webhook";
+  global.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), method: options.method || "GET", headers: options.headers, body: options.body });
+    return { ok: true, json: async () => providerPayment };
+  };
+  try {
+    currentDb = fakeDatabase({
+      "adminEvents/modo-liga": { name: "Treino Modo Liga", preco: 3, status: "Aberto" },
+      "registrations/r": {
+        userId: "buyer", status: "pending", eventType: "modo-liga",
+        date: "2026-10-21", schedule: "Quarta - 20h", external_reference: reference,
+      },
+    });
+    const { handler } = require(path);
+    const event = {
+      httpMethod: "POST",
+      body: JSON.stringify({ external_reference: reference, unit_price: 3 }),
+    };
+
+    const firstResponse = await handler(event);
+    assert.equal(firstResponse.statusCode, 200);
+    assert.deepEqual(JSON.parse(firstResponse.body), {
+      payment_id: "123456",
+      payment_status: "pending",
+      external_reference: reference,
+      qr_code: "pix-copy-code",
+      qr_code_base64: "png-base64",
+      expiration_date: expirationDate,
+    });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "https://api.mercadopago.com/v1/payments");
+    assert.equal(requests[0].method, "POST");
+    assert.equal(requests[0].headers.Authorization, "Bearer test-access");
+    assert.equal(requests[0].headers["X-Idempotency-Key"].length, 64);
+    const pixRequestBody = JSON.parse(requests[0].body);
+    assert.deepEqual(pixRequestBody, {
+      transaction_amount: 3,
+      description: "Treino Modo Liga (1 reserva(s))",
+      payment_method_id: "pix",
+      external_reference: reference,
+      notification_url: "https://orgfreitas.com.br/.netlify/functions/mp-webhook",
+      date_of_expiration: pixRequestBody.date_of_expiration,
+      payer: { email: "buyer@example.com" },
+    });
+    const expirationDelta = new Date(pixRequestBody.date_of_expiration).getTime() - Date.now();
+    assert.ok(expirationDelta > 29 * 60 * 1000 && expirationDelta <= 30 * 60 * 1000);
+    assert.equal(currentDb.read(`purchase_checkouts/${reference}`).pixPaymentId, "123456");
+
+    const retryResponse = await handler(event);
+    assert.equal(retryResponse.statusCode, 200);
+    assert.deepEqual(JSON.parse(retryResponse.body), JSON.parse(firstResponse.body));
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].method, "GET");
+    assert.match(requests[1].url, /\/v1\/payments\/123456$/);
+  } finally {
+    firebase.verifyFirebaseUser = verify;
+    global.fetch = originalFetch;
+    delete process.env.MP_ACCESS_TOKEN;
+    delete process.env.MP_WEBHOOK_SECRET;
+    delete require.cache[path];
   }
 });
 

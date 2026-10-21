@@ -18,6 +18,7 @@ const routes: Record<string, string> = {
   "check-availability": "check-availability",
   "event-access-links": "event-access-links",
   "create-preference": "create-preference",
+  "create-pix-payment": "create-pix-payment",
   "create-token-preference": "create-token-preference",
   "confirm-token-purchase": "confirm-token-purchase",
   "confirm-purchase": "confirm-purchase",

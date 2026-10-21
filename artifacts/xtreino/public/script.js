@@ -5024,7 +5024,7 @@ function openScheduleModal(eventType, options = {}) {
     // Restaurar texto original do botão para eventos
     const submitBtn = document.getElementById('schedSubmit');
     if (submitBtn) {
-        submitBtn.textContent = '✅ Confirmar e pagar (Pix)';
+        submitBtn.textContent = '✅ Gerar QR Code Pix';
     }
 
     // Detectar evento grátis e ajustar UI (sem pagamento, cupom ou tokens)
@@ -6695,7 +6695,7 @@ function _updateFreeSlotPaymentUI() {
 
         submitBtn.className = 'w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3.5 px-4 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 shadow-lg';
         submitBtn.style.background = '';
-        submitBtn.innerHTML = '<i class="fas fa-lock text-xs"></i> Confirmar e pagar (Pix)';
+        submitBtn.innerHTML = '<i class="fas fa-qrcode text-xs"></i> Gerar QR Code Pix';
         submitBtn.onclick = null;
         window._freeSlotChoice = null;
     }
@@ -7437,8 +7437,9 @@ async function submitSchedule(e, useTokens = false) {
                         eventType: rawEventType
                     }
                 };
-                // Só enviar após as reservas serem persistidas; o servidor precisa lê-las.
-                _prefFetchPromise = () => authenticatedPaymentFetch('/.netlify/functions/create-preference', {
+                // Só enviar após as reservas serem persistidas; o servidor valida
+                // o valor e gera o Pix a partir do checkout confiável.
+                _prefFetchPromise = () => authenticatedPaymentFetch('/.netlify/functions/create-pix-payment', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(_earlyPrefPayload)
@@ -7481,31 +7482,21 @@ async function submitSchedule(e, useTokens = false) {
         }
 
         // --- CHAMAR MERCADO PAGO ---
-        const _cleanupPendingRegs = async () => {
-            if (!regIds.length) return;
-            try {
-                const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                await Promise.all(regIds.map(id => deleteDoc(doc(window.firebaseDb, 'registrations', id))));
-            } catch (_) {}
-        };
-
         try {
             if (submitBtn) { submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Aguarde...'; }
-            if (typeof showToast === 'function') showToast('info', 'Conectando ao Mercado Pago, aguarde...', 'Pagamento', 20000);
+            if (typeof showToast === 'function') showToast('info', 'Gerando seu QR Code Pix...', 'Pagamento', 20000);
 
             // As reservas já foram gravadas; agora solicitar o checkout seguro.
             let resp;
             try {
                 resp = await _prefFetchPromise();
             } catch (fetchErr) {
-                await _cleanupPendingRegs();
-                alert('Não foi possível conectar ao servidor de pagamento. Verifique sua internet e tente novamente.');
+                alert('Não foi possível confirmar se o Pix foi criado. Confira Minha Conta antes de tentar novamente para evitar uma cobrança duplicada.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
             }
 
             if (resp.status === 404) {
-                await _cleanupPendingRegs();
                 alert('⚠️ Pagamento via Mercado Pago não está disponível neste ambiente de desenvolvimento.\n\nO checkout funciona apenas na versão publicada do site.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
@@ -7513,13 +7504,12 @@ async function submitSchedule(e, useTokens = false) {
 
             if (!resp.ok) {
                 const errText = await resp.text().catch(() => '');
-                await _cleanupPendingRegs();
                 if (errText.includes('Missing MP_ACCESS_TOKEN')) {
                     alert('Integração com Mercado Pago não configurada. Entre em contato com o suporte.');
                 } else if (errText.includes('unit_price')) {
                     alert('Erro no valor do pagamento. Por favor, recarregue a página e tente novamente.');
                 } else {
-                    alert(`Erro ao iniciar pagamento (${resp.status}). ${errText ? errText.slice(0, 120) : 'Tente novamente.'}`);
+                    alert(`Não foi possível gerar o QR Code Pix (${resp.status}). ${errText ? errText.slice(0, 120) : 'Confira Minha Conta antes de tentar novamente.'}`);
                 }
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
@@ -7527,24 +7517,19 @@ async function submitSchedule(e, useTokens = false) {
 
             const data = await resp.json().catch(() => null);
             if (!data) {
-                await _cleanupPendingRegs();
-                alert('Resposta inválida do servidor de pagamento. Tente novamente.');
+                alert('Resposta inválida do servidor de pagamento. Confira Minha Conta antes de tentar novamente.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
             }
 
-            localStorage.setItem('pendingPaymentRefs', JSON.stringify([externalRef]));
-            const checkoutUrl = data.init_point || data.sandbox_init_point;
-            if (!checkoutUrl) {
-                await _cleanupPendingRegs();
-                alert('Não foi possível obter o link de pagamento. Tente novamente.');
+            if ((!data.qr_code || !data.qr_code_base64) && data.payment_status !== 'approved') {
+                alert('O Mercado Pago não retornou o QR Code Pix. Confira Minha Conta antes de tentar novamente.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
             }
 
-            // Capturar cupom ANTES de fechar o modal (closeScheduleModal zera appliedScheduleCoupon)
+            // Capturar cupom antes de fechar o modal (closeScheduleModal zera o estado).
             const _evtCouponMP = appliedScheduleCoupon ? { ...appliedScheduleCoupon } : null;
-            // Registrar uso de cupom de evento (MP) se aplicado
             if (_evtCouponMP) {
                 try {
                     const discountAmtEvt = Math.max(0, originalTotal - finalPrice);
@@ -7562,14 +7547,23 @@ async function submitSchedule(e, useTokens = false) {
 
             closeScheduleModal();
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
-            try { sessionStorage.setItem('lastCheckoutUrl', checkoutUrl); } catch (_) {}
-            // Redireciona direto na mesma aba — evita bloqueio de popup
-            window.location.href = checkoutUrl;
+            try { localStorage.setItem('pendingPaymentRefs', JSON.stringify([externalRef])); } catch (_) {}
+            try { sessionStorage.setItem('lastExternalRef', externalRef); } catch (_) {}
+            window.openPixModal(
+                data,
+                regIds,
+                externalRef,
+                assignedSlotsData.map(slot => ({
+                    ...slot,
+                    schedule: slot.schedule,
+                })),
+                { ...cfg, eventType: rawEventType },
+                finalPrice,
+            );
 
         } catch (paymentError) {
             console.error('Erro pagamento evento:', paymentError);
-            await _cleanupPendingRegs();
-            alert('Erro inesperado ao iniciar pagamento. Recarregue a página e tente novamente.');
+            alert('Erro inesperado ao gerar o Pix. Confira Minha Conta antes de tentar novamente.');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
         }
 
@@ -9782,17 +9776,36 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     const amountStr = finalPrice != null ? `R$ ${Number(finalPrice).toFixed(2).replace('.', ',')}` : '';
     document.getElementById('pixAmount').textContent = amountStr;
 
-    if (pixData.qr_code_base64) {
+    const hasPixCode = Boolean(pixData.qr_code_base64 && pixData.qr_code);
+    document.getElementById('pixQrSection')?.classList.toggle('hidden', !hasPixCode);
+    document.getElementById('pixCopyLabel')?.classList.toggle('hidden', !hasPixCode);
+    document.getElementById('pixCopySection')?.classList.toggle('hidden', !hasPixCode);
+    if (hasPixCode) {
         document.getElementById('pixQrImg').src = 'data:image/png;base64,' + pixData.qr_code_base64;
-    }
-    if (pixData.qr_code) {
         document.getElementById('pixCopiaCola').value = pixData.qr_code;
     }
+    const initialStatus = document.getElementById('pixStatusText');
+    if (initialStatus) {
+        initialStatus.textContent = pixData.payment_status === 'approved'
+            ? 'Pagamento aprovado. Confirmando sua inscrição...'
+            : 'Aguardando pagamento...';
+    }
 
-    let secondsLeft = 29 * 60 + 59;
+    const pixExpiry = pixData.expiration_date ? new Date(pixData.expiration_date).getTime() : NaN;
+    let secondsLeft = Number.isFinite(pixExpiry)
+        ? Math.max(0, Math.floor((pixExpiry - Date.now()) / 1000))
+        : 29 * 60 + 59;
     clearInterval(_pixCountdownInterval);
     _pixCountdownInterval = setInterval(() => {
-        if (secondsLeft <= 0) { clearInterval(_pixCountdownInterval); const cd = document.getElementById('pixCountdown'); if (cd) cd.textContent = 'Expirado'; return; }
+        if (secondsLeft <= 0) {
+            clearInterval(_pixCountdownInterval);
+            clearInterval(_pixPollingInterval);
+            const cd = document.getElementById('pixCountdown');
+            if (cd) cd.textContent = 'Expirado';
+            const status = document.getElementById('pixStatusText');
+            if (status) status.textContent = 'Este QR Code Pix expirou.';
+            return;
+        }
         const m = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
         const s = String(secondsLeft % 60).padStart(2, '0');
         const cd = document.getElementById('pixCountdown');
@@ -9803,12 +9816,8 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     _pixCancelFn = async () => {
         clearInterval(_pixPollingInterval);
         clearInterval(_pixCountdownInterval);
-        if (regIds && regIds.length) {
-            try {
-                const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-                await Promise.all(regIds.map(id => deleteDoc(doc(window.firebaseDb, 'registrations', id))));
-            } catch (_) {}
-        }
+        // Não apagar as reservas: o cliente ainda pode concluir um pagamento Pix
+        // que já iniciou, e o webhook deve conseguir confirmá-lo com segurança.
         const modal = document.getElementById('pixPaymentModal');
         if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
     };
@@ -9825,7 +9834,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         if (slotInfoEl && assignedSlotsData && assignedSlotsData.length) {
             slotInfoEl.innerHTML = assignedSlotsData.map(function(s) {
                 // Para modo-liga: exibir letra no círculo em vez do número
-                var _isModoLiga = rawEventType === 'modo-liga';
+                var _isModoLiga = (cfg?.eventType || '') === 'modo-liga';
                 var _slotRaw = s.slotDisplay ? s.slotDisplay.replace(/^(Letra\s*|Slot\s*#?|Vaga\s*#?)/i, '').trim() : '';
                 var _slotBadge;
                 if (_isModoLiga) {
@@ -9854,8 +9863,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         }
     };
 
-    clearInterval(_pixPollingInterval);
-    _pixPollingInterval = setInterval(async function() {
+    const checkPixStatus = async function() {
         try {
             const r = await authenticatedPaymentFetch('/.netlify/functions/confirm-purchase', {
                 method: 'POST',
@@ -9872,7 +9880,10 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
                 if (st) st.textContent = 'Pagamento recusado ou cancelado. Tente novamente.';
             }
         } catch (_) {}
-    }, 5000);
+    };
+    clearInterval(_pixPollingInterval);
+    checkPixStatus();
+    _pixPollingInterval = setInterval(checkPixStatus, 5000);
 };
 
 window.copyPixCode = function() {
@@ -9900,7 +9911,7 @@ function _pixFallbackCopy(input) {
 }
 
 window.cancelPixPayment = function() {
-    if (confirm('Cancelar o pagamento? Sua inscrição pendente será removida.')) {
+    if (confirm('Fechar o QR Code? O pagamento continua pendente e o Pix segue válido até expirar.')) {
         if (typeof _pixCancelFn === 'function') _pixCancelFn();
     }
 };
