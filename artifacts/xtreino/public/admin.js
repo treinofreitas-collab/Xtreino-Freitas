@@ -4,6 +4,7 @@ const CAMP_SEMIFINAL_DATES = ['2024-11-22','2024-11-23','2025-11-22','2025-11-23
 const CAMP_FINAL_DATES = ['2024-11-28','2025-11-28'];
 let campSemifinalLinks = {};
 let campSemifinalLinksLoaded = false;
+let cachedAdminEventNameMap = null;
 
 const adminReportCache = window.AdminReadControl.createReadCache();
 async function readAdminReportCollection(name) {
@@ -15,7 +16,10 @@ async function readAdminReportCollection(name) {
         return getDocs(collection(window.firebaseDb, name));
     });
 }
-window.invalidateAdminReports = () => adminReportCache.clear();
+window.invalidateAdminReports = () => {
+    adminReportCache.clear();
+    cachedAdminEventNameMap = null;
+};
 
 function showToast(type, message, title = null, duration = 5000) {
     const container = document.getElementById('toastContainer');
@@ -1021,13 +1025,16 @@ window.showWarningToast = function(message, title = 'Atenção') {
       }
 
       // Reutiliza o cache atual da coleção; a busca abaixo é somente em memória.
-      const ordersSnapshot = await readAdminReportCollection('orders');
+      const [ordersSnapshot, eventNameMap] = await Promise.all([
+        readAdminReportCollection('orders'),
+        loadAdminEventNameMap(),
+      ]);
 
       confirmedOrdersData = [];
       ordersSnapshot.forEach(doc => {
         const order = doc.data() || {};
         if (!['paid', 'approved', 'confirmed'].includes(String(order.status || '').toLowerCase())) return;
-        confirmedOrdersData.push(normalizeConfirmedOrder(order, doc.id));
+        confirmedOrdersData.push(normalizeConfirmedOrder(order, doc.id, eventNameMap));
       });
       
       // Ordenar por data (mais recentes primeiro)
@@ -1048,7 +1055,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
   window.reloadConfirmedOrders = () => carregarPedidosConfirmados();
 
-  function normalizeConfirmedOrder(order, id) {
+  function normalizeConfirmedOrder(order, id, eventNameMap = null) {
     const firstText = (...values) => values
       .map(value => String(value ?? '').trim())
       .find(value => value && value !== '[object Object]') || '';
@@ -1088,22 +1095,20 @@ window.showWarningToast = function(message, title = 'Atenção') {
       !isEmail(customerField) && !isPhone(customerField) ? customerField : '',
     );
     const team = firstText(order.teamName, order.team, order.squadName, eventOrder ? order.customerName : '');
-    const eventNames = {
-      'modo-liga': 'Modo Liga',
-      'xtreino-tokens': 'XTreino Tokens',
-      xtreino: 'XTreino Tokens',
-      'semanal-freitas': 'Semanal Freitas',
-      semanal: 'Semanal Freitas',
-      'camp-freitas': 'Camp Freitas',
-      camp: 'Camp Freitas',
-    };
     const eventType = firstText(order.eventType);
+    const eventCategory = eventOrder ? resolveAdminEventName(order, eventNameMap) : '';
+    const eventSchedule = eventOrder
+      ? [
+          formatAdminEventDate(order.eventDate || order.date),
+          order.schedule || order.hour,
+        ].filter(Boolean).join(' · ')
+      : '';
     const item = firstText(
       order.itemName,
       order.item,
       order.title,
       order.productName,
-      eventNames[eventType.toLowerCase()] || eventType,
+      eventCategory,
     );
     const rawAmount = order.amount ?? order.total ?? order.price
       ?? (order.amountCents != null ? Number(order.amountCents) / 100 : null);
@@ -1116,6 +1121,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
       email,
       phone,
       team,
+      eventCategory,
+      eventSchedule,
       item: item || 'Item não informado',
       amount: Number.isFinite(parsedAmount) ? parsedAmount : null,
       originalDate,
@@ -1196,7 +1203,16 @@ window.showWarningToast = function(message, title = 'Atenção') {
             ].join('')
           : '<span class="confirmed-secondary">Contato não informado</span>';
       const itemDetails = [
-        `<span class="confirmed-primary">${escapePendingHtml(pedido.item)}</span>`,
+        pedido.eventCategory
+          ? `<span class="confirmed-primary">${escapePendingHtml(pedido.eventCategory)}</span>`
+          : '',
+        pedido.eventCategory && pedido.item
+          && pedido.item.trim().toLocaleLowerCase('pt-BR') !== pedido.eventCategory.trim().toLocaleLowerCase('pt-BR')
+          ? `<span class="confirmed-secondary">${escapePendingHtml(pedido.item)}</span>`
+          : !pedido.eventCategory
+            ? `<span class="confirmed-primary">${escapePendingHtml(pedido.item)}</span>`
+            : '',
+        pedido.eventSchedule ? `<span class="confirmed-secondary">${escapePendingHtml(pedido.eventSchedule)}</span>` : '',
         pedido.team ? `<span class="confirmed-secondary">Time: ${escapePendingHtml(pedido.team)}</span>` : '',
       ].join('');
       row.innerHTML = `
@@ -1220,7 +1236,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   window.upsertConfirmedOrder = (id, order) => {
     if (!order || !['paid', 'approved', 'confirmed'].includes(String(order.status || '').toLowerCase())) return false;
-    const normalized = normalizeConfirmedOrder(order, id);
+    const normalized = normalizeConfirmedOrder(order, id, cachedAdminEventNameMap);
     const existingIndex = confirmedOrdersData.findIndex(pedido => pedido.id === id);
     if (existingIndex >= 0) confirmedOrdersData[existingIndex] = normalized;
     else confirmedOrdersData.push(normalized);
@@ -1663,6 +1679,93 @@ window.showWarningToast = function(message, title = 'Atenção') {
     'camp-freitas': 'Campeonato Freitas',
     'camp': 'Campeonato Freitas'
   };
+
+  function normalizeAdminEventKey(value) {
+    return String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_\s]+/g, '-');
+  }
+
+  function formatAdminEventDate(value) {
+    if (typeof value === 'string') {
+      const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+    }
+    const date = value?.toDate
+      ? value.toDate()
+      : value instanceof Date
+        ? value
+        : Number.isFinite(value?.seconds)
+          ? new Date(value.seconds * 1000)
+          : value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime())
+      ? date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      : '';
+  }
+
+  function resolveAdminEventName(record, eventNameMap = null) {
+    const data = record && typeof record === 'object' ? record : {};
+    const names = eventNameMap || cachedAdminEventNameMap;
+    const keys = [data.adminEventId, data.eventId, data.urlSlug, data.eventType, data.event_type];
+    for (const key of keys) {
+      const name = names?.get(normalizeAdminEventKey(key));
+      if (name) return name;
+    }
+    const eventType = data.eventType || data.event_type || '';
+    const eventTypeKey = normalizeAdminEventKey(eventType);
+    const fallback = [
+      data.eventName, data.eventTitle, data.title, data.itemName, data.item, eventType,
+    ].map(value => String(value ?? '').trim()).find(value => {
+      if (!value) return false;
+      const key = normalizeAdminEventKey(value);
+      return key !== eventTypeKey && !['venda', 'venda-de-produtos', 'evento', 'reserva', 'reserva-de-evento'].includes(key);
+    });
+    const knownName = EVENT_NAMES_MAP[eventTypeKey];
+    return fallback || knownName || eventType || 'Evento';
+  }
+
+  function formatAdminEventPurchaseLabel(record, eventNameMap = null) {
+    const data = record && typeof record === 'object' ? record : {};
+    const rawDate = data.eventDate || data.date || '';
+    const dateLabel = formatAdminEventDate(rawDate);
+    const schedule = data.schedule || data.hour || '';
+    const detail = [dateLabel, schedule].filter(Boolean).join(' · ');
+    return `${resolveAdminEventName(data, eventNameMap)}${detail ? ` — ${detail}` : ''}`;
+  }
+
+  async function loadAdminEventNameMap() {
+    try {
+      const snapshot = await readAdminReportCollection('adminEvents');
+      const names = new Map();
+      const namesByType = new Map();
+      const ambiguousTypes = new Set();
+      snapshot.forEach(doc => {
+        const event = doc.data() || {};
+        const name = String(event.name || event.title || event.eventName || '').trim();
+        if (!name) return;
+        [doc.id, event.urlSlug, event.slug].forEach(alias => {
+          const key = normalizeAdminEventKey(alias);
+          if (key) names.set(key, name);
+        });
+        const typeKey = normalizeAdminEventKey(event.eventType || event.event_type);
+        if (typeKey) {
+          if (namesByType.has(typeKey) && namesByType.get(typeKey) !== name) ambiguousTypes.add(typeKey);
+          else namesByType.set(typeKey, name);
+        }
+      });
+      namesByType.forEach((name, key) => {
+        if (!ambiguousTypes.has(key) && !names.has(key)) names.set(key, name);
+      });
+      cachedAdminEventNameMap = names;
+      return names;
+    } catch (error) {
+      console.warn('Não foi possível carregar os nomes dos eventos cadastrados.', error);
+      return cachedAdminEventNameMap || new Map();
+    }
+  }
 
   function resolveEventName(eventType, fallback) {
     if (!eventType) return fallback || 'Evento';
@@ -2722,6 +2825,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (!tbody) return;
     tbody.innerHTML = '';
     const items = [];
+    const eventNameMap = await loadAdminEventNameMap();
     
     // Orders - apenas pedidos com dados completos
     try {
@@ -2734,7 +2838,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
         
         // Só adiciona se tiver dados essenciais
         const client = o.customer || o.buyerEmail || '';
-        const item = o.item || o.productName || '';
+        const isEvent = String(o.type || '').toLowerCase() === 'event' || Boolean(o.eventType);
+        const item = isEvent ? formatAdminEventPurchaseLabel(o, eventNameMap) : o.item || o.productName || '';
         const value = Number(o.amount || o.total || 0);
         const status = o.status || '—';
         
@@ -2765,7 +2870,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         
         // Só adiciona se tiver dados essenciais
         const client = r.email || '';
-        const item = r.title || r.eventType || '';
+        const item = formatAdminEventPurchaseLabel(r, eventNameMap);
         const value = Number(r.price || 0);
         
         if (client && item && value > 0) {
@@ -2843,23 +2948,22 @@ window.showWarningToast = function(message, title = 'Atenção') {
     })[character]);
   }
 
-  function normalizePendingRecord(source, docSnapshot) {
+  function normalizePendingRecord(source, docSnapshot, eventNameMap = null) {
     const data = docSnapshot.data();
     const email = data.buyerEmail || data.email || (String(data.customer || '').includes('@') ? data.customer : '');
     const customer = data.customerName || data.name || (String(data.customer || '').includes('@') ? '' : data.customer) || email || 'Cliente não informado';
-    const eventType = String(data.eventType || '').toLowerCase();
-    const eventNames = {
-      'modo-liga': 'Modo Liga',
-      'xtreino-tokens': 'XTreino Tokens',
-      'xtreino': 'XTreino Tokens',
-      'semanal-freitas': 'Semanal Freitas',
-      'semanal': 'Semanal Freitas',
-      'camp-freitas': 'Camp Freitas',
-      'camp': 'Camp Freitas',
-    };
-    const item = source === 'registration'
-      ? data.title || eventNames[eventType] || data.eventType || 'Reserva de evento'
-      : data.itemName || data.item || data.title || data.productName || eventNames[eventType] || data.eventType || 'Pedido';
+    const isEvent = source === 'registration'
+      || String(data.type || '').toLowerCase() === 'event'
+      || Boolean(data.eventType || data.adminEventId);
+    const eventCategory = isEvent ? resolveAdminEventName(data, eventNameMap) : '';
+    const storedItem = source === 'registration'
+      ? data.title || data.eventTitle || ''
+      : data.itemName || data.item || data.title || data.productName || '';
+    const itemMatchesType = storedItem
+      && normalizeAdminEventKey(storedItem) === normalizeAdminEventKey(data.eventType);
+    const item = isEvent
+      ? (storedItem && !itemMatchesType ? storedItem : eventCategory)
+      : storedItem || 'Pedido';
 
     return {
       id: docSnapshot.id,
@@ -2868,6 +2972,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       email,
       phone: data.phone || data.contact || '',
       team: data.teamName || data.team || data.squadName || '',
+      eventCategory,
       item,
       amount: Number(source === 'registration' ? data.price || 0 : data.amount ?? data.total ?? data.price ?? 0),
       createdAt: pendingDate(data.createdAt || data.timestamp),
@@ -2882,7 +2987,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   function renderPendingRecord(row) {
-    const sourceLabel = row.source === 'registration' ? 'Reserva' : 'Pedido';
+    const sourceLabel = row.eventCategory || (row.source === 'registration' ? 'Reserva' : 'Pedido');
     const dateLabel = row.createdAt ? row.createdAt.toLocaleString('pt-BR') : 'Data não informada';
     const customerDetails = [
       row.email && row.email !== row.customer ? row.email : '',
@@ -2953,6 +3058,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
           if (snapshot.exists()) {
             const record = snapshot.data();
             await addDoc(collection(window.firebaseDb, 'orders'), {
+              type: 'event',
+              eventType: record.eventType || '',
+              adminEventId: record.adminEventId || null,
+              eventDate: record.date || record.eventDate || '',
+              schedule: record.schedule || record.hour || '',
               itemName: record.title || record.eventType || 'Reserva',
               amount: Number(record.price || 0),
               customerName: record.email || '-',
@@ -3056,6 +3166,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
           { collectionName: 'orders', source: 'order', clauses: orderClauses },
           { collectionName: 'registrations', source: 'registration', clauses: registrationClauses },
         ];
+        const eventNameMap = await loadAdminEventNameMap();
         const fetchNextBatch = async ({ collectionName, source, clauses }) => {
           const stream = state.streams[collectionName];
           if (stream.exhausted) return;
@@ -3077,7 +3188,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
           if (docs.length) {
             stream.cursor = docs[docs.length - 1];
             stream.fetched += docs.length;
-            stream.buffer.push(...docs.map(docSnapshot => normalizePendingRecord(source, docSnapshot)));
+            stream.buffer.push(...docs.map(docSnapshot => normalizePendingRecord(source, docSnapshot, eventNameMap)));
           }
           stream.exhausted = docs.length < batchLimit ||
             (Number.isFinite(totalCount) && stream.fetched >= totalCount);
@@ -11904,6 +12015,7 @@ async function saveEventForm() {
             await addDoc(collection(window.firebaseDb, 'adminEvents'), data);
             showToast('success', 'Evento criado com sucesso.', 'Criado');
         }
+        window.invalidateAdminReports?.();
         cancelEventForm();
         await loadEventsList(category);
     } catch (err) {

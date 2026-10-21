@@ -14,7 +14,7 @@ const end = adminJs.indexOf(endMarker, start);
 assert.notEqual(start, -1, 'pending-orders implementation exists');
 assert.notEqual(end, -1, 'pending-orders implementation end exists');
 
-function createHarness({ orders = 13, registrations = 7 } = {}) {
+function createHarness({ orders = 13, registrations = 7, eventNameMap = new Map(), registrationRows = null } = {}) {
     const reads = [];
     const counts = [];
     const data = {
@@ -25,7 +25,7 @@ function createHarness({ orders = 13, registrations = 7 } = {}) {
             amount: 1,
             createdAt: new Date(2026, 9, 15, 12, index),
         })),
-        registrations: Array.from({ length: registrations }, (_, index) => ({
+        registrations: registrationRows || Array.from({ length: registrations }, (_, index) => ({
             id: `registration-${String(index + 1).padStart(3, '0')}`,
             email: `team-${index + 1}@example.test`,
             title: 'Reserva de teste',
@@ -95,6 +95,11 @@ function createHarness({ orders = 13, registrations = 7 } = {}) {
         firebase: async () => firestore,
         brl: amount => `R$ ${Number(amount).toFixed(2)}`,
         refreshDashboard: async () => {},
+        loadAdminEventNameMap: async () => eventNameMap,
+        normalizeAdminEventKey: value => String(value ?? '').trim().toLowerCase().replace(/[_\s]+/g, '-'),
+        resolveAdminEventName: (record, names) => names.get(
+            String(record.adminEventId || record.eventType || '').trim().toLowerCase().replace(/[_\s]+/g, '-'),
+        ) || record.title || record.eventType || 'Evento',
         console: { warn() {}, error() {} },
         Date,
         Number,
@@ -112,6 +117,30 @@ function createHarness({ orders = 13, registrations = 7 } = {}) {
 
     return { result, reads, counts, elements, data };
 }
+
+test('pending event rows show the configured event name while keeping its purchase title', async () => {
+    const eventNameMap = new Map([['event-modo-liga', 'Modo Liga']]);
+    const harness = createHarness({
+        orders: 0,
+        registrations: 1,
+        eventNameMap,
+        registrationRows: [{
+            id: 'registration-modo-liga',
+            adminEventId: 'event-modo-liga',
+            eventType: 'modo-liga',
+            title: 'TREINO MODO LIGA — 21/10 22h',
+            email: 'team@example.test',
+            price: 3,
+            status: 'pending',
+            createdAt: new Date(2026, 9, 21, 21),
+        }],
+    });
+    const { loadPending } = await harness.result;
+    await loadPending(true);
+
+    assert.match(harness.elements.pendingTbody.innerHTML, /<span class="pending-kind">Modo Liga<\/span>/);
+    assert.match(harness.elements.pendingTbody.innerHTML, /TREINO MODO LIGA — 21\/10 22h/);
+});
 
 test('pending pages merge both collections by newest date without loading the full history', async () => {
     const harness = createHarness({ orders: 13, registrations: 7 });

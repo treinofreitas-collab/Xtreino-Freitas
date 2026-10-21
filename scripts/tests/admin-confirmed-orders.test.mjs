@@ -9,14 +9,44 @@ const adminHtml = readFileSync(new URL('admin.html', publicDir), 'utf8');
 const adminCss = readFileSync(new URL('admin-styles.css', publicDir), 'utf8');
 const tokenPreference = readFileSync(new URL('../../netlify/functions/create-token-preference.js', import.meta.url), 'utf8');
 
-const normalizeStart = adminJs.indexOf('  function normalizeConfirmedOrder(order, id) {');
+const normalizeStart = adminJs.indexOf('  function normalizeConfirmedOrder(order, id, eventNameMap = null) {');
 const normalizeEnd = adminJs.indexOf('  // Função para mostrar pedidos confirmados', normalizeStart);
 assert.notEqual(normalizeStart, -1, 'confirmed-order normalization exists');
 assert.notEqual(normalizeEnd, -1, 'confirmed-order normalization end exists');
 
+const eventNameHelpersStart = adminJs.indexOf('  const EVENT_NAMES_MAP = {');
+const eventNameHelpersEnd = adminJs.indexOf('  function resolveEventName', eventNameHelpersStart);
+const eventRows = [
+  { id: 'modo-liga-2026', data: () => ({ name: 'Modo Liga 2026', eventType: 'shared-event-type' }) },
+  { id: 'camp-season-7', data: () => ({ name: 'Camp Season 7', eventType: 'shared-event-type' }) },
+  { id: 'weekly-special', data: () => ({ name: 'Semanal Especial', eventType: 'weekly-special' }) },
+];
+const eventContext = vm.createContext({
+  cachedAdminEventNameMap: null,
+  readAdminReportCollection: async () => ({ forEach: callback => eventRows.forEach(callback) }),
+  Map,
+  Set,
+  String,
+  Date,
+  console: { warn() {} },
+});
+const eventHelpers = vm.runInContext(
+  `(() => { ${adminJs.slice(eventNameHelpersStart, eventNameHelpersEnd)}; return {
+    normalizeAdminEventKey, formatAdminEventDate, resolveAdminEventName, loadAdminEventNameMap,
+  }; })()`,
+  eventContext,
+);
+
 const helpers = vm.runInNewContext(
   `(() => { ${adminJs.slice(normalizeStart, normalizeEnd)}; return { normalizeConfirmedOrder }; })()`,
-  vm.createContext({ Date, Number, String, Boolean }),
+  vm.createContext({
+    Date,
+    Number,
+    String,
+    Boolean,
+    resolveAdminEventName: eventHelpers.resolveAdminEventName,
+    formatAdminEventDate: eventHelpers.formatAdminEventDate,
+  }),
 );
 
 test('event orders keep buyer email separate from team name and preserve the purchase date', () => {
@@ -34,9 +64,55 @@ test('event orders keep buyer email separate from team name and preserve the pur
   assert.equal(order.customerName, '', 'a team name must not be presented as a person');
   assert.equal(order.email, 'gamer@example.test');
   assert.equal(order.team, 'Camp Freitas');
+  assert.equal(order.eventCategory, 'Campeonato Season 7');
   assert.equal(order.item, 'Campeonato Season 7');
   assert.equal(order.amount, 3);
   assert.equal(order.originalDate.getTime(), 1792096800 * 1000);
+});
+
+test('registered event names resolve by exact event id and remain distinct when event types are shared', async () => {
+  const eventNameMap = await eventHelpers.loadAdminEventNameMap();
+
+  assert.equal(
+    eventHelpers.resolveAdminEventName({ adminEventId: 'modo-liga-2026', eventType: 'shared-event-type' }, eventNameMap),
+    'Modo Liga 2026',
+  );
+  assert.equal(
+    eventHelpers.resolveAdminEventName({ adminEventId: 'camp-season-7', eventType: 'shared-event-type' }, eventNameMap),
+    'Camp Season 7',
+  );
+  assert.equal(
+    eventHelpers.resolveAdminEventName({ eventType: 'weekly-special' }, eventNameMap),
+    'Semanal Especial',
+  );
+  assert.equal(
+    eventHelpers.resolveAdminEventName({ eventType: 'shared-event-type', title: 'Evento específico antigo' }, eventNameMap),
+    'Evento específico antigo',
+    'ambiguous event types should fall back to the saved purchase title',
+  );
+  assert.equal(
+    eventHelpers.resolveAdminEventName({ eventType: 'camp', title: 'Campeonato Season 7' }, eventNameMap),
+    'Campeonato Season 7',
+    'the specific saved event title should win over a generic event-type label',
+  );
+});
+
+test('confirmed event sales show the configured event and the purchased date and hour', () => {
+  const eventNameMap = new Map([
+    [eventHelpers.normalizeAdminEventKey('event-modo-liga'), 'Modo Liga'],
+  ]);
+  const order = helpers.normalizeConfirmedOrder({
+    type: 'event',
+    eventType: 'custom-type',
+    adminEventId: 'event-modo-liga',
+    title: 'Inscrição Modo Liga',
+    eventDate: '2026-10-21',
+    schedule: '22h',
+    amount: 3,
+  }, 'event-sale-1', eventNameMap);
+
+  assert.equal(order.eventCategory, 'Modo Liga');
+  assert.equal(order.eventSchedule, '21/10/2026 · 22h');
 });
 
 test('product orders use a real customer name and never substitute the email for it', () => {
@@ -99,6 +175,8 @@ test('rendered rows align every value with its matching column label', () => {
     customerName: 'Camp Freitas',
     phone: '+55 11 90000-0001',
     title: 'Campeonato Season 7',
+    eventDate: '2026-10-15',
+    schedule: '22h',
     amount: 3,
     createdAt: { seconds: Date.UTC(2026, 9, 15, 18, 40) / 1000 },
   }, 'render-order-1');
@@ -145,7 +223,7 @@ test('rendered rows align every value with its matching column label', () => {
   assert.equal((markup.match(/<td data-label=/g) || []).length, 5);
   assert.match(markup, /data-label="Cliente"[^>]*>[\s\S]*Nome não informado/);
   assert.match(markup, /data-label="Contato"[^>]*>[\s\S]*confirmed-phone[\s\S]*\+55 11 90000-0001[\s\S]*E-mail: gamer@example\.test/);
-  assert.match(markup, /data-label="Produto \/ evento"[^>]*>[\s\S]*Campeonato Season 7[\s\S]*Time: Camp Freitas/);
+  assert.match(markup, /data-label="Produto \/ evento"[^>]*>[\s\S]*Campeonato Season 7[\s\S]*15\/10\/2026 · 22h[\s\S]*Time: Camp Freitas/);
   assert.match(markup, /data-label="Valor"[^>]*>R\$ 3\.00/);
   assert.match(markup, /data-label="Data da compra"[^>]*>[\s\S]*class="confirmed-date-day">15\/10\/2026[\s\S]*class="confirmed-date-time">15:40/);
 
