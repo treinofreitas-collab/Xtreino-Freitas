@@ -20,6 +20,53 @@ test('event Pix QR is embedded in the schedule checkout instead of a separate ov
     assert.match(html, /Concluído/);
 });
 
+test('store products show a separate Pix button above token payment', () => {
+    const pixButtonStart = html.indexOf('id="productPixBtn"');
+    const tokenButtonStart = html.indexOf('id="schedPayTokens"');
+    const panelStart = html.indexOf('id="productPixPanel"');
+    const scheduleStart = html.indexOf('<div id="scheduleModal"');
+    const scheduleEnd = html.indexOf('<!-- Free WhatsApp Modal -->', scheduleStart);
+
+    assert.ok(pixButtonStart >= 0 && pixButtonStart < tokenButtonStart);
+    assert.ok(panelStart > scheduleStart && panelStart < scheduleEnd);
+    assert.match(html.slice(pixButtonStart - 60, pixButtonStart), /type="button"/);
+    assert.match(html, /id="productPixQrImg"/);
+    assert.match(html, /id="productPixCopyCode"/);
+    assert.match(html, /id="productPixConfirmed"/);
+
+    const productOpenStart = script.indexOf('if (cfg.isProduct) {', script.indexOf('function openScheduleModal'));
+    const productOpenEnd = script.indexOf('setSchedulePaymentButtonOrder(true);', productOpenStart);
+    const productOpen = script.slice(productOpenStart, productOpenEnd);
+    assert.match(productOpen, /productPixBtn/);
+    assert.match(productOpen, /window\._activeStoreProduct = \{ productId: eventType, cfg \}/);
+    assert.match(productOpen, /showStorePixQRCode|showStorePixRecovery/);
+    assert.match(productOpen, /submitBtn\.type = 'button'/);
+    assert.match(productOpen, /submitBtn\.style\.display = 'none'/);
+
+    const eventOpenStart = productOpenEnd;
+    const eventOpenEnd = script.indexOf('// Detectar evento grátis', eventOpenStart);
+    const eventOpen = script.slice(eventOpenStart, eventOpenEnd);
+    assert.match(eventOpen, /submitBtn\.type = 'submit'/);
+    assert.match(eventOpen, /submitBtn\.style\.display = ''/);
+});
+
+test('store Pix creates a product payment and reuses its pending reference', () => {
+    const helpersStart = script.indexOf('const STORE_PIX_PENDING_KEY');
+    const productStart = script.indexOf('async function handleProductPurchase(');
+    const productEnd = script.indexOf('// Compra de produtos da loja usando Tokens', productStart);
+    const productFlow = script.slice(helpersStart, productEnd);
+
+    assert.ok(helpersStart >= 0 && productStart > helpersStart && productEnd > productStart);
+    assert.match(productFlow, /paymentMethod === 'pix'/);
+    assert.match(productFlow, /getStorePixPending\(\)/);
+    assert.match(productFlow, /createOrResumeStorePix\(existingPix, cfg\)/);
+    assert.match(productFlow, /createOrResumeStorePix\(pending, cfg\)/);
+    assert.match(productFlow, /external_reference: pending\.externalReference/);
+    assert.match(productFlow, /create-pix-payment/);
+    assert.match(productFlow, /confirm-purchase/);
+    assert.match(productFlow, /Retome o mesmo pedido|Retome este Pix/);
+});
+
 test('a created Pix stays on the schedule screen and blocks duplicate submissions while pending', () => {
     const submitStart = script.indexOf('async function submitSchedule(');
     const submitEnd = script.indexOf('// ===== Helper: busca registrações por eventType', submitStart);

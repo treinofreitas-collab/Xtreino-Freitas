@@ -4917,6 +4917,12 @@ function openScheduleModal(eventType, options = {}) {
     const hideBuyTokens = document.getElementById('buyTokensBtn');
     if (hideBuyTokens) hideBuyTokens.classList.add('hidden');
 
+    // O Pix da loja é independente do fluxo de reserva de horários.
+    document.getElementById('productPixBtn')?.classList.add('hidden');
+    document.getElementById('productPixPanel')?.classList.add('hidden');
+    window._activeStoreProduct = null;
+    setStorePixPaymentUi('idle');
+
     // Se for produto da loja, esconder seleção de data/hora e adicionar opções específicas
     if (cfg.isProduct) {
         // Mudar título do modal para "Finalizar Compra" (não é agendamento)
@@ -4966,6 +4972,8 @@ function openScheduleModal(eventType, options = {}) {
         const submitBtn = document.getElementById('schedSubmit');
         if (submitBtn) {
             submitBtn.textContent = '🛒 Finalizar Compra';
+            submitBtn.type = 'button';
+            submitBtn.style.display = 'none';
         }
 
         
@@ -4982,10 +4990,26 @@ function openScheduleModal(eventType, options = {}) {
                 || cfg.category === 'physical';
             _prodTokenBtn.style.display = isProdFisico ? 'none' : '';
         }
+        const productPixBtn = document.getElementById('productPixBtn');
+        if (productPixBtn) {
+            productPixBtn.classList.remove('hidden');
+            productPixBtn.disabled = false;
+        }
+        window._activeStoreProduct = { productId: eventType, cfg };
         setSchedulePaymentButtonOrder(false);
 
         // Adicionar opções específicas do produto
         addProductOptions(eventType);
+
+        const pendingProductPix = getStorePixPending();
+        if (pendingProductPix?.productId === eventType) {
+            if (window._storePixPayment?.externalReference === pendingProductPix.externalReference
+                && window._storePixPayment.pixData) {
+                showStorePixQRCode(window._storePixPayment.pixData, pendingProductPix, cfg);
+            } else {
+                showStorePixRecovery(pendingProductPix, cfg);
+            }
+        }
 
         // Mostrar modal
         modal.classList.remove('hidden');
@@ -5036,6 +5060,9 @@ function openScheduleModal(eventType, options = {}) {
     // Restaurar texto original do botão para eventos
     const submitBtn = document.getElementById('schedSubmit');
     if (submitBtn) {
+        submitBtn.type = 'submit';
+        submitBtn.style.display = '';
+        submitBtn.disabled = false;
         submitBtn.textContent = '✅ Gerar QR Code Pix';
     }
 
@@ -5196,6 +5223,10 @@ function closeScheduleModal() {
     const modal = document.getElementById('scheduleModal');
     if (modal) {
         modal.classList.add('hidden');
+        clearInterval(_storePixPollInterval);
+        clearInterval(_storePixCountdownInterval);
+        _storePixPollInterval = null;
+        _storePixCountdownInterval = null;
         // Remove estilos inline aplicados no mobile
         const modalContent = modal.querySelector('div');
         if (modalContent && window.innerWidth <= 767) {
@@ -6741,8 +6772,324 @@ async function fetchWithTimeout(url, opts = {}, ms = 15000) {
 }
 
 // End helpers
-async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopago') {
+const STORE_PIX_PENDING_KEY = 'xtreino_store_pix_pending';
+let _storePixPollInterval = null;
+let _storePixCountdownInterval = null;
+window._storePixSubmitting = false;
+window._storePixState = 'idle';
+window._storePixPayment = null;
+window._storePixPendingCache = null;
+
+function getStorePixStorageKey() {
+    const userId = window.firebaseAuth?.currentUser?.uid || 'anonymous';
+    return `${STORE_PIX_PENDING_KEY}_${userId}`;
+}
+
+function getStorePixPending() {
+    const userId = window.firebaseAuth?.currentUser?.uid || 'anonymous';
     try {
+        const saved = localStorage.getItem(getStorePixStorageKey());
+        if (saved) return JSON.parse(saved);
+    } catch (_) { }
+    return window._storePixPendingCache?.userId === userId
+        ? window._storePixPendingCache
+        : null;
+}
+
+function saveStorePixPending(pending) {
+    const saved = {
+        ...pending,
+        userId: window.firebaseAuth?.currentUser?.uid || 'anonymous',
+    };
+    window._storePixPendingCache = saved;
+    try { localStorage.setItem(getStorePixStorageKey(), JSON.stringify(saved)); } catch (_) { }
+}
+
+function clearStorePixPending(externalReference) {
+    const current = getStorePixPending();
+    if (externalReference && current?.externalReference !== externalReference) return;
+    if (!window._storePixPendingCache || window._storePixPendingCache.userId === (window.firebaseAuth?.currentUser?.uid || 'anonymous')) {
+        window._storePixPendingCache = null;
+    }
+    try { localStorage.removeItem(getStorePixStorageKey()); } catch (_) { }
+}
+
+function setStorePixPaymentUi(state) {
+    window._storePixState = state;
+    const pixButton = document.getElementById('productPixBtn');
+    const tokensButton = document.getElementById('schedPayTokens');
+    const submitButton = document.getElementById('schedSubmit');
+    const locked = ['creating', 'pending', 'recovery', 'paid', 'review'].includes(state);
+
+    if (pixButton) {
+        pixButton.disabled = ['creating', 'pending', 'paid', 'review'].includes(state);
+        pixButton.innerHTML = state === 'creating'
+            ? '<i class="fas fa-spinner fa-spin text-xs"></i> Gerando QR Code Pix...'
+            : state === 'pending'
+                ? '<i class="fas fa-check text-xs"></i> Pix gerado — aguardando pagamento'
+                : state === 'recovery'
+                    ? '<i class="fas fa-rotate text-xs"></i> Retomar Pix pendente'
+                    : state === 'paid'
+                        ? '<i class="fas fa-check text-xs"></i> Compra confirmada'
+                        : state === 'review'
+                            ? '<i class="fas fa-clock text-xs"></i> Pagamento em conferência'
+                            : '<i class="fas fa-qrcode text-xs"></i> Gerar QR Code Pix';
+    }
+    if (tokensButton) tokensButton.disabled = locked;
+    if (submitButton) {
+        submitButton.disabled = locked;
+        if (state === 'pending') submitButton.textContent = 'Pix aguardando pagamento';
+        else if (state === 'paid') submitButton.textContent = 'Pagamento confirmado';
+        else if (state === 'review') submitButton.textContent = 'Pagamento em conferência';
+        else if (!locked) submitButton.textContent = '🛒 Finalizar Compra';
+    }
+}
+
+function showStorePixPanel(title, amount) {
+    const panel = document.getElementById('productPixPanel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    const titleEl = document.getElementById('productPixTitle');
+    if (titleEl) titleEl.textContent = title || 'Produto';
+    const amountEl = document.getElementById('productPixAmount');
+    if (amountEl && Number.isFinite(Number(amount))) {
+        amountEl.textContent = `R$ ${Number(amount).toFixed(2).replace('.', ',')}`;
+    }
+}
+
+function showStorePixNotice(message) {
+    const notice = document.getElementById('productPixNotice');
+    if (!notice) return;
+    notice.textContent = message;
+    notice.classList.remove('hidden');
+}
+
+function showStorePixRecovery(pending, cfg) {
+    showStorePixPanel(cfg?.label || pending?.title, pending?.amount);
+    document.getElementById('productPixLoading')?.classList.add('hidden');
+    document.getElementById('productPixContent')?.classList.add('hidden');
+    document.getElementById('productPixConfirmed')?.classList.add('hidden');
+    showStorePixNotice('Há um Pix pendente para este produto. Clique em “Retomar Pix pendente” para verificar ou recuperar o QR Code. Não inicie outro pagamento enquanto este pedido estiver pendente.');
+    setStorePixPaymentUi('recovery');
+}
+
+function showStorePixPaid(pending) {
+    clearInterval(_storePixPollInterval);
+    clearInterval(_storePixCountdownInterval);
+    _storePixPollInterval = null;
+    _storePixCountdownInterval = null;
+    clearStorePixPending(pending?.externalReference);
+    window._storePixPayment = { ...(window._storePixPayment || {}), ...pending, status: 'paid' };
+    showStorePixPanel(pending?.title, pending?.amount);
+    document.getElementById('productPixNotice')?.classList.add('hidden');
+    document.getElementById('productPixLoading')?.classList.add('hidden');
+    document.getElementById('productPixContent')?.classList.add('hidden');
+    document.getElementById('productPixConfirmed')?.classList.remove('hidden');
+    setStorePixPaymentUi('paid');
+}
+
+async function checkStorePixStatus(externalReference) {
+    try {
+        const response = await authenticatedPaymentFetch('/.netlify/functions/confirm-purchase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ external_reference: externalReference }),
+        });
+        const data = await response.json().catch(() => ({}));
+        const pending = getStorePixPending();
+        if (data.status === 'paid' || data.status === 'already_paid') {
+            showStorePixPaid(pending || { externalReference });
+            return 'paid';
+        }
+        if (data.status === 'rejected' || data.status === 'cancelled') {
+            clearInterval(_storePixPollInterval);
+            clearInterval(_storePixCountdownInterval);
+            _storePixPollInterval = null;
+            _storePixCountdownInterval = null;
+            clearStorePixPending(externalReference);
+            window._storePixPayment = null;
+            setStorePixPaymentUi('idle');
+            showStorePixNotice('O Pix anterior foi recusado ou cancelado. Você pode gerar um novo QR Code.');
+            return 'rejected';
+        }
+        if (data.status === 'needs_review' || response.status === 409) {
+            setStorePixPaymentUi('review');
+            showStorePixNotice(data.message || 'Este pagamento precisa de conferência. Não gere outra cobrança para este pedido.');
+            return 'review';
+        }
+        return response.ok ? 'pending' : 'unknown';
+    } catch (_) {
+        return 'unknown';
+    }
+}
+
+function startStorePixPolling(pending) {
+    clearInterval(_storePixPollInterval);
+    const poll = () => checkStorePixStatus(pending.externalReference);
+    poll();
+    _storePixPollInterval = setInterval(poll, 5000);
+}
+
+function startStorePixCountdown(pending) {
+    clearInterval(_storePixCountdownInterval);
+    const countdown = document.getElementById('productPixCountdown');
+    const expiry = Date.parse(pending.expiresAt || '');
+    const expiresAt = Number.isFinite(expiry) ? expiry : Date.now() + (30 * 60 * 1000);
+    const tick = async () => {
+        const secondsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+        if (countdown) {
+            countdown.textContent = secondsLeft
+                ? `${String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:${String(secondsLeft % 60).padStart(2, '0')}`
+                : 'Expirado';
+        }
+        if (secondsLeft > 0) return;
+        clearInterval(_storePixCountdownInterval);
+        _storePixCountdownInterval = null;
+        const status = await checkStorePixStatus(pending.externalReference);
+        if (status === 'pending') {
+            clearInterval(_storePixPollInterval);
+            _storePixPollInterval = null;
+            clearStorePixPending(pending.externalReference);
+            window._storePixPayment = null;
+            setStorePixPaymentUi('idle');
+            const statusText = document.getElementById('productPixStatus');
+            if (statusText) statusText.textContent = 'QR Code expirado.';
+            showStorePixNotice('Este QR Code Pix expirou e não foi aprovado. Você pode gerar um novo QR Code.');
+        }
+    };
+    tick();
+    _storePixCountdownInterval = setInterval(tick, 1000);
+}
+
+function showStorePixQRCode(pixData, pending, cfg) {
+    const hasQr = Boolean(pixData?.qr_code && pixData?.qr_code_base64);
+    showStorePixPanel(cfg?.label || pending?.title, pending?.amount);
+    document.getElementById('productPixNotice')?.classList.add('hidden');
+    document.getElementById('productPixLoading')?.classList.add('hidden');
+    document.getElementById('productPixConfirmed')?.classList.add('hidden');
+    document.getElementById('productPixContent')?.classList.toggle('hidden', !hasQr);
+    const status = document.getElementById('productPixStatus');
+    if (status) {
+        status.textContent = hasQr
+            ? 'Aguardando pagamento...'
+            : 'O Mercado Pago não retornou o QR Code. Retome este Pix antes de iniciar outro pagamento.';
+    }
+    if (hasQr) {
+        const image = document.getElementById('productPixQrImg');
+        if (image) image.src = String(pixData.qr_code_base64).startsWith('data:')
+            ? pixData.qr_code_base64
+            : `data:image/png;base64,${pixData.qr_code_base64}`;
+        const copyCode = document.getElementById('productPixCopyCode');
+        if (copyCode) copyCode.value = pixData.qr_code;
+    }
+    const updatedPending = {
+        ...pending,
+        title: cfg?.label || pending?.title,
+        expiresAt: pixData?.expiration_date || pending?.expiresAt || null,
+    };
+    saveStorePixPending(updatedPending);
+    window._storePixPayment = { ...updatedPending, pixData };
+    setStorePixPaymentUi('pending');
+    startStorePixCountdown(updatedPending);
+    startStorePixPolling(updatedPending);
+}
+
+async function createOrResumeStorePix(pending, cfg) {
+    setStorePixPaymentUi('creating');
+    showStorePixPanel(cfg?.label || pending?.title, pending?.amount);
+    document.getElementById('productPixNotice')?.classList.add('hidden');
+    document.getElementById('productPixContent')?.classList.add('hidden');
+    document.getElementById('productPixConfirmed')?.classList.add('hidden');
+    document.getElementById('productPixLoading')?.classList.remove('hidden');
+    document.getElementById('productPixLoading')?.classList.add('flex');
+    const response = await authenticatedPaymentFetch('/.netlify/functions/create-pix-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            external_reference: pending.externalReference,
+            unit_price: Number(pending.amount),
+            couponCode: pending.couponCode || null,
+        }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        if (response.status === 409) {
+            const status = await checkStorePixStatus(pending.externalReference);
+            if (status === 'paid' || status === 'review') return;
+        }
+        throw new Error(data.error || data.message || 'Não foi possível gerar o QR Code Pix.');
+    }
+    if (!data.qr_code || !data.qr_code_base64) {
+        throw new Error('O Mercado Pago não retornou o QR Code. Retome este Pix antes de iniciar outro pagamento.');
+    }
+    showStorePixQRCode(data, pending, cfg);
+}
+
+window.copyProductPixCode = function() {
+    const input = document.getElementById('productPixCopyCode');
+    if (!input?.value) return;
+    const copyFallback = () => {
+        input.select();
+        input.setSelectionRange(0, 99999);
+        try { document.execCommand('copy'); } catch (_) { }
+    };
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(input.value).catch(copyFallback);
+    } else {
+        copyFallback();
+    }
+    showToast('success', 'Código Pix copiado.', 'Pix');
+};
+
+window.payProductWithPix = function() {
+    const active = window._activeStoreProduct;
+    if (!active?.productId || !active.cfg) {
+        alert('Não foi possível identificar o produto. Feche e abra o pedido novamente.');
+        return;
+    }
+    return handleProductPurchase(active.productId, active.cfg, 'pix');
+};
+
+async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopago') {
+    const isProductPix = paymentMethod === 'pix';
+    if (isProductPix) {
+        if (window._storePixSubmitting) return;
+        window._storePixSubmitting = true;
+        setStorePixPaymentUi('creating');
+    }
+    try {
+        if (isProductPix) {
+            const existingPix = getStorePixPending();
+            if (existingPix) {
+                if (existingPix.productId !== productId) {
+                    setStorePixPaymentUi('idle');
+                    showStorePixPanel(existingPix.title, existingPix.amount);
+                    showStorePixNotice(`Já existe um Pix pendente para “${existingPix.title || 'outro produto'}”. Retome esse pagamento antes de gerar outro Pix.`);
+                    return;
+                }
+
+                showStorePixRecovery(existingPix, cfg);
+                const existingStatus = await checkStorePixStatus(existingPix.externalReference);
+                if (existingStatus === 'paid' || existingStatus === 'review') return;
+                if (existingStatus === 'unknown') {
+                    showStorePixRecovery(existingPix, cfg);
+                    showStorePixNotice('Não foi possível confirmar o status do Pix anterior. Retome o mesmo pedido; não inicie outra cobrança.');
+                    return;
+                }
+
+                const existingExpiry = Date.parse(existingPix.expiresAt || '');
+                if (existingStatus === 'pending' && Number.isFinite(existingExpiry) && Date.now() >= existingExpiry) {
+                    clearStorePixPending(existingPix.externalReference);
+                    window._storePixPayment = null;
+                    setStorePixPaymentUi('idle');
+                    showStorePixNotice('O QR Code anterior expirou e não foi aprovado. Vou gerar um novo Pix para este pedido.');
+                } else if (existingStatus === 'pending') {
+                    await createOrResumeStorePix(existingPix, cfg);
+                    return;
+                }
+            }
+        }
+
         // Coletar dados do formulário (apenas se existirem)
         const teamElement = document.getElementById('schedTeam');
         const emailElement = document.getElementById('schedEmail');
@@ -6892,6 +7239,25 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
             return;
         }
 
+        if (isProductPix) {
+            const productInfo = window.scheduleConfig?.[productId] || cfg || {};
+            const productCategory = String(productInfo.category || '').toLowerCase();
+            const isPhysicalProduct = productId === 'camisa'
+                || productCategory === 'fisico'
+                || productCategory === 'physical';
+            if (isPhysicalProduct) {
+                const delivery = productOptions.delivery || {};
+                const requiredDelivery = [
+                    delivery.name, delivery.cpf, delivery.cep, delivery.address,
+                    delivery.number, delivery.district, delivery.city, delivery.state,
+                ];
+                if (requiredDelivery.some(value => !String(value || '').trim())) {
+                    alert('Preencha os dados completos de entrega antes de gerar o Pix.');
+                    return;
+                }
+            }
+        }
+
         // Inicializar variáveis
         let docRef = null;
         let externalRef = `digital_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -6946,6 +7312,22 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
         }
 
         if (!docRef) throw new Error('Pedido não salvo. Nenhuma cobrança foi iniciada. Tente novamente.');
+        if (isProductPix) {
+            const pending = {
+                productId,
+                externalReference: externalRef,
+                amount: Number(finalPrice.toFixed(2)),
+                couponCode: _prodCoupon?.code || null,
+                title: cfg.label || 'Produto',
+                userId: window.firebaseAuth.currentUser?.uid || 'anonymous',
+                createdAt: Date.now(),
+                expiresAt: null,
+            };
+            saveStorePixPending(pending);
+            await createOrResumeStorePix(pending, cfg);
+            showToast('info', 'Pague pelo QR Code ou copie e cole o código Pix. O pagamento será confirmado nesta tela.', 'Pix');
+            return;
+        }
         if (paymentMethod === 'tokens') {
             await payOrderWithTokens(externalRef, _prodCoupon?.code || null, finalPrice);
             closeScheduleModal();
@@ -7021,7 +7403,27 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
     } catch (error) {
         
         const errorMessage = error.message || 'Falha ao processar compra.';
-        alert(`Falha ao processar compra.\n\n${errorMessage}\n\nPor favor, tente novamente ou entre em contato com o suporte.`);
+        if (isProductPix) {
+            const pending = getStorePixPending();
+            document.getElementById('productPixLoading')?.classList.add('hidden');
+            if (pending?.productId === productId) {
+                showStorePixRecovery(pending, cfg);
+                showStorePixNotice(`${errorMessage} Se o pedido já tiver iniciado a cobrança, retome este mesmo Pix; não gere outro pedido.`);
+            } else {
+                setStorePixPaymentUi('idle');
+                alert(`Não foi possível gerar o Pix.\n\n${errorMessage}`);
+            }
+        } else {
+            alert(`Falha ao processar compra.\n\n${errorMessage}\n\nPor favor, tente novamente ou entre em contato com o suporte.`);
+        }
+    } finally {
+        if (isProductPix) {
+            window._storePixSubmitting = false;
+            const state = window._storePixState;
+            if (!getStorePixPending() && !['paid', 'review'].includes(state)) {
+                setStorePixPaymentUi('idle');
+            }
+        }
     }
 }
 

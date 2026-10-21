@@ -1203,6 +1203,10 @@
                                             class="w-full bg-yellow-400 hover:bg-yellow-500 text-yellow-900 py-3 px-4 rounded-xl font-bold transition-colors text-sm hidden flex items-center justify-center gap-2">
                                         💎 Saldo insuficiente — Comprar Tokens
                                     </button>
+                                    <button type="button" id="productPixBtn" onclick="payProductWithPix()"
+                                            class="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3 px-4 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 shadow-lg hidden">
+                                        <i class="fas fa-qrcode text-xs"></i> Gerar QR Code Pix
+                                    </button>
                                     <button type="button" id="schedPayTokens" onclick="payScheduleWithTokens()"
                                             class="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-yellow-900 py-3 px-4 rounded-xl font-bold transition-colors text-sm flex items-center justify-center gap-2">
                                         💎 Pagar com Tokens da Plataforma
@@ -1211,6 +1215,48 @@
                                             class="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3.5 px-4 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 shadow-lg">
                                         <i class="fas fa-qrcode text-xs"></i> Gerar QR Code Pix
                                     </button>
+                                    <div id="productPixPanel" class="hidden w-full rounded-xl border border-green-200 bg-white overflow-hidden" aria-live="polite">
+                                        <div class="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3 flex items-center justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <h3 class="text-white font-bold text-sm">Pagamento Pix da loja</h3>
+                                                <p id="productPixTitle" class="text-green-100 text-xs truncate"></p>
+                                            </div>
+                                            <div class="text-right flex-shrink-0">
+                                                <p class="text-green-100 text-xs">Total</p>
+                                                <p id="productPixAmount" class="text-white font-black text-lg"></p>
+                                            </div>
+                                        </div>
+                                        <div id="productPixNotice" class="hidden px-4 py-3 text-sm text-amber-800 bg-amber-50"></div>
+                                        <div id="productPixLoading" class="hidden flex-col items-center justify-center py-8 px-6">
+                                            <div class="w-10 h-10 border-4 border-green-200 border-t-green-600 rounded-full animate-spin mb-3"></div>
+                                            <p class="text-gray-600 text-sm">Gerando QR Code Pix...</p>
+                                        </div>
+                                        <div id="productPixContent" class="hidden px-4 pb-4">
+                                            <div class="flex items-center justify-between mt-4 mb-3 gap-2">
+                                                <span id="productPixStatus" class="text-sm text-gray-600 font-medium">Aguardando pagamento...</span>
+                                                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">
+                                                    <i class="fas fa-clock mr-1"></i><span id="productPixCountdown">30:00</span>
+                                                </span>
+                                            </div>
+                                            <div class="flex justify-center mb-3">
+                                                <img id="productPixQrImg" src="" alt="QR Code Pix do produto" class="w-48 h-48 border-2 border-gray-200 rounded-xl p-1 bg-white">
+                                            </div>
+                                            <label for="productPixCopyCode" class="block text-xs font-bold text-gray-600 mb-1">Pix copia e cola</label>
+                                            <div class="flex gap-2">
+                                                <textarea id="productPixCopyCode" readonly rows="3" class="flex-1 min-w-0 border border-gray-200 rounded-lg p-2 text-xs text-gray-600 resize-none"></textarea>
+                                                <button type="button" onclick="copyProductPixCode()" class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-xs">
+                                                    <i class="fas fa-copy mr-1"></i>Copiar
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div id="productPixConfirmed" class="hidden px-4 py-6 text-center">
+                                            <div class="w-12 h-12 rounded-full bg-green-100 text-green-700 flex items-center justify-center mx-auto mb-3">
+                                                <i class="fas fa-check text-xl"></i>
+                                            </div>
+                                            <p class="font-bold text-green-800">Compra confirmada!</p>
+                                            <p class="text-sm text-gray-600 mt-1">Seu pagamento foi aprovado. Confira seus produtos na sua conta.</p>
+                                        </div>
+                                    </div>
                                     <div id="schedHint" class="text-xs text-gray-400 text-center"></div>
                                     <div id="pixPaymentModal" class="hidden flex-col w-full">
                                       <div class="bg-white border border-green-200 rounded-xl w-full shadow-sm overflow-hidden">
