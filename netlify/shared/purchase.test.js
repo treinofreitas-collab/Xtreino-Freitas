@@ -677,7 +677,7 @@ test("Pix checkout labels the sale and includes all purchased event dates and ho
     const pixRequestBody = JSON.parse(requests[0].body);
     assert.deepEqual(pixRequestBody, {
       transaction_amount: 6,
-      description: "Venda",
+      description: "Treino Modo Liga — 21/10 20h, 22/10 21h",
       payment_method_id: "pix",
       external_reference: reference,
       notification_url: "https://orgfreitas.com.br/.netlify/functions/mp-webhook",
@@ -748,7 +748,7 @@ test("direct Pix payment includes the exact catalog product name", async () => {
 
     assert.equal(response.statusCode, 200);
     const pixRequestBody = requests[0].body;
-    assert.equal(pixRequestBody.description, "Venda");
+    assert.equal(pixRequestBody.description, "Camisa Oficial Org Freitas");
     assert.deepEqual(pixRequestBody.additional_info.items, [{
       id: reference,
       title: "Camisa Oficial Org Freitas",
@@ -795,11 +795,50 @@ test("Mercado Pago preference labels the sale and includes the event name, date,
     assert.equal(response.statusCode, 200);
     assert.equal(requests[0].url, "https://api.mercadopago.com/checkout/preferences");
     assert.deepEqual(requests[0].body.items, [{
-      title: "Venda",
+      title: "Treino Modo Liga — 21/10 20h",
       quantity: 1,
       unit_price: 3,
       currency_id: "BRL",
       description: "Treino Modo Liga — 21/10 20h",
+    }]);
+  } finally {
+    firebase.verifyFirebaseUser = verify;
+    global.fetch = originalFetch;
+    delete process.env.MP_ACCESS_TOKEN;
+    delete require.cache[path];
+  }
+});
+
+test("Mercado Pago product preference includes the exact catalog name in the item title", async () => {
+  const path = require.resolve("../functions/create-preference");
+  const verify = firebase.verifyFirebaseUser;
+  const originalFetch = global.fetch;
+  const requests = [];
+  delete require.cache[path];
+  firebase.verifyFirebaseUser = async () => ({ uid: "buyer" });
+  process.env.MP_ACCESS_TOKEN = "test-access";
+  global.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), body: JSON.parse(options.body) });
+    return { ok: true, json: async () => ({ id: "pref-product-123", init_point: "https://checkout.example/pref-product-123" }) };
+  };
+  try {
+    currentDb = fakeDatabase({
+      "products/camisa-oficial": { name: "Camisa Oficial Org Freitas", price: 89.9, isActive: true },
+      "orders/order-product-pref": { userId: "buyer", status: "pending", productId: "camisa-oficial" },
+    });
+    const { handler } = require(path);
+    const response = await handler({
+      httpMethod: "POST",
+      body: JSON.stringify({ external_reference: "digital_order-product-pref", unit_price: 89.9 }),
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(requests[0].body.items, [{
+      title: "Camisa Oficial Org Freitas",
+      quantity: 1,
+      unit_price: 89.9,
+      currency_id: "BRL",
+      description: "Camisa Oficial Org Freitas",
     }]);
   } finally {
     firebase.verifyFirebaseUser = verify;

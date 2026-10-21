@@ -14,12 +14,13 @@ exports.handler = async event => {
     if (checkout.pixPaymentId) return jsonResponse(409, { error: "Este pedido já tem um Pix ativo. Não inicie outro checkout." });
     if (checkout.paymentUrl) return jsonResponse(200, { init_point: checkout.paymentUrl, external_reference: checkout.externalReference });
     const backUrl = safeBackUrl(body.back_url);
+    const itemDescription = checkout.providerDescription || checkout.title;
     const item = {
-      title: "Venda",
+      title: itemDescription,
       quantity: 1,
       unit_price: checkout.amountCents / 100,
       currency_id: "BRL",
-      description: checkout.providerDescription || checkout.title,
+      description: itemDescription,
     };
     const response = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",

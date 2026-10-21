@@ -77,7 +77,7 @@ exports.handler = async event => {
       },
       body: JSON.stringify({
         transaction_amount: checkout.amountCents / 100,
-        description: "Venda",
+        description: itemTitle,
         payment_method_id: "pix",
         external_reference: checkout.externalReference,
         notification_url: `${siteBaseUrl()}/.netlify/functions/mp-webhook`,
