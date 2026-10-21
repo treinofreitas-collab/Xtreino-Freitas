@@ -65,7 +65,7 @@ test('event modal puts Pix checkout first and keeps token checkout second', () =
     assert.deepEqual(container.children.map(button => button.id), ['schedSubmit', 'schedPayTokens']);
     context.setSchedulePaymentButtonOrder(false);
     assert.deepEqual(container.children.map(button => button.id), ['schedPayTokens', 'schedSubmit']);
-    assert.match(source, /Confirmar e pagar \(Pix\)/);
+    assert.match(source, /Gerar QR Code Pix/);
 });
 
 const submission = extract('submitSchedule', '// ===== Helper: busca registrações');
