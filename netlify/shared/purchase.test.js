@@ -679,6 +679,15 @@ test("Pix checkout creates one authenticated Mercado Pago payment and reuses its
       notification_url: "https://orgfreitas.com.br/.netlify/functions/mp-webhook",
       date_of_expiration: pixRequestBody.date_of_expiration,
       payer: { email: "buyer@example.com" },
+      additional_info: {
+        items: [{
+          id: reference,
+          title: "Treino Modo Liga (1 reserva(s))",
+          description: "Treino Modo Liga (1 reserva(s))",
+          quantity: 1,
+          unit_price: 3,
+        }],
+      },
     });
     const expirationDelta = new Date(pixRequestBody.date_of_expiration).getTime() - Date.now();
     assert.ok(expirationDelta > 29 * 60 * 1000 && expirationDelta <= 30 * 60 * 1000);
@@ -690,6 +699,59 @@ test("Pix checkout creates one authenticated Mercado Pago payment and reuses its
     assert.equal(requests.length, 2);
     assert.equal(requests[1].method, "GET");
     assert.match(requests[1].url, /\/v1\/payments\/123456$/);
+  } finally {
+    firebase.verifyFirebaseUser = verify;
+    global.fetch = originalFetch;
+    delete process.env.MP_ACCESS_TOKEN;
+    delete process.env.MP_WEBHOOK_SECRET;
+    delete require.cache[path];
+  }
+});
+
+test("direct Pix payment includes the exact catalog product name", async () => {
+  const path = require.resolve("../functions/create-pix-payment");
+  const verify = firebase.verifyFirebaseUser;
+  const originalFetch = global.fetch;
+  const reference = "digital_order123";
+  const requests = [];
+  delete require.cache[path];
+  firebase.verifyFirebaseUser = async () => ({ uid: "buyer", email: "buyer@example.com" });
+  process.env.MP_ACCESS_TOKEN = "test-access";
+  process.env.MP_WEBHOOK_SECRET = "test-webhook";
+  global.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), body: JSON.parse(options.body) });
+    return {
+      ok: true,
+      json: async () => ({
+        id: 123457,
+        status: "pending",
+        point_of_interaction: {
+          transaction_data: { qr_code: "product-pix-code", qr_code_base64: "png-base64" },
+        },
+      }),
+    };
+  };
+  try {
+    currentDb = fakeDatabase({
+      "products/camisa-oficial": { name: "Camisa Oficial Org Freitas", price: 89.9, isActive: true },
+      "orders/order123": { userId: "buyer", status: "pending", productId: "camisa-oficial" },
+    });
+    const { handler } = require(path);
+    const response = await handler({
+      httpMethod: "POST",
+      body: JSON.stringify({ external_reference: reference, unit_price: 89.9 }),
+    });
+
+    assert.equal(response.statusCode, 200);
+    const pixRequestBody = requests[0].body;
+    assert.equal(pixRequestBody.description, "Camisa Oficial Org Freitas");
+    assert.deepEqual(pixRequestBody.additional_info.items, [{
+      id: reference,
+      title: "Camisa Oficial Org Freitas",
+      description: "Camisa Oficial Org Freitas",
+      quantity: 1,
+      unit_price: 89.9,
+    }]);
   } finally {
     firebase.verifyFirebaseUser = verify;
     global.fetch = originalFetch;

@@ -65,6 +65,9 @@ exports.handler = async event => {
     }
 
     const expirationDate = new Date(Date.now() + PIX_EXPIRATION_MINUTES * 60 * 1000).toISOString();
+    const itemTitle = String(checkout.title || (checkout.kind === "event" ? "Inscrição em evento" : "Produto"))
+      .trim()
+      .slice(0, 250);
     const response = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
@@ -74,12 +77,21 @@ exports.handler = async event => {
       },
       body: JSON.stringify({
         transaction_amount: checkout.amountCents / 100,
-        description: checkout.title,
+        description: itemTitle,
         payment_method_id: "pix",
         external_reference: checkout.externalReference,
         notification_url: `${siteBaseUrl()}/.netlify/functions/mp-webhook`,
         date_of_expiration: expirationDate,
         payer: { email: payerEmail },
+        additional_info: {
+          items: [{
+            id: String(checkout.orderId || checkout.externalReference).slice(0, 100),
+            title: itemTitle,
+            description: itemTitle,
+            quantity: 1,
+            unit_price: checkout.amountCents / 100,
+          }],
+        },
       }),
     });
     const payment = await response.json().catch(() => ({}));
