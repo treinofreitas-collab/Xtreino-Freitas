@@ -166,6 +166,23 @@ async function discountedPrice(db, originalCents, code, kind) {
   };
 }
 
+function eventProviderDescription(eventTitle, sources) {
+  const bookedSlots = sources.map(source => {
+    const registration = source.data();
+    const rawHour = String(registration.hour ?? registration.schedule ?? "");
+    const hourMatch = rawHour.match(/(\d{1,2})(?:h|:|$)/i);
+    if (!hourMatch) return null;
+    const hour = Number(hourMatch[1]);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+
+    const date = registration.date || registration.eventDate;
+    const dateLabel = validIsoDate(date) ? `${date.slice(8, 10)}/${date.slice(5, 7)}` : null;
+    return [dateLabel, `${String(hour).padStart(2, "0")}h`].filter(Boolean).join(" ");
+  });
+  const uniqueSlots = [...new Set(bookedSlots.filter(Boolean))];
+  return (uniqueSlots.length ? `${eventTitle} — ${uniqueSlots.join(", ")}` : eventTitle).slice(0, 250);
+}
+
 // Resolve trusted pricing without writing a checkout yet.
 async function buildPurchase(uid, body, method) {
   const reference = validReference(body.external_reference);
@@ -216,10 +233,12 @@ async function buildPurchase(uid, body, method) {
     ? await findAffiliateRef(db, affiliateCodes[0])
     : null;
   const firstSource = sources[0].data();
+  const eventTitle = kind === "event" ? prices[0].title : null;
   const checkout = {
     userId: uid, kind, method, externalReference: reference, orderId: reference,
     sourcePaths: sources.map(s => s.ref.path), sourceAmountCents: prices.map(p => p.cents),
     title: kind === "product" ? product.title : `${prices[0].title} (${sources.length} reserva(s))`,
+    providerDescription: kind === "event" ? eventProviderDescription(eventTitle, sources) : product.title,
     originalCents, ...discount, status: "pending", currency: "BRL",
     ...(affiliateRef ? { affiliateId: affiliateRef.id } : {}),
     customerEmail: firstSource.email || firstSource.buyerEmail || firstSource.customer || null,

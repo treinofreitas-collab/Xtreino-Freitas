@@ -14,6 +14,13 @@ exports.handler = async event => {
     if (checkout.pixPaymentId) return jsonResponse(409, { error: "Este pedido já tem um Pix ativo. Não inicie outro checkout." });
     if (checkout.paymentUrl) return jsonResponse(200, { init_point: checkout.paymentUrl, external_reference: checkout.externalReference });
     const backUrl = safeBackUrl(body.back_url);
+    const item = {
+      title: "Venda",
+      quantity: 1,
+      unit_price: checkout.amountCents / 100,
+      currency_id: "BRL",
+      description: checkout.providerDescription || checkout.title,
+    };
     const response = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",
       headers: {
@@ -22,7 +29,7 @@ exports.handler = async event => {
         "X-Idempotency-Key": checkout.externalReference,
       },
       body: JSON.stringify({
-        items: [{ title: checkout.title, quantity: 1, unit_price: checkout.amountCents / 100, currency_id: "BRL" }],
+        items: [item],
         external_reference: checkout.externalReference,
         notification_url: `${siteBaseUrl()}/.netlify/functions/mp-webhook`,
         back_urls: { success: backUrl, failure: backUrl, pending: backUrl },

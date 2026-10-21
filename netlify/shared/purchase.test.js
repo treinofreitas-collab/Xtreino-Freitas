@@ -617,7 +617,7 @@ test("payment endpoints reject unauthenticated requests before any data or payme
   }
 });
 
-test("Pix checkout creates one authenticated Mercado Pago payment and reuses its QR on retry", async () => {
+test("Pix checkout labels the sale and includes all purchased event dates and hours", async () => {
   const path = require.resolve("../functions/create-pix-payment");
   const verify = firebase.verifyFirebaseUser;
   const originalFetch = global.fetch;
@@ -648,11 +648,15 @@ test("Pix checkout creates one authenticated Mercado Pago payment and reuses its
         userId: "buyer", status: "pending", eventType: "modo-liga",
         date: "2026-10-21", schedule: "Quarta - 20h", external_reference: reference,
       },
+      "registrations/r2": {
+        userId: "buyer", status: "pending", eventType: "modo-liga",
+        date: "2026-10-22", schedule: "Quinta - 21h", external_reference: reference,
+      },
     });
     const { handler } = require(path);
     const event = {
       httpMethod: "POST",
-      body: JSON.stringify({ external_reference: reference, unit_price: 3 }),
+      body: JSON.stringify({ external_reference: reference, unit_price: 6 }),
     };
 
     const firstResponse = await handler(event);
@@ -672,8 +676,8 @@ test("Pix checkout creates one authenticated Mercado Pago payment and reuses its
     assert.equal(requests[0].headers["X-Idempotency-Key"].length, 64);
     const pixRequestBody = JSON.parse(requests[0].body);
     assert.deepEqual(pixRequestBody, {
-      transaction_amount: 3,
-      description: "Treino Modo Liga (1 reserva(s))",
+      transaction_amount: 6,
+      description: "Venda",
       payment_method_id: "pix",
       external_reference: reference,
       notification_url: "https://orgfreitas.com.br/.netlify/functions/mp-webhook",
@@ -682,10 +686,10 @@ test("Pix checkout creates one authenticated Mercado Pago payment and reuses its
       additional_info: {
         items: [{
           id: reference,
-          title: "Treino Modo Liga (1 reserva(s))",
-          description: "Treino Modo Liga (1 reserva(s))",
+          title: "Treino Modo Liga — 21/10 20h, 22/10 21h",
+          description: "Treino Modo Liga — 21/10 20h, 22/10 21h",
           quantity: 1,
-          unit_price: 3,
+          unit_price: 6,
         }],
       },
     });
@@ -744,7 +748,7 @@ test("direct Pix payment includes the exact catalog product name", async () => {
 
     assert.equal(response.statusCode, 200);
     const pixRequestBody = requests[0].body;
-    assert.equal(pixRequestBody.description, "Camisa Oficial Org Freitas");
+    assert.equal(pixRequestBody.description, "Venda");
     assert.deepEqual(pixRequestBody.additional_info.items, [{
       id: reference,
       title: "Camisa Oficial Org Freitas",
@@ -757,6 +761,50 @@ test("direct Pix payment includes the exact catalog product name", async () => {
     global.fetch = originalFetch;
     delete process.env.MP_ACCESS_TOKEN;
     delete process.env.MP_WEBHOOK_SECRET;
+    delete require.cache[path];
+  }
+});
+
+test("Mercado Pago preference labels the sale and includes the event name, date, and hour", async () => {
+  const path = require.resolve("../functions/create-preference");
+  const verify = firebase.verifyFirebaseUser;
+  const originalFetch = global.fetch;
+  const reference = "schedule_preference_label";
+  const requests = [];
+  delete require.cache[path];
+  firebase.verifyFirebaseUser = async () => ({ uid: "buyer" });
+  process.env.MP_ACCESS_TOKEN = "test-access";
+  global.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), body: JSON.parse(options.body) });
+    return { ok: true, json: async () => ({ id: "pref-123", init_point: "https://checkout.example/pref-123" }) };
+  };
+  try {
+    currentDb = fakeDatabase({
+      "adminEvents/modo-liga": { name: "Treino Modo Liga", preco: 3, status: "Aberto" },
+      "registrations/event": {
+        userId: "buyer", status: "pending", eventType: "modo-liga",
+        date: "2026-10-21", schedule: "Quarta - 20h", external_reference: reference,
+      },
+    });
+    const { handler } = require(path);
+    const response = await handler({
+      httpMethod: "POST",
+      body: JSON.stringify({ external_reference: reference, unit_price: 3 }),
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(requests[0].url, "https://api.mercadopago.com/checkout/preferences");
+    assert.deepEqual(requests[0].body.items, [{
+      title: "Venda",
+      quantity: 1,
+      unit_price: 3,
+      currency_id: "BRL",
+      description: "Treino Modo Liga — 21/10 20h",
+    }]);
+  } finally {
+    firebase.verifyFirebaseUser = verify;
+    global.fetch = originalFetch;
+    delete process.env.MP_ACCESS_TOKEN;
     delete require.cache[path];
   }
 });
