@@ -1,5 +1,5 @@
 const { getAdmin, verifyFirebaseUser } = require("../shared/firebase-admin");
-const { findPaymentsByExternalReference } = require("../shared/credit-token-order");
+const { fetchPaymentById, findPaymentsByExternalReference } = require("../shared/credit-token-order");
 const { completePurchase, assertCanConfirm } = require("../shared/purchase");
 const { jsonResponse, parseJsonBody } = require("../shared/token-purchase");
 
@@ -16,9 +16,29 @@ exports.handler = async event => {
       reason: "checkout_missing",
       message: "Este pedido não tem um checkout seguro associado. É necessária uma conferência manual.",
     });
-    await assertCanConfirm(user.uid, checkout.data().userId);
-    if (checkout.data().status === "paid") return jsonResponse(200, { status: "paid" });
-    const payments = await findPaymentsByExternalReference(reference);
+    const checkoutData = checkout.data();
+    await assertCanConfirm(user.uid, checkoutData.userId);
+    if (checkoutData.status === "paid") return jsonResponse(200, { status: "paid" });
+
+    // Direct Pix checkouts persist the exact Mercado Pago payment ID before
+    // returning the QR. Querying that ID avoids payment-search indexing delays.
+    let payments;
+    if (checkoutData.pixPaymentId) {
+      const payment = await fetchPaymentById(checkoutData.pixPaymentId);
+      if (
+        String(payment?.id) !== String(checkoutData.pixPaymentId)
+        || String(payment?.external_reference) !== reference
+      ) {
+        return jsonResponse(409, {
+          status: "needs_review",
+          reason: "pix_payment_reference_mismatch",
+          message: "Não foi possível validar este Pix com segurança. Não faça outro pagamento.",
+        });
+      }
+      payments = [payment];
+    } else {
+      payments = await findPaymentsByExternalReference(reference);
+    }
     const approved = payments.filter(p => p.status === "approved" && String(p.external_reference) === reference);
     if (approved.length > 1) return jsonResponse(409, {
       status: "needs_review",

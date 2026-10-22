@@ -288,9 +288,9 @@ test('approved event Pix closes checkout and opens the slot confirmation with it
 
     assert.ok(classes.has('hidden'));
     assert.ok(!classes.has('flex'));
-    assert.equal(calls[0].action, 'close-checkout');
-    assert.equal(calls[1].action, 'show-confirmation');
-    assert.deepEqual(calls[1].args, [slots, 'TREINO FREITAS', false, 'treino-freitas', null, 'schedule_ref_1']);
+    assert.equal(calls[0].action, 'show-confirmation');
+    assert.equal(calls[1].action, 'close-checkout');
+    assert.deepEqual(calls[0].args, [slots, 'TREINO FREITAS', false, 'treino-freitas', null, 'schedule_ref_1']);
 });
 
 test('schedule Pix invokes slot confirmation only for a server-confirmed payment', () => {
@@ -301,6 +301,14 @@ test('schedule Pix invokes slot confirmation only for a server-confirmed payment
     );
     assert.match(script, /if \(pixConfirmationHandled\) return;/);
     assert.match(script, /showPaidScheduleConfirmation\(assignedSlotsData, cfg, externalRef\)/);
+    const confirmationStart = script.indexOf('_pixConfirmFn = async () => {');
+    const confirmationEnd = script.indexOf('\n    };', confirmationStart);
+    const confirmationHandler = script.slice(confirmationStart, confirmationEnd);
+    assert.ok(
+        confirmationHandler.indexOf('showPaidScheduleConfirmation(')
+        < confirmationHandler.indexOf('assignedSlotsData.map'),
+        'show the confirmation before rendering optional QR details'
+    );
 });
 
 test('closing the successful Pix confirmation does not redirect to Minha Conta', () => {

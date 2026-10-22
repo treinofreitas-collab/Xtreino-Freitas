@@ -8908,7 +8908,7 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink,
         const target = div.querySelector('#confirmedEventAccessLinks');
         import('./js/event-access-client.mjs')
             .then(({ mountReferenceAccess }) => mountReferenceAccess(target, accessReference, {
-                linkLabel: 'Acessar grupo de ID e senha',
+                linkLabel: 'ACESSAR GRUPO DE ID E SENHA',
             }))
             .catch(() => {
                 if (target?.isConnected) target.textContent = 'Sua vaga está confirmada. Consulte o link em Minha conta > Pedidos.';
@@ -10734,21 +10734,20 @@ function renderSchedulePixFallback(pixData, cfg, finalPrice) {
 }
 
 function showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef) {
-    if (!Array.isArray(assignedSlotsData) || !assignedSlotsData.length
-        || typeof showSlotConfirmationModal !== 'function') return false;
+    if (typeof showSlotConfirmationModal !== 'function') return false;
 
-    const pixModal = document.getElementById('pixPaymentModal');
-    pixModal?.classList.add('hidden');
-    pixModal?.classList.remove('flex');
-    closeScheduleModal();
     showSlotConfirmationModal(
-        assignedSlotsData,
+        Array.isArray(assignedSlotsData) ? assignedSlotsData : [],
         cfg?.label || 'Evento',
         Boolean(cfg?.isLiga || cfg?.eventType === 'modo-liga'),
         cfg?.eventType || '',
         null,
         externalRef
     );
+    const pixModal = document.getElementById('pixPaymentModal');
+    pixModal?.classList.add('hidden');
+    pixModal?.classList.remove('flex');
+    closeScheduleModal();
     return true;
 }
 
@@ -10832,6 +10831,13 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         clearInterval(_pixCountdownInterval);
         forgetSchedulePixCheckout(externalRef);
         setSchedulePixCheckoutState('paid');
+
+        try {
+            if (showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef)) return;
+        } catch (confirmationError) {
+            console.error('Pagamento confirmado, mas não foi possível abrir a confirmação da vaga:', confirmationError);
+        }
+
         // A consulta autenticada já confirmou as reservas no servidor.
         const pixContentEl = document.getElementById('pixContent');
         const pixConfirmedEl = document.getElementById('pixConfirmed');
@@ -10869,11 +10875,6 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
             slotInfoEl.innerHTML = '<p class="text-green-700 text-sm text-center font-medium">Inscrição confirmada com sucesso!</p>';
         }
 
-        try {
-            showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef);
-        } catch (confirmationError) {
-            console.error('Pagamento confirmado, mas não foi possível abrir a confirmação da vaga:', confirmationError);
-        }
     };
 
     const checkPixStatus = async function() {
@@ -10883,8 +10884,13 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ external_reference: externalRef }),
             });
-            if (!r.ok) return;
             const d = await r.json();
+            if (!r.ok) {
+                const status = document.getElementById('pixStatusText');
+                if (status) status.textContent = d.message
+                    || 'Não foi possível consultar o Pix agora. Continuaremos verificando; não pague novamente.';
+                return;
+            }
             if (d.status === 'paid' || d.status === 'already_paid') {
                 if (typeof _pixConfirmFn === 'function') await _pixConfirmFn();
             } else if (d.status === 'rejected' || d.status === 'cancelled') {
@@ -10894,8 +10900,15 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
                 const st = document.getElementById('pixStatusText');
                 if (st) st.textContent = 'Pagamento recusado ou cancelado. Confira o status antes de gerar outra cobrança.';
                 setSchedulePixCheckoutState('retry');
+            } else if (d.status === 'needs_review') {
+                const status = document.getElementById('pixStatusText');
+                if (status) status.textContent = d.message
+                    || 'A confirmação deste Pix precisa de verificação. Não faça outro pagamento.';
             }
-        } catch (_) {}
+        } catch (_) {
+            const status = document.getElementById('pixStatusText');
+            if (status) status.textContent = 'Falha temporária ao consultar o Pix. Continuaremos verificando; não pague novamente.';
+        }
     };
     clearInterval(_pixPollingInterval);
     checkPixStatus();

@@ -51,7 +51,7 @@ test('all event modes keep team/hour but omit slot numbers, letters and the even
 test('confirmed reservation access uses the group ID and password button label', () => {
     assert.match(
         source,
-        /mountReferenceAccess\(target, accessReference, \{\s*linkLabel: 'Acessar grupo de ID e senha',\s*\}\)/
+        /mountReferenceAccess\(target, accessReference, \{\s*linkLabel: 'ACESSAR GRUPO DE ID E SENHA',\s*\}\)/
     );
 });
 

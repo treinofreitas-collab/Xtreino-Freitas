@@ -919,3 +919,68 @@ test("admin Verificar validates the provider amount before confirming an event w
     delete require.cache[path];
   }
 });
+
+test("confirm-purchase checks a direct Pix by its saved payment ID instead of search indexing", async () => {
+  const path = require.resolve("../functions/confirm-purchase");
+  const provider = require("./credit-token-order");
+  const verify = firebase.verifyFirebaseUser;
+  const fetchPayment = provider.fetchPaymentById;
+  const findPayments = provider.findPaymentsByExternalReference;
+  let paymentApproved = false;
+  let directCalls = 0;
+  let searchCalls = 0;
+  delete require.cache[path];
+  firebase.verifyFirebaseUser = async () => ({ uid: "buyer" });
+  provider.fetchPaymentById = async id => {
+    directCalls++;
+    assert.equal(id, "mp-pix-123");
+    return {
+      ...payment("schedule_pix_direct_lookup"),
+      id,
+      status: paymentApproved ? "approved" : "pending",
+      transaction_amount: 1,
+    };
+  };
+  provider.findPaymentsByExternalReference = async () => {
+    searchCalls++;
+    return [];
+  };
+  try {
+    const { handler } = require(path);
+    currentDb = fakeDatabase({
+      "users/buyer": { tokens: 0 },
+      "adminEvents/liga": { name: "Liga", preco: 1, status: "Aberto" },
+      "registrations/r": {
+        userId: "buyer", status: "pending", eventType: "liga", date: "2026-10-14",
+        schedule: "Quarta - 14h", external_reference: "schedule_pix_direct_lookup",
+      },
+    });
+    const prepared = await preparePurchase(
+      "buyer",
+      { external_reference: "schedule_pix_direct_lookup", unit_price: 1 },
+      "mercadopago",
+    );
+    await prepared.checkoutRef.update({ pixPaymentId: "mp-pix-123" });
+    const request = {
+      httpMethod: "POST",
+      body: JSON.stringify({ external_reference: "schedule_pix_direct_lookup" }),
+    };
+
+    const pending = await handler(request);
+    assert.equal(JSON.parse(pending.body).status, "pending");
+    assert.equal(currentDb.read("registrations/r").status, "pending");
+
+    paymentApproved = true;
+    const confirmed = await handler(request);
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(JSON.parse(confirmed.body).status, "paid");
+    assert.equal(currentDb.read("registrations/r").status, "paid");
+    assert.equal(directCalls, 2);
+    assert.equal(searchCalls, 0);
+  } finally {
+    firebase.verifyFirebaseUser = verify;
+    provider.fetchPaymentById = fetchPayment;
+    provider.findPaymentsByExternalReference = findPayments;
+    delete require.cache[path];
+  }
+});

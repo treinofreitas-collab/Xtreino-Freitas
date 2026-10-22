@@ -129,8 +129,8 @@ test('confirmation can use a group-oriented label while the default remains even
     setup(t, async () => ({ access: [available('a')] }));
 
     const confirmation = fakeContainer();
-    await mountReferenceAccess(confirmation, 'confirmation', { linkLabel: 'Acessar grupo de ID e senha' });
-    assert.equal(confirmation.children.find(child => child.tag === 'a').textContent, 'Acessar grupo de ID e senha');
+    await mountReferenceAccess(confirmation, 'confirmation', { linkLabel: 'ACESSAR GRUPO DE ID E SENHA' });
+    assert.equal(confirmation.children.find(child => child.tag === 'a').textContent, 'ACESSAR GRUPO DE ID E SENHA');
 
     const account = fakeContainer();
     await mountReferenceAccess(account, 'account');
@@ -151,13 +151,13 @@ test('an open modal loses expired links locally without polling; future bookings
         { ...available('b'), eventDate: '2026-11-12', expiresAt: '2026-11-13T03:01:00Z' },
     ] }));
     const container = fakeContainer();
-    await mountReferenceAccess(container, 'event_one', { linkLabel: 'Acessar grupo de ID e senha' });
+    await mountReferenceAccess(container, 'event_one', { linkLabel: 'ACESSAR GRUPO DE ID E SENHA' });
     assert.equal(container.children.filter(child => child.tag === 'a').length, 2);
-    assert.ok(container.children.filter(child => child.tag === 'a').every(link => link.textContent === 'Acessar grupo de ID e senha'));
+    assert.ok(container.children.filter(child => child.tag === 'a').every(link => link.textContent === 'ACESSAR GRUPO DE ID E SENHA'));
     now += 1000;
     timers.find(timer => timer.delay === 1000).callback();
     assert.equal(container.children.filter(child => child.tag === 'a').length, 1);
-    assert.equal(container.children.find(child => child.tag === 'a').textContent, 'Acessar grupo de ID e senha');
+    assert.equal(container.children.find(child => child.tag === 'a').textContent, 'ACESSAR GRUPO DE ID E SENHA');
     assert.ok(container.children.some(child => child.textContent?.includes('Link expirado')));
     assert.equal(calls.length, 1);
 });
