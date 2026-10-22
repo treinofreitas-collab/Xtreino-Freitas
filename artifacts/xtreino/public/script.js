@@ -4841,18 +4841,6 @@ function stopScheduleAvailabilityListener() {
 }
 
 function openScheduleModal(eventType, options = {}) {
-    if (window._schedulePixPending) {
-        const pendingScheduleModal = document.getElementById('scheduleModal');
-        pendingScheduleModal?.classList.remove('hidden');
-        document.body.classList.add('modal-open-mobile');
-        requestAnimationFrame(() => {
-            document.getElementById('pixPaymentModal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        });
-        showToast('info', 'Há um Pix aguardando pagamento. O QR Code está nesta tela; não gere outra cobrança.', 'Pagamento', 9000);
-        return;
-    }
-    window._schedulePixPaid = false;
-    document.getElementById('pixPaymentModal')?.classList.add('hidden');
     if (!window.isLoggedIn || !window.firebaseAuth?.currentUser) {
         showToast('Faça login para se inscrever em eventos.', 3000);
         openLoginModal();
@@ -4864,6 +4852,15 @@ function openScheduleModal(eventType, options = {}) {
     const cfg = (inferredAdminEventId && scheduleConfig[inferredAdminEventId]) || scheduleConfig[eventType];
     const modal = document.getElementById('scheduleModal');
     if (!cfg || !modal) return;
+    const replacedPendingPix = prepareSchedulePixForNewCheckout();
+    if (replacedPendingPix) {
+        showToast(
+            'info',
+            'Você pode escolher outro evento ou horário. O Pix anterior continua ativo por até 30 minutos e pode ser retomado em Minha Conta.',
+            'Pagamento anterior pendente',
+            9000
+        );
+    }
     if (inferredAdminEventId && cfg.eventType) eventType = cfg.eventType;
     window.__schedRenderGeneration = (window.__schedRenderGeneration || 0) + 1;
     stopScheduleAvailabilityListener();
@@ -4882,6 +4879,15 @@ function openScheduleModal(eventType, options = {}) {
     modal.dataset.eventType = eventType;
     modal.dataset.adminEventId = inferredAdminEventId || '';
     window._currentScheduleEventType = eventType;
+    if (!modal.dataset.schedulePixChangeListeners) {
+        const onSchedulePixSelectionEdit = (event) => {
+            if (event.target?.closest?.('#pixPaymentModal')) return;
+            handleSchedulePixSelectionChange();
+        };
+        modal.addEventListener('input', onSchedulePixSelectionEdit);
+        modal.addEventListener('change', onSchedulePixSelectionEdit);
+        modal.dataset.schedulePixChangeListeners = 'true';
+    }
     document.getElementById('schedPrice').textContent = cfg.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     document.getElementById('schedEventType').textContent = cfg.label;
 
@@ -5305,6 +5311,7 @@ function addSelectedDate() {
     }
     if (!selectedDates.includes(date)) {
         selectedDates.push(date);
+        handleSchedulePixSelectionChange();
         renderSelectedDatesList();
         const s = window._calState;
         if (s) renderCustomCalendar(s.year, s.month);
@@ -5319,6 +5326,7 @@ function addSelectedDate() {
 function removeSelectedDate(dateStr) {
     selectedDates = selectedDates.filter(d => d !== dateStr);
     selectedTimes = selectedTimes.filter(item => item.date !== dateStr);
+    handleSchedulePixSelectionChange();
     renderSelectedDatesList();
     updateReservationsSummary();
     const currentDate = document.getElementById('schedDate')?.value;
@@ -5330,6 +5338,7 @@ function removeSelectedDate(dateStr) {
 function clearSelectedDates() {
     selectedDates = [];
     selectedTimes = [];
+    handleSchedulePixSelectionChange();
     renderSelectedDatesList();
     updateReservationsSummary();
     renderScheduleTimes();
@@ -5466,6 +5475,7 @@ function selectCalendarDate(dateStr) {
     if (!dateStr) return;
     const input = document.getElementById('schedDate');
     if (input) input.value = dateStr;
+    handleSchedulePixSelectionChange();
     const [_y, _m] = dateStr.split('-').map(Number);
     if (window._calState) { window._calState.year = _y; window._calState.month = _m - 1; }
     updateSelectedDate();
@@ -6684,6 +6694,7 @@ function selectTime(schedule, element) {
         element.classList.remove('bg-white', 'text-gray-700', 'border-gray-300');
         element.classList.add('bg-blue-600', 'text-white');
     }
+    handleSchedulePixSelectionChange();
 
     // Atualiza campos ocultos (opcional)
     const hiddenField = document.getElementById('schedSelectedTime');
@@ -7539,14 +7550,144 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
 async function handleProductPurchaseWithTokens(productId, cfg) {
     return handleProductPurchase(productId, cfg, 'tokens');
 }
+
+function buildSchedulePixSelectionKey(rawEventType, dates, times, teamsData, adminEventId = '') {
+    const teamsKey = (teamsData || [])
+        .map(team => String(team?.name || '').trim().toLowerCase())
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    const selectedTimesKey = (times || [])
+        .map(item => [String(item?.date || ''), String(item?.schedule || '')])
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    return JSON.stringify({
+        eventType: String(rawEventType || '').trim().toLowerCase(),
+        adminEventId: String(adminEventId || ''),
+        userId: String(window.firebaseAuth?.currentUser?.uid || ''),
+        dates: [...(dates || [])].map(String).sort(),
+        times: selectedTimesKey,
+        teams: teamsKey
+    });
+}
+
+function getCurrentSchedulePixSelectionKey() {
+    const modal = document.getElementById('scheduleModal');
+    const rawEventType = modal?.dataset?.eventType || '';
+    const date = document.getElementById('schedDate')?.value || '';
+    const dates = Array.isArray(selectedDates) && selectedDates.length > 0
+        ? [...selectedDates]
+        : (date ? [date] : []);
+    const teamsData = Array.from(document.querySelectorAll('#teamsContainer > div')).map(teamDiv => ({
+        name: teamDiv.querySelector('input[data-field="name"], input[placeholder="Nome do time"]')?.value?.trim() || '',
+        email: teamDiv.querySelector('input[data-field="email"], input[placeholder="Email"]')?.value?.trim() || '',
+        phone: teamDiv.querySelector('input[data-field="phone"], input[placeholder="WhatsApp (11) 99999-9999"]')?.value?.trim() || ''
+    }));
+    if (
+        teamsData.length === 0
+        && (rawEventType === 'xtreino-tokens' || scheduleConfig[rawEventType]?.eventType === 'xtreino-tokens')
+    ) {
+        teamsData.push({
+            name: _equipeAtual?.nome || window.currentUserProfile?.teamName || window.currentUserProfile?.name || '',
+            email: _equipeAtual?.email || window.currentUserProfile?.email || '',
+            phone: _equipeAtual?.phone || window.currentUserProfile?.phone || ''
+        });
+    }
+    return buildSchedulePixSelectionKey(
+        rawEventType,
+        dates,
+        Array.isArray(selectedTimes) ? selectedTimes : [],
+        teamsData,
+        modal?.dataset?.adminEventId || ''
+    );
+}
+
+function getSchedulePixCheckoutMap() {
+    if (!(window._schedulePixCheckoutsBySelection instanceof Map)) {
+        window._schedulePixCheckoutsBySelection = new Map();
+    }
+    return window._schedulePixCheckoutsBySelection;
+}
+
+function getActiveSchedulePixCheckout(selectionKey) {
+    if (!selectionKey) return null;
+    const checkouts = getSchedulePixCheckoutMap();
+    const checkout = checkouts.get(selectionKey);
+    if (!checkout) return null;
+    if (!Number.isFinite(checkout.expiresAt) || checkout.expiresAt <= Date.now()) {
+        checkouts.delete(selectionKey);
+        return null;
+    }
+    return checkout;
+}
+
+function rememberSchedulePixCheckout(selectionKey, externalReference, pixData, modalArgs = null) {
+    if (!selectionKey) return;
+    const expiry = Date.parse(pixData?.expiration_date);
+    getSchedulePixCheckoutMap().set(selectionKey, {
+        externalReference,
+        pixData,
+        modalArgs,
+        expiresAt: Number.isFinite(expiry) ? expiry : Date.now() + 30 * 60 * 1000
+    });
+}
+
+function forgetSchedulePixCheckout(externalReference) {
+    if (!externalReference) return;
+    const checkouts = getSchedulePixCheckoutMap();
+    for (const [selectionKey, checkout] of checkouts.entries()) {
+        if (checkout.externalReference === externalReference) checkouts.delete(selectionKey);
+    }
+}
+
+function handleSchedulePixSelectionChange() {
+    if (!window._schedulePixPending && !window._schedulePixPaid) return false;
+    const previousKey = window._schedulePixSelectionKey;
+    const selectionKey = getCurrentSchedulePixSelectionKey();
+    if (!selectionKey || selectionKey === previousKey) return false;
+
+    const existingCheckout = getActiveSchedulePixCheckout(selectionKey);
+    const hadPendingPix = prepareSchedulePixForNewCheckout();
+    if (existingCheckout) {
+        window._schedulePixSelectionKey = selectionKey;
+        window._schedulePixPending = true;
+        window._schedulePixPaid = false;
+        setSchedulePixCheckoutState('pending');
+        if (Array.isArray(existingCheckout.modalArgs) && typeof window.openPixModal === 'function') {
+            window.openPixModal(...existingCheckout.modalArgs);
+        }
+        showToast(
+            'info',
+            'Já existe um Pix ativo para esta seleção. Reabri o QR anterior para evitar uma cobrança duplicada.',
+            'Pagamento pendente',
+            9000
+        );
+        return true;
+    }
+    if (hadPendingPix) {
+        showToast(
+            'info',
+            'A seleção foi alterada. O Pix anterior continua ativo por até 30 minutos e pode ser retomado em Minha Conta.',
+            'Pagamento anterior pendente',
+            9000
+        );
+    }
+    return true;
+}
+
 async function submitSchedule(e, useTokens = false) {
     e.preventDefault();
-    if (window._scheduleSubmitting || window._schedulePixPending || window._schedulePixPaid) {
-        if (window._schedulePixPending) {
-            document.getElementById('pixPaymentModal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            showToast('info', 'Este Pix já foi criado. Pague o QR exibido abaixo; não faça outra tentativa.', 'Pagamento', 9000);
+    if (window._scheduleSubmitting) return;
+    if (window._schedulePixPending || window._schedulePixPaid) {
+        const currentSelectionKey = getCurrentSchedulePixSelectionKey();
+        if (currentSelectionKey && currentSelectionKey === window._schedulePixSelectionKey) {
+            if (window._schedulePixPending) {
+                document.getElementById('pixPaymentModal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                showToast('info', 'Este Pix já foi criado. Pague o QR exibido abaixo; não faça outra tentativa.', 'Pagamento', 9000);
+            } else {
+                showToast('info', 'Esta seleção já foi confirmada. Escolha outro horário para fazer uma nova inscrição.', 'Pagamento', 9000);
+            }
+            return;
         }
-        return;
+        handleSchedulePixSelectionChange();
+        if (window._schedulePixPending || window._schedulePixPaid) return;
     }
     window._scheduleSubmitting = true;
     const submitBtn = document.getElementById('schedSubmit');
@@ -7657,6 +7798,36 @@ async function submitSchedule(e, useTokens = false) {
         if (isFreeEvent) {
             await handleFreeEventRegistration(rawEventType, cfg, teamsData, datesToUse, selectedTimes);
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            return;
+        }
+
+        const scheduleSelectionKey = buildSchedulePixSelectionKey(
+            rawEventType,
+            datesToUse,
+            selectedTimes,
+            teamsData,
+            modal?.dataset?.adminEventId || ''
+        );
+        const existingSchedulePix = getActiveSchedulePixCheckout(scheduleSelectionKey);
+        if (existingSchedulePix) {
+            window._schedulePixSelectionKey = scheduleSelectionKey;
+            window._schedulePixPending = true;
+            window._schedulePixPaid = false;
+            setSchedulePixCheckoutState('pending');
+            if (Array.isArray(existingSchedulePix.modalArgs) && typeof window.openPixModal === 'function') {
+                try {
+                    window.openPixModal(...existingSchedulePix.modalArgs);
+                } catch (_) {
+                    renderSchedulePixFallback(existingSchedulePix.pixData, existingSchedulePix.modalArgs[4], existingSchedulePix.modalArgs[5]);
+                }
+            }
+            document.getElementById('pixPaymentModal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            showToast(
+                'info',
+                'Já existe um Pix ativo para esta seleção. Reabri o QR anterior para evitar uma cobrança duplicada.',
+                'Pagamento pendente',
+                9000
+            );
             return;
         }
 
@@ -8051,6 +8222,8 @@ async function submitSchedule(e, useTokens = false) {
 
             if ((!data.qr_code || !data.qr_code_base64) && data.payment_status !== 'approved') {
                 _createdPixData = data;
+                window._schedulePixSelectionKey = scheduleSelectionKey;
+                rememberSchedulePixCheckout(scheduleSelectionKey, externalRef, data);
                 try { localStorage.setItem('pendingPaymentRefs', JSON.stringify([externalRef])); } catch (_) {}
                 try { sessionStorage.setItem('lastExternalRef', externalRef); } catch (_) {}
                 setSchedulePixCheckoutState('pending');
@@ -8067,6 +8240,7 @@ async function submitSchedule(e, useTokens = false) {
             try { sessionStorage.setItem('lastExternalRef', externalRef); } catch (_) {}
             window._schedulePixPending = data.payment_status !== 'approved';
             window._schedulePixPaid = data.payment_status === 'approved';
+            window._schedulePixSelectionKey = scheduleSelectionKey;
             setSchedulePixCheckoutState(window._schedulePixPaid ? 'paid' : 'pending');
 
             const pixModalArgs = [
@@ -8081,6 +8255,9 @@ async function submitSchedule(e, useTokens = false) {
                 finalPrice,
             ];
             _createdPixModalArgs = pixModalArgs;
+            if (window._schedulePixPending) {
+                rememberSchedulePixCheckout(scheduleSelectionKey, externalRef, data, pixModalArgs);
+            }
             // Renderizar o QR primeiro e no próprio formulário. A rotina de
             // polling não pode impedir o cliente de ver/copiar o Pix.
             renderSchedulePixFallback(data, cfg, finalPrice);
@@ -10344,6 +10521,23 @@ function setSchedulePixCheckoutState(state) {
     if (tokensButton) tokensButton.disabled = pending || paid;
 }
 
+function prepareSchedulePixForNewCheckout() {
+    const hadPendingPix = Boolean(window._schedulePixPending);
+    clearInterval(_pixPollingInterval);
+    clearInterval(_pixCountdownInterval);
+    _pixPollingInterval = null;
+    _pixCountdownInterval = null;
+    _pixCancelFn = null;
+    _pixConfirmFn = null;
+    window._schedulePixSelectionKey = null;
+
+    const pixModal = document.getElementById('pixPaymentModal');
+    pixModal?.classList.add('hidden');
+    pixModal?.classList.remove('flex');
+    setSchedulePixCheckoutState('idle');
+    return hadPendingPix;
+}
+
 function renderSchedulePixFallback(pixData, cfg, finalPrice) {
     const panel = document.getElementById('pixPaymentModal');
     if (!panel) return false;
@@ -10430,6 +10624,8 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         if (secondsLeft <= 0) {
             clearInterval(_pixCountdownInterval);
             clearInterval(_pixPollingInterval);
+            forgetSchedulePixCheckout(externalRef);
+            window._schedulePixSelectionKey = null;
             const cd = document.getElementById('pixCountdown');
             if (cd) cd.textContent = 'Expirado';
             const status = document.getElementById('pixStatusText');
@@ -10456,6 +10652,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     _pixConfirmFn = async () => {
         clearInterval(_pixPollingInterval);
         clearInterval(_pixCountdownInterval);
+        forgetSchedulePixCheckout(externalRef);
         setSchedulePixCheckoutState('paid');
         // A consulta autenticada já confirmou as reservas no servidor.
         const pixContentEl = document.getElementById('pixContent');
@@ -10508,6 +10705,8 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
                 if (typeof _pixConfirmFn === 'function') await _pixConfirmFn();
             } else if (d.status === 'rejected' || d.status === 'cancelled') {
                 clearInterval(_pixPollingInterval);
+                forgetSchedulePixCheckout(externalRef);
+                window._schedulePixSelectionKey = null;
                 const st = document.getElementById('pixStatusText');
                 if (st) st.textContent = 'Pagamento recusado ou cancelado. Confira o status antes de gerar outra cobrança.';
                 setSchedulePixCheckoutState('retry');

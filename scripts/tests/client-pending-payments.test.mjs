@@ -32,15 +32,19 @@ const helperStart = clientSource.indexOf('function buildPendingPaymentGroups(');
 const helperEnd = clientSource.indexOf('async function loadPendingPayments', helperStart);
 assert.notEqual(helperStart, -1, 'pending-payment grouping helper exists');
 assert.notEqual(helperEnd, -1, 'pending-payment grouping helper has an end marker');
-const groupingSource = clientSource.slice(helperStart, helperEnd);
+const expiryStart = clientSource.indexOf('const PENDING_PIX_TTL_MS =');
+const expiryEnd = clientSource.indexOf('async function loadDashboard', expiryStart);
+assert.notEqual(expiryStart, -1, 'Pix expiry helper exists');
+assert.notEqual(expiryEnd, -1, 'Pix expiry helper has an end marker');
+const groupingSource = `${clientSource.slice(expiryStart, expiryEnd)}\n${clientSource.slice(helperStart, helperEnd)}`;
 
-function buildGroups(registrations, orders) {
+function buildGroups(registrations, orders, now = Date.now()) {
     const context = vm.createContext({
         isTokenPurchaseOrder: row => String(row?.data?.type || '').includes('token'),
     });
     return vm.runInContext(
-        `${groupingSource}; buildPendingPaymentGroups(registrations, orders)`,
-        Object.assign(context, { registrations, orders }),
+        `${groupingSource}; buildPendingPaymentGroups(registrations, orders, now)`,
+        Object.assign(context, { registrations, orders, now }),
     );
 }
 
@@ -73,12 +77,42 @@ test('includes a pending store item but excludes token purchases and paid orders
     assert.equal(groups[0].labels[0], 'Passe Booyah');
 });
 
+test('pending Pix rows disappear at their saved expiry or after the 30-minute legacy estimate', () => {
+    const now = Date.parse('2026-10-22T12:00:00.000Z');
+    const groups = buildGroups([
+        { id: 'active-exact', data: {
+            status: 'pending', external_reference: 'active-exact',
+            pixExpiresAt: new Date(now + 60_000).toISOString(),
+        } },
+        { id: 'expired-exact', data: {
+            status: 'pending', external_reference: 'expired-exact',
+            pixExpiresAt: new Date(now - 1).toISOString(),
+        } },
+        { id: 'active-legacy', data: {
+            status: 'pending', external_reference: 'active-legacy',
+            createdAt: new Date(now - 29 * 60 * 1000),
+        } },
+        { id: 'expired-legacy', data: {
+            status: 'pending', external_reference: 'expired-legacy',
+            createdAt: new Date(now - 30 * 60 * 1000 - 1),
+        } },
+    ], [], now);
+
+    assert.deepEqual(Array.from(groups, group => group.externalReference), ['active-exact', 'active-legacy']);
+});
+
 test('the account can resume a payment and render QR/copy-paste controls without creating a new Pix', () => {
     assert.match(clientHtml, /id="pendingPaymentsSection"/);
     assert.match(clientHtml, /id="pendingPaymentsList"/);
     assert.match(clientSource, /\/\.netlify\/functions\/resume-pix-payment/);
     assert.match(clientSource, /data-copy-pix-code/);
     assert.doesNotMatch(clientSource, /\/\.netlify\/functions\/create-pix-payment/);
+});
+
+test('pending-payment list schedules an automatic refresh at the first Pix expiry', () => {
+    assert.match(clientSource, /function schedulePendingPaymentsExpiryReload\(groups, userId\)/);
+    assert.match(clientSource, /setTimeout\(\(\) => \{\s*pendingPaymentsExpiryTimer = null;/);
+    assert.match(clientSource, /schedulePendingPaymentsExpiryReload\(groups, userId\)/);
 });
 
 test('the admin schedule modal has an individual high-quality logo download action', () => {

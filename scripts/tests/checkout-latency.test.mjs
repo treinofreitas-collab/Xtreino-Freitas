@@ -68,7 +68,10 @@ test('event modal puts Pix checkout first and keeps token checkout second', () =
     assert.match(source, /Gerar QR Code Pix/);
 });
 
-const submission = extract('submitSchedule', '// ===== Helper: busca registrações');
+const schedulePixHelpersStart = source.indexOf('function buildSchedulePixSelectionKey(');
+const schedulePixHelpersEnd = source.indexOf('async function submitSchedule(', schedulePixHelpersStart);
+const submission = source.slice(schedulePixHelpersStart, schedulePixHelpersEnd)
+    + extract('submitSchedule', '// ===== Helper: busca registrações');
 function setupSubmission(result) {
     const calls = [];
     const values = { name: 'Equipe teste', email: 'teste@example.test', phone: '11999999999' };

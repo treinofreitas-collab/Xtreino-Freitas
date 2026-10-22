@@ -24,6 +24,28 @@ function pixResponse(payment, externalReference) {
   };
 }
 
+async function persistPixExpiry(db, checkoutRef, checkout, payment, fallbackExpiry = null) {
+  const expiresAt = payment?.date_of_expiration || checkout?.pixExpiresAt || fallbackExpiry;
+  const checkoutPatch = {
+    pixPaymentId: String(payment?.id || checkout?.pixPaymentId || ""),
+    pixStatus: payment?.status || checkout?.pixStatus || "pending",
+  };
+  if (expiresAt) checkoutPatch.pixExpiresAt = expiresAt;
+  await checkoutRef.update(checkoutPatch);
+
+  if (!expiresAt || !Number.isFinite(Date.parse(expiresAt))) return;
+  const sourcePaths = Array.isArray(checkout?.sourcePaths) ? checkout.sourcePaths : [];
+  const safePaths = sourcePaths.filter(path =>
+    typeof path === "string" && /^(registrations|orders)\/[^/]+$/.test(path)
+  );
+  const results = await Promise.allSettled(
+    safePaths.map(path => db.doc(path).update({ pixExpiresAt: expiresAt }))
+  );
+  if (results.some(result => result.status === "rejected")) {
+    console.error("Unable to persist Pix expiry to every purchase record");
+  }
+}
+
 exports.handler = async event => {
   if (event.httpMethod === "OPTIONS") return jsonResponse(200, {});
   if (event.httpMethod !== "POST") return jsonResponse(405, { error: "Método não permitido." });
@@ -34,7 +56,7 @@ exports.handler = async event => {
     if (!process.env.MP_WEBHOOK_SECRET) return jsonResponse(503, { error: "Confirmação automática do Pix ainda não configurada." });
 
     const body = parseJsonBody(event);
-    const { checkoutRef, checkout } = await preparePurchase(user.uid, body, "mercadopago");
+    const { db, checkoutRef, checkout } = await preparePurchase(user.uid, body, "mercadopago");
     if (checkout.status === "paid") return jsonResponse(409, { error: "Este pedido já foi pago." });
     if (checkout.kind !== "event" && checkout.kind !== "product") {
       return jsonResponse(400, { error: "Pix disponível somente para eventos e produtos." });
@@ -51,6 +73,7 @@ exports.handler = async event => {
         if (Number.isFinite(existingExpiry) && existingExpiry <= Date.now()) {
           return jsonResponse(409, { error: "Este Pix expirou. Refaça a reserva para gerar outro código." });
         }
+        await persistPixExpiry(db, checkoutRef, checkout, existingPayment);
         return jsonResponse(200, existingPix);
       }
       if (existingPayment.status === "approved") {
@@ -101,11 +124,7 @@ exports.handler = async event => {
     }
 
     if (payment?.id != null) {
-      await checkoutRef.update({
-        pixPaymentId: String(payment.id),
-        pixStatus: payment.status || "pending",
-        pixExpiresAt: payment.date_of_expiration || expirationDate,
-      });
+      await persistPixExpiry(db, checkoutRef, checkout, payment, expirationDate);
     }
     const result = pixResponse(payment, checkout.externalReference);
     if (!result) {

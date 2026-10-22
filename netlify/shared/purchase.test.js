@@ -696,6 +696,9 @@ test("Pix checkout labels the sale and includes all purchased event dates and ho
     const expirationDelta = new Date(pixRequestBody.date_of_expiration).getTime() - Date.now();
     assert.ok(expirationDelta > 29 * 60 * 1000 && expirationDelta <= 30 * 60 * 1000);
     assert.equal(currentDb.read(`purchase_checkouts/${reference}`).pixPaymentId, "123456");
+    const firstRegistration = currentDb.read("registrations/r1") || currentDb.read("registrations/r");
+    assert.equal(firstRegistration.pixExpiresAt, expirationDate);
+    assert.equal(currentDb.read("registrations/r2").pixExpiresAt, expirationDate);
 
     const retryResponse = await handler(event);
     assert.equal(retryResponse.statusCode, 200);

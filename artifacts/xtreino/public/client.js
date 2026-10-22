@@ -249,6 +249,8 @@ async function checkAuthState() {
     onAuthStateChanged(auth, async (user) => {
         if (userDocsStore.setUser(user)) {
             pendingPaymentsGeneration += 1;
+            if (pendingPaymentsExpiryTimer) clearTimeout(pendingPaymentsExpiryTimer);
+            pendingPaymentsExpiryTimer = null;
             const pendingSection = document.getElementById('pendingPaymentsSection');
             if (pendingSection) pendingSection.style.display = 'none';
             clearEventAccessCache();
@@ -455,6 +457,49 @@ async function loadUserProfile() {
 
 // Load dashboard
 let pendingPaymentsGeneration = 0;
+let pendingPaymentsExpiryTimer = null;
+const PENDING_PIX_TTL_MS = 30 * 60 * 1000;
+
+function pendingPaymentTimestampMillis(value) {
+    if (value == null) return null;
+    if (typeof value.toMillis === 'function') {
+        const timestamp = value.toMillis();
+        return Number.isFinite(timestamp) ? timestamp : null;
+    }
+    if (typeof value.toDate === 'function') {
+        const date = value.toDate();
+        const timestamp = date instanceof Date ? date.getTime() : NaN;
+        return Number.isFinite(timestamp) ? timestamp : null;
+    }
+    if (value instanceof Date) {
+        const timestamp = value.getTime();
+        return Number.isFinite(timestamp) ? timestamp : null;
+    }
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value === 'object') {
+        const seconds = Number(value.seconds ?? value._seconds);
+        if (Number.isFinite(seconds)) return seconds * 1000;
+    }
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function pendingPaymentExpiryMillis(data = {}) {
+    for (const value of [data.pixExpiresAt, data.pix_expires_at, data.expiration_date]) {
+        const timestamp = pendingPaymentTimestampMillis(value);
+        if (timestamp != null) return timestamp;
+    }
+
+    // Older pending rows lack a saved Pix deadline. Their creation time is
+    // the closest available estimate because booking writes precede Pix creation.
+    for (const value of [data.pixCreatedAt, data.createdAt, data.timestamp]) {
+        const timestamp = pendingPaymentTimestampMillis(value);
+        if (timestamp != null) return timestamp + PENDING_PIX_TTL_MS;
+    }
+    return null;
+}
 
 async function loadDashboard() {
     try {
@@ -562,12 +607,14 @@ async function loadTodayRegistrations() {
     }
 }
 
-function buildPendingPaymentGroups(registrationDocs = [], orderDocs = []) {
+function buildPendingPaymentGroups(registrationDocs = [], orderDocs = [], now = Date.now()) {
     const groups = new Map();
     const addRows = (rows, kind) => {
         for (const row of Array.isArray(rows) ? rows : []) {
             const data = row?.data && typeof row.data === 'object' ? row.data : row || {};
             if (String(data.status || '').toLowerCase() !== 'pending') continue;
+            const expiresAt = pendingPaymentExpiryMillis(data);
+            if (expiresAt != null && expiresAt <= now) continue;
             if (kind === 'product') {
                 const orderType = `${data.type || ''} ${data.orderType || ''} ${data.productId || ''}`.toLowerCase();
                 if (orderType.includes('token') || (typeof isTokenPurchaseOrder === 'function' && isTokenPurchaseOrder(row))) continue;
@@ -577,10 +624,13 @@ function buildPendingPaymentGroups(registrationDocs = [], orderDocs = []) {
             if (!/^[a-zA-Z0-9_-]{1,160}$/.test(externalReference)) continue;
             let group = groups.get(externalReference);
             if (!group) {
-                group = { externalReference, kind, items: [] };
+                group = { externalReference, kind, items: [], expiresAt: null };
                 groups.set(externalReference, group);
             }
-            group.items.push({ id: row?.id || '', kind, data });
+            group.items.push({ id: row?.id || '', kind, data, expiresAt });
+            if (expiresAt != null && (group.expiresAt == null || expiresAt < group.expiresAt)) {
+                group.expiresAt = expiresAt;
+            }
         }
     };
 
@@ -604,10 +654,28 @@ function buildPendingPaymentGroups(registrationDocs = [], orderDocs = []) {
     });
 }
 
+function schedulePendingPaymentsExpiryReload(groups, userId) {
+    if (pendingPaymentsExpiryTimer) clearTimeout(pendingPaymentsExpiryTimer);
+    pendingPaymentsExpiryTimer = null;
+    const nextExpiry = (Array.isArray(groups) ? groups : [])
+        .map(group => Number(group?.expiresAt))
+        .filter(value => Number.isFinite(value) && value > Date.now())
+        .reduce((earliest, value) => Math.min(earliest, value), Infinity);
+    if (!Number.isFinite(nextExpiry)) return;
+
+    const delay = Math.min(Math.max(0, nextExpiry - Date.now() + 50), 2_147_000_000);
+    pendingPaymentsExpiryTimer = setTimeout(() => {
+        pendingPaymentsExpiryTimer = null;
+        if (currentUser?.uid === userId) void loadPendingPayments();
+    }, delay);
+}
+
 async function loadPendingPayments() {
     const section = document.getElementById('pendingPaymentsSection');
     const container = document.getElementById('pendingPaymentsList');
     const count = document.getElementById('pendingPaymentsCount');
+    if (pendingPaymentsExpiryTimer) clearTimeout(pendingPaymentsExpiryTimer);
+    pendingPaymentsExpiryTimer = null;
     if (!section || !container) return;
     if (!currentUser?.uid) {
         section.style.display = 'none';
@@ -645,6 +713,7 @@ async function loadPendingPayments() {
     }
 
     if (count) count.textContent = String(groups.length);
+    schedulePendingPaymentsExpiryReload(groups, userId);
     const partialNotice = registrationResult.status === 'rejected' || orderResult.status === 'rejected'
         ? '<p style="font-size:11px;color:#fcd34d;margin-bottom:10px">A lista pode estar incompleta. Atualize para tentar novamente.</p>'
         : '';
