@@ -5001,7 +5001,7 @@ function openScheduleModal(eventType, options = {}) {
         // Adicionar opções específicas do produto
         addProductOptions(eventType);
 
-        const pendingProductPix = getStorePixPending();
+        const pendingProductPix = getStorePixPending(eventType);
         if (pendingProductPix?.productId === eventType) {
             if (window._storePixPayment?.externalReference === pendingProductPix.externalReference
                 && window._storePixPayment.pixData) {
@@ -6785,33 +6785,83 @@ function getStorePixStorageKey() {
     return `${STORE_PIX_PENDING_KEY}_${userId}`;
 }
 
-function getStorePixPending() {
+function persistStorePixPendingMap(pendingByProduct) {
     const userId = window.firebaseAuth?.currentUser?.uid || 'anonymous';
+    const saved = { version: 2, userId, pendingByProduct };
+    window._storePixPendingCache = saved;
     try {
-        const saved = localStorage.getItem(getStorePixStorageKey());
-        if (saved) return JSON.parse(saved);
+        if (Object.keys(pendingByProduct).length) {
+            localStorage.setItem(getStorePixStorageKey(), JSON.stringify(saved));
+        } else {
+            localStorage.removeItem(getStorePixStorageKey());
+        }
     } catch (_) { }
-    return window._storePixPendingCache?.userId === userId
+}
+
+function getStorePixPendingMap() {
+    const userId = window.firebaseAuth?.currentUser?.uid || 'anonymous';
+    let saved = null;
+    try {
+        const raw = localStorage.getItem(getStorePixStorageKey());
+        if (raw) saved = JSON.parse(raw);
+    } catch (_) { }
+
+    if (saved?.userId && saved.userId !== userId) saved = null;
+    if (saved?.version === 2 && saved.pendingByProduct && typeof saved.pendingByProduct === 'object') {
+        window._storePixPendingCache = saved;
+        return saved.pendingByProduct;
+    }
+
+    // Migrate the previous single-pending format without losing an unpaid checkout.
+    if (saved?.productId && saved?.externalReference) {
+        const migrated = { [String(saved.productId)]: saved };
+        persistStorePixPendingMap(migrated);
+        return migrated;
+    }
+
+    const cached = window._storePixPendingCache?.userId === userId
         ? window._storePixPendingCache
         : null;
+    if (cached?.version === 2 && cached.pendingByProduct && typeof cached.pendingByProduct === 'object') {
+        return cached.pendingByProduct;
+    }
+    if (cached?.productId && cached?.externalReference) {
+        return { [String(cached.productId)]: cached };
+    }
+    return {};
+}
+
+function getStorePixPending(productId) {
+    if (productId === undefined || productId === null) return null;
+    return getStorePixPendingMap()[String(productId)] || null;
+}
+
+function getStorePixPendingByReference(externalReference) {
+    if (!externalReference) return null;
+    return Object.values(getStorePixPendingMap())
+        .find(pending => pending?.externalReference === externalReference) || null;
 }
 
 function saveStorePixPending(pending) {
-    const saved = {
-        ...pending,
-        userId: window.firebaseAuth?.currentUser?.uid || 'anonymous',
-    };
-    window._storePixPendingCache = saved;
-    try { localStorage.setItem(getStorePixStorageKey(), JSON.stringify(saved)); } catch (_) { }
+    const productId = String(pending?.productId || '').trim();
+    if (!productId || !pending?.externalReference) {
+        throw new Error('Não foi possível identificar o produto deste Pix.');
+    }
+    const userId = window.firebaseAuth?.currentUser?.uid || 'anonymous';
+    const pendingByProduct = { ...getStorePixPendingMap() };
+    pendingByProduct[productId] = { ...pending, productId, userId };
+    persistStorePixPendingMap(pendingByProduct);
 }
 
 function clearStorePixPending(externalReference) {
-    const current = getStorePixPending();
-    if (externalReference && current?.externalReference !== externalReference) return;
-    if (!window._storePixPendingCache || window._storePixPendingCache.userId === (window.firebaseAuth?.currentUser?.uid || 'anonymous')) {
-        window._storePixPendingCache = null;
-    }
-    try { localStorage.removeItem(getStorePixStorageKey()); } catch (_) { }
+    if (!externalReference) return;
+    const pendingByProduct = { ...getStorePixPendingMap() };
+    const productId = Object.keys(pendingByProduct).find(
+        key => pendingByProduct[key]?.externalReference === externalReference
+    );
+    if (!productId) return;
+    delete pendingByProduct[productId];
+    persistStorePixPendingMap(pendingByProduct);
 }
 
 function setStorePixPaymentUi(state) {
@@ -6879,7 +6929,7 @@ function showStorePixPaid(pending) {
     _storePixPollInterval = null;
     _storePixCountdownInterval = null;
     clearStorePixPending(pending?.externalReference);
-    window._storePixPayment = { ...(window._storePixPayment || {}), ...pending, status: 'paid' };
+    window._storePixPayment = { ...pending, status: 'paid' };
     showStorePixPanel(pending?.title, pending?.amount);
     document.getElementById('productPixNotice')?.classList.add('hidden');
     document.getElementById('productPixLoading')?.classList.add('hidden');
@@ -6896,7 +6946,7 @@ async function checkStorePixStatus(externalReference) {
             body: JSON.stringify({ external_reference: externalReference }),
         });
         const data = await response.json().catch(() => ({}));
-        const pending = getStorePixPending();
+        const pending = getStorePixPendingByReference(externalReference);
         if (data.status === 'paid' || data.status === 'already_paid') {
             showStorePixPaid(pending || { externalReference });
             return 'paid';
@@ -7059,15 +7109,8 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
     }
     try {
         if (isProductPix) {
-            const existingPix = getStorePixPending();
+            const existingPix = getStorePixPending(productId);
             if (existingPix) {
-                if (existingPix.productId !== productId) {
-                    setStorePixPaymentUi('idle');
-                    showStorePixPanel(existingPix.title, existingPix.amount);
-                    showStorePixNotice(`Já existe um Pix pendente para “${existingPix.title || 'outro produto'}”. Retome esse pagamento antes de gerar outro Pix.`);
-                    return;
-                }
-
                 showStorePixRecovery(existingPix, cfg);
                 const existingStatus = await checkStorePixStatus(existingPix.externalReference);
                 if (existingStatus === 'paid' || existingStatus === 'review') return;
@@ -7404,7 +7447,7 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
         
         const errorMessage = error.message || 'Falha ao processar compra.';
         if (isProductPix) {
-            const pending = getStorePixPending();
+            const pending = getStorePixPending(productId);
             document.getElementById('productPixLoading')?.classList.add('hidden');
             if (pending?.productId === productId) {
                 showStorePixRecovery(pending, cfg);
@@ -7420,7 +7463,7 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
         if (isProductPix) {
             window._storePixSubmitting = false;
             const state = window._storePixState;
-            if (!getStorePixPending() && !['paid', 'review'].includes(state)) {
+            if (!getStorePixPending(productId) && !['paid', 'review'].includes(state)) {
                 setStorePixPaymentUi('idle');
             }
         }

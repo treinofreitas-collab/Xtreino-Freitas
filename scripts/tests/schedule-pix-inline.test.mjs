@@ -50,7 +50,7 @@ test('store products show a separate Pix button above token payment', () => {
     assert.match(eventOpen, /submitBtn\.style\.display = ''/);
 });
 
-test('store Pix creates a product payment and reuses its pending reference', () => {
+test('store Pix reuses a pending reference only for the same product', () => {
     const helpersStart = script.indexOf('const STORE_PIX_PENDING_KEY');
     const productStart = script.indexOf('async function handleProductPurchase(');
     const productEnd = script.indexOf('// Compra de produtos da loja usando Tokens', productStart);
@@ -58,13 +58,62 @@ test('store Pix creates a product payment and reuses its pending reference', () 
 
     assert.ok(helpersStart >= 0 && productStart > helpersStart && productEnd > productStart);
     assert.match(productFlow, /paymentMethod === 'pix'/);
-    assert.match(productFlow, /getStorePixPending\(\)/);
+    assert.match(productFlow, /getStorePixPending\(productId\)/);
+    assert.match(productFlow, /getStorePixPendingByReference\(externalReference\)/);
     assert.match(productFlow, /createOrResumeStorePix\(existingPix, cfg\)/);
     assert.match(productFlow, /createOrResumeStorePix\(pending, cfg\)/);
     assert.match(productFlow, /external_reference: pending\.externalReference/);
     assert.match(productFlow, /create-pix-payment/);
     assert.match(productFlow, /confirm-purchase/);
-    assert.match(productFlow, /Retome o mesmo pedido|Retome este Pix/);
+    assert.match(productFlow, /externalRef = `digital_\$\{docRef\.id\}`/);
+    assert.doesNotMatch(productFlow, /Já existe um Pix pendente para/);
+});
+
+test('pending store Pix records are isolated by product and cleared by exact reference', () => {
+    const helpersStart = script.indexOf('const STORE_PIX_PENDING_KEY');
+    const helpersEnd = script.indexOf('function setStorePixPaymentUi(', helpersStart);
+    const helpers = script.slice(helpersStart, helpersEnd);
+    const storage = new Map([
+        ['xtreino_store_pix_pending_user-1', JSON.stringify({
+            productId: 'passe-booyah',
+            externalReference: 'digital_booyah_order',
+            amount: 8,
+            userId: 'user-1',
+        })],
+    ]);
+    const context = vm.createContext({
+        window: { firebaseAuth: { currentUser: { uid: 'user-1' } } },
+        localStorage: {
+            getItem: key => storage.get(key) || null,
+            setItem: (key, value) => storage.set(key, value),
+            removeItem: key => storage.delete(key),
+        },
+    });
+    vm.runInContext(`${helpers}
+        globalThis.getPending = getStorePixPending;
+        globalThis.getByReference = getStorePixPendingByReference;
+        globalThis.savePending = saveStorePixPending;
+        globalThis.clearPending = clearStorePixPending;`, context);
+
+    assert.equal(context.getPending('passe-booyah').externalReference, 'digital_booyah_order');
+    assert.equal(context.getPending('sensibilidade'), null);
+
+    context.savePending({
+        productId: 'sensibilidade',
+        externalReference: 'digital_sensibilidade_order',
+        amount: 3,
+    });
+
+    assert.equal(context.getPending('passe-booyah').externalReference, 'digital_booyah_order');
+    assert.equal(context.getPending('sensibilidade').externalReference, 'digital_sensibilidade_order');
+    assert.equal(context.getByReference('digital_sensibilidade_order').productId, 'sensibilidade');
+
+    context.clearPending('digital_booyah_order');
+    assert.equal(context.getPending('passe-booyah'), null);
+    assert.equal(context.getPending('sensibilidade').externalReference, 'digital_sensibilidade_order');
+
+    const persisted = JSON.parse(storage.get('xtreino_store_pix_pending_user-1'));
+    assert.deepEqual(Object.keys(persisted.pendingByProduct), ['sensibilidade']);
 });
 
 test('a created Pix stays on the schedule screen and blocks duplicate submissions while pending', () => {
