@@ -39,7 +39,8 @@ test('store products show a separate Pix button above token payment', () => {
     const productOpen = script.slice(productOpenStart, productOpenEnd);
     assert.match(productOpen, /productPixBtn/);
     assert.match(productOpen, /window\._activeStoreProduct = \{ productId: eventType, cfg \}/);
-    assert.match(productOpen, /showStorePixQRCode|showStorePixRecovery/);
+    assert.match(productOpen, /attachStorePixSelectionListeners\(modal\)/);
+    assert.doesNotMatch(productOpen, /getStorePixPending\(eventType\)/);
     assert.match(productOpen, /submitBtn\.type = 'button'/);
     assert.match(productOpen, /submitBtn\.style\.display = 'none'/);
 
@@ -50,7 +51,7 @@ test('store products show a separate Pix button above token payment', () => {
     assert.match(eventOpen, /submitBtn\.style\.display = ''/);
 });
 
-test('store Pix reuses a pending reference only for the same product', () => {
+test('store Pix reuses a pending reference only for the exact product selection', () => {
     const helpersStart = script.indexOf('const STORE_PIX_PENDING_KEY');
     const productStart = script.indexOf('async function handleProductPurchase(');
     const productEnd = script.indexOf('// Compra de produtos da loja usando Tokens', productStart);
@@ -58,27 +59,36 @@ test('store Pix reuses a pending reference only for the same product', () => {
 
     assert.ok(helpersStart >= 0 && productStart > helpersStart && productEnd > productStart);
     assert.match(productFlow, /paymentMethod === 'pix'/);
-    assert.match(productFlow, /getStorePixPending\(productId\)/);
+    assert.match(productFlow, /selectionKey = await buildStorePixSelectionKey/);
+    assert.match(productFlow, /getStorePixPending\(productId,\s*selectionKey\)/);
     assert.match(productFlow, /getStorePixPendingByReference\(externalReference\)/);
-    assert.match(productFlow, /createOrResumeStorePix\(existingPix, cfg\)/);
-    assert.match(productFlow, /createOrResumeStorePix\(pending, cfg\)/);
+    assert.match(productFlow, /createOrResumeStorePix\(existingPix, cfg, formSnapshot\)/);
+    assert.match(productFlow, /createOrResumeStorePix\(pending, cfg, formSnapshot\)/);
+    assert.match(productFlow, /pendingByReference/);
     assert.match(productFlow, /external_reference: pending\.externalReference/);
     assert.match(productFlow, /create-pix-payment/);
     assert.match(productFlow, /confirm-purchase/);
     assert.match(productFlow, /externalRef = `digital_\$\{docRef\.id\}`/);
     assert.doesNotMatch(productFlow, /Já existe um Pix pendente para/);
+    assert.doesNotMatch(productFlow, /getStorePixPending\(productId\)/);
 });
 
-test('pending store Pix records are isolated by product and cleared by exact reference', () => {
+test('pending store Pix records preserve distinct selections for the same product', () => {
     const helpersStart = script.indexOf('const STORE_PIX_PENDING_KEY');
     const helpersEnd = script.indexOf('function setStorePixPaymentUi(', helpersStart);
     const helpers = script.slice(helpersStart, helpersEnd);
     const storage = new Map([
         ['xtreino_store_pix_pending_user-1', JSON.stringify({
-            productId: 'passe-booyah',
-            externalReference: 'digital_booyah_order',
-            amount: 8,
+            version: 2,
             userId: 'user-1',
+            pendingByProduct: {
+                'passe-booyah': {
+                    productId: 'passe-booyah',
+                    externalReference: 'digital_booyah_order',
+                    amount: 8,
+                    userId: 'user-1',
+                },
+            },
         })],
     ]);
     const context = vm.createContext({
@@ -95,25 +105,46 @@ test('pending store Pix records are isolated by product and cleared by exact ref
         globalThis.savePending = saveStorePixPending;
         globalThis.clearPending = clearStorePixPending;`, context);
 
-    assert.equal(context.getPending('passe-booyah').externalReference, 'digital_booyah_order');
-    assert.equal(context.getPending('sensibilidade'), null);
+    assert.equal(context.getPending('passe-booyah', 'unknown-selection'), null);
+    assert.equal(context.getByReference('digital_booyah_order').productId, 'passe-booyah');
 
     context.savePending({
         productId: 'sensibilidade',
         externalReference: 'digital_sensibilidade_order',
+        selectionKey: 'sensibilidade-android',
         amount: 3,
     });
 
-    assert.equal(context.getPending('passe-booyah').externalReference, 'digital_booyah_order');
-    assert.equal(context.getPending('sensibilidade').externalReference, 'digital_sensibilidade_order');
+    assert.equal(context.getPending('passe-booyah', 'unknown-selection'), null);
+    assert.equal(context.getPending('sensibilidade', 'sensibilidade-android').externalReference, 'digital_sensibilidade_order');
     assert.equal(context.getByReference('digital_sensibilidade_order').productId, 'sensibilidade');
 
     context.clearPending('digital_booyah_order');
-    assert.equal(context.getPending('passe-booyah'), null);
-    assert.equal(context.getPending('sensibilidade').externalReference, 'digital_sensibilidade_order');
+    assert.equal(context.getByReference('digital_booyah_order'), null);
+    assert.equal(context.getPending('sensibilidade', 'sensibilidade-android').externalReference, 'digital_sensibilidade_order');
+
+    context.savePending({
+        productId: 'imagens-aereas',
+        externalReference: 'digital_aereas_one_map',
+        selectionKey: 'aereas-one-map',
+        amount: 2,
+    });
+    context.savePending({
+        productId: 'imagens-aereas',
+        externalReference: 'digital_aereas_three_maps',
+        selectionKey: 'aereas-three-maps',
+        amount: 5,
+    });
+    assert.equal(context.getPending('imagens-aereas', 'aereas-one-map').externalReference, 'digital_aereas_one_map');
+    assert.equal(context.getPending('imagens-aereas', 'aereas-three-maps').externalReference, 'digital_aereas_three_maps');
+
+    context.clearPending('digital_aereas_one_map');
+    assert.equal(context.getPending('imagens-aereas', 'aereas-one-map'), null);
+    assert.equal(context.getPending('imagens-aereas', 'aereas-three-maps').externalReference, 'digital_aereas_three_maps');
 
     const persisted = JSON.parse(storage.get('xtreino_store_pix_pending_user-1'));
-    assert.deepEqual(Object.keys(persisted.pendingByProduct), ['sensibilidade']);
+    assert.equal(persisted.version, 3);
+    assert.deepEqual(Object.keys(persisted.pendingByReference), ['digital_sensibilidade_order', 'digital_aereas_three_maps']);
 });
 
 test('a created Pix stays on the schedule screen and blocks duplicate submissions while pending', () => {

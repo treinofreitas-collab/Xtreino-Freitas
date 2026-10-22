@@ -4924,9 +4924,15 @@ function openScheduleModal(eventType, options = {}) {
     if (hideBuyTokens) hideBuyTokens.classList.add('hidden');
 
     // O Pix da loja é independente do fluxo de reserva de horários.
+    clearInterval(_storePixPollInterval);
+    clearInterval(_storePixCountdownInterval);
+    _storePixPollInterval = null;
+    _storePixCountdownInterval = null;
     document.getElementById('productPixBtn')?.classList.add('hidden');
     document.getElementById('productPixPanel')?.classList.add('hidden');
     window._activeStoreProduct = null;
+    window._storePixPayment = null;
+    window._storePixFormSnapshot = null;
     setStorePixPaymentUi('idle');
 
     // Se for produto da loja, esconder seleção de data/hora e adicionar opções específicas
@@ -5002,20 +5008,11 @@ function openScheduleModal(eventType, options = {}) {
             productPixBtn.disabled = false;
         }
         window._activeStoreProduct = { productId: eventType, cfg };
+        attachStorePixSelectionListeners(modal);
         setSchedulePaymentButtonOrder(false);
 
         // Adicionar opções específicas do produto
         addProductOptions(eventType);
-
-        const pendingProductPix = getStorePixPending(eventType);
-        if (pendingProductPix?.productId === eventType) {
-            if (window._storePixPayment?.externalReference === pendingProductPix.externalReference
-                && window._storePixPayment.pixData) {
-                showStorePixQRCode(window._storePixPayment.pixData, pendingProductPix, cfg);
-            } else {
-                showStorePixRecovery(pendingProductPix, cfg);
-            }
-        }
 
         // Mostrar modal
         modal.classList.remove('hidden');
@@ -6855,18 +6852,19 @@ window._storePixSubmitting = false;
 window._storePixState = 'idle';
 window._storePixPayment = null;
 window._storePixPendingCache = null;
+window._storePixFormSnapshot = null;
 
 function getStorePixStorageKey() {
     const userId = window.firebaseAuth?.currentUser?.uid || 'anonymous';
     return `${STORE_PIX_PENDING_KEY}_${userId}`;
 }
 
-function persistStorePixPendingMap(pendingByProduct) {
+function persistStorePixPendingMap(pendingByReference) {
     const userId = window.firebaseAuth?.currentUser?.uid || 'anonymous';
-    const saved = { version: 2, userId, pendingByProduct };
+    const saved = { version: 3, userId, pendingByReference };
     window._storePixPendingCache = saved;
     try {
-        if (Object.keys(pendingByProduct).length) {
+        if (Object.keys(pendingByReference).length) {
             localStorage.setItem(getStorePixStorageKey(), JSON.stringify(saved));
         } else {
             localStorage.removeItem(getStorePixStorageKey());
@@ -6883,14 +6881,24 @@ function getStorePixPendingMap() {
     } catch (_) { }
 
     if (saved?.userId && saved.userId !== userId) saved = null;
-    if (saved?.version === 2 && saved.pendingByProduct && typeof saved.pendingByProduct === 'object') {
+    if (saved?.version === 3 && saved.pendingByReference && typeof saved.pendingByReference === 'object') {
         window._storePixPendingCache = saved;
-        return saved.pendingByProduct;
+        return saved.pendingByReference;
     }
 
-    // Migrate the previous single-pending format without losing an unpaid checkout.
-    if (saved?.productId && saved?.externalReference) {
-        const migrated = { [String(saved.productId)]: saved };
+    // Keep old unpaid checkouts, but never match them without a saved selection fingerprint.
+    const legacyPending = saved?.version === 2 && saved.pendingByProduct
+        ? Object.values(saved.pendingByProduct)
+        : saved?.productId && saved?.externalReference
+            ? [saved]
+            : [];
+    if (legacyPending.length) {
+        const migrated = Object.fromEntries(legacyPending
+            .filter(pending => pending?.externalReference)
+            .map(pending => [String(pending.externalReference), {
+                ...pending,
+                selectionKey: pending.selectionKey || null,
+            }]));
         persistStorePixPendingMap(migrated);
         return migrated;
     }
@@ -6898,18 +6906,35 @@ function getStorePixPendingMap() {
     const cached = window._storePixPendingCache?.userId === userId
         ? window._storePixPendingCache
         : null;
+    if (cached?.version === 3 && cached.pendingByReference && typeof cached.pendingByReference === 'object') {
+        return cached.pendingByReference;
+    }
     if (cached?.version === 2 && cached.pendingByProduct && typeof cached.pendingByProduct === 'object') {
-        return cached.pendingByProduct;
+        const migrated = Object.fromEntries(Object.values(cached.pendingByProduct)
+            .filter(pending => pending?.externalReference)
+            .map(pending => [String(pending.externalReference), {
+                ...pending,
+                selectionKey: pending.selectionKey || null,
+            }]));
+        persistStorePixPendingMap(migrated);
+        return migrated;
     }
     if (cached?.productId && cached?.externalReference) {
-        return { [String(cached.productId)]: cached };
+        const migrated = {
+            [String(cached.externalReference)]: { ...cached, selectionKey: cached.selectionKey || null },
+        };
+        persistStorePixPendingMap(migrated);
+        return migrated;
     }
     return {};
 }
 
-function getStorePixPending(productId) {
-    if (productId === undefined || productId === null) return null;
-    return getStorePixPendingMap()[String(productId)] || null;
+function getStorePixPending(productId, selectionKey) {
+    if (productId === undefined || productId === null || !selectionKey) return null;
+    return Object.values(getStorePixPendingMap()).find(pending =>
+        String(pending?.productId || '') === String(productId)
+        && pending?.selectionKey === selectionKey
+    ) || null;
 }
 
 function getStorePixPendingByReference(externalReference) {
@@ -6920,24 +6945,120 @@ function getStorePixPendingByReference(externalReference) {
 
 function saveStorePixPending(pending) {
     const productId = String(pending?.productId || '').trim();
-    if (!productId || !pending?.externalReference) {
-        throw new Error('Não foi possível identificar o produto deste Pix.');
+    const externalReference = String(pending?.externalReference || '').trim();
+    if (!productId || !externalReference || !pending?.selectionKey) {
+        throw new Error('Não foi possível identificar a seleção deste Pix.');
     }
     const userId = window.firebaseAuth?.currentUser?.uid || 'anonymous';
-    const pendingByProduct = { ...getStorePixPendingMap() };
-    pendingByProduct[productId] = { ...pending, productId, userId };
-    persistStorePixPendingMap(pendingByProduct);
+    const pendingByReference = { ...getStorePixPendingMap() };
+    pendingByReference[externalReference] = { ...pending, productId, externalReference, userId };
+    persistStorePixPendingMap(pendingByReference);
 }
 
 function clearStorePixPending(externalReference) {
     if (!externalReference) return;
-    const pendingByProduct = { ...getStorePixPendingMap() };
-    const productId = Object.keys(pendingByProduct).find(
-        key => pendingByProduct[key]?.externalReference === externalReference
+    const pendingByReference = { ...getStorePixPendingMap() };
+    const reference = String(externalReference);
+    if (!pendingByReference[reference]) return;
+    delete pendingByReference[reference];
+    persistStorePixPendingMap(pendingByReference);
+}
+
+function stableStorePixValue(value) {
+    if (Array.isArray(value)) return value.map(stableStorePixValue);
+    if (!value || typeof value !== 'object') return value ?? null;
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, stableStorePixValue(value[key])]));
+}
+
+async function buildStorePixSelectionKey(productId, productOptions, amount, coupon, customer) {
+    if (!window.crypto?.subtle || typeof TextEncoder === 'undefined') {
+        throw new Error('Não foi possível validar esta seleção com segurança. Atualize o navegador e tente novamente.');
+    }
+    const phoneDigits = String(customer?.phone || '').replace(/\D/g, '');
+    const identity = {
+        name: String(customer?.name || '').trim(),
+        email: String(customer?.email || '').trim().toLowerCase(),
+        phone: phoneDigits.startsWith('55') && [12, 13].includes(phoneDigits.length)
+            ? phoneDigits.slice(2)
+            : phoneDigits,
+    };
+    const data = JSON.stringify(stableStorePixValue({
+        productId: String(productId),
+        productOptions: productOptions || {},
+        amountCents: Math.round(Number(amount) * 100),
+        coupon: {
+            id: coupon?.id || '',
+            code: String(coupon?.code || '').trim().toUpperCase(),
+            affiliateId: coupon?.affiliateId || '',
+            discountType: coupon?.discountType || '',
+            discountValue: Number(coupon?.discountValue) || 0,
+        },
+        customer: identity,
+    }));
+    const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function getStorePixFormSnapshot(productId) {
+    const optionContainer = document.getElementById('productOptions');
+    const controls = Array.from(optionContainer?.querySelectorAll('input,select,textarea') || []);
+    for (const id of ['schedTeam', 'schedEmail', 'schedPhone', 'schedCouponCodeInput']) {
+        const element = document.getElementById(id);
+        if (element && !controls.includes(element)) controls.push(element);
+    }
+    const fields = controls
+        .filter(element => !['button', 'submit', 'reset', 'hidden'].includes(String(element.type || '').toLowerCase()))
+        .map(element => {
+            const type = String(element.type || element.tagName || '').toLowerCase();
+            const value = type === 'checkbox' || type === 'radio'
+                ? { checked: Boolean(element.checked), value: element.checked ? String(element.value || '') : '' }
+                : String(element.value || '').trim();
+            return [String(element.id || element.name || ''), type, value];
+        })
+        .sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+    const coupon = typeof appliedScheduleCoupon !== 'undefined' ? appliedScheduleCoupon : null;
+    const prices = ['schedPrice', 'totalPrice', 'mapsPrice'].map(id =>
+        [id, String(document.getElementById(id)?.textContent || '').trim()]
     );
-    if (!productId) return;
-    delete pendingByProduct[productId];
-    persistStorePixPendingMap(pendingByProduct);
+    return JSON.stringify({
+        productId: String(productId || ''),
+        fields,
+        coupon: coupon ? stableStorePixValue(coupon) : null,
+        prices,
+    });
+}
+
+function resetStorePixUiForSelectionChange(productId) {
+    if (!window._storePixFormSnapshot) return false;
+    if (getStorePixFormSnapshot(productId) === window._storePixFormSnapshot) return false;
+    clearInterval(_storePixPollInterval);
+    clearInterval(_storePixCountdownInterval);
+    _storePixPollInterval = null;
+    _storePixCountdownInterval = null;
+    window._storePixPayment = null;
+    window._storePixFormSnapshot = null;
+    document.getElementById('productPixPanel')?.classList.add('hidden');
+    document.getElementById('productPixNotice')?.classList.add('hidden');
+    document.getElementById('productPixLoading')?.classList.add('hidden');
+    document.getElementById('productPixContent')?.classList.add('hidden');
+    document.getElementById('productPixConfirmed')?.classList.add('hidden');
+    setStorePixPaymentUi('idle');
+    return true;
+}
+
+function attachStorePixSelectionListeners(modal) {
+    if (!modal || modal.dataset.storePixSelectionListeners) return;
+    const handleSelectionEdit = event => {
+        const target = event.target;
+        if (!target?.matches?.('input,select,textarea') || target.closest?.('#productPixPanel')) return;
+        const relevant = target.closest?.('#productOptions, #scheduleCouponSection')
+            || ['schedTeam', 'schedEmail', 'schedPhone', 'schedCouponCodeInput'].includes(target.id);
+        const active = window._activeStoreProduct;
+        if (relevant && active?.productId) resetStorePixUiForSelectionChange(active.productId);
+    };
+    modal.addEventListener('input', handleSelectionEdit);
+    modal.addEventListener('change', handleSelectionEdit);
+    modal.dataset.storePixSelectionListeners = 'true';
 }
 
 function setStorePixPaymentUi(state) {
@@ -7120,7 +7241,7 @@ function showStorePixQRCode(pixData, pending, cfg) {
     startStorePixPolling(updatedPending);
 }
 
-async function createOrResumeStorePix(pending, cfg) {
+async function createOrResumeStorePix(pending, cfg, formSnapshot) {
     setStorePixPaymentUi('creating');
     showStorePixPanel(cfg?.label || pending?.title, pending?.amount);
     document.getElementById('productPixNotice')?.classList.add('hidden');
@@ -7148,7 +7269,20 @@ async function createOrResumeStorePix(pending, cfg) {
     if (!data.qr_code || !data.qr_code_base64) {
         throw new Error('O Mercado Pago não retornou o QR Code. Retome este Pix antes de iniciar outro pagamento.');
     }
-    showStorePixQRCode(data, pending, cfg);
+    const updatedPending = {
+        ...pending,
+        expiresAt: data.expiration_date || pending.expiresAt || null,
+    };
+    const sameSelectionStillOpen = formSnapshot
+        && window._activeStoreProduct?.productId === pending.productId
+        && window._storePixFormSnapshot === formSnapshot
+        && getStorePixFormSnapshot(pending.productId) === formSnapshot;
+    if (!sameSelectionStillOpen) {
+        saveStorePixPending(updatedPending);
+        return false;
+    }
+    showStorePixQRCode(data, updatedPending, cfg);
+    return true;
 }
 
 window.copyProductPixCode = function() {
@@ -7178,37 +7312,14 @@ window.payProductWithPix = function() {
 
 async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopago') {
     const isProductPix = paymentMethod === 'pix';
+    let selectionKey = null;
+    let formSnapshot = null;
     if (isProductPix) {
         if (window._storePixSubmitting) return;
         window._storePixSubmitting = true;
         setStorePixPaymentUi('creating');
     }
     try {
-        if (isProductPix) {
-            const existingPix = getStorePixPending(productId);
-            if (existingPix) {
-                showStorePixRecovery(existingPix, cfg);
-                const existingStatus = await checkStorePixStatus(existingPix.externalReference);
-                if (existingStatus === 'paid' || existingStatus === 'review') return;
-                if (existingStatus === 'unknown') {
-                    showStorePixRecovery(existingPix, cfg);
-                    showStorePixNotice('Não foi possível confirmar o status do Pix anterior. Retome o mesmo pedido; não inicie outra cobrança.');
-                    return;
-                }
-
-                const existingExpiry = Date.parse(existingPix.expiresAt || '');
-                if (existingStatus === 'pending' && Number.isFinite(existingExpiry) && Date.now() >= existingExpiry) {
-                    clearStorePixPending(existingPix.externalReference);
-                    window._storePixPayment = null;
-                    setStorePixPaymentUi('idle');
-                    showStorePixNotice('O QR Code anterior expirou e não foi aprovado. Vou gerar um novo Pix para este pedido.');
-                } else if (existingStatus === 'pending') {
-                    await createOrResumeStorePix(existingPix, cfg);
-                    return;
-                }
-            }
-        }
-
         // Coletar dados do formulário (apenas se existirem)
         const teamElement = document.getElementById('schedTeam');
         const emailElement = document.getElementById('schedEmail');
@@ -7377,6 +7488,41 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
             }
         }
 
+        if (isProductPix) {
+            formSnapshot = getStorePixFormSnapshot(productId);
+            selectionKey = await buildStorePixSelectionKey(
+                productId,
+                productOptions,
+                finalPrice,
+                _prodCoupon,
+                { name: resolvedName, email: resolvedEmail, phone: resolvedPhone },
+            );
+            window._storePixFormSnapshot = formSnapshot;
+
+            const existingPix = getStorePixPending(productId, selectionKey);
+            if (existingPix) {
+                showStorePixRecovery(existingPix, cfg);
+                const existingStatus = await checkStorePixStatus(existingPix.externalReference);
+                if (existingStatus === 'paid' || existingStatus === 'review') return;
+                if (existingStatus === 'unknown') {
+                    showStorePixRecovery(existingPix, cfg);
+                    showStorePixNotice('Não foi possível confirmar o status deste Pix. Retome este mesmo pedido; não inicie outra cobrança.');
+                    return;
+                }
+
+                const existingExpiry = Date.parse(existingPix.expiresAt || '');
+                if (existingStatus === 'pending' && Number.isFinite(existingExpiry) && Date.now() >= existingExpiry) {
+                    clearStorePixPending(existingPix.externalReference);
+                    window._storePixPayment = null;
+                    setStorePixPaymentUi('idle');
+                    showStorePixNotice('O QR Code anterior expirou e não foi aprovado. Vou gerar um novo Pix para esta seleção.');
+                } else if (existingStatus === 'pending') {
+                    await createOrResumeStorePix(existingPix, cfg, formSnapshot);
+                    return;
+                }
+            }
+        }
+
         // Inicializar variáveis
         let docRef = null;
         let externalRef = `digital_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -7437,14 +7583,17 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
                 externalReference: externalRef,
                 amount: Number(finalPrice.toFixed(2)),
                 couponCode: _prodCoupon?.code || null,
+                selectionKey,
                 title: cfg.label || 'Produto',
                 userId: window.firebaseAuth.currentUser?.uid || 'anonymous',
                 createdAt: Date.now(),
                 expiresAt: null,
             };
             saveStorePixPending(pending);
-            await createOrResumeStorePix(pending, cfg);
-            showToast('info', 'Pague pelo QR Code ou copie e cole o código Pix. O pagamento será confirmado nesta tela.', 'Pix');
+            const qrDisplayed = await createOrResumeStorePix(pending, cfg, formSnapshot);
+            if (qrDisplayed) {
+                showToast('info', 'Pague pelo QR Code ou copie e cole o código Pix. O pagamento será confirmado nesta tela.', 'Pix');
+            }
             return;
         }
         if (paymentMethod === 'tokens') {
@@ -7523,12 +7672,16 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
         
         const errorMessage = error.message || 'Falha ao processar compra.';
         if (isProductPix) {
-            const pending = getStorePixPending(productId);
+            const pending = selectionKey ? getStorePixPending(productId, selectionKey) : null;
+            const sameSelectionStillOpen = formSnapshot
+                && window._activeStoreProduct?.productId === productId
+                && window._storePixFormSnapshot === formSnapshot
+                && getStorePixFormSnapshot(productId) === formSnapshot;
             document.getElementById('productPixLoading')?.classList.add('hidden');
-            if (pending?.productId === productId) {
+            if (sameSelectionStillOpen && pending) {
                 showStorePixRecovery(pending, cfg);
-                showStorePixNotice(`${errorMessage} Se o pedido já tiver iniciado a cobrança, retome este mesmo Pix; não gere outro pedido.`);
-            } else {
+                showStorePixNotice(`${errorMessage} Se este pedido já iniciou a cobrança, retome o mesmo Pix; não gere outra cobrança.`);
+            } else if (sameSelectionStillOpen) {
                 setStorePixPaymentUi('idle');
                 alert(`Não foi possível gerar o Pix.\n\n${errorMessage}`);
             }
@@ -7539,7 +7692,7 @@ async function handleProductPurchase(productId, cfg, paymentMethod = 'mercadopag
         if (isProductPix) {
             window._storePixSubmitting = false;
             const state = window._storePixState;
-            if (!getStorePixPending(productId) && !['paid', 'review'].includes(state)) {
+            if (!(selectionKey && getStorePixPending(productId, selectionKey)) && !['paid', 'review'].includes(state)) {
                 setStorePixPaymentUi('idle');
             }
         }
