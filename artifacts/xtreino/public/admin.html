@@ -112,7 +112,7 @@
 
         <p class="sidebar-section-label">Operações</p>
         <ul class="sidebar-menu">
-
+            <li><button class="sidebar-link" data-page="operacoes" onclick="adminNav('operacoes','sectionFreefireScoring',this)"><i class="fas fa-crosshairs"></i><span>Placar Free Fire</span></button></li>
             <li><button class="sidebar-link sidebar-danger" data-page="operacoes" onclick="adminNav('operacoes','sectionResetData',this)"><i class="fas fa-exclamation-triangle"></i><span>Reset Dados</span></button></li>
         </ul>
     </nav>
@@ -1514,6 +1514,9 @@
             <!-- ===== PAGE: OPERAÇÕES ===== -->
             <div id="page-operacoes" class="admin-page hidden">
 
+            <section id="sectionFreefireScoring" class="ff-workspace" style="display:none" aria-label="Placar Free Fire">
+                <div id="freefireScoringRoot"></div>
+            </section>
 
             <!-- Reset de Dados (Perigoso) -->
             <div id="sectionResetData" class="bg-white border border-red-300 rounded-xl p-6 mt-6" style="display:none">

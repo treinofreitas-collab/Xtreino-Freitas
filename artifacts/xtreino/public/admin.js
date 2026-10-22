@@ -334,21 +334,21 @@ window.showWarningToast = function(message, title = 'Atenção') {
           'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
           'sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionMarketReports','sectionShirtOrders',
-          'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData'],
+          'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring'],
     // SOCIO: tudo, somente visualização (sem reset)
     socio: ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
             'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
             'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
             'sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionShirtOrders',
-            'sectionSchedules','sectionEventLinks','sectionAdminHistory'],
+            'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionFreefireScoring'],
     // GERENTE: tudo, EXCETO aba principal completa (KPIs, filtros, gráficos, pedidos, tokenStats)
     gerente: ['sectionUsers','sectionUsersManagement',
               'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah',
               'sectionHighlights','sectionNews','sectionProducts','sectionEvents',
               'sectionShirtOrders','sectionSchedules','sectionEventLinks',
-              'sectionAdminHistory'],
+              'sectionAdminHistory','sectionFreefireScoring'],
     // DESIGNER: apenas conteúdo (destaques, notícias, produtos, eventos) — sem camisas, sem horários
     designer: ['sectionHighlights','sectionNews','sectionProducts','sectionEvents'],
     // VENDEDOR: usuários + financeiro (sem aba principal) + camisas + produtos
@@ -357,7 +357,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
                'sectionProducts'],
     // ADMIN: gerenciador de eventos + horários
-    admin: ['sectionEvents','sectionMarketReports','sectionSchedules','sectionEventLinks'],
+    admin: ['sectionEvents','sectionMarketReports','sectionSchedules','sectionEventLinks','sectionFreefireScoring'],
     // STAFF: eventos
     staff: ['sectionEvents'],
     // MODERADOR: igual ao staff
@@ -381,7 +381,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     'sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts','sectionAffiliatePanel','sectionPasseBooyah',
     'sectionHighlights','sectionNews','sectionProducts','sectionEvents','sectionShirtOrders',
     'sectionMarketReports',
-    'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData',
+    'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring',
   ];
 
   // Control section visibility based on role
@@ -13529,6 +13529,15 @@ window.loadPageData = async function(page, requestedSectionId) {
                     if (typeof window.openEventLinksAdmin === 'function') {
                         await window.openEventLinksAdmin();
                     }
+                    break;
+                case 'sectionFreefireScoring':
+                    await import('./js/admin-freefire-scoring.mjs')
+                        .then(m => m.openFreefireScoringAdmin())
+                        .catch(error => {
+                            console.error('[Free Fire] Falha ao carregar o placar:', error);
+                            const root = document.getElementById('freefireScoringRoot');
+                            if (root) root.innerHTML = '<div class="ff-error" role="alert">Não foi possível abrir o placar. Atualize a seção para tentar novamente.</div>';
+                        });
                     break;
                 case 'sectionShirtOrders':
                     await loadShirtOrders();

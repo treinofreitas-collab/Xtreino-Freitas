@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: freefire-scoring
+    description: Free Fire tournament screenshot analysis
 paths:
   /healthz:
     get:
@@ -24,6 +26,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /freefire/analyze:
+    post:
+      operationId: analyzeFreeFireImages
+      tags: [freefire-scoring]
+      summary: Analyze Free Fire roster and result screenshots
+      description: Extracts teams and drop results for an authenticated admin review.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FreeFireAnalysisRequest"
+      responses:
+        "200":
+          description: Extracted data for manual review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreeFireAnalysisResponse"
+        "400":
+          description: Invalid analysis request
+        "401":
+          description: Firebase authentication required
+        "403":
+          description: Admin role required
+        "413":
+          description: Image payload is too large
+        "429":
+          description: Analysis rate limit reached
+        "503":
+          description: Image analysis is temporarily unavailable
 components:
   schemas:
     HealthStatus:
@@ -33,4 +66,104 @@ components:
           type: string
       required:
         - status
+    FreeFireImage:
+      type: object
+      properties:
+        mimeType:
+          type: string
+          enum: [image/png, image/jpeg, image/webp]
+        base64:
+          type: string
+      required: [mimeType, base64]
+    FreeFireTeam:
+      type: object
+      properties:
+        slot:
+          type: integer
+          minimum: 1
+          maximum: 12
+        teamName:
+          type: string
+          minLength: 1
+          maxLength: 80
+      required: [slot, teamName]
+    FreeFireAnalysisRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [roster, drop]
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireImage"
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireTeam"
+        dropNumber:
+          type: integer
+          minimum: 1
+          maximum: 5
+        slotImages:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireImage"
+        resultImages:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireImage"
+      required: [mode]
+    FreeFireAnalyzedPlayer:
+      type: object
+      properties:
+        name:
+          type: string
+        kills:
+          type: integer
+          minimum: 0
+          maximum: 99
+      required: [name, kills]
+    FreeFireAnalyzedPlacement:
+      type: object
+      properties:
+        position:
+          type: integer
+          minimum: 1
+          maximum: 12
+        slot:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 12
+        teamName:
+          type: [string, "null"]
+        kills:
+          type: integer
+          minimum: 0
+          maximum: 99
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireAnalyzedPlayer"
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        notes:
+          type: string
+      required: [position, slot, teamName, kills, players, confidence, notes]
+    FreeFireAnalysisResponse:
+      type: object
+      properties:
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireTeam"
+        placements:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireAnalyzedPlacement"
+        unmatchedPlayers:
+          type: array
+          items:
+            type: string
 
