@@ -15,6 +15,18 @@ const adminSource = readFileSync(
     new URL('../../artifacts/xtreino/public/admin.js', import.meta.url),
     'utf8',
 );
+const scriptSource = readFileSync(
+    new URL('../../artifacts/xtreino/public/script.js', import.meta.url),
+    'utf8',
+);
+const eventPageSource = readFileSync(
+    new URL('../../artifacts/xtreino/public/evento.html', import.meta.url),
+    'utf8',
+);
+const indexSource = readFileSync(
+    new URL('../../artifacts/xtreino/public/index.html', import.meta.url),
+    'utf8',
+);
 
 const helperStart = clientSource.indexOf('function buildPendingPaymentGroups(');
 const helperEnd = clientSource.indexOf('async function loadPendingPayments', helperStart);
@@ -84,4 +96,75 @@ test('the admin schedule modal has an individual high-quality logo download acti
     const zipDownloader = adminSource.slice(zipStart, zipEnd);
     assert.match(zipDownloader, /compression: 'STORE'/);
     assert.doesNotMatch(zipDownloader, /teamLogoThumb|PLACEHOLDER/);
+});
+
+test('original logo lookup accepts only unique name-and-time matches and scoped storage paths', () => {
+    const helperStart = adminSource.indexOf('function getSpecOriginalLogoUrl(');
+    const helperEnd = adminSource.indexOf('async function getSpecLogoStorageItems', helperStart);
+    assert.notEqual(helperStart, -1);
+    assert.notEqual(helperEnd, -1);
+    const helperSource = adminSource.slice(helperStart, helperEnd);
+    const helpers = vm.runInContext(
+        `${helperSource}; ({ getSpecOriginalLogoUrl, findSpecStorageOriginalLogoItem, getSpecUserLogoStoragePath })`,
+        vm.createContext({}),
+    );
+
+    const createdAt = 1792638000000;
+    const matchingOriginal = { name: `NEXUS_${createdAt + 5000}` };
+    assert.equal(
+        helpers.findSpecStorageOriginalLogoItem([matchingOriginal], { teamName: 'NEXUS B', createdAt }),
+        matchingOriginal,
+    );
+    assert.equal(
+        helpers.findSpecStorageOriginalLogoItem(
+            [matchingOriginal, { name: `NEXUS_B_${createdAt + 6000}` }],
+            { teamName: 'NEXUS B', createdAt },
+        ),
+        null,
+        'ambiguous original files are not guessed',
+    );
+    assert.equal(
+        helpers.getSpecUserLogoStoragePath('captain-123', 'modo liga'),
+        'profile-photos/captain-123/team-logos/modo_liga',
+    );
+    assert.equal(helpers.getSpecUserLogoStoragePath('uid/../other', 'modo-liga'), '');
+    assert.equal(helpers.getSpecOriginalLogoUrl({ teamLogoThumb: 'thumbnail-url' }), null);
+    assert.match(adminSource, /registration\?\.userId/);
+    assert.match(adminSource, /teamProfile\?\.capitaoId/);
+});
+
+test('logo failures stop reservations, and the captain can restore the original on the team profile', () => {
+    const uploaderStart = scriptSource.indexOf('function getTeamLogoStoragePaths(');
+    const uploaderEnd = scriptSource.indexOf('\nfunction isTeamLogoPermissionDenied', uploaderStart);
+    assert.notEqual(uploaderStart, -1);
+    assert.notEqual(uploaderEnd, -1);
+    const getPaths = vm.runInContext(
+        `${scriptSource.slice(uploaderStart, uploaderEnd)}; getTeamLogoStoragePaths`,
+        vm.createContext({}),
+    );
+    const paths = getPaths('Nexus Team', 'modo-liga', 'captain-123', 1792638000000);
+    assert.equal(paths.primary, 'teams/modo-liga/logos/Nexus_Team_1792638000000');
+    assert.equal(paths.userScoped, 'profile-photos/captain-123/team-logos/modo-liga/Nexus_Team_1792638000000');
+    assert.match(scriptSource, /storage\/unauthorized/);
+    assert.match(scriptSource, /paths\.userScoped/);
+    assert.match(scriptSource, /throw uploadError/);
+
+    const scheduleStart = scriptSource.indexOf('async function submitSchedule(');
+    const scheduleEnd = scriptSource.indexOf('async function createRegistrationsForEvent', scheduleStart);
+    const scheduleFlow = scriptSource.slice(scheduleStart, scheduleEnd);
+    assert.ok(scheduleFlow.indexOf('uploadTeamLogo(team.logoBase64') < scheduleFlow.indexOf('allocateSlotsFromDB('));
+    assert.match(scheduleFlow, /throw new Error\('Não foi possível salvar a logo original/);
+
+    const eventStart = scriptSource.indexOf('async function createRegistrationsForEvent(');
+    const eventEnd = scriptSource.indexOf('\nfunction ', eventStart + 1);
+    const eventFlow = scriptSource.slice(eventStart, eventEnd);
+    assert.ok(eventFlow.indexOf('uploadTeamLogo(team.logoBase64') < eventFlow.indexOf('allocateSlotsFromDB('));
+
+    assert.match(scriptSource, /Somente o capitão pode atualizar a logo do time/);
+    assert.match(scriptSource, /logoOriginalUrl: preparedLogo\.originalUrl/);
+    assert.match(eventPageSource, /equipeLogoOriginalInput/);
+    assert.match(eventPageSource, /Somente o capitão pode atualizar a logo do time/);
+    assert.match(eventPageSource, /logoOriginalUrl: preparedLogo\.originalUrl/);
+    assert.match(eventPageSource, /profile-photos\/\$\{userId\}\/team-logos\/profiles/);
+    assert.match(indexSource, /equipeLogoOriginalInput/);
 });

@@ -251,3 +251,11 @@ test("availability endpoint accepts 00h after resolving a Modo Liga event docume
   assert.equal(response.statusCode, 200);
   assert.deepEqual(JSON.parse(response.body), { available: true });
 });
+
+test("malformed three-digit lock hour does not accidentally block midnight", async () => {
+  const result = await checkAvailability(database({
+    "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
+    "event_hour_locks/modo-liga__100": { eventType: "modo-liga", hour: "100", locked: true },
+  }), saturdayMidnightLiga);
+  assert.equal(result.available, true);
+});

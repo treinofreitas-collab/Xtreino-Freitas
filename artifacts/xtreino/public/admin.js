@@ -11606,22 +11606,22 @@ function getSpecRegistrationCreatedAtMs(registration) {
     return 0;
 }
 
-function findSpecStorageOriginalLogoItem(items, registration) {
+function findSpecStorageOriginalLogoItem(items, registration, additionalTeamNames = []) {
     const rawTeamName = String(registration?.teamName || '').trim();
-    if (!rawTeamName) return null;
-
-    const key = getSpecStorageTeamKey(rawTeamName);
+    const teamNames = [rawTeamName, rawTeamName.replace(/\s+[B-Z]$/i, ''), ...additionalTeamNames]
+        .map(name => String(name || '').trim())
+        .filter(Boolean);
+    const keys = new Set(teamNames.map(getSpecStorageTeamKey));
+    if (!keys.size) return null;
     const createdAtMs = getSpecRegistrationCreatedAtMs(registration);
     if (!createdAtMs) return null;
 
-    const prefix = `${key}_`;
     const candidates = (Array.isArray(items) ? items : []).flatMap(item => {
         const itemName = String(item?.name || '');
-        if (!itemName.startsWith(prefix)) return [];
         const timestampMatch = itemName.match(/_(\d{13})$/);
         if (!timestampMatch) return [];
         const savedTeamKey = itemName.slice(0, timestampMatch.index);
-        if (savedTeamKey !== key) return [];
+        if (!keys.has(savedTeamKey)) return [];
         return [{ item, uploadedAtMs: Number(timestampMatch[1]) }];
     });
     const closeMatches = candidates.filter(candidate =>
@@ -11630,27 +11630,41 @@ function findSpecStorageOriginalLogoItem(items, registration) {
     return closeMatches.length === 1 ? closeMatches[0].item : null;
 }
 
-async function getSpecLogoStorageItems(eventType) {
-    const storage = window.firebaseStorage;
+function getSpecEventLogoStoragePath(eventType) {
     const folder = String(eventType || '').trim();
-    if (!storage || !folder) return [];
+    return folder && folder !== '.' && folder !== '..' && !/[\\/]/.test(folder) ? `teams/${folder}/logos` : '';
+}
 
-    const cached = SPEC_LOGO_STORAGE_LIST_CACHE.get(folder);
+function getSpecUserLogoStoragePath(userId, eventType) {
+    const uid = String(userId || '').trim();
+    const folder = String(eventType || '').trim();
+    if (!uid || uid.length > 128 || uid === '.' || uid === '..' || /[\\/]/.test(uid)
+        || !folder || folder === '.' || folder === '..' || /[\\/]/.test(folder)) return '';
+    const safeFolder = folder.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'evento';
+    return `profile-photos/${uid}/team-logos/${safeFolder}`;
+}
+
+async function getSpecLogoStorageItems(storagePath) {
+    const storage = window.firebaseStorage;
+    const path = String(storagePath || '').trim().replace(/^\/+|\/+$/g, '');
+    if (!storage || !path) return [];
+
+    const cached = SPEC_LOGO_STORAGE_LIST_CACHE.get(path);
     if (cached && Date.now() - cached.createdAt < SPEC_LOGO_STORAGE_LIST_CACHE_MS) {
         return cached.promise;
     }
 
     const promise = (async () => {
         const { ref, listAll } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
-        const listing = await listAll(ref(storage, `teams/${folder}/logos`));
+        const listing = await listAll(ref(storage, path));
         return listing.items || [];
     })();
-    SPEC_LOGO_STORAGE_LIST_CACHE.set(folder, { createdAt: Date.now(), promise });
+    SPEC_LOGO_STORAGE_LIST_CACHE.set(path, { createdAt: Date.now(), promise });
 
     try {
         return await promise;
     } catch (error) {
-        SPEC_LOGO_STORAGE_LIST_CACHE.delete(folder);
+        SPEC_LOGO_STORAGE_LIST_CACHE.delete(path);
         throw error;
     }
 }
@@ -11663,30 +11677,64 @@ async function resolveSpecOriginalLogoUrl(registration) {
     const { collection, doc, getDoc, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const db = window.firebaseDb;
     const teamId = String(registration?.teamId || '').trim();
+    let teamProfile = null;
     if (teamId) {
         const teamSnap = await getDoc(doc(db, 'teams', teamId));
         if (teamSnap.exists()) {
-            const teamUrl = String(teamSnap.data()?.logoOriginalUrl || '').trim();
+            teamProfile = teamSnap.data() || null;
+            const teamUrl = String(teamProfile.logoOriginalUrl || '').trim();
             if (teamUrl) return teamUrl;
         }
     }
 
     const teamName = String(registration?.teamName || '').trim();
-    if (teamName) {
+    if (teamName && !teamProfile) {
         const matches = await getDocs(query(collection(db, 'teams'), where('nome', '==', teamName)));
         if (matches.size === 1) {
+            teamProfile = teamProfile || matches.docs[0].data() || null;
             const teamUrl = String(matches.docs[0].data()?.logoOriginalUrl || '').trim();
             if (teamUrl) return teamUrl;
         }
     }
 
     const eventType = String(registration?.eventType || '').trim();
-    if (!teamName || !eventType) return null;
-    const items = await getSpecLogoStorageItems(eventType);
-    const originalItem = findSpecStorageOriginalLogoItem(items, registration);
-    if (!originalItem) return null;
-    const { getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
-    return getDownloadURL(originalItem);
+    const teamNames = [teamProfile?.nome, teamProfile?.name].filter(Boolean);
+    const eventPath = getSpecEventLogoStoragePath(eventType);
+    let lookupError = null;
+    if (eventPath) {
+        try {
+            const items = await getSpecLogoStorageItems(eventPath);
+            const originalItem = findSpecStorageOriginalLogoItem(items, registration, teamNames);
+            if (originalItem) {
+                const { getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+                return getDownloadURL(originalItem);
+            }
+        } catch (error) {
+            lookupError = error;
+        }
+    }
+
+    const userIds = [...new Set([
+        registration?.userId,
+        teamProfile?.capitaoId,
+    ].map(value => String(value || '').trim()).filter(Boolean))];
+    for (const userId of userIds) {
+        const userPath = getSpecUserLogoStoragePath(userId, eventType);
+        if (!userPath) continue;
+        try {
+            const items = await getSpecLogoStorageItems(userPath);
+            const originalItem = findSpecStorageOriginalLogoItem(items, registration, teamNames);
+            if (originalItem) {
+                const { getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+                return getDownloadURL(originalItem);
+            }
+        } catch (error) {
+            lookupError = error;
+        }
+    }
+
+    if (lookupError) throw lookupError;
+    return null;
 }
 
 function getSpecImageExtension(blob, sourceUrl) {

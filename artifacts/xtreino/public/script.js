@@ -6473,22 +6473,87 @@ async function _resizeLogoBase64(dataUrl, size = 128) {
     });
 }
 
+function getTeamLogoStoragePaths(teamName, eventType, userId, uploadedAtMs) {
+    const rawEventFolder = String(eventType || 'evento').trim();
+    const safeUserId = String(userId || '').trim();
+    if (!rawEventFolder || rawEventFolder === '.' || rawEventFolder === '..' || /[\\/]/.test(rawEventFolder)
+        || !safeUserId || safeUserId.length > 128 || safeUserId === '.' || safeUserId === '..'
+        || /[\\/]/.test(safeUserId)) {
+        throw new Error('Não foi possível identificar a pasta segura para salvar a logo.');
+    }
+    const sanitizedName = String(teamName || 'time').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+    const safeEventFolder = rawEventFolder.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'evento';
+    const fileName = `${sanitizedName}_${uploadedAtMs}`;
+    return {
+        primary: `teams/${rawEventFolder}/logos/${fileName}`,
+        userScoped: `profile-photos/${safeUserId}/team-logos/${safeEventFolder}/${fileName}`,
+    };
+}
+
+function isTeamLogoPermissionDenied(error) {
+    return error?.code === 'storage/unauthorized';
+}
+
+function getTeamLogoUploadErrorMessage(error) {
+    const code = String(error?.code || '');
+    if (code === 'storage/unauthenticated') return 'Sua sessão expirou. Entre novamente e tente enviar a logo.';
+    if (code === 'storage/unauthorized') return 'O armazenamento recusou o envio da logo. Recarregue a página e tente novamente; se persistir, as permissões do Storage precisam ser verificadas.';
+    if (code === 'storage/retry-limit-exceeded' || code === 'storage/canceled') {
+        return 'A conexão foi interrompida durante o envio da logo. Verifique sua internet e tente novamente.';
+    }
+    if (code) return `Não foi possível salvar a logo original (${code}). Tente novamente antes de confirmar a inscrição.`;
+    return error?.message || 'Não foi possível salvar a logo original. Tente novamente antes de confirmar a inscrição.';
+}
+
 async function uploadTeamLogo(base64DataUrl, teamName, eventType) {
-    if (!base64DataUrl || !window.firebaseStorage) return null;
+    if (!base64DataUrl) return null;
+    const userId = window.firebaseAuth?.currentUser?.uid;
+    if (!userId) throw new Error('Sua sessão expirou. Entre novamente antes de enviar a logo.');
+    if (!window.firebaseStorage) throw new Error('O armazenamento da logo não está pronto. Recarregue a página e tente enviar novamente.');
     try {
         const { ref, uploadString, getDownloadURL } = await import(
             'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js'
         );
-        const sanitizedName = (teamName || 'time').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
-        const path = `teams/${eventType}/logos/${sanitizedName}_${Date.now()}`;
-        const storageRef = ref(window.firebaseStorage, path);
-        await uploadString(storageRef, base64DataUrl, 'data_url');
+        const paths = getTeamLogoStoragePaths(teamName, eventType, userId, Date.now());
+        let storageRef = ref(window.firebaseStorage, paths.primary);
+        try {
+            await uploadString(storageRef, base64DataUrl, 'data_url');
+        } catch (primaryError) {
+            if (!isTeamLogoPermissionDenied(primaryError)) throw primaryError;
+            console.warn('[uploadTeamLogo] caminho do evento recusado; tentando a pasta do próprio usuário.');
+            storageRef = ref(window.firebaseStorage, paths.userScoped);
+            await uploadString(storageRef, base64DataUrl, 'data_url');
+        }
         const url = await getDownloadURL(storageRef);
+        if (!url) throw new Error('O Storage não retornou o link da logo enviada.');
         return url;
     } catch (err) {
-        console.warn('[uploadTeamLogo] falha no upload, logo não salva:', err?.message);
-        return null;
+        console.warn('[uploadTeamLogo] falha no envio da logo:', err?.code || err?.name || 'erro desconhecido');
+        const uploadError = new Error(getTeamLogoUploadErrorMessage(err));
+        if (err?.code) uploadError.code = err.code;
+        throw uploadError;
     }
+}
+
+function readImageFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Não foi possível ler o arquivo da logo.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function prepareAndUploadTeamProfileLogo(file, teamName) {
+    if (!file) return { thumb: null, originalUrl: null };
+    const [thumb, originalDataUrl] = await Promise.all([
+        _resizeLogoParaBase64(file),
+        readImageFileAsDataUrl(file),
+    ]);
+    if (!thumb || !originalDataUrl) throw new Error('Não foi possível preparar a logo.');
+    const originalUrl = await uploadTeamLogo(originalDataUrl, teamName, 'profiles');
+    if (!originalUrl) throw new Error('Não foi possível salvar a logo original. Tente novamente antes de criar o time.');
+    return { thumb, originalUrl };
 }
 // Function to remove a team
 function removeTeam(teamId) {
@@ -7814,28 +7879,25 @@ async function submitSchedule(e, useTokens = false) {
                 }
             }
 
-            // ── Alocar slots (transação) + upload logos em PARALELO ───────────
-            // São totalmente independentes: rodar juntos economiza 3-5s
-            const [_slotAlloc, [_wlArr, _teamLogoDataMap]] = await Promise.all([
+            // Salvar os originais antes de alterar contadores de vagas. Um erro
+            // no Storage não pode deixar a inscrição sem a logo enviada.
+            const _teamLogoDataMap = await (async () => {
+                const _map = {};
+                await Promise.all(teamsData.map(async team => {
+                    if (team.logoBase64) {
+                        const url = await uploadTeamLogo(team.logoBase64, team.name, rawEventType);
+                        if (!url) throw new Error('Não foi possível salvar a logo original. Tente reenviar a imagem.');
+                        const thumb = await _resizeLogoBase64(team.logoBase64);
+                        _map[team.name] = { url, thumb };
+                    }
+                }));
+                return _map;
+            })();
+            const [_slotAlloc, _wlArr] = await Promise.all([
                 Object.keys(_sc).length > 0
                     ? allocateSlotsFromDB(rawEventType, _sc, datesToUse)
                     : Promise.resolve({}),
-                Promise.all([
-                    Promise.all(_schedPairs.map(p => getWhatsAppLink(rawEventType, p.normalizedHour, p.d).catch(() => null))),
-                    (async () => {
-                        const _map = {};
-                        await Promise.all(teamsData.map(async team => {
-                            if (team.logoBase64) {
-                                const [url, thumb] = await Promise.all([
-                                    uploadTeamLogo(team.logoBase64, team.name, rawEventType),
-                                    _resizeLogoBase64(team.logoBase64)
-                                ]);
-                                _map[team.name] = { url, thumb };
-                            }
-                        }));
-                        return _map;
-                    })()
-                ])
+                Promise.all(_schedPairs.map(p => getWhatsAppLink(rawEventType, p.normalizedHour, p.d).catch(() => null))),
             ]);
             const mpSlotCount = {};
             for (const [_k, _v] of Object.entries(_slotAlloc)) mpSlotCount[_k] = _v - 1;
@@ -7852,7 +7914,7 @@ async function submitSchedule(e, useTokens = false) {
                         _meta: { team: team.name, slotNum, slotDisplay, schedule: p.schedule, date: p.d, whatsappLink: p.whatsappLink },
                         userId: window.firebaseAuth.currentUser.uid,
                         teamName: team.name,
-                        teamLogoUrl: _teamLogoDataMap[team.name]?.url || null,
+                        teamLogoUrl: _teamLogoDataMap[team.name]?.url || _equipeAtual?.logoOriginalUrl || null,
                         teamLogoThumb: _teamLogoDataMap[team.name]?.thumb || _equipeAtual?.logoUrl || null,
                         teamId: _equipeAtual?.id || null,
                         membrosUids: _equipeAtual?.membrosUids || null,
@@ -9179,24 +9241,23 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
         }
     }
 
-    // ── Alocar slots (transação) + upload logos em PARALELO ──────────────
-    const [_slotAlloc, _logoMap, existingDocs] = await Promise.all([
+    // Enviar as logos originais antes de alocar vagas ou gravar inscrições.
+    const _logoMap = await (async () => {
+        const _map = {};
+        await Promise.all(teamsData.map(async team => {
+            if (team.logoBase64) {
+                const url = await uploadTeamLogo(team.logoBase64, team.name, eventType);
+                if (!url) throw new Error('Não foi possível salvar a logo original. Tente reenviar a imagem.');
+                const thumb = await _resizeLogoBase64(team.logoBase64);
+                _map[team.name] = { url, thumb };
+            }
+        }));
+        return _map;
+    })();
+    const [_slotAlloc, existingDocs] = await Promise.all([
         Object.keys(_sc).length > 0
             ? allocateSlotsFromDB(eventType, _sc, datesToUse, existingDocsPromise)
             : Promise.resolve({}),
-        (async () => {
-            const _map = {};
-            await Promise.all(teamsData.map(async team => {
-                if (team.logoBase64) {
-                    const [url, thumb] = await Promise.all([
-                        uploadTeamLogo(team.logoBase64, team.name, eventType),
-                        _resizeLogoBase64(team.logoBase64)
-                    ]);
-                    _map[team.name] = { url, thumb };
-                }
-            }));
-            return _map;
-        })(),
         existingDocsPromise
     ]);
     collectDuplicates(existingDocs);
@@ -9230,7 +9291,7 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                 _dupBatchCount[_dupKey] = (_dupBatchCount[_dupKey] || 0) + 1;
 
                 const _logoData = _logoMap[team.name];
-                const teamLogoUrl = _logoData?.url || null;
+                const teamLogoUrl = _logoData?.url || _equipeAtual?.logoOriginalUrl || null;
                 const teamLogoThumb = _logoData?.thumb || _equipeAtual?.logoUrl || null;
 
                 const payload = {
@@ -10706,11 +10767,14 @@ window.confirmarCriarTime = async function() {
         const teamRef = doc(collection(db, 'teams'));
         const membro = { uid: window.currentUser.uid, nome: nomeUsuario, role: 'capitao', fotoUrl: window.currentUser.photoURL || null, entradaEm: Date.now() };
 
-        // Redimensionar e converter logo para base64 (salvo direto no Firestore, visível a todos)
+        // Guarda a miniatura no perfil e o arquivo original no Storage.
         let logoBase64 = null;
+        let logoOriginalUrl = null;
         const logoFile = document.getElementById('equipeLogo')?.files[0];
         if (logoFile) {
-            try { logoBase64 = await _resizeLogoParaBase64(logoFile); } catch (_) {}
+            const preparedLogo = await prepareAndUploadTeamProfileLogo(logoFile, nome);
+            logoBase64 = preparedLogo.thumb;
+            logoOriginalUrl = preparedLogo.originalUrl;
         }
 
         const teamData = {
@@ -10718,6 +10782,7 @@ window.confirmarCriarTime = async function() {
             email,
             phone,
             logoUrl: logoBase64,
+            logoOriginalUrl,
             capitaoId: window.currentUser.uid,
             capitaoNome: nomeUsuario,
             codigoConvite: codigo,
@@ -10834,7 +10899,47 @@ function _renderizarInfoTime(time) {
         const logoEl = document.getElementById('equipeTimeLogo');
         if (logoEl) { logoEl.style.background = 'transparent'; logoEl.innerHTML = `<img src="${time.logoUrl}" class="w-full h-full object-contain p-0.5">`; }
     }
+    const isCaptain = time.capitaoId === window.currentUser?.uid;
+    const uploadControl = document.getElementById('btnAtualizarLogoTime');
+    const uploadText = document.getElementById('equipeLogoOriginalButtonText');
+    const uploadHelp = document.getElementById('equipeLogoOriginalHelp');
+    if (uploadControl) uploadControl.classList.toggle('hidden', !isCaptain);
+    if (uploadText) uploadText.textContent = time.logoOriginalUrl ? 'Atualizar logo original' : 'Enviar logo original';
+    if (uploadHelp) {
+        uploadHelp.classList.toggle('hidden', !isCaptain);
+        uploadHelp.textContent = time.logoOriginalUrl
+            ? 'Arquivo original salvo para downloads em alta qualidade.'
+            : 'A miniatura antiga não pode ser ampliada com qualidade. Envie novamente o arquivo original.';
+    }
 }
+
+window.atualizarLogoOriginalTime = async function(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (!_equipeAtual?.id || _equipeAtual.capitaoId !== window.currentUser?.uid) {
+        showToast('error', 'Somente o capitão pode atualizar a logo do time.');
+        if (input) input.value = '';
+        return;
+    }
+    try {
+        const preparedLogo = await prepareAndUploadTeamProfileLogo(file, _equipeAtual.nome);
+        const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db = window.firebaseDb;
+        if (!db) throw new Error('Firebase não conectado.');
+        await updateDoc(doc(db, 'teams', _equipeAtual.id), {
+            logoUrl: preparedLogo.thumb,
+            logoOriginalUrl: preparedLogo.originalUrl,
+            logoOriginalUpdatedAt: serverTimestamp(),
+        });
+        _equipeAtual = { ..._equipeAtual, logoUrl: preparedLogo.thumb, logoOriginalUrl: preparedLogo.originalUrl };
+        _renderizarInfoTime(_equipeAtual);
+        showToast('success', 'Logo original salva. O admin já poderá baixar o arquivo sem perda de qualidade.');
+    } catch (error) {
+        showToast('error', 'Não foi possível atualizar a logo: ' + (error.message || error));
+    } finally {
+        if (input) input.value = '';
+    }
+};
 
 async function _iniciarEscutaTime(teamId) {
     if (_equipeListenerUnsubscribe) _equipeListenerUnsubscribe();

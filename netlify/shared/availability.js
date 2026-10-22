@@ -12,7 +12,7 @@ function invalid(message) {
 }
 
 function hourOf(value) {
-  const match = String(value ?? "").match(/(\d{1,2})(?:\s*h|\s*:|$)/);
+  const match = String(value ?? "").match(/(?<!\d)(\d{1,2})(?!\d)(?:\s*h|\s*:|$)/i);
   return match ? Number(match[1]) : null;
 }
 

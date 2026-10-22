@@ -162,6 +162,7 @@
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
 import { getFirestore, doc, getDoc, deleteDoc, collection, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
+import { getStorage } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
 
 const _fk = ["AIzaSyBzD0iWNI","fZwuzWN-Xhjbg2","2OfCHv1Qwjo"].join("");
 const FIREBASE_CONFIG = {
@@ -181,6 +182,7 @@ function initFirebase() {
     const app = existing || initializeApp(FIREBASE_CONFIG);
     _db = getFirestore(app);
     _auth = getAuth(app);
+    window.firebaseStorage = getStorage(app, `gs://${FIREBASE_CONFIG.storageBucket}`);
     window.firebaseDb = _db;
     return _db;
 }
@@ -619,6 +621,14 @@ loadEvent();
             </div>
           </div>
         </div>
+        <div class="mb-4">
+          <label id="btnAtualizarLogoTime" class="hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold cursor-pointer">
+            <i class="fas fa-upload"></i>
+            <span id="equipeLogoOriginalButtonText">Enviar logo original</span>
+            <input type="file" id="equipeLogoOriginalInput" accept="image/*" class="hidden" onchange="atualizarLogoOriginalTime(this)">
+          </label>
+          <p id="equipeLogoOriginalHelp" class="hidden text-[11px] text-gray-500 mt-1"></p>
+        </div>
         <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Titulares</p>
         <div id="equipeMembrosGrid" class="grid grid-cols-2 gap-2 mb-3"></div>
         <div id="equipeReservasSection" class="hidden">
@@ -796,6 +806,43 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modalEquipe')?.addEventListener('click', function(e) { if(e.target===this) fecharModalEquipe(); });
 });
 
+function _readImageFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Não foi possível ler o arquivo da logo.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function _prepareAndUploadTeamProfileLogo(file, teamName) {
+    if (!file?.type?.startsWith('image/')) throw new Error('Selecione um arquivo de imagem para a logo.');
+    const userId = String(window.currentUser?.uid || '').trim();
+    if (!userId || userId.length > 128 || userId === '.' || userId === '..' || /[\\/]/.test(userId)) {
+        throw new Error('Sua sessão expirou. Entre novamente e tente enviar a logo.');
+    }
+    const [thumb, originalDataUrl] = await Promise.all([
+        _resizeLogoParaBase64(file),
+        _readImageFileAsDataUrl(file),
+    ]);
+    if (!thumb || !originalDataUrl) throw new Error('Não foi possível preparar a logo.');
+    if (!window.firebaseStorage) throw new Error('Armazenamento de logos indisponível.');
+    const { ref, uploadString, getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+    const safeName = String(teamName || 'time').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+    const timestamp = Date.now();
+    let storageRef = ref(window.firebaseStorage, `teams/profiles/logos/${safeName}_${timestamp}`);
+    try {
+        await uploadString(storageRef, originalDataUrl, 'data_url');
+    } catch (primaryError) {
+        if (primaryError?.code !== 'storage/unauthorized') throw primaryError;
+        storageRef = ref(window.firebaseStorage, `profile-photos/${userId}/team-logos/profiles/${safeName}_${timestamp}`);
+        await uploadString(storageRef, originalDataUrl, 'data_url');
+    }
+    const originalUrl = await getDownloadURL(storageRef);
+    if (!originalUrl) throw new Error('O Storage não retornou o link da logo enviada.');
+    return { thumb, originalUrl };
+}
+
 function _gerarCodigo() { const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let r=''; for(let i=0;i<6;i++) r+=c[Math.floor(Math.random()*c.length)]; return r; }
 
 window.confirmarCriarTime = async function() {
@@ -818,12 +865,17 @@ window.confirmarCriarTime = async function() {
         const nomeUs = window.currentUserProfile?.name || user.displayName || 'Capitão';
         const teamRef = doc(collection(db,'teams'));
         const membro = { uid:user.uid, nome:nomeUs, role:'capitao', fotoUrl:user.photoURL||null, entradaEm:Date.now() };
-        // Redimensionar logo para base64 (visível a todos via listener em tempo real)
+        // Guarda uma miniatura no perfil e o arquivo original no Storage.
         let logoBase64 = null;
+        let logoOriginalUrl = null;
         const logoFile = document.getElementById('equipeLogo')?.files[0];
-        if (logoFile) { try { logoBase64 = await _resizeLogoParaBase64(logoFile); } catch(_) {} }
-        await setDoc(teamRef, { nome, email, phone, logoUrl:logoBase64, capitaoId:user.uid, capitaoNome:nomeUs, codigoConvite:codigo, membros:[membro], membrosUids:[user.uid], status:'aguardando', criadoEm:serverTimestamp() });
-        _equipeAtual = { id:teamRef.id, nome, email, phone, logoUrl:logoBase64, capitaoId:user.uid, codigoConvite:codigo, membros:[membro], membrosUids:[user.uid], status:'aguardando' };
+        if (logoFile) {
+            const preparedLogo = await _prepareAndUploadTeamProfileLogo(logoFile, nome);
+            logoBase64 = preparedLogo.thumb;
+            logoOriginalUrl = preparedLogo.originalUrl;
+        }
+        await setDoc(teamRef, { nome, email, phone, logoUrl:logoBase64, logoOriginalUrl, capitaoId:user.uid, capitaoNome:nomeUs, codigoConvite:codigo, membros:[membro], membrosUids:[user.uid], status:'aguardando', criadoEm:serverTimestamp() });
+        _equipeAtual = { id:teamRef.id, nome, email, phone, logoUrl:logoBase64, logoOriginalUrl, capitaoId:user.uid, codigoConvite:codigo, membros:[membro], membrosUids:[user.uid], status:'aguardando' };
         document.getElementById('equipeCodigoDisplay').textContent = codigo;
         document.getElementById('equipeCodigoSection').classList.remove('hidden');
         _renderInfoTime(_equipeAtual);
@@ -889,7 +941,47 @@ window.confirmarEntrarTime = async function() {
 function _renderInfoTime(time) {
     const n = document.getElementById('equipeTimeNomeDisplay'); if(n) n.textContent = time.nome||'';
     if (time.logoUrl) { const l=document.getElementById('equipeTimeLogo'); if(l){l.style.background='transparent'; l.innerHTML=`<img src="${time.logoUrl}" class="w-full h-full object-contain p-0.5">`;} }
+    const isCaptain = time.capitaoId === window.currentUser?.uid;
+    const uploadControl = document.getElementById('btnAtualizarLogoTime');
+    const uploadText = document.getElementById('equipeLogoOriginalButtonText');
+    const uploadHelp = document.getElementById('equipeLogoOriginalHelp');
+    if (uploadControl) uploadControl.classList.toggle('hidden', !isCaptain);
+    if (uploadText) uploadText.textContent = time.logoOriginalUrl ? 'Atualizar logo original' : 'Enviar logo original';
+    if (uploadHelp) {
+        uploadHelp.classList.toggle('hidden', !isCaptain);
+        uploadHelp.textContent = time.logoOriginalUrl
+            ? 'Arquivo original salvo para downloads em alta qualidade.'
+            : 'A miniatura antiga não pode ser ampliada com qualidade. Envie novamente o arquivo original.';
+    }
 }
+
+window.atualizarLogoOriginalTime = async function(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (!_equipeAtual?.id || _equipeAtual.capitaoId !== window.currentUser?.uid) {
+        showToast('error', 'Somente o capitão pode atualizar a logo do time.');
+        if (input) input.value = '';
+        return;
+    }
+    try {
+        const preparedLogo = await _prepareAndUploadTeamProfileLogo(file, _equipeAtual.nome);
+        const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const db = window.firebaseDb;
+        if (!db) throw new Error('Firebase não conectado.');
+        await updateDoc(doc(db, 'teams', _equipeAtual.id), {
+            logoUrl: preparedLogo.thumb,
+            logoOriginalUrl: preparedLogo.originalUrl,
+            logoOriginalUpdatedAt: serverTimestamp(),
+        });
+        _equipeAtual = { ..._equipeAtual, logoUrl: preparedLogo.thumb, logoOriginalUrl: preparedLogo.originalUrl };
+        _renderInfoTime(_equipeAtual);
+        showToast('success', 'Logo original salva. O admin já poderá baixar o arquivo sem perda de qualidade.');
+    } catch (error) {
+        showToast('error', 'Não foi possível atualizar a logo: ' + (error.message || error));
+    } finally {
+        if (input) input.value = '';
+    }
+};
 
 async function _iniciarEscuta(teamId) {
     if (_equipeListenerUnsubscribe) _equipeListenerUnsubscribe();
