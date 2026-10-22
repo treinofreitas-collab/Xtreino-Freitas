@@ -203,6 +203,21 @@
                 </button>
             </div>
 
+            <!-- Pagamentos pendentes: recupera somente QR Pix já criado, sem iniciar outra cobrança -->
+            <div id="pendingPaymentsSection" style="display:none;background:#1e293b;border:1px solid rgba(236,212,20,0.28);border-radius:16px;overflow:hidden;margin-bottom:14px">
+                <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;gap:10px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <span style="font-size:16px">💳</span>
+                        <span style="font-size:14px;font-weight:800;color:#fff">Pagamentos pendentes</span>
+                        <span id="pendingPaymentsCount" style="background:#facc15;color:#1f2937;font-size:11px;font-weight:900;border-radius:99px;padding:2px 9px;min-width:22px;text-align:center">0</span>
+                    </div>
+                    <button type="button" data-refresh-pending-payments style="border:0;background:transparent;color:#07b7b4;font-size:12px;font-weight:700;cursor:pointer">Atualizar</button>
+                </div>
+                <div id="pendingPaymentsList" style="padding:14px 16px" aria-live="polite">
+                    <p style="color:rgba(255,255,255,0.45);text-align:center;font-size:13px">Carregando pagamentos...</p>
+                </div>
+            </div>
+
             <!-- Próximos Treinos (dados reais) -->
             <div style="background:#1e293b;border:1px solid rgba(7,183,180,0.18);border-radius:16px;overflow:hidden;margin-bottom:14px">
                 <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between">

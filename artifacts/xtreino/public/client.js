@@ -248,6 +248,9 @@ async function checkAuthState() {
     }
     onAuthStateChanged(auth, async (user) => {
         if (userDocsStore.setUser(user)) {
+            pendingPaymentsGeneration += 1;
+            const pendingSection = document.getElementById('pendingPaymentsSection');
+            if (pendingSection) pendingSection.style.display = 'none';
             clearEventAccessCache();
             userDocsAdapter.reset();
             _stopOrdersAutoRefresh();
@@ -322,6 +325,25 @@ function setupEventListeners() {
     // Profile form
     const profileForm = document.getElementById('profileForm');
     if (profileForm) profileForm.addEventListener('submit', saveProfile);
+
+    const pendingPaymentsSection = document.getElementById('pendingPaymentsSection');
+    if (pendingPaymentsSection) {
+        pendingPaymentsSection.addEventListener('click', event => {
+            const target = event.target?.closest?.('button');
+            if (!target) return;
+            if (target.matches('[data-refresh-pending-payments]')) {
+                void loadPendingPayments();
+                return;
+            }
+            if (target.matches('[data-resume-pix]')) {
+                void resumePendingPix(target);
+                return;
+            }
+            if (target.matches('[data-copy-pix-code]')) {
+                void copyPendingPixCode(target);
+            }
+        });
+    }
 }
 
 // Switch between tabs
@@ -432,6 +454,8 @@ async function loadUserProfile() {
 }
 
 // Load dashboard
+let pendingPaymentsGeneration = 0;
+
 async function loadDashboard() {
     try {
         // Garantir que o userProfile seja carregado primeiro
@@ -445,6 +469,7 @@ async function loadDashboard() {
 
         // Inscrições do dia (agenda de hoje)
         loadTodayRegistrations();
+        void loadPendingPayments();
         
         // Load recent orders
         await loadRecentOrders();
@@ -534,6 +559,196 @@ async function loadTodayRegistrations() {
         await hydrateEventAccessLinks(container);
     } catch (err) {
         container.innerHTML = '<p style="color:#9ca3af;text-align:center;font-size:13px;padding:4px 0">Erro ao carregar inscrições.</p>';
+    }
+}
+
+function buildPendingPaymentGroups(registrationDocs = [], orderDocs = []) {
+    const groups = new Map();
+    const addRows = (rows, kind) => {
+        for (const row of Array.isArray(rows) ? rows : []) {
+            const data = row?.data && typeof row.data === 'object' ? row.data : row || {};
+            if (String(data.status || '').toLowerCase() !== 'pending') continue;
+            if (kind === 'product') {
+                const orderType = `${data.type || ''} ${data.orderType || ''} ${data.productId || ''}`.toLowerCase();
+                if (orderType.includes('token') || (typeof isTokenPurchaseOrder === 'function' && isTokenPurchaseOrder(row))) continue;
+            }
+
+            const externalReference = String(data.external_reference || data.externalReference || '').trim();
+            if (!/^[a-zA-Z0-9_-]{1,160}$/.test(externalReference)) continue;
+            let group = groups.get(externalReference);
+            if (!group) {
+                group = { externalReference, kind, items: [] };
+                groups.set(externalReference, group);
+            }
+            group.items.push({ id: row?.id || '', kind, data });
+        }
+    };
+
+    addRows(registrationDocs, 'event');
+    addRows(orderDocs, 'product');
+
+    return [...groups.values()].map(group => {
+        const labels = [...new Set(group.items.map(item => {
+            const data = item.data;
+            if (item.kind === 'product') {
+                return data.productName || data.title || data.item || data.name || data.productId || 'Produto da loja';
+            }
+            const title = data.title || data.eventName || data.eventType || 'Treino';
+            const dateValue = data.date || data.eventDate || '';
+            const dateLabel = /^\d{4}-\d{2}-\d{2}$/.test(String(dateValue))
+                ? String(dateValue).split('-').reverse().join('/') : String(dateValue || '');
+            const schedule = data.schedule || data.hour || '';
+            return [title, dateLabel, schedule].filter(Boolean).join(' · ');
+        }))];
+        return { ...group, labels };
+    });
+}
+
+async function loadPendingPayments() {
+    const section = document.getElementById('pendingPaymentsSection');
+    const container = document.getElementById('pendingPaymentsList');
+    const count = document.getElementById('pendingPaymentsCount');
+    if (!section || !container) return;
+    if (!currentUser?.uid) {
+        section.style.display = 'none';
+        return;
+    }
+
+    const requestId = ++pendingPaymentsGeneration;
+    const userId = currentUser.uid;
+    section.style.display = 'block';
+    container.innerHTML = '<p style="color:rgba(255,255,255,0.45);text-align:center;font-size:13px"><i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Buscando pagamentos...</p>';
+
+    const [registrationResult, orderResult] = await Promise.allSettled([
+        fetchUserDocs('registrations', 200, false),
+        fetchUserDocs('orders', 200, false),
+    ]);
+    if (requestId !== pendingPaymentsGeneration || currentUser?.uid !== userId) return;
+
+    const registrations = registrationResult.status === 'fulfilled' ? registrationResult.value : [];
+    const orders = orderResult.status === 'fulfilled' ? orderResult.value : [];
+    if (registrationResult.status === 'rejected' && orderResult.status === 'rejected') {
+        if (count) count.textContent = '!';
+        container.innerHTML = `
+            <div style="text-align:center;color:#fca5a5;font-size:13px">
+                Não foi possível carregar os pagamentos pendentes.
+                <button type="button" data-refresh-pending-payments style="display:block;margin:8px auto 0;color:#07b7b4;font-weight:800;background:transparent;border:0;cursor:pointer">Tentar novamente</button>
+            </div>`;
+        return;
+    }
+
+    const groups = buildPendingPaymentGroups(registrations, orders);
+    if (!groups.length) {
+        section.style.display = 'none';
+        if (count) count.textContent = '0';
+        return;
+    }
+
+    if (count) count.textContent = String(groups.length);
+    const partialNotice = registrationResult.status === 'rejected' || orderResult.status === 'rejected'
+        ? '<p style="font-size:11px;color:#fcd34d;margin-bottom:10px">A lista pode estar incompleta. Atualize para tentar novamente.</p>'
+        : '';
+    container.innerHTML = partialNotice + groups.map(group => {
+        const title = group.labels[0] || (group.kind === 'product' ? 'Produto da loja' : 'Inscrição em treino');
+        const extraLabels = group.labels.length > 1
+            ? `<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:3px">${group.labels.slice(1, 3).map(escapeHtml).join('<br>')}${group.labels.length > 3 ? `<br>+ ${group.labels.length - 3} item(ns)` : ''}</div>`
+            : '';
+        const reservationCount = group.kind === 'event' && group.items.length > 1
+            ? ` · ${group.items.length} reservas no mesmo pagamento` : '';
+        return `
+            <article data-pending-payment-card style="padding:12px;margin-bottom:10px;background:#111827;border:1px solid rgba(250,204,21,0.18);border-radius:12px">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                    <div style="min-width:0;flex:1">
+                        <div style="font-size:13px;font-weight:800;color:#fff;overflow-wrap:anywhere">${escapeHtml(title)}</div>
+                        <div style="font-size:11px;color:#facc15;margin-top:3px">Aguardando pagamento${reservationCount}</div>
+                        ${extraLabels}
+                    </div>
+                    <button type="button" data-resume-pix data-external-reference="${escapeHtml(group.externalReference)}"
+                        style="flex-shrink:0;border:0;border-radius:9px;padding:9px 12px;background:#07b7b4;color:#07111f;font-size:12px;font-weight:900;cursor:pointer">
+                        <i class="fas fa-qrcode" style="margin-right:5px"></i>Retomar pagamento
+                    </button>
+                </div>
+                <div data-pending-payment-result role="status" style="margin-top:10px"></div>
+            </article>`;
+    }).join('');
+}
+
+function renderPendingPixResult(container, data) {
+    const qrCode = String(data.qr_code || '');
+    const rawBase64 = String(data.qr_code_base64 || '').replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '').replace(/\s/g, '');
+    const qrSource = /^[A-Za-z0-9+/=]+$/.test(rawBase64) ? `data:image/png;base64,${rawBase64}` : '';
+    const cents = Number(data.amountCents);
+    const amountLabel = Number.isFinite(cents)
+        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100)
+        : '';
+    const expiration = data.expiresAt && Number.isFinite(Date.parse(data.expiresAt))
+        ? new Date(data.expiresAt).toLocaleString('pt-BR') : '';
+    container.innerHTML = `
+        <div style="padding:12px;background:#0b1220;border:1px solid rgba(7,183,180,0.28);border-radius:12px">
+            <div style="font-size:12px;font-weight:800;color:#fff">${escapeHtml(data.description || data.title || 'Pagamento Pix')}</div>
+            ${amountLabel ? `<div style="font-size:13px;font-weight:900;color:#07b7b4;margin-top:4px">${amountLabel}</div>` : ''}
+            ${expiration ? `<div style="font-size:11px;color:rgba(255,255,255,0.55);margin-top:4px">Válido até ${escapeHtml(expiration)}</div>` : ''}
+            ${qrSource ? `<img src="${qrSource}" alt="QR Code Pix" style="display:block;width:190px;height:190px;object-fit:contain;background:#fff;border-radius:10px;padding:8px;margin:12px auto">` : ''}
+            ${qrCode ? `
+                <label style="display:block;font-size:11px;color:rgba(255,255,255,0.6);margin:8px 0 4px">Pix copia e cola</label>
+                <textarea data-pix-copy-code readonly rows="3" style="display:block;width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,0.14);border-radius:8px;background:#111827;color:#fff;padding:9px;font-size:11px;resize:vertical">${escapeHtml(qrCode)}</textarea>
+                <button type="button" data-copy-pix-code style="display:block;width:100%;margin-top:8px;border:0;border-radius:8px;padding:10px;background:#ecd414;color:#172033;font-size:12px;font-weight:900;cursor:pointer"><i class="fas fa-copy" style="margin-right:5px"></i>Copiar código Pix</button>
+            ` : '<p style="font-size:12px;color:#fcd34d;text-align:center">O código Pix não está disponível para este pagamento.</p>'}
+        </div>`;
+}
+
+async function resumePendingPix(button) {
+    const externalReference = String(button?.dataset?.externalReference || '');
+    const card = button?.closest?.('[data-pending-payment-card]');
+    const resultContainer = card?.querySelector?.('[data-pending-payment-result]');
+    if (!/^[a-zA-Z0-9_-]{1,160}$/.test(externalReference) || !resultContainer) return;
+
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:5px"></i>Consultando Pix...';
+    resultContainer.innerHTML = '<p style="font-size:12px;color:rgba(255,255,255,0.6)">Verificando o pagamento existente. Nenhuma nova cobrança será criada.</p>';
+    try {
+        const response = await paymentFetch(currentUser, '/.netlify/functions/resume-pix-payment', {
+            method: 'POST',
+            body: JSON.stringify({ external_reference: externalReference }),
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (data.status === 'paid') {
+            resultContainer.innerHTML = '<p style="font-size:13px;font-weight:800;color:#6ee7b7">Pagamento confirmado. Atualizando sua conta...</p>';
+            userDocsStore.invalidate();
+            await Promise.all([loadPendingPayments(), loadTodayRegistrations()]);
+            return;
+        }
+        if (!response.ok || data.status !== 'pending') {
+            const message = data.message || data.error || 'Não foi possível recuperar um Pix ativo para este pedido.';
+            resultContainer.innerHTML = `<p style="font-size:12px;color:#fcd34d">${escapeHtml(message)}</p>`;
+            return;
+        }
+        renderPendingPixResult(resultContainer, data);
+        button.innerHTML = '<i class="fas fa-rotate" style="margin-right:5px"></i>Atualizar pagamento';
+    } catch (error) {
+        resultContainer.innerHTML = `<p style="font-size:12px;color:#fca5a5">${escapeHtml(error?.message || 'Não foi possível consultar o Pix agora. Tente novamente.')}</p>`;
+    } finally {
+        if (button.isConnected) button.disabled = false;
+    }
+}
+
+async function copyPendingPixCode(button) {
+    const card = button?.closest?.('[data-pending-payment-card]');
+    const field = card?.querySelector?.('[data-pix-copy-code]');
+    const code = String(field?.value || '');
+    if (!code) return;
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(code);
+        } else {
+            field.focus();
+            field.select();
+            if (!document.execCommand('copy')) throw new Error('Copie o código manualmente.');
+        }
+        button.innerHTML = '<i class="fas fa-check" style="margin-right:5px"></i>Pix copiado';
+    } catch (error) {
+        showToast('error', error?.message || 'Não foi possível copiar o Pix. Selecione o código e copie manualmente.', 'Copiar Pix');
     }
 }
 

@@ -4636,10 +4636,22 @@ window.showWarningToast = function(message, title = 'Atenção') {
           </div>
           <div class="flex flex-col gap-1 flex-shrink-0">
             ${verifyBtn}
+            <button class="px-2.5 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-lg text-xs hover:bg-purple-600 hover:text-white transition-colors font-medium"
+                    data-download-team-logo title="Baixar a logo original enviada pelo cliente">
+              <i class="fas fa-download"></i> Logo
+            </button>
             <button class="px-2.5 py-1 bg-orange-50 border border-orange-200 text-orange-600 rounded-lg text-xs hover:bg-orange-500 hover:text-white transition-colors font-medium"
                     data-edit-slot-reg-id="${d.id}" data-edit-slot-current="${posIdx}" title="Editar número da vaga">✏️ Vaga</button>
             <button class="px-2.5 py-1 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs hover:bg-red-600 hover:text-white transition-colors" data-remove-reg-id="${d.id}">Remover</button>
           </div>`;
+        const logoDownloadBtn = row.querySelector('[data-download-team-logo]');
+        if (logoDownloadBtn) {
+          logoDownloadBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            downloadOriginalTeamLogo(r, logoDownloadBtn);
+          });
+        }
         return row;
       };
 
@@ -11547,6 +11559,235 @@ async function premiarVencedorTreino() {
 window.premiarVencedorTreino = premiarVencedorTreino;
 
 // ==================== PACOTE SPEC (Modo Liga) ====================
+function sanitizeSpecTeamName(name, fallbackName) {
+    const fallback = String(fallbackName || 'Time').normalize('NFC');
+    const rawName = String(name || fallback).normalize('NFC');
+    let safeName = Array.from(rawName
+        .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, '_')
+        .replace(/\s+/gu, ' ')
+        .trim()
+        .replace(/^\.+/u, '')
+        .replace(/[. ]+$/u, ''))
+        .slice(0, 100)
+        .join('');
+
+    if (!safeName) safeName = fallback;
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(safeName)) {
+        safeName = `_${safeName}`;
+    }
+    return safeName;
+}
+
+function getSpecOriginalLogoUrl(registration) {
+    return String(registration?.teamLogoUrl || '').trim() || null;
+}
+
+const SPEC_LOGO_STORAGE_LIST_CACHE = new Map();
+const SPEC_LOGO_STORAGE_LIST_CACHE_MS = 30000;
+
+function getSpecStorageTeamKey(teamName) {
+    return String(teamName || 'time')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .slice(0, 40);
+}
+
+function getSpecRegistrationCreatedAtMs(registration) {
+    const createdAt = registration?.createdAt;
+    if (typeof createdAt?.toMillis === 'function') return createdAt.toMillis();
+    if (Number.isFinite(createdAt?.seconds)) {
+        return createdAt.seconds * 1000 + (Number(createdAt.nanoseconds) || 0) / 1e6;
+    }
+    if (createdAt instanceof Date) return createdAt.getTime();
+    if (typeof createdAt === 'number') return createdAt < 1e12 ? createdAt * 1000 : createdAt;
+    if (typeof createdAt === 'string') {
+        const parsed = Date.parse(createdAt);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+}
+
+function findSpecStorageOriginalLogoItem(items, registration) {
+    const rawTeamName = String(registration?.teamName || '').trim();
+    if (!rawTeamName) return null;
+
+    const key = getSpecStorageTeamKey(rawTeamName);
+    const createdAtMs = getSpecRegistrationCreatedAtMs(registration);
+    if (!createdAtMs) return null;
+
+    const prefix = `${key}_`;
+    const candidates = (Array.isArray(items) ? items : []).flatMap(item => {
+        const itemName = String(item?.name || '');
+        if (!itemName.startsWith(prefix)) return [];
+        const timestampMatch = itemName.match(/_(\d{13})$/);
+        if (!timestampMatch) return [];
+        const savedTeamKey = itemName.slice(0, timestampMatch.index);
+        if (savedTeamKey !== key) return [];
+        return [{ item, uploadedAtMs: Number(timestampMatch[1]) }];
+    });
+    const closeMatches = candidates.filter(candidate =>
+        Math.abs(candidate.uploadedAtMs - createdAtMs) <= 15 * 60 * 1000
+    );
+    return closeMatches.length === 1 ? closeMatches[0].item : null;
+}
+
+async function getSpecLogoStorageItems(eventType) {
+    const storage = window.firebaseStorage;
+    const folder = String(eventType || '').trim();
+    if (!storage || !folder) return [];
+
+    const cached = SPEC_LOGO_STORAGE_LIST_CACHE.get(folder);
+    if (cached && Date.now() - cached.createdAt < SPEC_LOGO_STORAGE_LIST_CACHE_MS) {
+        return cached.promise;
+    }
+
+    const promise = (async () => {
+        const { ref, listAll } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+        const listing = await listAll(ref(storage, `teams/${folder}/logos`));
+        return listing.items || [];
+    })();
+    SPEC_LOGO_STORAGE_LIST_CACHE.set(folder, { createdAt: Date.now(), promise });
+
+    try {
+        return await promise;
+    } catch (error) {
+        SPEC_LOGO_STORAGE_LIST_CACHE.delete(folder);
+        throw error;
+    }
+}
+
+async function resolveSpecOriginalLogoUrl(registration) {
+    const registrationUrl = getSpecOriginalLogoUrl(registration);
+    if (registrationUrl) return registrationUrl;
+    if (!window.firebaseDb) return null;
+
+    const { collection, doc, getDoc, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const db = window.firebaseDb;
+    const teamId = String(registration?.teamId || '').trim();
+    if (teamId) {
+        const teamSnap = await getDoc(doc(db, 'teams', teamId));
+        if (teamSnap.exists()) {
+            const teamUrl = String(teamSnap.data()?.logoOriginalUrl || '').trim();
+            if (teamUrl) return teamUrl;
+        }
+    }
+
+    const teamName = String(registration?.teamName || '').trim();
+    if (teamName) {
+        const matches = await getDocs(query(collection(db, 'teams'), where('nome', '==', teamName)));
+        if (matches.size === 1) {
+            const teamUrl = String(matches.docs[0].data()?.logoOriginalUrl || '').trim();
+            if (teamUrl) return teamUrl;
+        }
+    }
+
+    const eventType = String(registration?.eventType || '').trim();
+    if (!teamName || !eventType) return null;
+    const items = await getSpecLogoStorageItems(eventType);
+    const originalItem = findSpecStorageOriginalLogoItem(items, registration);
+    if (!originalItem) return null;
+    const { getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+    return getDownloadURL(originalItem);
+}
+
+function getSpecImageExtension(blob, sourceUrl) {
+    const mime = String(blob?.type || '').split(';')[0].trim().toLowerCase();
+    const mimeExtensions = {
+        'image/png': '.png',
+        'image/jpeg': '.jpg',
+        'image/jpg': '.jpg',
+        'image/webp': '.webp',
+        'image/gif': '.gif',
+        'image/bmp': '.bmp',
+        'image/svg+xml': '.svg',
+        'image/avif': '.avif',
+        'image/x-icon': '.ico',
+    };
+    if (mimeExtensions[mime]) return mimeExtensions[mime];
+
+    try {
+        const pathname = new URL(String(sourceUrl || ''), 'https://spec.invalid').pathname;
+        const match = pathname.match(/\.([a-z0-9]{1,8})$/i);
+        const extension = match?.[1]?.toLowerCase();
+        if (extension && ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'avif', 'ico'].includes(extension)) {
+            return extension === 'jpeg' ? '.jpg' : `.${extension}`;
+        }
+    } catch (_) {}
+
+    return '.img';
+}
+
+function buildSpecLogoFilename(teamName, blob, sourceUrl, fallbackName, usedNames) {
+    const safeTeamName = sanitizeSpecTeamName(teamName, fallbackName);
+    const extension = getSpecImageExtension(blob, sourceUrl);
+    let filename = `${safeTeamName}${extension}`;
+    let suffix = 2;
+
+    while (usedNames.has(filename.toLowerCase())) {
+        filename = `${safeTeamName} (${suffix})${extension}`;
+        suffix++;
+    }
+    usedNames.add(filename.toLowerCase());
+    return filename;
+}
+
+function buildSpecLogoEntry(teamName, blob, sourceUrl, fallbackName, usedNames, logoQuality) {
+    return {
+        teamName,
+        fileName: buildSpecLogoFilename(teamName, blob, sourceUrl, fallbackName, usedNames),
+        blob,
+        logoQuality,
+    };
+}
+
+async function downloadOriginalTeamLogo(registration, button) {
+    const originalHtml = button?.innerHTML;
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+
+    try {
+        const logoUrl = await resolveSpecOriginalLogoUrl(registration);
+        if (!logoUrl) {
+            showToast('warning', 'Não encontrei um arquivo original vinculado a esta inscrição. Se a logo foi enviada antes da correção, peça ao capitão para reenviá-la. Não baixei a miniatura para evitar perda de qualidade.', 'Logo original ausente');
+            return;
+        }
+
+        const response = await fetch(logoUrl, { mode: 'cors' });
+        if (!response.ok) throw new Error('Não foi possível carregar a imagem original.');
+        const blob = await response.blob();
+        if (/^(text\/|application\/json)/i.test(blob.type || '')) {
+            throw new Error('O endereço não retornou um arquivo de imagem.');
+        }
+
+        const filename = buildSpecLogoFilename(
+            registration?.teamName || 'Logo',
+            blob,
+            logoUrl,
+            'Logo',
+            new Set(),
+        );
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
+
+        showToast('success', 'Logo original baixada sem redimensionamento.', 'Download concluído');
+    } catch (err) {
+        showToast('error', 'Não foi possível baixar a logo original: ' + (err.message || err), 'Erro no download');
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+        }
+    }
+}
+
 async function baixarPacoteSPEC() {
     const ctx = window._currentManageHour;
     if (!ctx || !window.firebaseDb) { showToast('error', 'Contexto do horário não encontrado.', 'Erro'); return; }
@@ -11596,13 +11837,6 @@ async function baixarPacoteSPEC() {
 
         if (matched.length === 0) { showToast('warning', 'Nenhuma inscrição confirmada neste horário.', 'Atenção'); return; }
 
-        // Código SPEC: A=902000034, B=902000035, ... Z=902000059
-        const letterCode = (posIdx) => String(902000033 + posIdx);
-
-        // Buscar imagens como blob (com fallback para placeholder)
-        const PLACEHOLDER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAABmJLR0QA/wD/AP+gvaeTAAAADUlEQVRo3mNkYGBgAAAABAABJjarzgAAAABJRU5ErkJggg==';
-        const placeholderBlob = await (await fetch(PLACEHOLDER)).blob();
-
         const fetchBlob = async (url) => {
             if (!url) return null;
             try {
@@ -11614,42 +11848,77 @@ async function baixarPacoteSPEC() {
 
         // Montar entradas
         const entries = [];
+        const usedNames = new Set();
+        let missingOriginalLogoCount = 0;
         for (let i = 0; i < matched.length; i++) {
             const r = matched[i];
             const posIdx = i + 1;
             const letter = String.fromCharCode(64 + posIdx);
-            const code = letterCode(posIdx);
-            const logoUrl = r.teamLogoUrl || r.teamLogoThumb || null;
-            const blob = (await fetchBlob(logoUrl)) || placeholderBlob;
-            entries.push({ code, letter, teamName: r.teamName || `Time ${letter}`, blob });
-        }
-
-        // Criar ZIP com 3 pastas
-        const zip = new JSZip();
-        for (const pasta of ['BackPackPics', 'HeadPics', 'GloowallPics']) {
-            const folder = zip.folder(pasta);
-            for (const e of entries) {
-                folder.file(`${e.code}.png`, e.blob);
+            const teamName = r.teamName || `Time ${letter}`;
+            let originalLogoUrl = null;
+            try {
+                originalLogoUrl = await resolveSpecOriginalLogoUrl(r);
+            } catch (error) {
+                console.warn('[logos] Não foi possível localizar o original do time:', r.teamName, error?.message);
             }
+            if (!originalLogoUrl) {
+                missingOriginalLogoCount++;
+                continue;
+            }
+
+            const blob = await fetchBlob(originalLogoUrl);
+            if (!blob) {
+                missingOriginalLogoCount++;
+                continue;
+            }
+
+            entries.push(buildSpecLogoEntry(
+                teamName,
+                blob,
+                originalLogoUrl,
+                `Time ${letter}`,
+                usedNames,
+                'original',
+            ));
         }
 
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        if (entries.length === 0) {
+            showToast('warning', 'Nenhuma logo original está disponível para este horário.', 'Download não iniciado');
+            return;
+        }
+
+        // Um único diretório, com os arquivos originais sem recompressão.
+        const zip = new JSZip();
+        const folder = zip.folder('LOGOS');
+        for (const e of entries) {
+            folder.file(e.fileName, e.blob);
+        }
+
+        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(zipBlob);
-        a.download = `spec_modoliga_${hour.replace(':', 'h')}_${date}.zip`;
+        a.download = `logos_${hour.replace(':', 'h')}_${date}.zip`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 
-        await logAdminAction('spec_download', `Gerou pacote SPEC Modo Liga — ${hour} / ${date} — ${entries.length} times`);
-        showToast('success', `✅ Pacote SPEC gerado com ${entries.length} times! Verifique seus downloads.`, 'Download iniciado');
+        await logAdminAction('logos_package_download', `Baixou pacote de logos — ${hour} / ${date} — ${entries.length} arquivos`);
+        if (missingOriginalLogoCount > 0) {
+            showToast(
+                'warning',
+                `Pacote gerado com ${entries.length} logo(s) originais. ${missingOriginalLogoCount} inscrição(ões) sem arquivo original foram ignoradas.`,
+                'Logos originais ausentes',
+            );
+        } else {
+            showToast('success', `✅ Pacote com ${entries.length} logo(s) original(is) gerado.`, 'Download iniciado');
+        }
 
     } catch (err) {
         console.error('Erro ao gerar pacote SPEC:', err);
         showToast('error', 'Erro ao gerar ZIP: ' + (err.message || err), 'Erro');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download mr-2"></i>Baixar Pacote SPEC'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-download mr-2"></i>Baixar todas as logos (ZIP)'; }
     }
 }
 window.baixarPacoteSPEC = baixarPacoteSPEC;
@@ -12850,8 +13119,8 @@ async function openEventSlotsModal(eventId, eventName) {
             const _specBtn = _isLigaEv
                 ? `<button onclick="baixarPacoteSPECPorGrupo('${escapeAdminHtml(_evFieldType||'')}','${escapeAdminHtml(eventId)}','${escapeAdminHtml(groupDate)}','${escapeAdminHtml(sched)}')"
                           class="ml-auto px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors flex-shrink-0"
-                          title="Baixar Pacote SPEC para este horário">
-                     <i class="fas fa-download"></i> SPEC
+                          title="Baixar logos originais deste horário em um ZIP">
+                     <i class="fas fa-download"></i> Logos
                    </button>`
                 : '';
             html += `
