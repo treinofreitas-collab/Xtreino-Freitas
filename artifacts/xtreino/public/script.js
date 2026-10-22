@@ -566,8 +566,8 @@ function toggleAccountButtons(isLogged) {
     const loginDesk = document.getElementById('loginBtnDesktop');
     const accountSectionDesktop = document.getElementById('accountSectionDesktop');
     const loginMob = document.getElementById('loginBtnMobile');
+    const accountBtnMobile = document.getElementById('accountBtnMobile');
     const profileAvatarMobile = document.getElementById('profileAvatarMobile');
-    const accountBtnMobileExpanded = document.getElementById('accountBtnMobileExpanded');
 
     // Desktop
     if (loginDesk && accountSectionDesktop) {
@@ -575,16 +575,13 @@ function toggleAccountButtons(isLogged) {
         accountSectionDesktop.classList.toggle('hidden', !isLogged);
     }
 
-    // Mobile - Avatar sempre visível quando logado, botão CONTA no menu expandido
+    // Mobile - mostrar acesso à conta e avatar quando logado
     if (loginMob && profileAvatarMobile) {
         loginMob.classList.toggle('hidden', isLogged);
         profileAvatarMobile.classList.toggle('hidden', !isLogged);
     }
 
-    // Botão CONTA no menu expandido
-    if (accountBtnMobileExpanded) {
-        accountBtnMobileExpanded.classList.toggle('hidden', !isLogged);
-    }
+    if (accountBtnMobile) accountBtnMobile.classList.toggle('hidden', !isLogged);
 
     updateHeaderTokenBadges();
 }
@@ -1147,16 +1144,20 @@ function updateHeaderProfilePhoto() {
         if (!isLogged || !profile) {
             // Esconder seções de conta
             const accountSectionDesktop = document.getElementById('accountSectionDesktop');
+            const accountBtnMobile = document.getElementById('accountBtnMobile');
             const profileAvatarMobile = document.getElementById('profileAvatarMobile');
             if (accountSectionDesktop) accountSectionDesktop.classList.add('hidden');
+            if (accountBtnMobile) accountBtnMobile.classList.add('hidden');
             if (profileAvatarMobile) profileAvatarMobile.classList.add('hidden');
             return;
         }
 
-        // Mostrar seções de conta (botão + foto desktop, apenas avatar mobile)
+        // Mostrar seções de conta no desktop e botão + avatar no mobile.
         const accountSectionDesktop = document.getElementById('accountSectionDesktop');
+        const accountBtnMobile = document.getElementById('accountBtnMobile');
         const profileAvatarMobile = document.getElementById('profileAvatarMobile');
         if (accountSectionDesktop) accountSectionDesktop.classList.remove('hidden');
+        if (accountBtnMobile) accountBtnMobile.classList.remove('hidden');
         if (profileAvatarMobile) profileAvatarMobile.classList.remove('hidden');
 
         // Garantir que o botão desktop também está visível

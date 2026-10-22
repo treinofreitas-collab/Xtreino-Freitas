@@ -150,12 +150,15 @@
                     </div>
                 </div>
                 
-                <!-- Mobile: só login/avatar no header -->
+                <!-- Mobile: login ou acesso à conta no header -->
                 <div class="md:hidden flex items-center gap-2 ml-auto">
                     <a href="javascript:void(0)" onclick="requestAdminAccess()" id="adminLinkMobile" class="text-black text-xs font-semibold px-2 py-1 hidden">ADMIN</a>
                     <span id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-2 py-1 rounded-full text-xs font-bold shadow-sm">💎 0</span>
                     <button id="loginBtnMobile" onclick="openLoginModal()" class="bg-blue-matte px-4 py-2 rounded-xl text-white text-xs font-bold transition-colors">
                         LOGIN
+                    </button>
+                    <button id="accountBtnMobile" onclick="window.location.href='client.html'" class="hidden bg-blue-matte hover-blue-matte px-3 py-2 rounded-lg text-white text-[10px] font-bold whitespace-nowrap transition-colors">
+                        MINHA CONTA
                     </button>
                     <button onclick="window.location.href='client.html'" class="relative w-9 h-9 rounded-full overflow-hidden border-2 border-blue-matte flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600" id="profileAvatarMobile" title="Meu Perfil">
                         <img id="profileAvatarImageMobile" src="" alt="Foto de perfil" class="absolute inset-0 w-full h-full object-cover hidden">

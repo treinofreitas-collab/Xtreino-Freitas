@@ -11,12 +11,37 @@ test('event details no longer contain the attendee tab, its startup checks or hi
         assert.ok(!source.includes(removed), removed);
     }
     assert.ok(!/getDocs\(collection\(_db,\s*'teams'\)\)/.test(source));
-    // Keep the customer's own booking check; this is not a public attendee listing.
-    const ownBooking = source.slice(source.indexOf('async function checkUserRegistration'), source.indexOf('function setTab'));
-    assert.ok(ownBooking.includes("where('userId', '==', user.uid)"));
-    assert.ok(ownBooking.includes("where(adminEventId ? 'adminEventId' : 'eventType', '==', adminEventId || eventType)"));
-    assert.ok(ownBooking.includes("where('status', 'in', ['confirmed', 'paid', 'approved', 'pending'])"));
+    // An event-wide prior registration must not replace the CTA or block another slot purchase.
+    assert.ok(!source.includes('checkUserRegistration'));
+    assert.ok(!source.includes('hideCtaRegistered'));
+    assert.ok(!source.includes("collection(_db, 'registrations')"));
     assert.ok(source.includes("onSnapshot(doc(db,'teams',teamId)")); // Team-management subscription is unrelated.
+});
+
+test('existing participants keep both event registration buttons available', () => {
+    const buttonArea = source.slice(source.indexOf('<!-- Header -->'), source.indexOf('<!-- Loading -->'));
+    const floatingArea = source.slice(source.indexOf('<!-- Floating CTA -->'), source.indexOf('<script type="module">'));
+    assert.match(buttonArea, /<button onclick="goRegister\(\)" id="headerRegBtn"/);
+    assert.match(buttonArea, /INSCREVER/);
+    assert.match(floatingArea, /onclick="goRegister\(\)"/);
+    assert.match(floatingArea, /FAZER INSCRIÇÃO/);
+
+    const nodes = new Map();
+    const node = id => {
+        if (!nodes.has(id)) {
+            const classes = new Set(['hidden']);
+            nodes.set(id, { classes, classList: {
+                add: value => classes.add(value), remove: value => classes.delete(value),
+            } });
+        }
+        return nodes.get(id);
+    };
+    const context = vm.createContext({ document: { getElementById: node } });
+    const showContent = source.slice(source.indexOf('function showContent()'), source.indexOf('function setTab('));
+    vm.runInContext(showContent, context);
+    context.showContent();
+    assert.ok(!node('floatingCta').classes.has('hidden'));
+    assert.ok(!node('headerRegBtn').classes.has('hidden'));
 });
 
 test('remaining tabs still render and switch locally without Firestore calls', () => {

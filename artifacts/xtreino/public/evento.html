@@ -223,35 +223,9 @@ function showError(msg) {
 function showContent() {
     document.getElementById('pageLoading').classList.add('hidden');
     document.getElementById('pageContent').classList.remove('hidden');
-    // CTA shown by default; checkUserRegistration() can hide it
+    // Keep both registration buttons available: a participant can buy another slot.
     document.getElementById('floatingCta').classList.remove('hidden');
     document.getElementById('headerRegBtn').classList.remove('hidden');
-}
-
-function hideCtaRegistered() {
-    const cta = document.getElementById('floatingCta');
-    if (cta) cta.innerHTML = `<div class="max-w-4xl mx-auto">
-        <div class="w-full flex items-center justify-center gap-3 bg-green-700 text-white text-base font-black py-4 rounded-2xl shadow-2xl">
-            <i class="fas fa-check-circle text-xl"></i>Você já está inscrito neste evento!
-        </div>
-    </div>`;
-    const hBtn = document.getElementById('headerRegBtn');
-    if (hBtn) { hBtn.textContent = '✓ INSCRITO'; hBtn.disabled = true; hBtn.className = 'bg-green-700 text-white text-sm font-bold px-4 py-2 rounded-lg cursor-default'; }
-}
-
-async function checkUserRegistration(eventType, adminEventId) {
-    if (!_auth || !_db) return;
-    const user = _auth.currentUser;
-    if (!user) return;
-    try {
-        const snap = await getDocs(query(
-            collection(_db, 'registrations'),
-            where(adminEventId ? 'adminEventId' : 'eventType', '==', adminEventId || eventType),
-            where('userId', '==', user.uid),
-            where('status', 'in', ['confirmed', 'paid', 'approved', 'pending'])
-        ));
-        if (!snap.empty) hideCtaRegistered();
-    } catch (_) { /* sem permissão ou sem dados — manter CTA */ }
 }
 
 function setTab(tabId) {
@@ -416,10 +390,10 @@ async function loadEvent() {
             const hBtn = document.getElementById('headerRegBtn');
             if (hBtn) hBtn.classList.add('hidden');
         } else {
-            // Verificar se usuário já está inscrito (aguarda auth resolver)
+            // Keep the current user fresh for team-management controls without
+            // disabling event registration when this user already has a booking.
             onAuthStateChanged(_auth, (user) => {
                 window.currentUser = user || null;
-                if (user) checkUserRegistration(ev.eventType || _resolvedEventType || _currentEventId, _currentEventId);
             });
         }
 
