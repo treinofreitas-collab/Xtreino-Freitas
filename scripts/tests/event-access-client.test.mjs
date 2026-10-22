@@ -122,6 +122,21 @@ function fakeContainer() {
     return element;
 }
 
+test('confirmation can use a group-oriented label while the default remains event-specific', async t => {
+    const oldDocument = globalThis.document;
+    globalThis.document = { createElement: tag => ({ tag }) };
+    t.after(() => { globalThis.document = oldDocument; });
+    setup(t, async () => ({ access: [available('a')] }));
+
+    const confirmation = fakeContainer();
+    await mountReferenceAccess(confirmation, 'confirmation', { linkLabel: 'Acessar grupo de ID e senha' });
+    assert.equal(confirmation.children.find(child => child.tag === 'a').textContent, 'Acessar grupo de ID e senha');
+
+    const account = fakeContainer();
+    await mountReferenceAccess(account, 'account');
+    assert.equal(account.children.find(child => child.tag === 'a').textContent, 'Acessar evento — 19h');
+});
+
 test('an open modal loses expired links locally without polling; future bookings stay available', async t => {
     let now = Date.parse('2026-11-12T03:00:59Z');
     t.mock.method(Date, 'now', () => now);
@@ -136,11 +151,13 @@ test('an open modal loses expired links locally without polling; future bookings
         { ...available('b'), eventDate: '2026-11-12', expiresAt: '2026-11-13T03:01:00Z' },
     ] }));
     const container = fakeContainer();
-    await mountReferenceAccess(container, 'event_one');
+    await mountReferenceAccess(container, 'event_one', { linkLabel: 'Acessar grupo de ID e senha' });
     assert.equal(container.children.filter(child => child.tag === 'a').length, 2);
+    assert.ok(container.children.filter(child => child.tag === 'a').every(link => link.textContent === 'Acessar grupo de ID e senha'));
     now += 1000;
     timers.find(timer => timer.delay === 1000).callback();
     assert.equal(container.children.filter(child => child.tag === 'a').length, 1);
+    assert.equal(container.children.find(child => child.tag === 'a').textContent, 'Acessar grupo de ID e senha');
     assert.ok(container.children.some(child => child.textContent?.includes('Link expirado')));
     assert.equal(calls.length, 1);
 });

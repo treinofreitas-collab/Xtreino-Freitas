@@ -258,6 +258,51 @@ test('changing an event hour unlocks a new checkout and active selections reuse 
     assert.equal(context.findActivePix(oldKey).externalReference, 'schedule_old_ref');
 });
 
+test('approved event Pix closes checkout and opens the slot confirmation with its access reference', () => {
+    const helperStart = script.indexOf('function showPaidScheduleConfirmation(');
+    const helperEnd = script.indexOf('\nwindow.openPixModal =', helperStart);
+    assert.ok(helperStart >= 0 && helperEnd > helperStart);
+
+    const classes = new Set(['flex']);
+    const pixModal = {
+        classList: {
+            add: name => classes.add(name),
+            remove: name => classes.delete(name),
+        },
+    };
+    const calls = [];
+    const context = vm.createContext({
+        document: { getElementById: id => id === 'pixPaymentModal' ? pixModal : null },
+        closeScheduleModal: () => calls.push({ action: 'close-checkout' }),
+        showSlotConfirmationModal: (...args) => calls.push({ action: 'show-confirmation', args }),
+    });
+    vm.runInContext(`${script.slice(helperStart, helperEnd)}
+        globalThis.confirmPaid = showPaidScheduleConfirmation;`, context);
+
+    const slots = [{ team: 'Equipe teste', schedule: '16h', slotNum: 1 }];
+    assert.equal(context.confirmPaid(slots, {
+        label: 'TREINO FREITAS',
+        eventType: 'treino-freitas',
+        isLiga: false,
+    }, 'schedule_ref_1'), true);
+
+    assert.ok(classes.has('hidden'));
+    assert.ok(!classes.has('flex'));
+    assert.equal(calls[0].action, 'close-checkout');
+    assert.equal(calls[1].action, 'show-confirmation');
+    assert.deepEqual(calls[1].args, [slots, 'TREINO FREITAS', false, 'treino-freitas', null, 'schedule_ref_1']);
+});
+
+test('schedule Pix invokes slot confirmation only for a server-confirmed payment', () => {
+    assert.ok(script.includes("authenticatedPaymentFetch('/.netlify/functions/confirm-purchase'"));
+    assert.match(
+        script,
+        /if \(d\.status === 'paid' \|\| d\.status === 'already_paid'\) \{\s*if \(typeof _pixConfirmFn === 'function'\) await _pixConfirmFn\(\);/
+    );
+    assert.match(script, /if \(pixConfirmationHandled\) return;/);
+    assert.match(script, /showPaidScheduleConfirmation\(assignedSlotsData, cfg, externalRef\)/);
+});
+
 test('closing the successful Pix confirmation does not redirect to Minha Conta', () => {
     const closeStart = script.indexOf('window.closePixModal = function() {');
     const closeEnd = script.indexOf('\n};', closeStart);

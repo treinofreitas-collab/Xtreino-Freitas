@@ -8907,7 +8907,9 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink,
     if (accessReference) {
         const target = div.querySelector('#confirmedEventAccessLinks');
         import('./js/event-access-client.mjs')
-            .then(({ mountReferenceAccess }) => mountReferenceAccess(target, accessReference))
+            .then(({ mountReferenceAccess }) => mountReferenceAccess(target, accessReference, {
+                linkLabel: 'Acessar grupo de ID e senha',
+            }))
             .catch(() => {
                 if (target?.isConnected) target.textContent = 'Sua vaga está confirmada. Consulte o link em Minha conta > Pedidos.';
             });
@@ -10731,7 +10733,27 @@ function renderSchedulePixFallback(pixData, cfg, finalPrice) {
     return true;
 }
 
+function showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef) {
+    if (!Array.isArray(assignedSlotsData) || !assignedSlotsData.length
+        || typeof showSlotConfirmationModal !== 'function') return false;
+
+    const pixModal = document.getElementById('pixPaymentModal');
+    pixModal?.classList.add('hidden');
+    pixModal?.classList.remove('flex');
+    closeScheduleModal();
+    showSlotConfirmationModal(
+        assignedSlotsData,
+        cfg?.label || 'Evento',
+        Boolean(cfg?.isLiga || cfg?.eventType === 'modo-liga'),
+        cfg?.eventType || '',
+        null,
+        externalRef
+    );
+    return true;
+}
+
 window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, cfg, finalPrice) {
+    let pixConfirmationHandled = false;
     const modal = document.getElementById('pixPaymentModal');
     if (!modal) throw new Error('A área do QR Pix não está disponível na tela de inscrição.');
 
@@ -10804,6 +10826,8 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     };
 
     _pixConfirmFn = async () => {
+        if (pixConfirmationHandled) return;
+        pixConfirmationHandled = true;
         clearInterval(_pixPollingInterval);
         clearInterval(_pixCountdownInterval);
         forgetSchedulePixCheckout(externalRef);
@@ -10843,6 +10867,12 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
             }).join('');
         } else if (slotInfoEl) {
             slotInfoEl.innerHTML = '<p class="text-green-700 text-sm text-center font-medium">Inscrição confirmada com sucesso!</p>';
+        }
+
+        try {
+            showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef);
+        } catch (confirmationError) {
+            console.error('Pagamento confirmado, mas não foi possível abrir a confirmação da vaga:', confirmationError);
         }
     };
 

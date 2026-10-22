@@ -118,7 +118,7 @@ async function fetchReferenceAccess(reference, force = false) {
     }
 }
 
-function paint(container, rows, onRefresh) {
+function paint(container, rows, onRefresh, linkLabel = null) {
     clearTimeout(repaintTimers.get(container));
     repaintTimers.delete(container);
     const uid = window.firebaseAuth?.currentUser?.uid;
@@ -135,11 +135,11 @@ function paint(container, rows, onRefresh) {
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
             link.className = 'inline-flex items-center justify-center px-4 py-2 rounded-lg bg-teal-600 text-white font-semibold text-sm hover:bg-teal-700';
-            link.textContent = `Acessar ${row.label || 'evento'} — ${row.schedule}`;
+            link.textContent = linkLabel || `Acessar ${row.label || 'evento'} — ${row.schedule}`;
             link.onclick = event => {
                 if (Date.now() >= Date.parse(row.expiresAt) || uid !== window.firebaseAuth?.currentUser?.uid) {
                     event.preventDefault();
-                    if (uid === window.firebaseAuth?.currentUser?.uid) paint(container, rows, onRefresh);
+                    if (uid === window.firebaseAuth?.currentUser?.uid) paint(container, rows, onRefresh, linkLabel);
                     else container.textContent = messages.not_authorized;
                 }
             };
@@ -162,7 +162,7 @@ function paint(container, rows, onRefresh) {
         const timer = setTimeout(() => {
             if (!container.isConnected) return;
             if (uid !== window.firebaseAuth?.currentUser?.uid) { container.textContent = messages.not_authorized; return; }
-            paint(container, rows, onRefresh);
+            paint(container, rows, onRefresh, linkLabel);
         }, Math.min(2147483647, Math.max(1, Math.min(...deadlines) - Date.now())));
         timer.unref?.();
         repaintTimers.set(container, timer);
@@ -209,14 +209,14 @@ export async function hydrateEventAccessLinks(root) {
     await update(containers);
 }
 
-export async function mountReferenceAccess(container, reference) {
+export async function mountReferenceAccess(container, reference, { linkLabel = null } = {}) {
     const uid = window.firebaseAuth?.currentUser?.uid;
     const update = async (force = false) => {
         container.textContent = 'Consultando os links dos horários confirmados...';
         try {
             const rows = await fetchReferenceAccess(reference, force);
             if (!container.isConnected || uid !== window.firebaseAuth?.currentUser?.uid) return;
-            paint(container, rows, update);
+            paint(container, rows, update, linkLabel);
             if (!rows.length) container.textContent = 'Nenhum horário confirmado encontrado.';
         } catch (error) {
             if (!container.isConnected || uid !== window.firebaseAuth?.currentUser?.uid) return;

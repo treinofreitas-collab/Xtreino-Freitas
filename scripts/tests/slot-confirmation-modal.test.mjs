@@ -48,6 +48,13 @@ test('all event modes keep team/hour but omit slot numbers, letters and the even
     }
 });
 
+test('confirmed reservation access uses the group ID and password button label', () => {
+    assert.match(
+        source,
+        /mountReferenceAccess\(target, accessReference, \{\s*linkLabel: 'Acessar grupo de ID e senha',\s*\}\)/
+    );
+});
+
 test('team names are escaped; missing names have a readable fallback', () => {
     const html = render([{ teamName: '<img src=x onerror=alert(1)>', schedule: '19h' }, { schedule: '20h' }], true);
     assert.ok(html.includes('&lt;img'));
