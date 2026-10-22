@@ -4843,6 +4843,34 @@ window.showWarningToast = function(message, title = 'Atenção') {
   // [removido duplicado]
 })();
 
+function formatStandardSlotExport(hour, slots) {
+  const boldDigits = value => {
+    const digits = Array.from('𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗');
+    return String(value).replace(/\d/g, digit => digits[Number(digit)]);
+  };
+  const header = `ㅤ:::  𝑿𝑻𝑹𝑬𝑰𝑵𝑶 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 » ${hour}H :::`;
+  const instructions = [
+    '➺🆔 𝑬 𝑺𝑬𝑵𝑯𝑨 𝟏𝟎 𝑴𝑰𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺',
+    '➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝑰𝑪̧𝑨̃𝑶!'
+  ];
+  const lines = slots.map(slot => {
+    const num = boldDigits(String(slot.idx).padStart(2, '0'));
+    return `   ⃟🩵 𝑺𝑳𝑶𝑻 ${num}: ${slot.team || ''}`;
+  });
+
+  return [
+    header,
+    '',
+    ...instructions,
+    '',
+    ...lines,
+    '',
+    '「🧑🏻‍🏫」𝑪𝑶𝑨𝑪𝑯: ',
+    '',
+    '⎾‣⏌FREITAS TV | @Xtreino_freitas'
+  ].join('\n');
+}
+
 // ===== Exportação de lista por horário =====
 async function buildExportList(date, eventType, hour){
   const hh = String(hour).match(/(\d{1,2})/)?.[1] || '';
@@ -4932,15 +4960,7 @@ async function buildExportList(date, eventType, hour){
     return `${header}\n${lines}\n\n${footer}`;
   } else {
     // XTreino normal (padrão)
-    const header = `:::𝑳𝑰𝑺𝑻𝑨 𝑫𝑬 𝑺𝑳𝑶𝑻 ⋮ 𝑿𝑻 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 ${H}H:::\n\n➺🆔 𝑬  𝑺𝑬𝑵𝐇𝑨: 𝟏𝟎 𝑴𝐈𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺\n➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝐈ÇÃ𝐎\n`;
-    // Garantir que todos os slots sejam incluídos, mesmo vazios, sem pular linhas
-    const lines = slots.map(s=>{
-      const num = String(s.idx).padStart(2,'0');
-      const teamName = s.team || ''; // Slot vazio fica sem nome, mas linha é criada
-      return `   ⃟🩵 𝑺𝑳𝑶𝑻 ${num}: ${teamName}`;
-    }).filter(line => line.trim()).join('\n\n'); // Filtrar linhas completamente vazias
-    const footer = `\n\n「📽️」𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: \n\n「🧑🏻‍🏫」𝑪𝑶𝑨𝑪𝑯:`;
-    return `${header}\n\n${lines}\n${footer}`;
+    return formatStandardSlotExport(H, slots);
   }
 }
 
