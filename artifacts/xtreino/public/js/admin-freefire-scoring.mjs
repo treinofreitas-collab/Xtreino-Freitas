@@ -348,7 +348,7 @@ async function exportMatchResultJpeg() {
     context.textBaseline = 'middle';
     for (const [index, team] of data.standings.slice(0, 15).entries()) {
       const y = getModoLigaTemplateRowCenter(bitmap.height, index);
-      let fontSize = Math.round(bitmap.width * 0.021);
+      let fontSize = Math.round(bitmap.width * 0.0185);
       const name = team.teamName.toLocaleUpperCase('pt-BR');
       context.fillStyle = '#20302f';
       context.font = `700 ${fontSize}px Stapel, Arial, sans-serif`;
