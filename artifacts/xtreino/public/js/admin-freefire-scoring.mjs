@@ -1,3 +1,14 @@
+import { createMatchResultView } from './admin-freefire-matchresult-view.mjs';
+import {
+  MATCHRESULT_EVENT_TYPES,
+  MAX_MATCHRESULT_FILE_BYTES,
+  calculateMatchResultStandings,
+  getMatchResultSetIssues,
+  mapMatchResultTeamsToRoster,
+  parseMatchResultRoster,
+  parseMatchResultLog,
+} from './freefire-matchresult.mjs';
+
 const EVENTS = [
   ['TREINO FREITAS', 'treino'],
   ['INTENSIVO FREITAS', 'intensivo'],
@@ -6,9 +17,19 @@ const EVENTS = [
 ];
 const PLACE_POINTS = [12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0];
 const SUPPORTED_IMAGES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const MAX_ANALYSIS_IMAGE_BYTES = 900 * 1024;
+const MAX_ANALYSIS_IMAGE_BYTES = 800 * 1024;
+const MAX_ANALYSIS_TOTAL_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_ANALYSIS_REQUEST_BYTES = 5_700_000;
+const MAX_DROPPED_REMOTE_IMAGE_BYTES = 25 * 1024 * 1024;
 const DB_NAME = 'freitas-freefire-config';
 const DB_STORE = 'table-templates';
+const MODO_LIGA_FIRST_ROW_CENTER = 0.426;
+const MODO_LIGA_ROW_PITCH = 0.03258;
+
+export function getModoLigaTemplateRowCenter(imageHeight, rowIndex) {
+  return imageHeight * (MODO_LIGA_FIRST_ROW_CENTER + rowIndex * MODO_LIGA_ROW_PITCH);
+}
+
 function createSession(event) {
   return {
     event,
@@ -26,7 +47,32 @@ const imagePreviewUrls = new Map();
 const state = {
   ...createSession('treino'),
   busy: false, error: '', message: '', built: false, template: null, templateName: '',
+  imageQualityMode: 'auto',
 };
+function blankMatchResultDrop(index) {
+  return { index, fileName: '', parsed: null, reviewed: false };
+}
+function createMatchResultSession(eventType) {
+  return {
+    eventType,
+    dropCount: 1,
+    drops: Array.from({ length: 5 }, (_, index) => blankMatchResultDrop(index)),
+    roster: [],
+    rosterText: '',
+    rosterFileName: '',
+    rosterDirty: false,
+    rosterError: '',
+    template: null,
+    templateError: '',
+  };
+}
+const matchResultSessions = new Map(
+  MATCHRESULT_EVENT_TYPES.map(({ value }) => [value, createMatchResultSession(value)]),
+);
+let matchResultState = matchResultSessions.get('modo-liga');
+let matchResultView = null;
+let activeScoringMode = 'images';
+let bundledMatchResultTemplate = null;
 let previewUrl = '';
 function blankDrop() { return { resultImages: [], placements: [], unmatchedPlayers: [], analyzed: false, reviewed: false }; }
 const $ = (id) => document.getElementById(id);
@@ -61,6 +107,277 @@ async function putTemplate(key, value) {
     tx.onerror = () => { db.close(); reject(tx.error); };
   });
 }
+async function loadMatchResultTemplate() {
+  matchResultState.templateError = '';
+  try {
+    if (matchResultState.eventType === 'modo-liga') {
+      if (!bundledMatchResultTemplate) {
+        const url = new URL('../assets/freefire-modo-liga.webp', import.meta.url);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Modelo de Modo Liga indisponível.');
+        bundledMatchResultTemplate = {
+          blob: await response.blob(),
+          name: 'TABELA_FREITAS_15_SLOTS.webp',
+          bundled: true,
+        };
+      }
+      matchResultState.template = bundledMatchResultTemplate;
+      return;
+    }
+
+    matchResultState.template = null;
+  } catch (error) {
+    matchResultState.template = null;
+    matchResultState.templateError = error.message || 'Não foi possível carregar o modelo deste evento.';
+  }
+}
+
+function matchResultDropView(drop) {
+  const parsed = drop.parsed;
+  const mapping = parsed ? mapMatchResultTeamsToRoster(parsed, matchResultState.roster) : null;
+  const errors = [
+    ...(parsed?.errors || []),
+    ...(mapping?.errors || []),
+    ...(mapping?.teams || []).flatMap(team => team.errors || []),
+  ];
+  return {
+    index: drop.index,
+    fileName: drop.fileName,
+    teams: (mapping?.teams || []).map(team => ({
+      teamName: team.teamName,
+      sourceTeamName: team.sourceTeamName,
+      slotLabel: team.slotLabel,
+      matchType: team.matchType,
+      rank: team.rank,
+      kills: team.kills,
+      playerCount: team.playerCount,
+    })),
+    errors,
+    warnings: [...(parsed?.warnings || []), ...(mapping?.warnings || [])],
+    ignoredTeams: mapping?.ignored || [],
+    reviewed: drop.reviewed,
+  };
+}
+
+function matchResultViewState() {
+  const drops = matchResultState.drops.slice(0, matchResultState.dropCount);
+  const mappedDrops = matchResultState.drops.map(drop => {
+    if (!drop.parsed) return drop;
+    const mapping = mapMatchResultTeamsToRoster(drop.parsed, matchResultState.roster);
+    return {
+      ...drop,
+      parsed: {
+        ...drop.parsed,
+        teams: mapping.teams,
+        errors: [...drop.parsed.errors, ...mapping.errors],
+        warnings: [...drop.parsed.warnings, ...mapping.warnings],
+      },
+    };
+  });
+  const hasAllRosterNames = matchResultState.roster.length === 15 &&
+    matchResultState.roster.every(team => Boolean(team.teamName?.trim()));
+  const rosterTextValidation = parseMatchResultRoster(matchResultState.rosterText);
+  const rosterDraft = rosterTextValidation.roster;
+  const rosterIssue = matchResultState.rosterError ||
+    (!hasAllRosterNames
+      ? rosterTextValidation.lineCount > 15
+        ? `A lista tem ${rosterTextValidation.lineCount} linhas. Use exatamente 15 equipes.`
+        : 'Preencha os 15 nomes; os slots aparecem automaticamente ao colar a lista.'
+      : '');
+  const issues = rosterIssue || matchResultState.rosterDirty
+    ? [rosterIssue || 'Termine de editar a lista para atualizar os slots automaticamente.']
+    : getMatchResultSetIssues(mappedDrops, matchResultState.dropCount);
+  const standings = calculateMatchResultStandings(
+    mappedDrops,
+    matchResultState.dropCount,
+    matchResultState.roster,
+  );
+  const allReviewed = drops.every(drop => drop.parsed && drop.reviewed);
+  const templateAvailable = matchResultState.eventType === 'modo-liga' &&
+    Boolean(matchResultState.template?.blob);
+  const canExport = !rosterIssue && !matchResultState.rosterDirty &&
+    issues.length === 0 && allReviewed && templateAvailable && standings.length === 15;
+  let summary = matchResultState.exportMessage || '';
+  if (!summary) {
+    if (rosterIssue) summary = rosterIssue;
+     else if (matchResultState.rosterDirty) summary = 'Termine de editar a lista para atualizar os slots automaticamente.';
+    else if (matchResultState.templateError) summary = matchResultState.templateError;
+    else if (issues.length) summary = issues[0];
+    else if (!allReviewed) summary = 'Revise e confirme cada queda selecionada antes de exportar.';
+    else if (matchResultState.eventType !== 'modo-liga') {
+      summary = 'A prévia está pronta. A exportação será liberada quando o modelo próprio deste evento for integrado.';
+    } else if (!templateAvailable) summary = 'O modelo visual de Modo Liga não carregou.';
+    else summary = `${standings.length} equipes calculadas em ${matchResultState.dropCount} ${matchResultState.dropCount === 1 ? 'queda' : 'quedas'}.`;
+  }
+  const eventLabel = MATCHRESULT_EVENT_TYPES.find(event => event.value === matchResultState.eventType)?.label || 'Evento';
+  return {
+    eventType: matchResultState.eventType,
+    eventLabel,
+    dropCount: matchResultState.dropCount,
+    drops: drops.map(matchResultDropView),
+    standings,
+    rosterText: matchResultState.rosterText,
+    rosterFileName: matchResultState.rosterFileName,
+    rosterDraft,
+    rosterCount: rosterDraft.filter(team => team.teamName?.trim()).length,
+    rosterDirty: matchResultState.rosterDirty,
+    rosterError: matchResultState.rosterError,
+    template: {
+      name: matchResultState.template?.name || '',
+      available: templateAvailable,
+      bundled: Boolean(matchResultState.template?.bundled),
+    },
+    canExport,
+    summary,
+  };
+}
+
+function updateMatchResultRosterText(text, fileName = '') {
+  const rosterText = String(text ?? '');
+  const parsed = parseMatchResultRoster(rosterText);
+  const nextRoster = parsed.errors.length ? [] : parsed.roster;
+  const previousSignature = JSON.stringify(matchResultState.roster.map(team => [
+    Number(team.slot),
+    String(team.teamName || '').trim(),
+  ]));
+  const nextSignature = JSON.stringify(nextRoster.map(team => [
+    Number(team.slot),
+    String(team.teamName || '').trim(),
+  ]));
+  matchResultState.rosterText = rosterText;
+  matchResultState.rosterFileName = fileName;
+  matchResultState.roster = nextRoster;
+  matchResultState.rosterDirty = parsed.errors.length > 0;
+  matchResultState.rosterError = parsed.errors
+    .filter(error => !error.startsWith('A lista precisa conter exatamente 15') &&
+      !error.endsWith('informe o nome da equipe.'))
+    .join(' ');
+  matchResultState.exportMessage = '';
+  if (previousSignature !== nextSignature) {
+    matchResultState.drops.forEach(drop => { if (drop.parsed) drop.reviewed = false; });
+  }
+  render();
+}
+
+async function importMatchResultRosterFiles(files) {
+  const selected = Array.from(files || []);
+  if (selected.length !== 1) {
+    matchResultState.rosterError = 'Selecione um arquivo CSV ou TXT por vez.';
+    render();
+    return;
+  }
+  const file = selected[0];
+  const isTextFile = /\.(csv|txt)$/i.test(file.name) ||
+    ['text/plain', 'text/csv'].includes(file.type);
+  if (!isTextFile) {
+    matchResultState.rosterError = 'Importe somente uma lista em arquivo CSV ou TXT.';
+    render();
+    return;
+  }
+  if (file.size > MAX_MATCHRESULT_FILE_BYTES) {
+    matchResultState.rosterError = 'O arquivo da lista precisa ter até 2 MB.';
+    render();
+    return;
+  }
+  try {
+    updateMatchResultRosterText(await file.text(), file.name);
+    return;
+  } catch {
+    matchResultState.rosterError = 'Não foi possível ler o arquivo da lista.';
+  }
+  render();
+}
+
+async function readMatchResultFile(dropIndex, file) {
+  const drop = matchResultState.drops[dropIndex];
+  if (!drop || !file) return;
+  drop.fileName = file.name;
+  drop.reviewed = false;
+  matchResultState.exportMessage = '';
+  if (file.size > MAX_MATCHRESULT_FILE_BYTES) {
+    drop.parsed = {
+      teams: [],
+      errors: ['O arquivo excede o limite de 2 MB.'],
+      warnings: [],
+      valid: false,
+    };
+  } else {
+    try {
+      drop.parsed = parseMatchResultLog(await file.text());
+    } catch {
+      drop.parsed = {
+        teams: [],
+        errors: ['Não foi possível ler este arquivo de texto.'],
+        warnings: [],
+        valid: false,
+      };
+    }
+  }
+  render();
+}
+
+async function changeMatchResultEvent(eventType) {
+  if (!MATCHRESULT_EVENT_TYPES.some(event => event.value === eventType)) return;
+  matchResultSessions.set(matchResultState.eventType, matchResultState);
+  matchResultState = matchResultSessions.get(eventType) || createMatchResultSession(eventType);
+  matchResultSessions.set(eventType, matchResultState);
+  await loadMatchResultTemplate();
+  render();
+}
+
+async function exportMatchResultJpeg() {
+  const data = matchResultViewState();
+  if (!data.canExport) return;
+  const bitmap = await createImageBitmap(matchResultState.template.blob);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('O navegador não conseguiu preparar a imagem.');
+    context.drawImage(bitmap, 0, 0);
+    await document.fonts.load('700 22px Stapel');
+
+    const nameX = bitmap.width * 0.268;
+    const winsX = bitmap.width * 0.454;
+    const killsX = bitmap.width * 0.503;
+    const pointsX = bitmap.width * 0.553;
+    const maxNameWidth = bitmap.width * 0.315;
+
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    for (const [index, team] of data.standings.slice(0, 15).entries()) {
+      const y = getModoLigaTemplateRowCenter(bitmap.height, index);
+      let fontSize = Math.round(bitmap.width * 0.021);
+      const name = team.teamName.toLocaleUpperCase('pt-BR');
+      context.fillStyle = '#20302f';
+      context.font = `700 ${fontSize}px Stapel, Arial, sans-serif`;
+      while (fontSize > 12 && context.measureText(name).width > maxNameWidth) {
+        fontSize -= 1;
+        context.font = `700 ${fontSize}px Stapel, Arial, sans-serif`;
+      }
+      context.fillText(name, nameX, y, maxNameWidth);
+
+      context.font = `700 ${Math.round(bitmap.width * 0.019)}px Stapel, Arial, sans-serif`;
+      context.fillText(String(team.wins), winsX, y);
+      context.fillText(String(team.kills), killsX, y);
+      context.fillText(String(team.points), pointsX, y);
+    }
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    if (!blob) throw new Error('O navegador não conseguiu gerar o JPEG.');
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `freitas-${matchResultState.eventType}-leaderboard.jpg`;
+    link.click();
+    URL.revokeObjectURL(url);
+    matchResultState.exportMessage = `Imagem exportada com ${data.standings.length} equipes e ${matchResultState.dropCount} ${matchResultState.dropCount === 1 ? 'queda' : 'quedas'}.`;
+  } finally {
+    bitmap.close?.();
+    render();
+  }
+}
 async function loadTemplate() {
   try {
     const value = await getTemplate(state.event);
@@ -76,12 +393,20 @@ export function parseRoster(text) {
   const parsed = new Map();
   String(text || '').split(/\r?\n/).forEach(line => {
     const normalizedLine = line.normalize('NFKC').trim().replace(
-      /^[\s\u200b\ufeff\p{M}\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0e\ufe0f]+(?=(?:slot\b|\d{1,2}\s*(?:[,;:.\-]|\s)))/iu,
+      /^[\s\u200b\ufeff\p{M}\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0e\ufe0f]+(?=(?:slot\b|time\b|team\b|\d{1,2}\s*(?:[,;:.\-]|\s)|[a-l]\s*(?:[,;:.\-]|\s)))/iu,
       '',
     );
-    const match = normalizedLine.match(/^\s*(?:slot\s*)?(\d{1,2})\s*(?:[,;:.\-]\s*|\s+)(.+?)\s*$/i);
+    if (/^(?:slot|time|team|position|posi[cç][aã]o|rank)\s*[,;|]\s*(?:equipe|team|nome(?:\s+da\s+equipe)?|name)\b/iu.test(normalizedLine)) return;
+    const prefixedEntry = normalizedLine.match(
+      /^(?:slot|time|team)\s*([0-9]{1,2}|[a-l])\s*(?:[,;:.\-]\s*|\s+)(.+?)\s*$/iu,
+    );
+    const numberedEntry = normalizedLine.match(/^([0-9]{1,2})\s*(?:[,;:.\-]\s*|\s+)(.+?)\s*$/u);
+    const letteredEntry = normalizedLine.match(/^([a-l])\s*[,;:.\-]\s*(.+?)\s*$/iu);
+    const match = prefixedEntry || numberedEntry || letteredEntry;
     if (!match) return;
-    const slot = Number(match[1]);
+    const slot = /^\d{1,2}$/u.test(match[1])
+      ? Number(match[1])
+      : match[1].toLocaleUpperCase('en-US').charCodeAt(0) - 64;
     const name = match[2]
       .trim()
       .replace(/[\s\u200b\ufeff]*[\p{Extended_Pictographic}\u200d\ufe0e\ufe0f]+[\s\u200b\ufeff]*$/gu, '')
@@ -137,10 +462,10 @@ function canExport() {
     standings().some(row => row.teamName) && !state.busy;
 }
 function exportIssue() {
-  if (!state.template) return 'Envie o modelo em branco deste evento para habilitar o PNG.';
+  if (!state.template) return 'Envie o modelo em branco deste evento para habilitar o JPEG.';
   if (!hasCompleteRoster()) return 'Preencha os nomes dos 12 slots antes de exportar.';
   const issue = state.drops.slice(0, state.dropsCount).map(dropReviewIssue).find(Boolean);
-  return issue || 'O PNG mantém as dimensões originais do modelo.';
+  return issue || 'O JPEG preserva a proporção do modelo e limita o maior lado a 1080 px.';
 }
 function setNotice(type, message) {
   state.error = type === 'error' ? message : '';
@@ -156,9 +481,17 @@ function render() {
   if (!state.built) build(root);
   $('ffEvent').value = state.event;
   $('ffDrops').value = String(state.dropsCount);
+  $('ffImageQualityMode').value = state.imageQualityMode;
+  $('ffImageQualityHint').textContent = state.imageQualityMode === 'original'
+    ? 'Envia as imagens sem recompressão ou redimensionamento. Limite total: 4 MB por análise.'
+    : 'Arquivos até 800 KB vão sem alteração; os maiores podem ser reduzidos para caber no limite.';
+  $('ffRosterFileLabel').textContent = state.rosterImages.length
+    ? state.rosterImages.map(file => `${file.name} · ${file.size.toLocaleString('pt-BR')} bytes`).join(' | ')
+    : 'Nenhuma imagem selecionada';
   const viewer = readOnly();
   $('ffEvent').disabled = viewer;
   $('ffDrops').disabled = viewer;
+  $('ffImageQualityMode').disabled = viewer || state.busy;
   $('ffRosterText').disabled = viewer;
   $('ffTemplateUpload').disabled = viewer;
   $('ffRosterUpload').disabled = viewer;
@@ -190,13 +523,15 @@ function render() {
   const uploadHelp = $('ffUploadHelp');
   uploadHelp.classList.remove('error');
   uploadHelp.textContent = totalImageBytes
-    ? `Imagens selecionadas: ${(totalImageBytes / 1024 / 1024).toFixed(1)} MB. Elas serão otimizadas automaticamente e enviadas ao clicar em “Analisar esta queda”.`
-    : 'Você pode adicionar as imagens uma por vez. Até 3 do lobby e 2 do placar; elas serão otimizadas e enviadas ao clicar em “Analisar esta queda”.';
+    ? `Imagens selecionadas: ${(totalImageBytes / 1024 / 1024).toFixed(1)} MB. Arraste imagens diretamente para as áreas ou use os botões; elas serão enviadas ao analisar.`
+    : 'Arraste imagens diretamente para as áreas ou use os botões. Até 3 fotos do lobby e 2 do placar; algumas páginas bloqueiam a importação direta.';
   $('ffSlotUpload').disabled = viewer;
   $('ffResultUpload').disabled = viewer;
   $('ffExtraction').classList.toggle('ff-readonly', viewer);
   $('ffBusy').classList.toggle('hidden', !state.busy);
-  $('ffBusyLabel').textContent = 'Otimizando imagens e analisando';
+  $('ffBusyLabel').textContent = state.imageQualityMode === 'original'
+    ? 'Enviando imagens originais e analisando'
+    : 'Otimizando imagens e analisando';
   const ranked = standings();
   $('ffStandingsCount').textContent = ranked.filter(row => row.teamName).length ? `${ranked.filter(row => row.teamName).length} equipes` : 'Aguardando resultados';
   $('ffStandings').innerHTML = ranked.filter(row => row.teamName).map((row, index) => `
@@ -209,6 +544,13 @@ function render() {
   if (state.error) setNotice('error', state.error);
   else if (state.message) setNotice('success', state.message);
   else $('ffNotice').className = 'ff-notice hidden';
+
+  const showMatchResult = activeScoringMode === 'matchresult';
+  $('ffImageModeView').hidden = showMatchResult;
+  $('ffMatchResultView').hidden = !showMatchResult;
+  $('ffModeImages').setAttribute('aria-pressed', String(!showMatchResult));
+  $('ffModeMatchResult').setAttribute('aria-pressed', String(showMatchResult));
+  matchResultView?.render(matchResultViewState());
 }
 function filesLabel(files) {
   return files.length ? files.map(file => file.name).join(' · ') : 'Nenhuma imagem selecionada';
@@ -240,8 +582,26 @@ function renderSelectedImages(labelId, previewId, files, scope, allowRemove) {
       url = URL.createObjectURL(file);
       imagePreviewUrls.set(file, url);
     }
-    return `<div class="ff-image-preview" title="${esc(file.name)}"><img src="${url}" alt=""><span class="ff-image-name">${esc(file.name)}</span>${allowRemove ? `<button type="button" class="ff-remove-image" data-remove-image="${scope}" data-image-index="${index}" aria-label="Remover ${esc(file.name)}" title="Remover imagem">×</button>` : ''}</div>`;
+    return `<div class="ff-image-preview" title="${esc(file.name)}"><img src="${url}" alt=""><span class="ff-image-meta"><b>${esc(file.name)}</b><small data-image-meta="${index}">Lendo dimensões…</small></span>${allowRemove ? `<button type="button" class="ff-remove-image" data-remove-image="${scope}" data-image-index="${index}" aria-label="Remover ${esc(file.name)}" title="Remover imagem">×</button>` : ''}</div>`;
   }).join('');
+  previews.querySelectorAll('.ff-image-preview img').forEach((image, index) => {
+    const updateMeta = () => {
+      const file = files[index];
+      const meta = image.parentElement.querySelector('[data-image-meta]');
+      if (!file || !meta) return;
+      const dimensions = image.naturalWidth && image.naturalHeight
+        ? `${image.naturalWidth} × ${image.naturalHeight} px`
+        : 'Resolução indisponível';
+      const bytes = `${file.size.toLocaleString('pt-BR')} bytes`;
+      const status = state.imageQualityMode === 'original'
+        ? 'vai como original'
+        : file.size <= MAX_ANALYSIS_IMAGE_BYTES ? 'sem alteração' : 'será otimizada';
+      meta.textContent = `${dimensions} · ${bytes} · ${status}`;
+      meta.title = meta.textContent;
+    };
+    if (image.complete) updateMeta();
+    else image.addEventListener('load', updateMeta, { once: true });
+  });
 }
 function revokeImagePreviews(files) {
   files.forEach(file => {
@@ -391,6 +751,11 @@ function standings() {
 function build(root) {
   state.built = true;
   root.innerHTML = `
+    <nav class="ff-scoring-mode-switch" aria-label="Modo de pontuação">
+      <button type="button" id="ffModeImages" aria-pressed="true">Analisar por imagens</button>
+      <button type="button" id="ffModeMatchResult" aria-pressed="false">MatchResult · 15 equipes</button>
+    </nav>
+    <div id="ffImageModeView">
     <header class="ff-hero">
       <div><div class="ff-eyebrow"><span></span> OPERAÇÕES / COMPETITIVO</div><h1>Placar <em>Free Fire</em></h1>
         <p>Da leitura do lobby à tabela oficial. Revise cada extração antes de fechar a pontuação.</p></div>
@@ -406,19 +771,20 @@ function build(root) {
             <label class="ff-field">Evento<select id="ffEvent">${EVENTS.map(([label, key]) => `<option value="${key}">${label}</option>`).join('')}</select></label>
             <label class="ff-field">Quantidade de quedas<select id="ffDrops">${[1, 2, 3, 4, 5].map(n => `<option value="${n}">${n} ${n === 1 ? 'queda' : 'quedas'}</option>`).join('')}</select></label>
           </div>
-          <div class="ff-template-config"><div class="ff-template-preview" id="ffTemplatePreview"></div><div class="ff-template-meta"><span class="ff-mini-label">TABELA EM BRANCO</span><b id="ffTemplateName"></b><small id="ffTemplateHint"></small><label class="ff-button ff-button-light" for="ffTemplateUpload"><i class="fas fa-upload"></i> Enviar ou substituir</label><input id="ffTemplateUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden></div></div>
-          <p class="ff-note">Cada evento mantém seu próprio modelo neste navegador. A imagem exportada preserva as dimensões originais do arquivo.</p>
+          <div class="ff-quality-setting"><label for="ffImageQualityMode">Qualidade das imagens para análise</label><select id="ffImageQualityMode"><option value="auto">Otimizar automaticamente (recomendado)</option><option value="original">Enviar original sem recompressão</option></select><small id="ffImageQualityHint"></small></div>
+          <div class="ff-template-config"><div class="ff-template-preview" id="ffTemplatePreview"></div><div class="ff-template-meta"><span class="ff-mini-label">TABELA EM BRANCO</span><b id="ffTemplateName"></b><small id="ffTemplateHint"></small><label class="ff-button ff-button-light" for="ffTemplateUpload"><i class="fas fa-upload"></i> Enviar ou arrastar modelo</label><input id="ffTemplateUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden></div></div>
+          <p class="ff-note">Cada evento mantém seu próprio modelo neste navegador. O JPEG preserva a proporção e limita o maior lado a 1080 px.</p>
         </section>
         <section class="ff-panel">
           <div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>Doze posições fixas. Um slot sem equipe não participa do placar.</p></div></div>
-          <label class="ff-field">Cole lista ou CSV <span class="ff-field-hint">Aceita também a lista decorada com letras/números estilizados</span><textarea id="ffRosterText" rows="4" placeholder="1, Equipe Freitas&#10;⃟🩵 𝑺𝑳𝑶𝑻 𝟎𝟏: KЯ E-SPORT🍀&#10;..."></textarea></label>
-          <div class="ff-roster-actions"><label class="ff-button ff-button-light" for="ffRosterUpload"><i class="fas fa-image"></i> Importar lista por imagem</label><input id="ffRosterUpload" type="file" accept="image/png,image/jpeg,image/webp,.csv,.txt" multiple hidden><span id="ffRosterFileLabel" class="ff-file-label">Nenhuma imagem selecionada</span><button type="button" id="ffAnalyzeRoster" class="ff-button ff-button-light" disabled><i class="fas fa-wand-magic-sparkles"></i> Analisar lista</button></div>
+          <label class="ff-field">Cole lista ou CSV <span class="ff-field-hint">Os slots são preenchidos automaticamente. Aceita TIME A–L, SLOT 01–12 e linhas numeradas.</span><textarea id="ffRosterText" rows="4" placeholder="TIME A: Nome do time&#10;1, Nome do time&#10;⃟🩵 𝑺𝑳𝑶𝑻 𝟎𝟏: KЯ E-SPORT🍀&#10;..."></textarea></label>
+          <div class="ff-roster-actions"><label class="ff-button ff-button-light" for="ffRosterUpload"><i class="fas fa-image"></i> Importar ou arrastar lista</label><input id="ffRosterUpload" type="file" accept="image/png,image/jpeg,image/webp,.csv,.txt" multiple hidden><span id="ffRosterFileLabel" class="ff-file-label">Nenhuma imagem selecionada</span><button type="button" id="ffAnalyzeRoster" class="ff-button ff-button-light" disabled><i class="fas fa-wand-magic-sparkles"></i> Analisar foto da lista</button></div>
           <div id="ffRosterRows" class="ff-roster-grid"></div>
         </section>
         <section class="ff-panel ff-lobby-panel">
           <div class="ff-panel-heading"><div class="ff-step">03</div><div><h2>Slots do lobby</h2><p>Envie as 3 fotos uma vez. Elas serão reutilizadas em todas as quedas deste evento.</p></div></div>
           <div class="ff-lobby-upload">
-            <label class="ff-upload-tile"><input id="ffSlotUpload" type="file" accept="image/png,image/jpeg,image/webp" multiple><i class="fas fa-border-all"></i><b>Slots do lobby (3 fotos)</b><small id="ffSlotFiles">Nenhuma imagem selecionada</small><span>Adicionar fotos</span></label>
+            <label class="ff-upload-tile"><input id="ffSlotUpload" type="file" accept="image/png,image/jpeg,image/webp" multiple><i class="fas fa-border-all"></i><b>Slots do lobby (3 fotos)</b><small id="ffSlotFiles">Nenhuma imagem selecionada</small><span>Arraste ou clique para adicionar</span></label>
             <div id="ffSlotPreviews" class="ff-image-previews" aria-live="polite"></div>
           </div>
           <p id="ffSlotHelp" class="ff-upload-help">Adicione as 3 fotos do lobby uma única vez.</p>
@@ -429,7 +795,7 @@ function build(root) {
           <div class="ff-current-drop"><div><span class="ff-mini-label">IMAGENS DA</span><h3 id="ffCurrentDrop">Queda 1</h3></div>
             <div class="ff-image-inputs">
               <div class="ff-upload-column">
-                <label class="ff-upload-tile"><input id="ffResultUpload" type="file" accept="image/png,image/jpeg,image/webp" multiple><i class="fas fa-list-ol"></i><b>Placar final (até 2 fotos)</b><small id="ffResultFiles">Nenhuma imagem selecionada</small><span>Adicionar fotos</span></label>
+                <label class="ff-upload-tile"><input id="ffResultUpload" type="file" accept="image/png,image/jpeg,image/webp" multiple><i class="fas fa-list-ol"></i><b>Placar final (até 2 fotos)</b><small id="ffResultFiles">Nenhuma imagem selecionada</small><span>Arraste ou clique para adicionar</span></label>
                 <div id="ffResultPreviews" class="ff-image-previews" aria-live="polite"></div>
               </div>
             </div>
@@ -444,10 +810,59 @@ function build(root) {
         <div class="ff-score-key"><span><b>B!</b> Vitórias</span><span><b>A!</b> Abates</span><span><b>P!</b> Pontos</span></div>
         <div class="ff-table-scroll"><table class="ff-standing-table"><thead><tr><th>#</th><th>Equipe</th><th>B!</th><th>A!</th><th>P!</th></tr></thead><tbody id="ffStandings"></tbody></table></div>
         <div class="ff-points-rule"><i class="fas fa-circle-info"></i><span><b>Pontuação oficial</b><br>12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0 pontos por colocação + 1 ponto por abate.<br><b>Desempate após P!:</b> B! → A! → colocação na última queda (se todos jogaram) → confronto direto (vitórias nas quedas em comum).</span></div>
-        <button type="button" id="ffExport" class="ff-button ff-button-export" disabled><i class="fas fa-file-image"></i> Exportar tabela PNG</button>
-        <p class="ff-export-note" id="ffExportNote">Envie o modelo em branco deste evento para habilitar o PNG.</p>
+        <button type="button" id="ffExport" class="ff-button ff-button-export" disabled><i class="fas fa-file-image"></i> Exportar tabela JPEG</button>
+        <p class="ff-export-note" id="ffExportNote">Envie o modelo em branco deste evento para habilitar o JPEG.</p>
       </aside>
-    </div>`;
+    </div>
+    </div>
+    <div id="ffMatchResultView" hidden></div>`;
+  matchResultView = createMatchResultView($('ffMatchResultView'), {
+    onEventChange: eventType => { changeMatchResultEvent(eventType); },
+    onDropCountChange: count => {
+      matchResultState.dropCount = Math.max(1, Math.min(5, Number(count) || 1));
+      matchResultState.exportMessage = '';
+      render();
+    },
+    onRosterTextInput: text => { updateMatchResultRosterText(text); },
+    onRosterSlotInput: (slot, teamName) => {
+      if (!Number.isInteger(slot) || slot < 1 || slot > 15) return;
+      const draft = parseMatchResultRoster(matchResultState.rosterText).roster;
+      draft[slot - 1].teamName = String(teamName ?? '');
+      const text = draft.map((team, index) =>
+        `TIME ${String.fromCharCode(65 + index)}: ${team.teamName}`,
+      ).join('\n');
+      updateMatchResultRosterText(text);
+    },
+    onRosterFiles: files => { importMatchResultRosterFiles(files); },
+    onDropFile: (dropIndex, file) => { readMatchResultFile(dropIndex, file); },
+    onClearDrop: dropIndex => {
+      matchResultState.drops[dropIndex] = blankMatchResultDrop(dropIndex);
+      matchResultState.exportMessage = '';
+      render();
+    },
+    onDropReview: (dropIndex, reviewed) => {
+      if (matchResultState.drops[dropIndex]) {
+        matchResultState.drops[dropIndex].reviewed = reviewed;
+        matchResultState.exportMessage = '';
+        render();
+      }
+    },
+    onExport: () => {
+      exportMatchResultJpeg().catch(error => {
+        matchResultState.exportMessage = error.message || 'Falha ao exportar a classificação.';
+        render();
+      });
+    },
+  });
+  $('ffModeImages').addEventListener('click', () => {
+    activeScoringMode = 'images';
+    render();
+  });
+  $('ffModeMatchResult').addEventListener('click', async () => {
+    activeScoringMode = 'matchresult';
+    await loadMatchResultTemplate();
+    render();
+  });
   $('ffEvent').addEventListener('change', async e => {
     saveActiveSession();
     const nextEvent = e.target.value;
@@ -458,6 +873,10 @@ function build(root) {
     render();
   });
   $('ffDrops').addEventListener('change', e => { state.dropsCount = Number(e.target.value); render(); });
+  $('ffImageQualityMode').addEventListener('change', e => {
+    state.imageQualityMode = e.target.value === 'original' ? 'original' : 'auto';
+    render();
+  });
   $('ffRosterText').addEventListener('input', e => {
     state.rosterText = e.target.value;
     const parsed = parseRoster(state.rosterText);
@@ -596,7 +1015,11 @@ function build(root) {
     e.target.value = '';
     render();
   });
-  $('ffExport').addEventListener('click', exportPng);
+  attachImageDropTarget(document.querySelector('label[for="ffTemplateUpload"]'), $('ffTemplateUpload'));
+  attachImageDropTarget(document.querySelector('label[for="ffRosterUpload"]'), $('ffRosterUpload'));
+  attachImageDropTarget($('ffSlotUpload').closest('.ff-upload-tile'), $('ffSlotUpload'));
+  attachImageDropTarget($('ffResultUpload').closest('.ff-upload-tile'), $('ffResultUpload'));
+  $('ffExport').addEventListener('click', exportJpeg);
   render();
 }
 function refreshStandings() {
@@ -642,8 +1065,209 @@ export async function optimizeAnalysisImage(file) {
   bitmap.close?.();
   throw new Error(`Não foi possível reduzir ${file.name} para análise. Tente uma captura com menor resolução.`);
 }
+
+function captureDroppedFiles(dataTransfer) {
+  const files = [...(dataTransfer?.files || [])];
+  if (files.length) return files;
+  return [...(dataTransfer?.items || [])]
+    .filter(item => item.kind === 'file')
+    .map(item => item.getAsFile())
+    .filter(Boolean);
+}
+
+function normalizeDroppedFile(file) {
+  if (SUPPORTED_IMAGES.has(file.type)) return file;
+  if (file.type && file.type !== 'application/octet-stream') return file;
+  const extension = file.name.toLowerCase().split('.').pop();
+  const mime = extension === 'png' ? 'image/png'
+    : ['jpg', 'jpeg'].includes(extension) ? 'image/jpeg'
+      : extension === 'webp' ? 'image/webp' : '';
+  if (!mime) return file;
+  return new File([file], file.name, { type: mime, lastModified: file.lastModified });
+}
+
+function imageUrlFromDrop(dataTransfer) {
+  const uriList = (dataTransfer?.getData('text/uri-list') || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .find(line => line && !line.startsWith('#')) || '';
+  const html = dataTransfer?.getData('text/html') || '';
+  if (html) {
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    const source = parsed.querySelector('img[src]')?.getAttribute('src');
+    if (source) {
+      try { return new URL(source, uriList || window.location.href).href; } catch { return source; }
+    }
+  }
+  const downloadUrl = dataTransfer?.getData('DownloadURL') || '';
+  const downloadMatch = downloadUrl.match(/^[^:]+:[^:]+:(https?:\/\/\S+)$/i);
+  if (downloadMatch) return downloadMatch[1];
+  if (uriList) return uriList;
+  const plainText = (dataTransfer?.getData('text/plain') || '').trim();
+  return /^https?:\/\//i.test(plainText) ? plainText : '';
+}
+
+function validateDroppedImageUrl(url) {
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+  const isIpAddress = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith('[');
+  const isLocalHost = hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local');
+  if (url.origin !== window.location.origin && (url.protocol !== 'https:' || isIpAddress || isLocalHost)) {
+    throw new Error('Por segurança, imagens da internet precisam usar um endereço HTTPS público.');
+  }
+}
+
+function mimeFromImageUrl(url, responseType) {
+  const mime = String(responseType || '').split(';')[0].trim().toLowerCase();
+  if (SUPPORTED_IMAGES.has(mime)) return mime;
+  const path = url.pathname.toLowerCase();
+  if (/\.jpe?g$/.test(path)) return 'image/jpeg';
+  if (/\.png$/.test(path)) return 'image/png';
+  if (/\.webp$/.test(path)) return 'image/webp';
+  return '';
+}
+
+function imageNameFromUrl(url, mime) {
+  const extension = mime === 'image/png' ? '.png' : mime === 'image/webp' ? '.webp' : '.jpg';
+  let name = url.pathname.split('/').pop() || '';
+  try { name = decodeURIComponent(name); } catch { /* Use the encoded filename as-is. */ }
+  name = name.replace(/[^\p{L}\p{N}._-]+/gu, '-');
+  if (!name || !/\.(png|jpe?g|webp)$/i.test(name)) name = `imagem-arrastada-${Date.now()}${extension}`;
+  return name.slice(0, 120);
+}
+
+function imageImportError(message) {
+  const error = new Error(message);
+  error.name = 'ImageImportError';
+  return error;
+}
+
+async function fetchDroppedImage(urlValue) {
+  let url;
+  try {
+    url = new URL(urlValue, window.location.href);
+  } catch {
+    throw imageImportError('Não consegui identificar a imagem arrastada.');
+  }
+  validateDroppedImageUrl(url);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    let response;
+    try {
+      response = await fetch(url.href, {
+        mode: 'cors',
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      throw imageImportError('O site de origem bloqueou a importação direta. Tente arrastar o arquivo de imagem ou usar o botão para selecioná-lo.');
+    }
+    if (!response.ok) throw imageImportError('Não foi possível buscar a imagem no site de origem.');
+    const finalUrl = new URL(response.url || url.href);
+    validateDroppedImageUrl(finalUrl);
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_DROPPED_REMOTE_IMAGE_BYTES) {
+      throw imageImportError('A imagem arrastada é muito grande. O limite para importação direta é 25 MB.');
+    }
+    let blob;
+    try {
+      blob = await response.blob();
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      throw imageImportError('Não consegui receber a imagem completa do site de origem.');
+    }
+    if (!blob.size || blob.size > MAX_DROPPED_REMOTE_IMAGE_BYTES) {
+      throw imageImportError('A imagem arrastada está vazia ou ultrapassa o limite de 25 MB.');
+    }
+    const mime = mimeFromImageUrl(finalUrl, blob.type);
+    if (!mime) throw imageImportError('O link arrastado não retornou uma imagem PNG, JPG ou WebP.');
+    return new File([blob], imageNameFromUrl(finalUrl, mime), { type: mime, lastModified: Date.now() });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw imageImportError('A importação direta demorou demais. Tente arrastar a imagem novamente.');
+    }
+    if (error?.name === 'ImageImportError') throw error;
+    throw imageImportError('O site de origem bloqueou a importação direta. Tente arrastar o arquivo de imagem ou usar o botão para selecioná-lo.');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function attachImageDropTarget(target, input) {
+  if (!target || !input) return;
+  let dragDepth = 0;
+  const hasImagePayload = dataTransfer => {
+    if (!dataTransfer) return false;
+    if (dataTransfer.files?.length) return true;
+    if ([...(dataTransfer.items || [])].some(item => item.kind === 'file')) return true;
+    return [...(dataTransfer.types || [])]
+      .some(type => ['files', 'text/uri-list', 'text/html', 'text/plain', 'downloadurl'].includes(type.toLowerCase()));
+  };
+  const clearDragState = () => {
+    dragDepth = 0;
+    target.classList.remove('ff-drop-target-active', 'ff-drop-target-loading');
+    target.removeAttribute('aria-busy');
+  };
+
+  target.addEventListener('dragenter', event => {
+    if (input.disabled || !hasImagePayload(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepth += 1;
+    target.classList.add('ff-drop-target-active');
+  });
+  target.addEventListener('dragover', event => {
+    if (input.disabled || !hasImagePayload(event.dataTransfer)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+  target.addEventListener('dragleave', event => {
+    if (!target.classList.contains('ff-drop-target-active')) return;
+    event.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) target.classList.remove('ff-drop-target-active');
+  });
+  target.addEventListener('drop', async event => {
+    if (!hasImagePayload(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearDragState();
+    if (input.disabled) {
+      setNotice('error', 'Este campo está somente para leitura.');
+      return;
+    }
+    const files = captureDroppedFiles(event.dataTransfer);
+    const imageUrl = files.length ? '' : imageUrlFromDrop(event.dataTransfer);
+    try {
+      let acceptedFiles = files.map(normalizeDroppedFile);
+      if (!acceptedFiles.length && imageUrl) {
+        target.classList.add('ff-drop-target-loading');
+        target.setAttribute('aria-busy', 'true');
+        acceptedFiles = [await fetchDroppedImage(imageUrl)];
+      }
+      if (!acceptedFiles.length) {
+        throw new Error('Arraste um arquivo de imagem ou uma imagem da página para esta área.');
+      }
+      if (!input.multiple && acceptedFiles.length > 1) {
+        throw new Error('Arraste uma imagem por vez para esta área.');
+      }
+      const transfer = new DataTransfer();
+      acceptedFiles.forEach(file => transfer.items.add(file));
+      input.files = transfer.files;
+      state.error = '';
+      state.message = '';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (error) {
+      setNotice('error', error.message || 'Não foi possível importar a imagem arrastada.');
+    } finally {
+      clearDragState();
+    }
+  });
+}
 async function toPayload(file) {
-  const optimized = await optimizeAnalysisImage(file);
+  const optimized = state.imageQualityMode === 'original' ? file : await optimizeAnalysisImage(file);
   const base64 = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(',')[1]);
@@ -652,15 +1276,27 @@ async function toPayload(file) {
   });
   return { mimeType: optimized.type || file.type || 'application/octet-stream', base64 };
 }
+function validateOriginalImageTotal(files) {
+  if (state.imageQualityMode !== 'original') return;
+  const totalBytes = files.reduce((total, file) => total + file.size, 0);
+  if (totalBytes > MAX_ANALYSIS_TOTAL_IMAGE_BYTES) {
+    throw new Error(`As imagens originais somam ${(totalBytes / 1024 / 1024).toFixed(2)} MB. O limite é 4 MB por análise; remova imagens ou use a otimização automática.`);
+  }
+}
 async function requestAnalyze(payload) {
   const user = window.firebaseAuth?.currentUser;
   if (!user) throw new Error('Sua sessão expirou. Entre novamente no painel.');
   const token = await user.getIdToken();
+  const body = JSON.stringify(payload);
+  const bodyBytes = new TextEncoder().encode(body).byteLength;
+  if (bodyBytes > MAX_ANALYSIS_REQUEST_BYTES) {
+    throw new Error('O envio ultrapassa o limite seguro do serviço. Remova uma imagem ou use a otimização automática.');
+  }
   let response;
   try {
     response = await fetch('/api/freefire/analyze', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload),
+      body,
     });
   } catch (_) {
     throw new Error('O serviço de análise está indisponível. Nenhuma imagem foi processada; tente novamente mais tarde.');
@@ -678,6 +1314,7 @@ async function analyzeRoster() {
   state.busy = true; state.error = ''; state.message = 'Analisando lista oficial…'; render();
   try {
     validateImageFiles(state.rosterImages, 2);
+    validateOriginalImageTotal(state.rosterImages);
     const result = await requestAnalyze({ mode: 'roster', images: await Promise.all(state.rosterImages.map(toPayload)) });
     if (!Array.isArray(result.teams)) throw new Error('Resposta inválida do serviço: lista de equipes ausente.');
     const next = Array.from({ length: 12 }, (_, i) => ({ slot: i + 1, teamName: '' }));
@@ -702,6 +1339,7 @@ async function analyzeDrop() {
     validateImageFiles(state.slotImages, 3);
     validateImageFiles(drop.resultImages, 2);
     validateImageFiles([...state.slotImages, ...drop.resultImages], 5);
+    validateOriginalImageTotal([...state.slotImages, ...drop.resultImages]);
     const [slotImages, resultImages] = await Promise.all([
       Promise.all(state.slotImages.map(toPayload)), Promise.all(drop.resultImages.map(toPayload)),
     ]);
@@ -729,13 +1367,21 @@ async function analyzeDrop() {
   } catch (error) { state.error = error.message; state.message = ''; }
   finally { state.busy = false; render(); }
 }
-async function exportPng() {
+async function exportJpeg() {
   if (!state.template) return;
   try {
     const bitmap = await createImageBitmap(state.template);
+    const scale = Math.min(1, 1080 / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
-    canvas.width = bitmap.width; canvas.height = bitmap.height;
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('O navegador não conseguiu preparar a imagem JPEG.');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(scale, scale);
     ctx.drawImage(bitmap, 0, 0);
     await document.fonts.load('700 48px Stapel');
     const rows = standings();
@@ -766,21 +1412,21 @@ async function exportPng() {
       ctx.fillText(String(row.points), pointsX, y);
       ctx.restore();
     });
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('O navegador não conseguiu gerar o arquivo PNG.');
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+    if (!blob) throw new Error('O navegador não conseguiu gerar o arquivo JPEG.');
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `freitas-${state.event}-leaderboard.png`;
+    link.download = `freitas-${state.event}-leaderboard.jpg`;
     link.click();
     URL.revokeObjectURL(url);
-    setNotice('success', `PNG exportado em ${bitmap.width} × ${bitmap.height} px.`);
+    setNotice('success', `JPEG exportado em ${canvas.width} × ${canvas.height} px (${Math.round(blob.size / 1024)} KB).`);
   } catch (error) { setNotice('error', error.message || 'Falha ao exportar a tabela.'); }
   render();
 }
 export async function openFreefireScoringAdmin() {
   if (!canOpen() || !visible()) return;
   state.error = '';
-  await loadTemplate();
+  await Promise.all([loadTemplate(), loadMatchResultTemplate()]);
   render();
 }

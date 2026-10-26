@@ -818,6 +818,10 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 .ff-workspace .ff-panel h2 { margin:0; color:#1e2a2c; font-size:1rem; font-weight:800; letter-spacing:-.02em; }
 .ff-workspace .ff-panel-heading p { margin:.2rem 0 0; color:#7c8984; font-size:.75rem; }
 .ff-workspace .ff-config-grid { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
+.ff-workspace .ff-quality-setting { display:grid; grid-template-columns:minmax(0,1fr) minmax(240px,.85fr); gap:.35rem .8rem; align-items:center; margin-top:.8rem; padding:.75rem; border:1px solid #dce3dc; border-radius:9px; background:#f8faf6; }
+.ff-workspace .ff-quality-setting label { color:#65756e; font-size:.7rem; font-weight:700; }
+.ff-workspace .ff-quality-setting select { min-width:0; width:100%; border:1px solid #dce3dd; border-radius:8px; background:#fff; color:#253235; padding:.55rem .65rem; font:500 .72rem 'DM Sans',sans-serif; }
+.ff-workspace .ff-quality-setting small { grid-column:1/-1; color:#7c8984; font-size:.63rem; line-height:1.45; }
 .ff-workspace .ff-field { display:flex; flex-direction:column; gap:.42rem; color:#65756e; font-size:.7rem; font-weight:700; }
 .ff-workspace .ff-field select, .ff-workspace .ff-field textarea, .ff-workspace .ff-roster-row input,
 .ff-workspace .ff-edit-table input, .ff-workspace .ff-edit-table select {
@@ -845,7 +849,7 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 .ff-workspace .ff-button-primary:hover { background:#d85d2c; }
 .ff-workspace .ff-note { margin:.72rem 0 0; color:#8a958f; font-size:.65rem; line-height:1.5; }
 .ff-workspace .ff-roster-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.55rem; margin:.75rem 0; }
-.ff-workspace .ff-file-label { color:#85928b; font-size:.68rem; }
+.ff-workspace .ff-file-label { max-width:100%; overflow-wrap:anywhere; color:#85928b; font-size:.62rem; }
 .ff-workspace .ff-roster-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.45rem; }
 .ff-workspace .ff-roster-row { display:flex; align-items:center; gap:.42rem; min-width:0; }
 .ff-workspace .ff-slot { display:grid; place-items:center; flex:0 0 29px; height:29px; border-radius:7px; background:#eef1e9; color:#64736a; font:500 .65rem 'DM Mono',monospace; }
@@ -866,12 +870,19 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 .ff-workspace .ff-upload-tile b { font-size:.67rem; }
 .ff-workspace .ff-upload-tile small { overflow:hidden; color:#87928c; font-size:.58rem; text-overflow:ellipsis; white-space:nowrap; }
 .ff-workspace .ff-upload-tile span { color:#d66537; font-size:.59rem; font-weight:700; }
+.ff-workspace .ff-upload-tile.ff-drop-target-active,
+.ff-workspace .ff-button.ff-drop-target-active { border-color:#dc8052!important; background:#fff3ed!important; box-shadow:0 0 0 3px rgba(242,106,50,.14); }
+.ff-workspace .ff-upload-tile.ff-drop-target-active { border-style:solid; }
+.ff-workspace .ff-drop-target-loading { cursor:progress; opacity:.7; }
 .ff-workspace .ff-current-drop > .ff-button { width:100%; }
 .ff-workspace .ff-upload-column { min-width:0; }
 .ff-workspace .ff-image-previews { display:flex; gap:.3rem; max-width:100%; margin-top:.35rem; overflow:auto; }
 .ff-workspace .ff-image-preview { display:flex; min-width:0; align-items:center; gap:.35rem; padding:.2rem; border:1px solid #e5e9e3; border-radius:6px; background:#f8faf6; }
 .ff-workspace .ff-image-preview img { width:38px; height:38px; flex:0 0 38px; border-radius:4px; object-fit:cover; }
 .ff-workspace .ff-image-preview .ff-image-name { max-width:110px; overflow:hidden; color:#68766e; font-size:.56rem; text-overflow:ellipsis; white-space:nowrap; }
+.ff-workspace .ff-image-meta { display:grid; min-width:0; max-width:220px; gap:.08rem; }
+.ff-workspace .ff-image-meta b { overflow:hidden; color:#68766e; font-size:.55rem; text-overflow:ellipsis; white-space:nowrap; }
+.ff-workspace .ff-image-meta small { overflow:hidden; color:#87928c; font-size:.49rem; text-overflow:ellipsis; white-space:nowrap; }
 .ff-workspace .ff-remove-image { display:grid; width:21px; height:21px; flex:0 0 21px; place-items:center; border:0; border-radius:50%; background:#ffe9e2; color:#b94f31; font-size:1rem; font-weight:800; line-height:1; cursor:pointer; }
 .ff-workspace .ff-remove-image:hover { background:#f5d3c8; }
 .ff-workspace .ff-remove-image:focus-visible { outline:2px solid #c65b37; outline-offset:2px; }
@@ -945,6 +956,8 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
     .ff-workspace { margin-top:0; }
     .ff-workspace .ff-panel { padding:.95rem; }
     .ff-workspace .ff-config-grid { grid-template-columns:1fr; }
+    .ff-workspace .ff-quality-setting { grid-template-columns:1fr; }
+    .ff-workspace .ff-quality-setting small { grid-column:auto; }
     .ff-workspace .ff-roster-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .ff-workspace .ff-image-inputs { grid-template-columns:1fr; }
     .ff-workspace .ff-template-config { align-items:flex-start; }
@@ -2161,4 +2174,49 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
     flex: 0 0 auto;
     margin-top: .12rem;
     accent-color: #d66537;
+}
+
+.ff-workspace .ff-scoring-mode-switch {
+    display: flex;
+    gap: .45rem;
+    margin: 0 0 1rem;
+    padding: .3rem;
+    width: fit-content;
+    border: 1px solid #d8e2df;
+    border-radius: 10px;
+    background: #f2f7f4;
+}
+
+.ff-workspace .ff-scoring-mode-switch button {
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #586a66;
+    padding: .65rem .9rem;
+    font: 700 .76rem 'DM Sans', sans-serif;
+    cursor: pointer;
+    transition: background .15s, color .15s, box-shadow .15s;
+}
+
+.ff-workspace .ff-scoring-mode-switch button:hover {
+    color: #087f78;
+}
+
+.ff-workspace .ff-scoring-mode-switch button[aria-pressed="true"] {
+    background: #087f78;
+    color: #fff;
+    box-shadow: 0 2px 5px rgba(8, 127, 120, .2);
+}
+
+.ff-workspace .ff-scoring-mode-switch button:focus-visible {
+    outline: 3px solid rgba(8, 127, 120, .25);
+    outline-offset: 2px;
+}
+
+@media (max-width: 540px) {
+    .ff-workspace .ff-scoring-mode-switch {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+    }
 }

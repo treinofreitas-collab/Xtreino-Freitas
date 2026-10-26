@@ -8,8 +8,8 @@ const router: IRouter = Router();
 const ALLOWED_ROLES = new Set(["admin", "ceo", "gerente", "socio"]);
 const ALLOWED_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const MAX_IMAGES_PER_ANALYSIS = 5;
-const MAX_TOTAL_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_REQUESTS_PER_MINUTE = 15;
+const MAX_TOTAL_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_REQUESTS_PER_MINUTE = 7;
 const requestWindows = new Map<string, { startedAt: number; count: number }>();
 const placementPoints = [12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0];
 
@@ -152,7 +152,7 @@ function enforceImagePayload(images: AnalysisImage[]) {
     0,
   );
   if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
-    throw new ApiError(413, "As imagens passaram do limite de 5 MB. Reduza o tamanho e tente novamente.");
+    throw new ApiError(413, "As imagens passaram do limite de 4 MB. Reduza o tamanho e tente novamente.");
   }
 }
 
@@ -184,15 +184,11 @@ function parseOfficialTeams(value: unknown): OfficialTeam[] {
 }
 
 function getAiClient() {
-  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-  if (!apiKey || !baseUrl) {
-    throw new ApiError(503, "A análise automática ainda não está configurada neste servidor.");
+  const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new ApiError(503, "A chave do Google AI Studio não está configurada no servidor.");
   }
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: { apiVersion: "", baseUrl },
-  });
+  return new GoogleGenAI({ apiKey });
 }
 
 async function generateJson(prompt: string, images: AnalysisImage[]) {
@@ -209,7 +205,7 @@ async function generateJson(prompt: string, images: AnalysisImage[]) {
 
   try {
     const response = await getAiClient().models.generateContent({
-      model: "gemini-3.8-flash",
+      model: "gemini-3.5-flash-lite",
       contents: [{ role: "user", parts }],
       config: {
         maxOutputTokens: 8192,
@@ -221,9 +217,81 @@ async function generateJson(prompt: string, images: AnalysisImage[]) {
     return JSON.parse(raw) as unknown;
   } catch (error) {
     if (error instanceof ApiError) throw error;
+
+    const errorRecord = isRecord(error) ? error : {};
+    const responseRecord = isRecord(errorRecord.response) ? errorRecord.response : {};
+    const errorObject = isRecord(errorRecord.error) ? errorRecord.error : {};
+    const statusValue = [
+      errorRecord.status,
+      errorRecord.statusCode,
+      responseRecord.status,
+      errorRecord.code,
+    ].find((value) => {
+      const numericValue = Number(value);
+      return Number.isInteger(numericValue) && numericValue >= 400 && numericValue < 600;
+    });
+    const statusCode = statusValue === undefined ? null : Number(statusValue);
+    const rawProviderCode =
+      typeof errorRecord.status === "string"
+        ? errorRecord.status
+        : typeof errorRecord.code === "string"
+          ? errorRecord.code
+          : typeof errorObject.status === "string"
+            ? errorObject.status
+            : "";
+    const providerCode = /^[A-Za-z0-9_.-]{1,64}$/.test(rawProviderCode)
+      ? rawProviderCode
+      : null;
+    const rawName = typeof errorRecord.name === "string" ? errorRecord.name : "";
+    const errorName = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(rawName) ? rawName : "Error";
+    const isQuotaFailure =
+      statusCode === 429 || /RESOURCE_EXHAUSTED|QUOTA/i.test(providerCode || "");
+    const failureCategory = isQuotaFailure
+      ? "quota_or_rate_limit"
+      : statusCode === 401 || statusCode === 403
+        ? "authentication_or_permissions"
+        : statusCode === 404
+          ? "model_unavailable"
+          : statusCode === 400
+            ? "invalid_provider_request"
+            : statusCode !== null && statusCode >= 500
+              ? "provider_unavailable"
+              : "unclassified_provider_error";
+
+    console.error("[Free Fire] Gemini request failed", {
+      statusCode,
+      providerCode,
+      errorName,
+      failureCategory,
+    });
+
+    if (isQuotaFailure) {
+      throw new ApiError(
+        429,
+        "O Gemini atingiu um limite de uso ou cota. Aguarde a cota do Google AI Studio ser renovada e tente novamente. Nenhuma pontuação foi aplicada.",
+      );
+    }
+    if (statusCode === 401 || statusCode === 403) {
+      throw new ApiError(
+        503,
+        "O Google AI Studio recusou a análise. A equipe precisa revisar a configuração da chave no Preview.",
+      );
+    }
+    if (statusCode === 404) {
+      throw new ApiError(
+        503,
+        "O modelo de análise não está disponível para esta configuração. A equipe precisa revisar o serviço.",
+      );
+    }
+    if (statusCode === 400) {
+      throw new ApiError(
+        503,
+        "O Google não aceitou os dados desta análise. Confira as imagens e tente novamente.",
+      );
+    }
     throw new ApiError(
       503,
-      "Não consegui ler as imagens com segurança. Envie capturas mais nítidas ou tente novamente.",
+      "O serviço de análise não concluiu esta leitura. Nenhuma pontuação foi aplicada; tente novamente mais tarde.",
     );
   }
 }
@@ -275,24 +343,73 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
           if (!isRecord(player)) return [];
           const name = typeof player.name === "string" ? player.name.trim().slice(0, 80) : "";
           const playerKills = Number(player.kills);
+          const rawLobbySlot = player.lobbySlot;
+          const parsedLobbySlot =
+            rawLobbySlot === null || rawLobbySlot === undefined || rawLobbySlot === ""
+              ? null
+              : Number(rawLobbySlot);
+          const lobbySlot =
+            parsedLobbySlot !== null &&
+            Number.isInteger(parsedLobbySlot) &&
+            parsedLobbySlot >= 1 &&
+            parsedLobbySlot <= 12
+              ? parsedLobbySlot
+              : null;
           return name && Number.isInteger(playerKills) && playerKills >= 0 && playerKills <= 99
-            ? [{ name, kills: playerKills }]
+            ? [{ name, kills: playerKills, lobbySlot }]
             : [];
         }).slice(0, 6)
       : [];
-    const confidence =
+    const playerSlotCounts = new Map<number, number>();
+    for (const player of players) {
+      if (player.lobbySlot !== null) {
+        playerSlotCounts.set(
+          player.lobbySlot,
+          (playerSlotCounts.get(player.lobbySlot) || 0) + 1,
+        );
+      }
+    }
+    const sortedPlayerSlots = [...playerSlotCounts.entries()].sort((a, b) => b[1] - a[1]);
+    const majorityPlayerSlot =
+      sortedPlayerSlots[0]?.[1] >= 2 && sortedPlayerSlots[0][1] > (sortedPlayerSlots[1]?.[1] || 0)
+        ? sortedPlayerSlots[0][0]
+        : null;
+    const resolvedSlot = majorityPlayerSlot ?? slot;
+    const playerSlotConflict = playerSlotCounts.size > 1;
+    const playerSlotMismatch = majorityPlayerSlot !== null && majorityPlayerSlot !== slot;
+    const playerKillsTotal = players.reduce((total, player) => total + player.kills, 0);
+    const killTotalMismatch = players.length > 0 && playerKillsTotal !== kills;
+    const modelConfidence =
       item.confidence === "high" || item.confidence === "medium" || item.confidence === "low"
         ? item.confidence
         : "low";
+    const confidence =
+      killTotalMismatch || playerSlotConflict || playerSlotMismatch ? "low" : modelConfidence;
+    const modelNotes = typeof item.notes === "string" ? item.notes.trim() : "";
+    const validationNotes: string[] = [];
+    if (killTotalMismatch) {
+      validationNotes.push(
+        `A soma individual (${playerKillsTotal}) difere do total (${kills}); confira os abates no placar.`,
+      );
+    }
+    if (playerSlotMismatch) {
+      validationNotes.push(`Os jogadores indicam o slot ${majorityPlayerSlot}; confira a equipe atribuída.`);
+    } else if (playerSlotConflict) {
+      validationNotes.push("Os jogadores foram associados a mais de um slot; confira a equipe.");
+    }
+    const notes = [modelNotes, ...validationNotes]
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 220);
     return [
       {
         position,
-        slot,
-        teamName: slot === null ? null : officialNames.get(slot) || null,
+        slot: resolvedSlot,
+        teamName: resolvedSlot === null ? null : officialNames.get(resolvedSlot) || null,
         kills,
         players,
         confidence,
-        notes: typeof item.notes === "string" ? item.notes.slice(0, 220) : "",
+        notes,
       },
     ];
   });
@@ -305,6 +422,95 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
         .slice(0, 40)
     : [];
   return { placements, unmatchedPlayers };
+}
+
+function normalizePlayerName(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function playerFingerprint(
+  placement: ReturnType<typeof normalizePlacements>["placements"][number],
+) {
+  return placement.players
+    .map((player) => `${normalizePlayerName(player.name)}:${player.kills}:${player.lobbySlot ?? ""}`)
+    .sort()
+    .join("|");
+}
+
+function markPlacementForReview(
+  placement: ReturnType<typeof normalizePlacements>["placements"][number],
+  note: string,
+) {
+  return {
+    ...placement,
+    confidence: "low" as const,
+    notes: [note, placement.notes].filter(Boolean).join(" ").slice(0, 220),
+  };
+}
+
+function reconcilePlacements(
+  first: ReturnType<typeof normalizePlacements>,
+  second: ReturnType<typeof normalizePlacements>,
+) {
+  const firstByPosition = new Map(first.placements.map((placement) => [placement.position, placement]));
+  const secondPositions = new Set(second.placements.map((placement) => placement.position));
+  const placements = second.placements.map((reviewed) => {
+    const initial = firstByPosition.get(reviewed.position);
+    if (!initial) {
+      return markPlacementForReview(
+        reviewed,
+        "Só a segunda conferência identificou esta posição; confira no placar.",
+      );
+    }
+
+    const differences: string[] = [];
+    if (initial.kills !== reviewed.kills) {
+      differences.push(`abates: ${initial.kills} vs ${reviewed.kills}`);
+    }
+    if (initial.slot !== reviewed.slot) {
+      differences.push(`slot: ${initial.slot ?? "?"} vs ${reviewed.slot ?? "?"}`);
+    }
+    if (playerFingerprint(initial) !== playerFingerprint(reviewed)) {
+      differences.push("jogadores/abates individuais");
+    }
+
+    return differences.length
+      ? markPlacementForReview(
+          reviewed,
+          `As conferências divergiram (${differences.join("; ")}); confira no placar.`,
+        )
+      : reviewed;
+  });
+
+  for (const initial of first.placements) {
+    if (!secondPositions.has(initial.position)) {
+      placements.push(
+        markPlacementForReview(
+          initial,
+          "A primeira conferência identificou esta posição, mas a segunda não; confira no placar.",
+        ),
+      );
+    }
+  }
+
+  const unmatchedPlayers: string[] = [];
+  const seenUnmatched = new Set<string>();
+  for (const name of [...first.unmatchedPlayers, ...second.unmatchedPlayers]) {
+    const key = normalizePlayerName(name);
+    if (key && !seenUnmatched.has(key)) {
+      unmatchedPlayers.push(name);
+      seenUnmatched.add(key);
+    }
+  }
+
+  return {
+    placements: placements.sort((a, b) => a.position - b.position),
+    unmatchedPlayers: unmatchedPlayers.slice(0, 40),
+  };
 }
 
 router.post("/freefire/analyze", async (req, res) => {
@@ -348,17 +554,34 @@ router.post("/freefire/analyze", async (req, res) => {
       "As primeiras imagens mostram a sala/lobby e a composição de jogadores em cada slot; depois estão as imagens com o resultado final e abates individuais.",
       "Use o número do slot no lobby para atribuir cada jogador ao time da lista oficial abaixo.",
       "A lista oficial por slot é a fonte de verdade: ignore tags ou nomes de clã que indiquem outro time.",
+      "Trabalhe em duas etapas: primeiro leia os nicks e slots do lobby; depois associe cada nick do placar a esse registro. Não use a posição da equipe no ranking para inferir o slot.",
       "Se um jogador aparecer no placar final dentro do grupo/slot de um time, mas não aparecer nas fotos iniciais do lobby, trate-o como reserva daquele time e inclua os abates dele na soma da equipe.",
       "Não marque um jogador como sem vínculo somente por ele não aparecer no lobby inicial. Use o grupo/slot em que aparece no placar final para associar reservas; não invente uma associação se o placar não mostrar claramente o time.",
       teamList,
-      "Para cada posição visível no resultado, some os abates individuais de todos os jogadores agrupados naquele slot, incluindo reservas, e retorne a lista individual em players.",
+      "Leia a coluna de abates de cada jogador visível, sem pular linhas. Inclua reservas agrupadas com o time. Retorne cada jogador e seus abates em players; kills deve ser exatamente a soma dos abates listados.",
+      "Em cada jogador, inclua lobbySlot com o slot correspondente no lobby; use null para reserva não encontrada. Os jogadores reconhecidos da mesma equipe devem apontar para o mesmo slot. Se houver conflito, mantenha confidence como low e explique em notes.",
+      "Faça uma conferência final: compare o total kills com a soma de players. Se algum número ou jogador estiver ilegível, não adivinhe; mantenha confidence como low e explique em notes.",
       "Não invente posições, slots, nomes, abates ou dados fora das imagens. Se não conseguir ligar um time ao resultado, use slot:null, teamName:null e explique em notes.",
-      "Retorne somente JSON no formato: {\"placements\":[{\"position\":1,\"slot\":1,\"teamName\":\"nome oficial ou null\",\"kills\":5,\"players\":[{\"name\":\"jogador\",\"kills\":2}],\"confidence\":\"high|medium|low\",\"notes\":\"\"}],\"unmatchedPlayers\":[\"jogador não associado\"]}.",
+      "Retorne somente JSON no formato: {\"placements\":[{\"position\":1,\"slot\":1,\"teamName\":\"nome oficial ou null\",\"kills\":5,\"players\":[{\"name\":\"jogador\",\"kills\":2,\"lobbySlot\":1}],\"confidence\":\"high|medium|low\",\"notes\":\"\"}],\"unmatchedPlayers\":[\"jogador não associado\"]}.",
       "Inclua no máximo 12 posições; cada jogador deve aparecer em players com o número de abates lido.",
       "A pontuação é calculada pelo sistema depois; não calcule pontos de colocação.",
     ].join("\n");
-    const result = await generateJson(prompt, images);
-    res.json(normalizePlacements(result, officialTeams));
+    const firstResult = normalizePlacements(await generateJson(prompt, images), officialTeams);
+    const verificationPrompt = [
+      "Faça uma segunda conferência independente das imagens abaixo para validar o placar.",
+      "Primeiro, leia o lobby, os slots, todos os jogadores visíveis e cada valor de abates diretamente nas imagens sem usar os valores da primeira leitura.",
+      "Depois, compare sua leitura independente com a primeira e corrija qualquer slot, jogador ou abate que não corresponda às imagens. Não presuma que a primeira leitura está correta.",
+      "Retorne o resultado completo no mesmo formato JSON solicitado, incluindo todas as posições e jogadores reconhecidos. Não retorne apenas as diferenças.",
+      "Primeira leitura para conferir:",
+      JSON.stringify(firstResult),
+      "Instruções e lista oficial:",
+      prompt,
+    ].join("\n");
+    const secondResult = normalizePlacements(
+      await generateJson(verificationPrompt, images),
+      officialTeams,
+    );
+    res.json(reconcilePlacements(firstResult, secondResult));
   } catch (error) {
     const apiError =
       error instanceof ApiError
