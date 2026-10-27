@@ -935,6 +935,7 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 .ff-workspace .ff-notice.error { border:1px solid #edc5b9; background:#fff2ed; color:#a64f36; }
 .ff-workspace .ff-notice.success { border:1px solid #cfe2d1; background:#eff7ef; color:#45734e; }
 .ff-workspace .ff-error { margin:1rem 0; padding:1rem; color:#9a402b; background:#fff1eb; border:1px solid #efc4b6; border-radius:10px; }
+.ff-workspace .ff-error [data-freefire-error-detail] { display:block; margin:.45rem 0; padding:.55rem; border-radius:7px; background:#fff9f6; color:#773d31; font:600 .72rem/1.45 ui-monospace,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 .ff-workspace .ff-busy { display:flex; align-items:center; gap:.75rem; padding:.85rem 1rem; margin-bottom:1rem; border:1px solid #e7d8c7; background:#fff8f0; border-radius:9px; }
 .ff-workspace .ff-busy b, .ff-workspace .ff-busy small { display:block; }
 .ff-workspace .ff-busy b { font-size:.76rem; }

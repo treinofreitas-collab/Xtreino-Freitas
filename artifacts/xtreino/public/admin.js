@@ -13552,7 +13552,21 @@ window.loadPageData = async function(page, requestedSectionId) {
                         .catch(error => {
                             console.error('[Free Fire] Falha ao carregar o placar:', error);
                             const root = document.getElementById('freefireScoringRoot');
-                            if (root) root.innerHTML = '<div class="ff-error" role="alert">Não foi possível abrir o placar. Atualize a seção para tentar novamente.</div>';
+                            if (root) {
+                                root.innerHTML = '<div class="ff-error" role="alert"><strong>Não foi possível abrir o placar.</strong><br><span data-freefire-error-detail></span><br><small>Atualize a seção para tentar novamente.</small></div>';
+                                const detail = root.querySelector('[data-freefire-error-detail]');
+                                if (detail) {
+                                    const cause = error?.cause;
+                                    const name = cause?.name || error?.name || 'Erro';
+                                    const message = cause?.message || error?.message || String(error || 'Erro desconhecido');
+                                    const stack = cause?.stack || error?.stack || '';
+                                    detail.textContent = [
+                                        `Etapa: ${error?.scoringStage || 'importação ou inicialização'}`,
+                                        `${name}: ${message}`,
+                                        ...stack.split('\n').slice(0, 3),
+                                    ].join('\n');
+                                }
+                            }
                         });
                     break;
                 case 'sectionShirtOrders':

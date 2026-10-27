@@ -2094,13 +2094,23 @@ async function exportJpeg() {
 export async function openFreefireScoringAdmin() {
   if (!canOpen() || !visible()) return;
   state.error = '';
-  // Render the workspace first; optional templates and logo catalogs must not
-  // prevent the scoring tools from opening when a network/storage request fails.
-  render();
-  await Promise.allSettled([
-    loadTemplate(),
-    loadMatchResultTemplate(),
-    matchResultState.eventType === 'modo-liga' ? loadModoLigaLogoCatalog(true) : Promise.resolve(),
-  ]);
-  render();
+  let stage = 'montagem inicial';
+  try {
+    // Render the workspace first; optional templates and logo catalogs must not
+    // prevent the scoring tools from opening when a network/storage request fails.
+    render();
+    stage = 'carregamento dos modelos e logos';
+    await Promise.allSettled([
+      loadTemplate(),
+      loadMatchResultTemplate(),
+      matchResultState.eventType === 'modo-liga' ? loadModoLigaLogoCatalog(true) : Promise.resolve(),
+    ]);
+    stage = 'atualização final da tela';
+    render();
+  } catch (cause) {
+    const detail = cause?.message || String(cause || 'erro sem mensagem');
+    const error = new Error(`Falha na etapa ${stage}: ${detail}`, { cause });
+    error.scoringStage = stage;
+    throw error;
+  }
 }
