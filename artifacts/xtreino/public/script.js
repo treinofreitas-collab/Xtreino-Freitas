@@ -650,7 +650,7 @@ async function checkAdminAccess() {
             
 
             // Cargos sem whitelist adicional (segurança garantida pelo login do admin.html)
-            if (['ceo', 'gerente', 'staff', 'moderador', 'operador', 'suporte'].includes(role)) {
+            if (['ceo', 'gerente', 'staff', 'moderador', 'operador', 'suporte', 'streamer'].includes(role)) {
                 return true;
             }
             // Qualquer cargo admin reconhecido tem acesso ao botão
