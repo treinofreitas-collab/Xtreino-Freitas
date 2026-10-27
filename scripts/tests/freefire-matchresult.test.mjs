@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { createMatchResultView } from '../../artifacts/xtreino/public/js/admin-freefire-matchresult-view.mjs';
 import {
@@ -17,6 +18,17 @@ import {
   parseMatchResultLog,
   resolveMatchResultTeam,
 } from '../../artifacts/xtreino/public/js/freefire-matchresult.mjs';
+
+test('imports the team key normalizer used by the Modo Liga scoring view', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    source,
+    /import\s*\{[^}]*\bmatchResultTeamKey\b[^}]*\}\s*from\s*['"]\.\/freefire-matchresult\.mjs['"]/s,
+  );
+});
 
 function teamBlock(teamName, rank, playerKills, overrides = {}) {
   const kills = playerKills.reduce((sum, value) => sum + value, 0);
