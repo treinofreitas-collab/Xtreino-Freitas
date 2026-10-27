@@ -2,6 +2,7 @@ import {
   applyLogoBrush,
   hasTransparentEdgeBackground,
   hasUniformEdgeBackground,
+  padImageDataToSquare,
   removeConnectedEdgeBackground,
 } from './spec-logo-image-tools.mjs';
 
@@ -156,7 +157,7 @@ function renderShell() {
             </span>
           </label>
         </div>
-        <p class="mt-2 text-xs text-slate-500">O automático remove a cor uniforme que toca as bordas; se o fundo for variado, usa a IA. Você também pode manter a logo original, sem remover o fundo.</p>
+        <p class="mt-2 text-xs text-slate-500">O automático remove a cor uniforme que toca as bordas; se o fundo for variado, usa a IA. Você também pode manter a logo original, sem remover o fundo. A prévia e o PNG final ficam quadrados (1:1), com a arte centralizada e sem cortes.</p>
         <div id="specLogoPreview" class="mt-4 hidden">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <p class="text-xs font-semibold text-slate-700">Prévia da logo</p>
@@ -510,16 +511,18 @@ async function processSelectedLogo() {
       methodDescription = 'remoção por IA';
     }
 
+    const squareSourceImageData = padImageDataToSquare(prepared.sourceImageData);
+    const squareProcessedImageData = padImageDataToSquare(processedImageData);
     pendingLogo = {
       ...selected,
-      sourceImageData: prepared.sourceImageData,
-      initialImageData: cloneImageData(processedImageData),
-      imageData: processedImageData,
+      sourceImageData: cloneImageData(squareSourceImageData),
+      initialImageData: cloneImageData(squareProcessedImageData),
+      imageData: cloneImageData(squareProcessedImageData),
       methodDescription,
       originalName: file.name,
     };
     editHistory = [];
-    drawPreview(processedImageData);
+    drawPreview(pendingLogo.imageData);
     const preview = root.querySelector('#specLogoPreview');
     const previewName = root.querySelector('#specLogoPreviewName');
     const undoButton = root.querySelector('#specLogoUndo');

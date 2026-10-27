@@ -10,6 +10,22 @@ function getSize(imageData) {
   return { width, height, pixelCount: width * height };
 }
 
+export function padImageDataToSquare(imageData) {
+  const { width, height } = getSize(imageData);
+  const size = Math.max(width, height);
+  const offsetX = Math.floor((size - width) / 2);
+  const offsetY = Math.floor((size - height) / 2);
+  const data = new Uint8ClampedArray(size * size * 4);
+
+  for (let y = 0; y < height; y += 1) {
+    const sourceOffset = y * width * 4;
+    const targetOffset = ((y + offsetY) * size + offsetX) * 4;
+    data.set(imageData.data.subarray(sourceOffset, sourceOffset + width * 4), targetOffset);
+  }
+
+  return { data, width: size, height: size };
+}
+
 function averagePatch(data, width, height, startX, startY, patchSize) {
   let red = 0;
   let green = 0;

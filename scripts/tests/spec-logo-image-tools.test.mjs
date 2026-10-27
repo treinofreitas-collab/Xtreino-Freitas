@@ -4,6 +4,7 @@ import {
   applyLogoBrush,
   hasTransparentEdgeBackground,
   hasUniformEdgeBackground,
+  padImageDataToSquare,
   removeConnectedEdgeBackground,
 } from '../../artifacts/xtreino/public/js/spec-logo-image-tools.mjs';
 
@@ -22,6 +23,22 @@ function setPixel(imageData, x, y, color) {
   const offset = (y * imageData.width + x) * 4;
   imageData.data.set(color, offset);
 }
+
+test('pads a non-square logo into a transparent square without cropping', () => {
+  const source = createImageData(2, 4, [12, 34, 56, 255]);
+  const square = padImageDataToSquare(source);
+
+  assert.equal(square.width, 4);
+  assert.equal(square.height, 4);
+  for (let y = 0; y < square.height; y += 1) {
+    assert.equal(square.data[(y * square.width) * 4 + 3], 0);
+    assert.equal(square.data[(y * square.width + 3) * 4 + 3], 0);
+    for (let x = 1; x <= 2; x += 1) {
+      const offset = (y * square.width + x) * 4;
+      assert.deepEqual([...square.data.slice(offset, offset + 4)], [12, 34, 56, 255]);
+    }
+  }
+});
 
 test('detects a uniform background from the four image edges', () => {
   const image = createImageData(8, 8, [248, 248, 248, 255]);
