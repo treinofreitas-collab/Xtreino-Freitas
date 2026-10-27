@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createMatchResultView } from '../../artifacts/xtreino/public/js/admin-freefire-matchresult-view.mjs';
 import {
+  getModoLigaTemplateLayout,
   getModoLigaTemplateRowCenter,
   parseRoster,
 } from '../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs';
+import { specLogoCodeForLetter } from '../../artifacts/xtreino/public/js/admin-spec-logos.mjs';
 import {
   LBFF_PLACEMENT_POINTS_15,
   calculateMatchResultStandings,
@@ -66,8 +68,8 @@ test('normalizes equivalent team names and requires one file for every selected 
 
 test('centers all 15 Modo Liga rows inside the supplied table slots', () => {
   const templateRowCenters = [
-    436.25, 469.5, 502.75, 536, 570, 603.25, 636.25, 669.5,
-    704.25, 737.25, 770.25, 803.5, 836.5, 870, 903.25,
+    459.9, 491.6, 523.4, 555.1, 586.9, 618.6, 650.4, 682.1,
+    713.8, 745.6, 777.3, 809.1, 840.8, 872.6, 904.3,
   ];
   templateRowCenters.forEach((center, index) => {
     assert.ok(
@@ -75,6 +77,88 @@ test('centers all 15 Modo Liga rows inside the supplied table slots', () => {
       `slot ${index + 1} should be centered at approximately ${center}px`,
     );
   });
+});
+
+test('aligns Modo Liga logos, names, and score values to the updated template columns', () => {
+  const layout = getModoLigaTemplateLayout(1024);
+
+  assert.deepEqual(
+    {
+      logoCenterX: layout.logoCenterX,
+      teamNameCenterX: layout.teamNameCenterX,
+      winsCenterX: layout.winsCenterX,
+      killsCenterX: layout.killsCenterX,
+      pointsCenterX: layout.pointsCenterX,
+    },
+    {
+      logoCenterX: 133.5296,
+      teamNameCenterX: 287.0272,
+      winsCenterX: 448,
+      killsCenterX: 501.9648,
+      pointsCenterX: 557.4656,
+    },
+  );
+  assert.equal(layout.logoSize, 28.672);
+});
+
+test('shows logo upload controls only for the Modo Liga slot list', () => {
+  const container = {
+    innerHTML: '',
+    addEventListener() {},
+    removeEventListener() {},
+    replaceChildren() {},
+    contains() { return false; },
+  };
+  const view = createMatchResultView(container);
+  const rosterDraft = Array.from({ length: 15 }, (_, index) => ({
+    slot: index + 1,
+    teamName: `Time ${index + 1}`,
+    logoUrl: index === 0 ? '/assets/logo-time-1.webp' : '/assets/freefire-organizacao-logo.webp',
+    logoSource: index === 0 ? 'custom' : 'organization',
+  }));
+  const baseState = {
+    rosterDraft,
+    rosterCount: 15,
+    standings: [{
+      rank: 1,
+      slot: 1,
+      teamName: 'Time 1',
+      wins: 2,
+      kills: 3,
+      points: 15,
+      logoUrl: '/assets/logo-time-1.webp',
+    }],
+    organizationLogoUrl: '/assets/freefire-organizacao-logo.webp',
+    drops: [],
+    canManageLogos: true,
+    canImportPurchaseLogos: true,
+    purchaseLogoBusy: false,
+    purchaseLogoStatus: 'Encontramos 1 logo para 3 times informados.',
+    canExport: false,
+    canExportTop3: true,
+  };
+
+  view.render({ ...baseState, eventType: 'modo-liga' });
+  assert.equal((container.innerHTML.match(/data-roster-logo="/g) || []).length, 15);
+  assert.match(container.innerHTML, /data-roster-logo-reset="1"/);
+  assert.match(container.innerHTML, /class="ff-roster-grid mr-roster-grid-logos"/);
+  assert.match(container.innerHTML, /class="mr-standing-logo" src="\/assets\/logo-time-1\.webp"/);
+  assert.match(container.innerHTML, /logo Freitas é usada por padrão/);
+  assert.match(container.innerHTML, /data-export-top3/);
+  assert.match(container.innerHTML, /ponto de interrogação/);
+  assert.match(container.innerHTML, /data-import-purchase-logos/);
+  assert.match(container.innerHTML, /Buscar logos nas compras/);
+  assert.match(container.innerHTML, /Encontramos 1 logo para 3 times informados/);
+
+  view.render({ ...baseState, eventType: 'acesso' });
+  assert.doesNotMatch(container.innerHTML, /data-roster-logo="/);
+  assert.doesNotMatch(container.innerHTML, /data-roster-logo-reset="/);
+  assert.doesNotMatch(container.innerHTML, /data-export-top3/);
+  assert.doesNotMatch(container.innerHTML, /class="ff-roster-grid mr-roster-grid-logos"/);
+  assert.doesNotMatch(container.innerHTML, /class="mr-roster-logo"/);
+  assert.doesNotMatch(container.innerHTML, /data-import-purchase-logos/);
+  assert.match(container.innerHTML, /class="ff-roster-row"/);
+  view.destroy();
 });
 
 test('parses pasted lettered roster names immediately for image analysis slots', () => {
@@ -233,6 +317,38 @@ test('aggregates B!, A!, and P! across drops and preserves earned points for a m
     { teamName: 'Equipe A', wins: 1, kills: 4, points: 16 },
     { teamName: 'Equipe C', wins: 0, kills: 2, points: 2 },
   ]);
+});
+
+test('renders the Modo Liga hour selector for SPEC logo matching', () => {
+  const container = {
+    innerHTML: '',
+    addEventListener() {},
+    removeEventListener() {},
+    replaceChildren() { this.innerHTML = ''; },
+  };
+  const view = createMatchResultView(container);
+
+  view.render({
+    eventType: 'modo-liga',
+    eventLabel: 'Modo Liga',
+    eventHour: '19',
+    eventHours: ['19', '20', '21', '22', '23', '00'],
+    dropCount: 1,
+    drops: [],
+    standings: [],
+    rosterText: '',
+    rosterDraft: [],
+    rosterCount: 0,
+    canManageLogos: false,
+    canExport: false,
+    canExportTop3: false,
+    template: { available: true },
+    specLogoStatus: '3 logos SPEC carregadas.',
+  });
+
+  assert.match(container.innerHTML, /Horário do Modo Liga/);
+  assert.match(container.innerHTML, /<option value="19" selected>19H<\/option>/);
+  assert.match(container.innerHTML, /data-event-hour/);
 });
 
 test('renders MatchResult safely and keeps exports blocked for missing event artwork', () => {

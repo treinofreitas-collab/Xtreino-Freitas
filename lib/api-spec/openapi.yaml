@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: freefire-scoring
     description: Free Fire tournament screenshot analysis
+  - name: spec-logos
+    description: Manage and export SPEC logos by event hour
 paths:
   /healthz:
     get:
@@ -57,7 +59,108 @@ paths:
           description: Analysis rate limit reached
         "503":
           description: Image analysis is temporarily unavailable
+  /spec-logos/{hour}/export:
+    get:
+      operationId: exportSpecLogosForHour
+      tags: [spec-logos]
+      summary: Export the SPEC logos for one hour
+      description: Returns numeric-code PNG files as base64 for an authenticated administrator or operator.
+      security:
+        - FirebaseBearer: []
+      parameters:
+        - name: hour
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: ["19", "20", "21", "22", "23", "00"]
+      responses:
+        "200":
+          description: Logos for the selected hour
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpecLogoExportResponse"
+        "400":
+          description: Invalid hour
+        "401":
+          description: Firebase authentication required
+        "403":
+          description: Admin or operator role required
+        "413":
+          description: Export is too large
+        "503":
+          description: Firebase Storage is temporarily unavailable
+  /spec-logos/{hour}:
+    delete:
+      operationId: clearSpecLogosForHour
+      tags: [spec-logos]
+      summary: Delete all SPEC logos for one hour
+      description: Deletes the SPEC numeric-code PNG logos for the selected hour only. Restricted to administrators.
+      security:
+        - FirebaseBearer: []
+      parameters:
+        - name: hour
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: ["19", "20", "21", "22", "23", "00"]
+      responses:
+        "200":
+          description: Logos removed from the selected hour
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpecLogoClearResponse"
+        "400":
+          description: Invalid hour
+        "401":
+          description: Firebase authentication required
+        "403":
+          description: Administrator role required
+        "503":
+          description: Firebase Storage is temporarily unavailable or only partially cleared
+  /spec-logos/{hour}/{code}:
+    delete:
+      operationId: deleteSpecLogo
+      tags: [spec-logos]
+      summary: Delete one SPEC logo
+      description: Deletes one numeric-code PNG logo for an event hour. Restricted to administrators.
+      security:
+        - FirebaseBearer: []
+      parameters:
+        - name: hour
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: ["19", "20", "21", "22", "23", "00"]
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^9020000(3[4-9]|[45][0-9])$"
+      responses:
+        "204":
+          description: Logo deleted
+        "400":
+          description: Invalid hour or logo code
+        "401":
+          description: Firebase authentication required
+        "403":
+          description: Administrator role required
+        "404":
+          description: Logo not found
+        "503":
+          description: Firebase Storage is temporarily unavailable
 components:
+  securitySchemes:
+    FirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
   schemas:
     HealthStatus:
       type: object
@@ -166,4 +269,29 @@ components:
           type: array
           items:
             type: string
+    SpecLogoExportFile:
+      type: object
+      properties:
+        code:
+          type: string
+          pattern: "^9020000(3[4-9]|[45][0-9])$"
+        base64:
+          type: string
+          contentEncoding: base64
+      required: [code, base64]
+    SpecLogoExportResponse:
+      type: object
+      properties:
+        logos:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpecLogoExportFile"
+      required: [logos]
+    SpecLogoClearResponse:
+      type: object
+      properties:
+        deletedCount:
+          type: integer
+          minimum: 0
+      required: [deletedCount]
 

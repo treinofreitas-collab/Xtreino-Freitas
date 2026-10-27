@@ -113,6 +113,7 @@
         <p class="sidebar-section-label">Operações</p>
         <ul class="sidebar-menu">
             <li><button class="sidebar-link" data-page="operacoes" onclick="adminNav('operacoes','sectionFreefireScoring',this)"><i class="fas fa-crosshairs"></i><span>Placar Free Fire</span></button></li>
+            <li><button class="sidebar-link" data-page="operacoes" onclick="adminNav('operacoes','sectionSpecLogos',this)"><i class="fas fa-images"></i><span>Logos para SPEC</span></button></li>
             <li><button class="sidebar-link sidebar-danger" data-page="operacoes" onclick="adminNav('operacoes','sectionResetData',this)"><i class="fas fa-exclamation-triangle"></i><span>Reset Dados</span></button></li>
         </ul>
     </nav>
@@ -600,6 +601,7 @@
                             <button onclick="setPermissionsRoleFilter('gerente',this)" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs perm-role-btn hover:bg-gray-300">Gerente</button>
                             <button onclick="setPermissionsRoleFilter('vendedor',this)" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs perm-role-btn hover:bg-gray-300">Vendedor</button>
                             <button onclick="setPermissionsRoleFilter('design',this)"  class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs perm-role-btn hover:bg-gray-300">Design</button>
+                            <button onclick="setPermissionsRoleFilter('streamer',this)" class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs perm-role-btn hover:bg-gray-300">Streamer</button>
                             <button onclick="setPermissionsRoleFilter('socio',this)"   class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs perm-role-btn hover:bg-gray-300">Sócio</button>
                             <button onclick="setPermissionsRoleFilter('user',this)"    class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs perm-role-btn hover:bg-gray-300">Usuário</button>
                         </div>
@@ -1513,6 +1515,10 @@
 
             <!-- ===== PAGE: OPERAÇÕES ===== -->
             <div id="page-operacoes" class="admin-page hidden">
+
+            <section id="sectionSpecLogos" class="mt-6" style="display:none" aria-label="Logos para SPEC">
+                <div id="specLogosRoot"></div>
+            </section>
 
             <section id="sectionFreefireScoring" class="ff-workspace" style="display:none" aria-label="Placar Free Fire">
                 <div id="freefireScoringRoot"></div>

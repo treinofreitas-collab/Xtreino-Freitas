@@ -1,6 +1,22 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    function isSpecLogoManager() {
+      return request.auth != null &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in [
+          'admin', 'Admin', 'ADMIN',
+          'ceo', 'Ceo', 'CEO',
+          'gerente', 'Gerente', 'GERENTE'
+        ];
+    }
+
+    function isOutsideSpecLogoPath() {
+      return request.path[0] != 'teams' ||
+        request.path[1] != 'modo-liga' ||
+        request.path[2] != 'logos' ||
+        request.path[3] != 'spec';
+    }
+
     // Fotos de perfil: usuários podem ler/escrever apenas suas próprias fotos
     match /profile-photos/{userId}/{allPaths=**} {
       allow read: if request.auth != null;
@@ -25,11 +41,19 @@ service firebase.storage {
         ];
     }
 
-    // Logos de times: qualquer membro autenticado pode ler/escrever
-    // Inclui times cadastrados (teams/) e logos de inscrições (teams/{event}/logos/)
+    // Logos SPEC: leitura pública; gravação somente por admin, CEO e gerente.
+    // Ao publicar, remova regras antigas mais amplas para o mesmo caminho:
+    // as permissões do Firebase Storage são combinadas por OR.
+    match /teams/modo-liga/logos/spec/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSpecLogoManager();
+    }
+
+    // Logos de outros times: qualquer membro autenticado pode ler/escrever.
+    // A exceção SPEC acima evita que o acesso amplo libere gravação de logos SPEC.
     match /teams/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if request.auth != null && isOutsideSpecLogoPath();
     }
 
     // Outros arquivos: leitura pública, escrita bloqueada

@@ -8,6 +8,11 @@ import {
   parseMatchResultRoster,
   parseMatchResultLog,
 } from './freefire-matchresult.mjs';
+import {
+  SPEC_LOGO_HOURS,
+  loadModoLigaSpecLogoCatalog,
+  specLogoCodeForLetter,
+} from './admin-spec-logos.mjs';
 
 const EVENTS = [
   ['TREINO FREITAS', 'treino'],
@@ -23,11 +28,141 @@ const MAX_ANALYSIS_REQUEST_BYTES = 5_700_000;
 const MAX_DROPPED_REMOTE_IMAGE_BYTES = 25 * 1024 * 1024;
 const DB_NAME = 'freitas-freefire-config';
 const DB_STORE = 'table-templates';
-const MODO_LIGA_FIRST_ROW_CENTER = 0.426;
-const MODO_LIGA_ROW_PITCH = 0.03258;
+const MODO_LIGA_FIRST_ROW_CENTER = 0.4493;
+const MODO_LIGA_ROW_PITCH = 0.031;
+const MODO_LIGA_TEMPLATE_LAYOUT = Object.freeze({
+  logoCenterX: 0.1304,
+  logoSize: 0.028,
+  teamNameCenterX: 0.2803,
+  teamNameMaxWidth: 0.255,
+  winsCenterX: 0.4375,
+  killsCenterX: 0.4902,
+  pointsCenterX: 0.5444,
+});
+const MODO_LIGA_LOGO_TYPE = 'freefire-modo-liga-team-logo';
+const MODO_LIGA_LOGO_COLLECTION = 'championship_config';
+const ORGANIZATION_LOGO_URL = new URL('../assets/freefire-organizacao-logo.webp', import.meta.url).href;
+const MAX_TEAM_LOGO_FILE_BYTES = 5 * 1024 * 1024;
+let modoLigaLogoCatalog = new Map();
+let modoLigaLogoLoadPromise = null;
+
+export function getModoLigaTemplateLayout(imageWidth) {
+  return Object.fromEntries(
+    Object.entries(MODO_LIGA_TEMPLATE_LAYOUT).map(([key, ratio]) => [key, imageWidth * ratio]),
+  );
+}
 
 export function getModoLigaTemplateRowCenter(imageHeight, rowIndex) {
   return imageHeight * (MODO_LIGA_FIRST_ROW_CENTER + rowIndex * MODO_LIGA_ROW_PITCH);
+}
+
+export function getModoLigaTop3LogoLayout(imageWidth, imageHeight) {
+  return MODO_LIGA_TOP3_LOGO_POSITIONS.map(position => ({
+    centerX: imageWidth * position.centerX,
+    centerY: imageHeight * position.centerY,
+    size: imageWidth * position.size,
+  }));
+}
+
+export function getCenteredContainRect(sourceWidth, sourceHeight, centerX, centerY, maxWidth, maxHeight = maxWidth) {
+  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    x: centerX - width / 2,
+    y: centerY - height / 2,
+    width,
+    height,
+  };
+}
+
+export function getModoLigaTop3Teams(standings, logoCatalog = modoLigaLogoCatalog) {
+  return standings.slice(0, 3).map((team, index) => ({
+    ...team,
+    podiumPosition: index + 1,
+    customLogo: team.logoAsset || logoCatalog?.get?.(matchResultTeamKey(team.teamName)) || null,
+  }));
+}
+
+export function applyMatchResultStandingsLogos(standings, roster, fallbackLogoUrl = ORGANIZATION_LOGO_URL) {
+  const teams = Array.isArray(roster) ? roster : [];
+  const byName = new Map(teams
+    .map(team => [matchResultTeamKey(team?.teamName), team])
+    .filter(([key]) => Boolean(key)));
+  const bySlot = new Map(teams.map(team => [Number(team?.slot), team]));
+
+  return (Array.isArray(standings) ? standings : []).map(row => {
+    const team = byName.get(matchResultTeamKey(row?.teamName)) || bySlot.get(Number(row?.slot));
+    return {
+      ...row,
+      logoUrl: team?.logoUrl || fallbackLogoUrl,
+      logoSource: team?.logoSource || 'organization',
+      logoAsset: team?.logoAsset || null,
+    };
+  });
+}
+
+export function getModoLigaSpecLogoForSlot(slot, logoCatalog = matchResultState?.specLogoCatalog) {
+  const slotNumber = Number(slot);
+  if (!Number.isInteger(slotNumber) || slotNumber < 1 || slotNumber > 15) return null;
+  const letter = String.fromCharCode(64 + slotNumber);
+  const code = specLogoCodeForLetter(letter);
+  return code ? logoCatalog?.get?.(code) || null : null;
+}
+
+export function buildModoLigaPurchaseLogoCatalog(registrations, roster) {
+  const catalog = new Map();
+  const eligibleStatuses = new Set(['paid', 'approved', 'confirmed']);
+  if (!Array.isArray(registrations) || !Array.isArray(roster) || !roster.length) return catalog;
+
+  for (const registration of registrations) {
+    const status = String(registration?.status || '').trim().toLowerCase();
+    if (!eligibleStatuses.has(status)) continue;
+
+    const purchasedTeamName = String(
+      registration.teamName || registration.team || registration.squadName || '',
+    ).trim();
+    const logoUrl = String(
+      registration.teamLogoUrl || registration.teamLogoThumb || registration.logoUrl || '',
+    ).trim();
+    if (!purchasedTeamName || !logoUrl) continue;
+
+    const match = resolveMatchResultTeam(purchasedTeamName, roster);
+    if (!['exact', 'partial'].includes(match.status) || !match.team?.teamName) continue;
+
+    const key = matchResultTeamKey(match.team.teamName);
+    if (!key) continue;
+    const timestamp = purchaseTimestampMs(
+      registration.paidAt ?? registration.updatedAt ?? registration.createdAt,
+    );
+    const hasOriginalLogo = Boolean(registration.teamLogoUrl);
+    const current = catalog.get(key);
+    if (
+      !current ||
+      timestamp > current.purchaseTimestamp ||
+      (timestamp === current.purchaseTimestamp && hasOriginalLogo && !current.hasOriginalLogo)
+    ) {
+      catalog.set(key, {
+        teamName: match.team.teamName,
+        logoUrl,
+        storagePath: String(registration.teamLogoStoragePath || ''),
+        purchaseTimestamp: timestamp,
+        hasOriginalLogo,
+      });
+    }
+  }
+
+  return catalog;
+}
+
+export function getModoLigaPurchaseLookupRoster(parsedRoster) {
+  if (!Array.isArray(parsedRoster?.roster)) return [];
+  const blockingErrors = (parsedRoster.errors || []).filter(error =>
+    !String(error).startsWith('A lista precisa conter exatamente 15') &&
+    !String(error).endsWith('informe o nome da equipe.'),
+  );
+  if (blockingErrors.length) return [];
+  return parsedRoster.roster.filter(team => Boolean(String(team?.teamName || '').trim()));
 }
 
 function createSession(event) {
@@ -55,6 +190,7 @@ function blankMatchResultDrop(index) {
 function createMatchResultSession(eventType) {
   return {
     eventType,
+    eventHour: '',
     dropCount: 1,
     drops: Array.from({ length: 5 }, (_, index) => blankMatchResultDrop(index)),
     roster: [],
@@ -62,6 +198,18 @@ function createMatchResultSession(eventType) {
     rosterFileName: '',
     rosterDirty: false,
     rosterError: '',
+    logoStatus: '',
+    logoBusySlots: new Set(),
+    specLogoCatalog: new Map(),
+    specLogoLoadedHour: '',
+    specLogoLoading: false,
+    specLogoRequestId: 0,
+    specLogoStatus: 'Selecione o horário para carregar as logos SPEC pela letra dos slots.',
+    purchaseLogoRows: [],
+    purchaseLogoLoaded: false,
+    purchaseLogoAttempted: false,
+    purchaseLogoBusy: false,
+    purchaseLogoStatus: '',
     template: null,
     templateError: '',
   };
@@ -178,6 +326,27 @@ function matchResultViewState() {
     matchResultState.roster.every(team => Boolean(team.teamName?.trim()));
   const rosterTextValidation = parseMatchResultRoster(matchResultState.rosterText);
   const rosterDraft = rosterTextValidation.roster;
+  const purchaseLookupRoster = getModoLigaPurchaseLookupRoster(rosterTextValidation);
+  const canManageLogos = matchResultState.eventType === 'modo-liga' &&
+    canOpen() && !readOnly();
+  const purchaseLogoCatalog = buildModoLigaPurchaseLogoCatalog(
+    matchResultState.purchaseLogoRows,
+    rosterDraft,
+  );
+  const rosterWithLogos = rosterDraft.map(team => {
+    const key = matchResultTeamKey(team.teamName);
+    const customLogo = modoLigaLogoCatalog.get(key);
+    const purchasedLogo = purchaseLogoCatalog.get(key);
+    const specLogo = getModoLigaSpecLogoForSlot(team.slot, matchResultState.specLogoCatalog);
+    const logo = specLogo || customLogo || purchasedLogo;
+    return {
+      ...team,
+      logoUrl: logo?.logoUrl || ORGANIZATION_LOGO_URL,
+      logoSource: specLogo ? 'spec' : customLogo ? 'custom' : purchasedLogo ? 'purchase' : 'organization',
+      logoAsset: logo || null,
+      logoBusy: matchResultState.logoBusySlots.has(Number(team.slot)),
+    };
+  });
   const rosterIssue = matchResultState.rosterError ||
     (!hasAllRosterNames
       ? rosterTextValidation.lineCount > 15
@@ -192,14 +361,36 @@ function matchResultViewState() {
     matchResultState.dropCount,
     matchResultState.roster,
   );
+  const standingsWithLogos = applyMatchResultStandingsLogos(
+    standings,
+    rosterWithLogos,
+    ORGANIZATION_LOGO_URL,
+  );
   const allReviewed = drops.every(drop => drop.parsed && drop.reviewed);
   const templateAvailable = matchResultState.eventType === 'modo-liga' &&
     Boolean(matchResultState.template?.blob);
+  const specLogosReady = matchResultState.eventType !== 'modo-liga' ||
+    (Boolean(matchResultState.eventHour) &&
+      !matchResultState.specLogoLoading &&
+      matchResultState.specLogoLoadedHour === matchResultState.eventHour);
   const canExport = !rosterIssue && !matchResultState.rosterDirty &&
-    issues.length === 0 && allReviewed && templateAvailable && standings.length === 15;
+    issues.length === 0 && allReviewed && templateAvailable && specLogosReady && standings.length === 15;
+  const canExportTop3 = matchResultState.eventType === 'modo-liga' &&
+    !rosterIssue && !matchResultState.rosterDirty &&
+    issues.length === 0 && allReviewed && specLogosReady && standings.length === 15;
   let summary = matchResultState.exportMessage || '';
   if (!summary) {
     if (rosterIssue) summary = rosterIssue;
+    else if (matchResultState.eventType === 'modo-liga' && !matchResultState.eventHour) {
+      summary = 'Selecione o horário do Modo Liga para vincular as logos SPEC aos slots corretos.';
+    }
+    else if (matchResultState.eventType === 'modo-liga' && matchResultState.specLogoLoading) {
+      summary = `Carregando logos SPEC de ${matchResultState.eventHour}H…`;
+    }
+    else if (matchResultState.eventType === 'modo-liga' &&
+      matchResultState.specLogoLoadedHour !== matchResultState.eventHour) {
+      summary = matchResultState.specLogoStatus || `Não foi possível carregar as logos SPEC de ${matchResultState.eventHour}H.`;
+    }
      else if (matchResultState.rosterDirty) summary = 'Termine de editar a lista para atualizar os slots automaticamente.';
     else if (matchResultState.templateError) summary = matchResultState.templateError;
     else if (issues.length) summary = issues[0];
@@ -213,15 +404,26 @@ function matchResultViewState() {
   return {
     eventType: matchResultState.eventType,
     eventLabel,
+    eventHour: matchResultState.eventHour,
+    eventHours: SPEC_LOGO_HOURS,
     dropCount: matchResultState.dropCount,
     drops: drops.map(matchResultDropView),
-    standings,
+    standings: standingsWithLogos,
     rosterText: matchResultState.rosterText,
     rosterFileName: matchResultState.rosterFileName,
     rosterDraft,
     rosterCount: rosterDraft.filter(team => team.teamName?.trim()).length,
     rosterDirty: matchResultState.rosterDirty,
     rosterError: matchResultState.rosterError,
+    logoStatus: matchResultState.logoStatus,
+    specLogoStatus: matchResultState.specLogoStatus,
+    purchaseLogoStatus: matchResultState.purchaseLogoStatus,
+    purchaseLogoLoaded: matchResultState.purchaseLogoLoaded,
+    purchaseLogoBusy: matchResultState.purchaseLogoBusy,
+    canImportPurchaseLogos: canOpen() && matchResultState.eventType === 'modo-liga' &&
+      !matchResultState.rosterError && purchaseLookupRoster.length > 0,
+    canManageLogos,
+    showTeamLogos: matchResultState.eventType === 'modo-liga',
     template: {
       name: matchResultState.template?.name || '',
       available: templateAvailable,
@@ -257,6 +459,323 @@ function updateMatchResultRosterText(text, fileName = '') {
     matchResultState.drops.forEach(drop => { if (drop.parsed) drop.reviewed = false; });
   }
   render();
+  if (
+    matchResultState.eventType === 'modo-liga' &&
+    !matchResultState.purchaseLogoLoaded &&
+    !matchResultState.purchaseLogoAttempted &&
+    getModoLigaPurchaseLookupRoster(parsed).length > 0
+  ) {
+    matchResultState.purchaseLogoAttempted = true;
+    loadModoLigaPurchaseLogos();
+  }
+}
+
+async function loadModoLigaLogoCatalog(force = false) {
+  if (modoLigaLogoLoadPromise) return modoLigaLogoLoadPromise;
+  if (!force && modoLigaLogoCatalog.size) return;
+  const session = matchResultState;
+  if (!window.firebaseDb) {
+    session.logoStatus = 'Logos personalizadas indisponíveis; será usada a logo padrão Freitas.';
+    return;
+  }
+
+  modoLigaLogoLoadPromise = (async () => {
+    const { collection, getDocs, query, where } =
+      await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const snapshot = await getDocs(query(
+      collection(window.firebaseDb, MODO_LIGA_LOGO_COLLECTION),
+      where('type', '==', MODO_LIGA_LOGO_TYPE),
+    ));
+    const nextCatalog = new Map();
+    snapshot.forEach(item => {
+      const data = item.data();
+      const key = matchResultTeamKey(data.teamName);
+      if (key && data.logoUrl) {
+        nextCatalog.set(key, {
+          teamName: String(data.teamName || ''),
+          logoUrl: String(data.logoUrl),
+          storagePath: String(data.storagePath || ''),
+        });
+      }
+    });
+    modoLigaLogoCatalog = nextCatalog;
+    session.logoStatus = nextCatalog.size
+      ? `${nextCatalog.size} logo(s) personalizada(s) carregada(s); as demais usam a logo Freitas.`
+      : 'Times sem logo personalizada usarão a logo Freitas.';
+  })().catch(error => {
+    session.logoStatus = `Não foi possível carregar as logos personalizadas. A logo Freitas será usada como padrão. (${error.message || 'erro de acesso'})`;
+  }).finally(() => {
+    modoLigaLogoLoadPromise = null;
+    render();
+  });
+  return modoLigaLogoLoadPromise;
+}
+
+function getModoLigaLogoCatalogForRoster(roster = matchResultState.roster) {
+  const catalog = buildModoLigaPurchaseLogoCatalog(
+    matchResultState.purchaseLogoRows,
+    roster,
+  );
+  // A logo uploaded manually by an admin remains the highest-priority choice.
+  modoLigaLogoCatalog.forEach((logo, key) => catalog.set(key, logo));
+  return catalog;
+}
+
+async function loadModoLigaSpecLogos(hour, force = false) {
+  const session = matchResultSessions.get('modo-liga');
+  const selectedHour = String(hour || '');
+  if (!SPEC_LOGO_HOURS.includes(selectedHour)) return;
+  if (!force && session.specLogoLoadedHour === selectedHour) return;
+
+  const requestId = ++session.specLogoRequestId;
+  session.specLogoCatalog = new Map();
+  session.specLogoLoading = true;
+  session.specLogoStatus = `Buscando logos SPEC de ${selectedHour}H…`;
+  if (matchResultState === session) render();
+
+  try {
+    const catalog = await loadModoLigaSpecLogoCatalog(selectedHour);
+
+    if (requestId !== session.specLogoRequestId || session.eventHour !== selectedHour) return;
+    session.specLogoCatalog = catalog;
+    session.specLogoLoadedHour = selectedHour;
+    session.specLogoStatus = catalog.size
+      ? `${catalog.size} logo(s) SPEC carregada(s) para ${selectedHour}H. A associação usa a letra do slot; esta logo tem prioridade.`
+      : `Nenhuma logo SPEC cadastrada para ${selectedHour}H. As logos por nome e a logo Freitas continuam como alternativa.`;
+  } catch (error) {
+    if (requestId === session.specLogoRequestId && session.eventHour === selectedHour) {
+      session.specLogoCatalog = new Map();
+      session.specLogoLoadedHour = '';
+      session.specLogoStatus = `Não foi possível carregar as logos SPEC de ${selectedHour}H. ${error?.message || ''}`.trim();
+    }
+  } finally {
+    if (requestId === session.specLogoRequestId) {
+      session.specLogoLoading = false;
+      if (matchResultState === session) render();
+    }
+  }
+}
+
+async function loadModoLigaPurchaseLogos() {
+  const session = matchResultState;
+  if (session.eventType !== 'modo-liga' || session.purchaseLogoBusy) return;
+  const parsedRoster = parseMatchResultRoster(session.rosterText);
+  const purchaseLookupRoster = getModoLigaPurchaseLookupRoster(parsedRoster);
+  if (!purchaseLookupRoster.length || session.rosterError) {
+    session.purchaseLogoStatus = 'Informe pelo menos um nome de time válido para buscar as logos.';
+    render();
+    return;
+  }
+  if (!window.firebaseDb || !window.firebaseAuth?.currentUser) {
+    session.purchaseLogoStatus = 'Entre no painel para buscar logos das compras do Modo Liga.';
+    render();
+    return;
+  }
+
+  session.purchaseLogoAttempted = true;
+  session.purchaseLogoBusy = true;
+  session.purchaseLogoStatus = 'Buscando logos nas compras aprovadas do Modo Liga…';
+  render();
+  try {
+    const { collection, getDocs, query, where } =
+      await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const snapshot = await getDocs(query(
+      collection(window.firebaseDb, 'registrations'),
+      where('eventType', '==', 'modo-liga'),
+    ));
+    session.purchaseLogoRows = snapshot.docs.map(item => item.data());
+    session.purchaseLogoLoaded = true;
+    const matchedCount = buildModoLigaPurchaseLogoCatalog(
+      session.purchaseLogoRows,
+      purchaseLookupRoster,
+    ).size;
+    session.purchaseLogoStatus = matchedCount
+      ? `Encontramos ${matchedCount} logo${matchedCount === 1 ? '' : 's'} para ${purchaseLookupRoster.length} time${purchaseLookupRoster.length === 1 ? '' : 's'} informado${purchaseLookupRoster.length === 1 ? '' : 's'}. A logo manual continua prioritária.`
+      : `Nenhuma logo corresponde aos ${purchaseLookupRoster.length} times informados. Confira os nomes nas inscrições.`;
+  } catch (error) {
+    session.purchaseLogoStatus = `Não foi possível buscar logos das compras do Modo Liga. (${error.message || 'erro de acesso'})`;
+  } finally {
+    session.purchaseLogoBusy = false;
+    render();
+  }
+}
+
+function prepareModoLigaTeamLogo(file) {
+  if (!file || !SUPPORTED_IMAGES.has(file.type)) {
+    throw new Error('Escolha uma logo PNG, JPG ou WebP.');
+  }
+  if (file.size > MAX_TEAM_LOGO_FILE_BYTES) {
+    throw new Error('A logo precisa ter até 5 MB.');
+  }
+  return createImageBitmap(file).then(bitmap => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      bitmap.close?.();
+      throw new Error('Não foi possível preparar a logo.');
+    }
+    const scale = Math.min(canvas.width / bitmap.width, canvas.height / bitmap.height);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+    bitmap.close?.();
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Não foi possível converter a logo.')), 'image/webp', 0.9);
+    });
+  }).catch(error => {
+    if (error instanceof Error && error.message.includes('logo')) throw error;
+    throw new Error('Não foi possível abrir essa imagem como logo.');
+  });
+}
+
+function logoDocumentId(teamName) {
+  const key = matchResultTeamKey(teamName);
+  if (!key) throw new Error('Preencha um nome de time válido antes de enviar a logo.');
+  const safeKey = key.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/gu, '').slice(0, 100);
+  return `freefire_modo_liga_logo_${safeKey}`;
+}
+
+function modoLigaLogoStoragePaths(teamName, userId, uploadedAtMs) {
+  const safeUserId = String(userId || '').trim();
+  if (!safeUserId || /[\\/]/.test(safeUserId)) {
+    throw new Error('Não foi possível identificar uma pasta segura para salvar esta logo.');
+  }
+  const safeTeamName = String(teamName || 'time').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+  const fileName = `${safeTeamName}_${uploadedAtMs}`;
+  return {
+    primary: `teams/modo-liga/logos/${fileName}`,
+    userScoped: `profile-photos/${safeUserId}/team-logos/modo-liga/${fileName}`,
+  };
+}
+
+async function saveModoLigaTeamLogo(slot, file) {
+  const session = matchResultState;
+  const team = session.roster.find(item => Number(item.slot) === Number(slot));
+  if (!team?.teamName?.trim()) {
+    session.logoStatus = 'Cole a lista de slots antes de enviar a logo do time.';
+    render();
+    return;
+  }
+  if (session.eventType !== 'modo-liga') return;
+  if (!window.firebaseDb || !window.firebaseStorage || !window.firebaseAuth?.currentUser) {
+    session.logoStatus = 'Entre no painel novamente para salvar logos personalizadas.';
+    render();
+    return;
+  }
+
+  const key = matchResultTeamKey(team.teamName);
+  const docId = logoDocumentId(team.teamName);
+  const oldLogo = modoLigaLogoCatalog.get(key);
+  session.logoBusySlots.add(Number(slot));
+  session.logoStatus = `Enviando logo de ${team.teamName}…`;
+  render();
+
+  let uploadedRef = null;
+  try {
+    const blob = await prepareModoLigaTeamLogo(file);
+    const [{ ref, uploadBytes, getDownloadURL, deleteObject }, { doc, setDoc, serverTimestamp }] = await Promise.all([
+      import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js'),
+      import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js'),
+    ]);
+    const paths = modoLigaLogoStoragePaths(
+      team.teamName,
+      window.firebaseAuth.currentUser.uid,
+      Date.now(),
+    );
+    const uploadOptions = {
+      contentType: 'image/webp',
+      cacheControl: 'public,max-age=31536000,immutable',
+    };
+    const uploadAtPath = async path => {
+      const targetRef = ref(window.firebaseStorage, path);
+      const uploaded = await uploadBytes(targetRef, blob, uploadOptions);
+      uploadedRef = uploaded.ref;
+      return {
+        storagePath: uploaded.ref.fullPath,
+        logoUrl: await getDownloadURL(uploaded.ref),
+      };
+    };
+    let savedLogo;
+    try {
+      savedLogo = await uploadAtPath(paths.primary);
+    } catch (primaryError) {
+      if (primaryError?.code !== 'storage/unauthorized') throw primaryError;
+      if (uploadedRef) {
+        try { await deleteObject(uploadedRef); } catch { /* ignore an unauthorized partial upload */ }
+      }
+      uploadedRef = null;
+      savedLogo = await uploadAtPath(paths.userScoped);
+    }
+    const { storagePath, logoUrl } = savedLogo;
+    await setDoc(doc(window.firebaseDb, MODO_LIGA_LOGO_COLLECTION, docId), {
+      type: MODO_LIGA_LOGO_TYPE,
+      teamName: team.teamName.trim(),
+      logoUrl,
+      storagePath,
+      updatedAt: serverTimestamp(),
+    });
+    modoLigaLogoCatalog.set(key, {
+      teamName: team.teamName.trim(),
+      logoUrl,
+      storagePath,
+      blob,
+    });
+    if (oldLogo?.storagePath && oldLogo.storagePath !== storagePath) {
+      deleteObject(ref(window.firebaseStorage, oldLogo.storagePath)).catch(() => {});
+    }
+    session.logoStatus = `Logo personalizada salva para ${team.teamName}.`;
+  } catch (error) {
+    if (uploadedRef) {
+      try {
+        const { deleteObject } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+        await deleteObject(uploadedRef);
+      } catch { /* preserve the previous saved logo if cleanup is unavailable */ }
+    }
+    session.logoStatus = error?.code === 'storage/unauthorized'
+      ? 'O Firebase Storage bloqueou os caminhos de envio. Verifique se as regras permitem gravação para usuários autenticados.'
+      : error.message || 'Não foi possível salvar esta logo.';
+  } finally {
+    session.logoBusySlots.delete(Number(slot));
+    render();
+  }
+}
+
+async function resetModoLigaTeamLogo(slot) {
+  const session = matchResultState;
+  const team = session.roster.find(item => Number(item.slot) === Number(slot));
+  if (!team?.teamName?.trim()) return;
+  const key = matchResultTeamKey(team.teamName);
+  const existing = modoLigaLogoCatalog.get(key);
+  if (!existing) return;
+  if (!window.firebaseDb || !window.firebaseStorage || !window.firebaseAuth?.currentUser) {
+    session.logoStatus = 'Entre no painel novamente para alterar logos salvas.';
+    render();
+    return;
+  }
+
+  session.logoBusySlots.add(Number(slot));
+  session.logoStatus = `Restaurando a logo Freitas para ${team.teamName}…`;
+  render();
+  try {
+    const [{ ref, deleteObject }, { doc, deleteDoc }] = await Promise.all([
+      import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js'),
+      import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js'),
+    ]);
+    await deleteDoc(doc(window.firebaseDb, MODO_LIGA_LOGO_COLLECTION, logoDocumentId(team.teamName)));
+    modoLigaLogoCatalog.delete(key);
+    if (existing.storagePath) {
+      try { await deleteObject(ref(window.firebaseStorage, existing.storagePath)); } catch { /* logo override is already removed */ }
+    }
+    session.logoStatus = `A logo Freitas voltou a ser o padrão para ${team.teamName}.`;
+  } catch (error) {
+    session.logoStatus = error.message || 'Não foi possível restaurar a logo padrão.';
+  } finally {
+    session.logoBusySlots.delete(Number(slot));
+    render();
+  }
 }
 
 async function importMatchResultRosterFiles(files) {
@@ -316,12 +835,35 @@ async function readMatchResultFile(dropIndex, file) {
   render();
 }
 
+async function changeMatchResultHour(hour) {
+  const session = matchResultSessions.get('modo-liga');
+  const selectedHour = String(hour || '');
+  if (selectedHour && !SPEC_LOGO_HOURS.includes(selectedHour)) return;
+  session.eventHour = selectedHour;
+  session.specLogoCatalog = new Map();
+  session.specLogoLoadedHour = '';
+  session.specLogoRequestId += 1;
+  session.specLogoLoading = false;
+  session.exportMessage = '';
+  session.specLogoStatus = selectedHour
+    ? `Buscando logos SPEC de ${selectedHour}H…`
+    : 'Selecione o horário para carregar as logos SPEC pela letra dos slots.';
+  render();
+  if (selectedHour) await loadModoLigaSpecLogos(selectedHour);
+}
+
 async function changeMatchResultEvent(eventType) {
   if (!MATCHRESULT_EVENT_TYPES.some(event => event.value === eventType)) return;
   matchResultSessions.set(matchResultState.eventType, matchResultState);
   matchResultState = matchResultSessions.get(eventType) || createMatchResultSession(eventType);
   matchResultSessions.set(eventType, matchResultState);
-  await loadMatchResultTemplate();
+  await Promise.all([
+    loadMatchResultTemplate(),
+    eventType === 'modo-liga' ? loadModoLigaLogoCatalog() : Promise.resolve(),
+    eventType === 'modo-liga' && matchResultState.eventHour
+      ? loadModoLigaSpecLogos(matchResultState.eventHour, true)
+      : Promise.resolve(),
+  ]);
   render();
 }
 
@@ -338,16 +880,49 @@ async function exportMatchResultJpeg() {
     context.drawImage(bitmap, 0, 0);
     await document.fonts.load('700 22px Stapel');
 
-    const nameX = bitmap.width * 0.268;
-    const winsX = bitmap.width * 0.454;
-    const killsX = bitmap.width * 0.503;
-    const pointsX = bitmap.width * 0.553;
-    const maxNameWidth = bitmap.width * 0.315;
+    const {
+      logoCenterX: logoX,
+      logoSize,
+      teamNameCenterX: nameX,
+      teamNameMaxWidth: maxNameWidth,
+      winsCenterX: winsX,
+      killsCenterX: killsX,
+      pointsCenterX: pointsX,
+    } = getModoLigaTemplateLayout(bitmap.width);
+    const organizationLogo = await loadLogoBitmap(ORGANIZATION_LOGO_URL);
+    logoBitmaps.set('organization', organizationLogo);
 
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     for (const [index, team] of data.standings.slice(0, 15).entries()) {
       const y = getModoLigaTemplateRowCenter(bitmap.height, index);
+      const specLogo = getModoLigaSpecLogoForSlot(team.slot, matchResultState.specLogoCatalog);
+      const customLogo = specLogo || team.logoAsset || teamLogoCatalog.get(matchResultTeamKey(team.teamName));
+      let teamLogo = organizationLogo;
+      if (customLogo) {
+        const cacheKey = customLogo.source === 'spec'
+          ? `spec:${customLogo.code}`
+          : customLogo.storagePath || customLogo.logoUrl;
+        if (!logoBitmaps.has(cacheKey)) {
+          try {
+            logoBitmaps.set(cacheKey, await loadLogoBitmap(customLogo.logoUrl, customLogo.blob));
+          } catch {
+            missingCustomLogos.push(team.teamName);
+            logoBitmaps.set(cacheKey, organizationLogo);
+          }
+        }
+        teamLogo = logoBitmaps.get(cacheKey);
+      }
+      const logoRect = getCenteredContainRect(
+        teamLogo.width,
+        teamLogo.height,
+        logoX,
+        y,
+        logoSize,
+        logoSize,
+      );
+      context.drawImage(teamLogo, logoRect.x, logoRect.y, logoRect.width, logoRect.height);
+
       let fontSize = Math.round(bitmap.width * 0.0185);
       const name = team.teamName.toLocaleUpperCase('pt-BR');
       context.fillStyle = '#20302f';
@@ -372,12 +947,102 @@ async function exportMatchResultJpeg() {
     link.download = `freitas-${matchResultState.eventType}-leaderboard.jpg`;
     link.click();
     URL.revokeObjectURL(url);
-    matchResultState.exportMessage = `Imagem exportada com ${data.standings.length} equipes e ${matchResultState.dropCount} ${matchResultState.dropCount === 1 ? 'queda' : 'quedas'}.`;
+    const fallbackNote = missingCustomLogos.length
+      ? ` ${missingCustomLogos.length} logo(s) SPEC/personalizada(s) não carregaram e foram substituídas pela Freitas.`
+      : '';
+    matchResultState.exportMessage = `Imagem exportada com ${data.standings.length} equipes e ${matchResultState.dropCount} ${matchResultState.dropCount === 1 ? 'queda' : 'quedas'}.${fallbackNote}`;
   } finally {
     bitmap.close?.();
     render();
   }
 }
+
+async function exportModoLigaTop3Jpeg() {
+  const data = matchResultViewState();
+  if (matchResultState.eventType !== 'modo-liga' || !data.canExportTop3) return;
+
+  const templateResponse = await fetch(MODO_LIGA_TOP3_TEMPLATE_URL);
+  if (!templateResponse.ok) throw new Error('O banner Top 3 do Modo Liga não carregou.');
+  const bitmap = await createImageBitmap(await templateResponse.blob());
+  const logoBitmaps = new Map();
+  let questionMarkCount = 0;
+  const missingCustomLogos = [];
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('O navegador não conseguiu preparar o banner Top 3.');
+    context.drawImage(bitmap, 0, 0);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+
+    const questionMark = await loadLogoBitmap(MODO_LIGA_TOP3_PLACEHOLDER_URL);
+    logoBitmaps.set('placeholder', questionMark);
+    const positions = getModoLigaTop3LogoLayout(bitmap.width, bitmap.height);
+    const topThree = getModoLigaTop3Teams(
+      data.standings,
+      getModoLigaLogoCatalogForRoster(matchResultState.roster),
+    ).map(team => ({
+      ...team,
+      customLogo: getModoLigaSpecLogoForSlot(team.slot, matchResultState.specLogoCatalog) ||
+        team.logoAsset || team.customLogo,
+    }));
+
+    for (const [index, team] of topThree.entries()) {
+      let logo = questionMark;
+      if (team.customLogo) {
+        const cacheKey = team.customLogo.source === 'spec'
+          ? `spec:${team.customLogo.code}`
+          : `custom:${team.customLogo.storagePath || team.customLogo.logoUrl || matchResultTeamKey(team.teamName)}`;
+        if (!logoBitmaps.has(cacheKey)) {
+          try {
+            logoBitmaps.set(
+              cacheKey,
+              await loadLogoBitmap(team.customLogo.logoUrl, team.customLogo.blob),
+            );
+          } catch {
+            logoBitmaps.set(cacheKey, questionMark);
+            missingCustomLogos.push(team.teamName);
+          }
+        }
+        logo = logoBitmaps.get(cacheKey);
+      } else {
+        questionMarkCount += 1;
+      }
+      if (logo === questionMark && team.customLogo) questionMarkCount += 1;
+
+      const { centerX, centerY, size } = positions[index];
+      const logoRect = getCenteredContainRect(
+        logo.width,
+        logo.height,
+        centerX,
+        centerY,
+        size,
+        size,
+      );
+      context.drawImage(logo, logoRect.x, logoRect.y, logoRect.width, logoRect.height);
+    }
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    if (!blob) throw new Error('O navegador não conseguiu gerar o banner Top 3.');
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'freitas-modo-liga-top-3.jpg';
+    link.click();
+    URL.revokeObjectURL(url);
+    const missingNote = missingCustomLogos.length
+      ? ` Logo(s) sem carregamento: ${missingCustomLogos.join(', ')}.`
+      : '';
+    matchResultState.exportMessage = `Banner Top 3 exportado. ${questionMarkCount} time(s) aparecem com ponto de interrogação por não terem uma logo disponível.${missingNote}`;
+  } finally {
+    for (const logoBitmap of new Set(logoBitmaps.values())) logoBitmap.close?.();
+    bitmap.close?.();
+    render();
+  }
+}
+
 async function loadTemplate() {
   try {
     const value = await getTemplate(state.event);
@@ -818,6 +1483,7 @@ function build(root) {
     <div id="ffMatchResultView" hidden></div>`;
   matchResultView = createMatchResultView($('ffMatchResultView'), {
     onEventChange: eventType => { changeMatchResultEvent(eventType); },
+    onEventHourChange: hour => { changeMatchResultHour(hour); },
     onDropCountChange: count => {
       matchResultState.dropCount = Math.max(1, Math.min(5, Number(count) || 1));
       matchResultState.exportMessage = '';

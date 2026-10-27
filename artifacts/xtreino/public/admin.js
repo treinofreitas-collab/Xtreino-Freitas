@@ -271,7 +271,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       }
       
       const isAuthorized = ['admin', 'staff', 'gerente', 'vendedor', 'design', 'designer', 'desgin',
-                            'moderador', 'operador', 'suporte'].includes(role);
+                            'moderador', 'operador', 'suporte', 'streamer'].includes(role);
       return isAuthorized;
     } catch (error) {
       console.error('❌ Erro ao verificar cargo:', error);
@@ -334,21 +334,21 @@ window.showWarningToast = function(message, title = 'Atenção') {
           'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
           'sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionMarketReports','sectionShirtOrders',
-          'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring'],
+          'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring','sectionSpecLogos'],
     // SOCIO: tudo, somente visualização (sem reset)
     socio: ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
             'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
             'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
             'sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionShirtOrders',
-            'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionFreefireScoring'],
+            'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionFreefireScoring','sectionSpecLogos'],
     // GERENTE: tudo, EXCETO aba principal completa (KPIs, filtros, gráficos, pedidos, tokenStats)
     gerente: ['sectionUsers','sectionUsersManagement',
               'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah',
               'sectionHighlights','sectionNews','sectionProducts','sectionEvents',
               'sectionShirtOrders','sectionSchedules','sectionEventLinks',
-              'sectionAdminHistory','sectionFreefireScoring'],
+              'sectionAdminHistory','sectionFreefireScoring','sectionSpecLogos'],
     // DESIGNER: apenas conteúdo (destaques, notícias, produtos, eventos) — sem camisas, sem horários
     designer: ['sectionHighlights','sectionNews','sectionProducts','sectionEvents'],
     // VENDEDOR: usuários + financeiro (sem aba principal) + camisas + produtos
@@ -357,7 +357,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
                'sectionProducts'],
     // ADMIN: gerenciador de eventos + horários
-    admin: ['sectionEvents','sectionMarketReports','sectionSchedules','sectionEventLinks','sectionFreefireScoring'],
+    admin: ['sectionEvents','sectionMarketReports','sectionSchedules','sectionEventLinks','sectionFreefireScoring','sectionSpecLogos'],
     // STAFF: eventos
     staff: ['sectionEvents'],
     // MODERADOR: igual ao staff
@@ -365,10 +365,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
     // OPERADOR: mesmo acesso do vendedor (sem aba principal)
     operador: ['sectionUsers','sectionUsersManagement',
                'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
-               'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
+               'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders','sectionSpecLogos',
                'sectionProducts'],
     // SUPORTE: tokens, camisas
     suporte: ['sectionTokens','sectionShirtOrders'],
+    // STREAMER: somente download de logos SPEC
+    streamer: ['sectionSpecLogos'],
     // Aliases
     'sócio': null, // tratado abaixo
     'desgin': null,
@@ -381,7 +383,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     'sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts','sectionAffiliatePanel','sectionPasseBooyah',
     'sectionHighlights','sectionNews','sectionProducts','sectionEvents','sectionShirtOrders',
     'sectionMarketReports',
-    'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring',
+    'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring','sectionSpecLogos',
   ];
 
   // Control section visibility based on role
@@ -546,9 +548,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
     operador: ['#sectionUsers','#sectionUsersManagement',
                '#sectionTokens','#sectionCoupons','#sectionCouponUsage','#sectionAffiliates',
                '#sectionAffiliateSales','#sectionPasseBooyah','#sectionShirtOrders',
-               '#sectionProducts'],
+               '#sectionProducts','#sectionSpecLogos'],
     suporte:  ['#sectionTokens','#sectionShirtOrders'],
-    admin:    ['#sectionEvents','#sectionEventLinks'],
+    streamer: ['#sectionSpecLogos', '.sidebar-link', '#btnLogout'],
+    admin:    ['#sectionEvents','#sectionEventLinks','#sectionSpecLogos'],
   };
 
   function controlEditPermissions(userRole) {
@@ -732,6 +735,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             <option value="Ceo" ${(user.role||'').toLowerCase() === 'ceo' ? 'selected' : ''}>CEO – Acesso Total</option>
             <option value="Socio" ${(user.role||'').toLowerCase() === 'socio' ? 'selected' : ''}>SOCIO – Visualização Total</option>
             <option value="Gerente" ${(user.role||'').toLowerCase() === 'gerente' ? 'selected' : ''}>Gerente – Sem Dashboard/Pagamentos</option>
+            <option value="streamer" ${(user.role||'').toLowerCase() === 'streamer' ? 'selected' : ''}>Streamer – Logos SPEC</option>
             <option value="Vendedor" ${(user.role||'').toLowerCase() === 'vendedor' ? 'selected' : ''}>Vendedor – Pedidos/Tokens/Passes</option>
             <option value="Designer" ${['designer','design','desgin'].includes((user.role||'').toLowerCase()) ? 'selected' : ''}>Designer – Produtos/Eventos/Conteúdo</option>
             <option value="Staff" ${['staff','admin'].includes((user.role||'').toLowerCase()) ? 'selected' : ''}>Staff – Eventos</option>
@@ -1503,7 +1507,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }catch(e){}
 
     // 
-    if (!['admin','ceo','gerente','vendedor','design','designer','desgin','socio','sócio','afiliado','staff','Socio','Gerente','Designer','Staff','Vendedor','Ceo'].includes((role||''))){
+    if (!['admin','ceo','gerente','vendedor','design','designer','desgin','socio','sócio','afiliado','staff','streamer','Streamer','STREAMER','Socio','Gerente','Designer','Staff','Vendedor','Ceo'].includes((role||''))){
       authGate.classList.remove('hidden');
       dashboard.classList.add('hidden');
       return;
@@ -5455,6 +5459,7 @@ async function loadUsersAndRoles(currentRole) {
                 <option value="Vendedor" ${role==='Vendedor'?'selected':''}>Vendedor</option>
                 <option value="Gerente" ${role==='Gerente'?'selected':''}>Gerente</option>
                 <option value="Design" ${role==='Design'?'selected':''}>Design</option>
+                <option value="streamer" ${String(role).toLowerCase()==='streamer'?'selected':''}>Streamer</option>
                 <option value="Admin" ${role==='Admin'?'selected':''}>Admin</option>
                 <option value="Sócio" ${role==='Sócio'?'selected':''}>Sócio</option>
                 <option value="Ceo" ${role==='Ceo'?'selected':''}>Ceo</option>
@@ -6345,7 +6350,7 @@ window.addEventListener('load', () => {
         
         // Continuar com o processo de login
         const authorizedRoles = ['admin', 'ceo', 'gerente', 'vendedor', 'design', 'designer', 'desgin',
-                                 'socio', 'sócio', 'staff', 'moderador', 'operador', 'suporte'];
+                                 'socio', 'sócio', 'staff', 'moderador', 'operador', 'suporte', 'streamer'];
         const isAuthorized = authorizedRoles.includes(role);
         
         if (!isAuthorized) {
@@ -6389,7 +6394,7 @@ window.addEventListener('load', () => {
       
       // Check if role is authorized (including variations and typos)
       const authorizedRoles = ['admin', 'ceo', 'gerente', 'vendedor', 'design', 'designer', 'desgin',
-                               'socio', 'sócio', 'staff', 'moderador', 'operador', 'suporte'];
+                               'socio', 'sócio', 'staff', 'moderador', 'operador', 'suporte', 'streamer'];
       const isAuthorized = authorizedRoles.includes(cleanRole);
             
       if (!isAuthorized) {        
@@ -7392,6 +7397,7 @@ function renderPermissionsTable() {
       { value: 'vendedor', label: 'Vendedor' },
       { value: 'gerente', label: 'Gerente' },
       { value: 'design', label: 'Design' },
+      { value: 'streamer', label: 'Streamer' },
       { value: 'admin', label: 'Admin' },
       { value: 'socio', label: 'Sócio' },
       { value: 'ceo', label: 'Ceo' }
@@ -7400,12 +7406,12 @@ function renderPermissionsTable() {
     if (currentUserRole === 'ceo') {
       // CEO pode atribuir qualquer cargo
       return allRoles.map(role => 
-        `<option value="${role.value}" ${userRole === role.value ? 'selected' : ''}>${role.label}</option>`
+        `<option value="${role.value}" ${String(userRole).toLowerCase() === role.value ? 'selected' : ''}>${role.label}</option>`
       ).join('');
     } else if (currentUserRole === 'socio') {
       // Sócio vê todos os cargos mas não pode editar (somente leitura)
       return allRoles.map(role => 
-        `<option value="${role.value}" ${userRole === role.value ? 'selected' : ''}>${role.label}</option>`
+        `<option value="${role.value}" ${String(userRole).toLowerCase() === role.value ? 'selected' : ''}>${role.label}</option>`
       ).join('');
     } else if (currentUserRole === 'gerente') {
       // Gerente pode atribuir apenas Vendedor
@@ -7464,6 +7470,7 @@ function getRoleDisplayName(role) {
     'vendedor': 'Vendedor',
     'gerente': 'Gerente',
     'design': 'Design',
+    'streamer': 'Streamer',
     'admin': 'Admin',
     'socio': 'Sócio',
     'ceo': 'Ceo'
@@ -13529,6 +13536,15 @@ window.loadPageData = async function(page, requestedSectionId) {
                     if (typeof window.openEventLinksAdmin === 'function') {
                         await window.openEventLinksAdmin();
                     }
+                    break;
+                case 'sectionSpecLogos':
+                    await import('./js/admin-spec-logos.mjs')
+                        .then(m => m.openSpecLogosAdmin())
+                        .catch(error => {
+                            console.error('[SPEC] Falha ao carregar as logos:', error);
+                            const root = document.getElementById('specLogosRoot');
+                            if (root) root.innerHTML = '<div class="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800" role="alert">Não foi possível abrir as logos do SPEC. Atualize a seção para tentar novamente.</div>';
+                        });
                     break;
                 case 'sectionFreefireScoring':
                     await import('./js/admin-freefire-scoring.mjs')

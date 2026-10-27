@@ -1,11 +1,24 @@
-const { getApps, initializeApp, cert } = require("firebase-admin/app");
+const { getApp, getApps, initializeApp, cert } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getStorage } = require("firebase-admin/storage");
 
 // Keep the shared payment interface while using the modular Admin SDK.
 // Firebase Admin 14 no longer exports apps, auth, or firestore namespaces.
 const firestore = Object.assign(() => getFirestore(), { FieldValue });
-const admin = { firestore, auth: () => getAuth() };
+const storage = () => {
+  const app = getApps().find(candidate => candidate.name === "[DEFAULT]") || getApp();
+  const projectId = app.options.projectId;
+  if (!projectId) {
+    const error = new Error("Firebase Storage project is not configured");
+    error.statusCode = 503;
+    throw error;
+  }
+  const bucketName = process.env.FIREBASE_STORAGE_BUCKET?.trim()
+    || `${projectId}.firebasestorage.app`;
+  return getStorage(app).bucket(bucketName);
+};
+const admin = { firestore, auth: () => getAuth(), storage };
 
 function getAdmin() {
   if (getApps().some(app => app.name === "[DEFAULT]")) return admin;

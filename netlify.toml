@@ -1,9 +1,34 @@
 [build]
+  base = "."
   publish = "artifacts/xtreino/public"
 
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/spec-logos/:hour/export"
+  to = "/.netlify/functions/spec-logos-export?hour=:hour"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/spec-logos/:hour"
+  to = "/.netlify/functions/spec-logos-clear?hour=:hour"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/spec-logos/:hour/:code"
+  to = "/.netlify/functions/spec-logo-delete?hour=:hour&code=:code"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/freefire/analyze"
+  to = "/.netlify/functions/freefire-analyze"
+  status = 200
+  force = true
 
 [[redirects]]
   from = "/treinofreitas"
