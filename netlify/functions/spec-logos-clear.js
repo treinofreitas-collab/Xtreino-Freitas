@@ -5,6 +5,11 @@ const ALLOWED_ROLES = new Set(["admin", "ceo", "gerente"]);
 const STORAGE_ROOT = "teams/modo-liga/logos/spec";
 const SPEC_CODE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])\.png$/;
 
+function normalizeHour(value) {
+  const hour = String(value || "").trim().toUpperCase().replace(/H$/, "");
+  return ALLOWED_HOURS.has(hour) ? hour : null;
+}
+
 function jsonResponse(statusCode, body) {
   return {
     statusCode,
@@ -39,8 +44,8 @@ exports.handler = async event => {
     return jsonResponse(405, { error: "Método não permitido." });
   }
 
-  const hour = String(event.queryStringParameters?.hour || "");
-  if (!ALLOWED_HOURS.has(hour)) {
+  const hour = normalizeHour(event.queryStringParameters?.hour);
+  if (!hour) {
     return jsonResponse(400, { error: "Horário inválido para limpar as logos." });
   }
 

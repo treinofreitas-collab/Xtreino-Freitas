@@ -13,6 +13,16 @@ const STORAGE_ROOT = "teams/modo-liga/logos/spec";
 const SPEC_CODE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])\.png$/;
 const SPEC_CODE_VALUE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])$/;
 
+function firstString(value: unknown): string | undefined {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return typeof candidate === "string" ? candidate : undefined;
+}
+
+function normalizeHour(value: unknown): string | null {
+  const normalizedHour = (firstString(value) || "").trim().toUpperCase().replace(/H$/, "");
+  return ALLOWED_HOURS.has(normalizedHour) ? normalizedHour : null;
+}
+
 class ApiError extends Error {
   constructor(
     readonly statusCode: number,
@@ -108,9 +118,8 @@ function getStorageBucket(app: ReturnType<typeof getFirebaseApp>) {
 
 router.get("/spec-logos/:hour/export", async (req, res) => {
   try {
-    const rawHour = req.params.hour;
-    const hour = Array.isArray(rawHour) ? rawHour[0] : rawHour;
-    if (!ALLOWED_HOURS.has(hour)) {
+    const hour = normalizeHour(req.params.hour);
+    if (!hour) {
       throw new ApiError(400, "Horário inválido para exportar logos.");
     }
 
@@ -165,11 +174,13 @@ router.get("/spec-logos/:hour/export", async (req, res) => {
 
 router.delete("/spec-logos/:hour/:code", async (req, res): Promise<void> => {
   try {
-    const rawHour = req.params.hour;
-    const hour = Array.isArray(rawHour) ? rawHour[0] : rawHour;
-    const rawCode = req.params.code;
-    const code = Array.isArray(rawCode) ? rawCode[0] : rawCode;
-    if (!ALLOWED_HOURS.has(hour) || !code || !SPEC_CODE_VALUE_PATTERN.test(code)) {
+    const hour = normalizeHour(req.params.hour) ?? normalizeHour(req.query.hour);
+    const pathCode = firstString(req.params.code);
+    const queryCode = firstString(req.query.code);
+    const code = pathCode && SPEC_CODE_VALUE_PATTERN.test(pathCode)
+      ? pathCode
+      : queryCode ?? "";
+    if (!hour || !code || !SPEC_CODE_VALUE_PATTERN.test(code)) {
       throw new ApiError(400, "Horário ou código de logo inválido.");
     }
 
@@ -201,9 +212,8 @@ router.delete("/spec-logos/:hour/:code", async (req, res): Promise<void> => {
 router.delete("/spec-logos/:hour", async (req, res): Promise<void> => {
   let deletedCount = 0;
   try {
-    const rawHour = req.params.hour;
-    const hour = Array.isArray(rawHour) ? rawHour[0] : rawHour;
-    if (!ALLOWED_HOURS.has(hour)) {
+    const hour = normalizeHour(req.params.hour) ?? normalizeHour(req.query.hour);
+    if (!hour) {
       throw new ApiError(400, "Horário inválido para limpar as logos.");
     }
 

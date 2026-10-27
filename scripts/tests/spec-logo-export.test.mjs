@@ -57,6 +57,18 @@ test('SPEC logo deletion rejects invalid hours and codes before accessing storag
   });
 });
 
+test('SPEC logo deletion accepts hours with or without an H suffix', async () => {
+  for (const hour of ['19', '19H', '19h', '00', '00H']) {
+    const response = await deleteHandler({
+      httpMethod: 'DELETE',
+      queryStringParameters: { hour, code: '902000034' },
+      headers: {},
+    });
+
+    assert.equal(response.statusCode, 401, `${hour} should pass validation and reach authentication`);
+  }
+});
+
 test('SPEC logo clear only accepts DELETE requests', async () => {
   const response = await clearHandler({
     httpMethod: 'POST',
@@ -77,4 +89,16 @@ test('SPEC logo clear rejects invalid hours before accessing storage', async () 
   assert.deepEqual(JSON.parse(response.body), {
     error: 'Horário inválido para limpar as logos.',
   });
+});
+
+test('SPEC logo clear accepts hours with or without an H suffix', async () => {
+  for (const hour of ['19', '19H', '19h', '00', '00H']) {
+    const response = await clearHandler({
+      httpMethod: 'DELETE',
+      queryStringParameters: { hour },
+      headers: {},
+    });
+
+    assert.equal(response.statusCode, 401, `${hour} should pass validation and reach authentication`);
+  }
 });
