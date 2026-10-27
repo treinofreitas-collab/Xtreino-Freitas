@@ -1142,7 +1142,9 @@ function setNotice(type, message) {
 function render() {
   const root = $('freefireScoringRoot');
   if (!root || !canOpen() || !visible()) return;
-  if (!state.built) build(root);
+  if (!state.built || !root.querySelector('#ffEvent') || !root.querySelector('#ffMatchResultView')) {
+    build(root);
+  }
   $('ffEvent').value = state.event;
   $('ffDrops').value = String(state.dropsCount);
   $('ffImageQualityMode').value = state.imageQualityMode;
