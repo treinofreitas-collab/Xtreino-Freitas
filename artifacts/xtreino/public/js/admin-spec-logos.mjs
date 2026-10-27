@@ -815,7 +815,7 @@ async function removeLogo(hour, code, button) {
     if (!user) throw new Error('Entre novamente no painel para remover a logo.');
     const token = await user.getIdToken();
     const response = await fetch(
-      `/api/spec-logos/${encodeURIComponent(hour)}/${encodeURIComponent(code)}`,
+      `/api/spec-logos/${encodeURIComponent(hour)}/${encodeURIComponent(code)}?hour=${encodeURIComponent(hour)}&code=${encodeURIComponent(code)}`,
       { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
     );
     let payload;
@@ -856,7 +856,7 @@ async function clearHourLogos() {
     const user = window.firebaseAuth?.currentUser;
     if (!user) throw new Error('Entre novamente no painel para limpar as logos.');
     const token = await user.getIdToken();
-    const response = await fetch(`/api/spec-logos/${encodeURIComponent(hour)}`, {
+    const response = await fetch(`/api/spec-logos/${encodeURIComponent(hour)}?hour=${encodeURIComponent(hour)}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -959,7 +959,7 @@ async function downloadHourZip() {
     const user = window.firebaseAuth?.currentUser;
     if (!user) throw new Error('Sua sessão expirou. Entre novamente no painel.');
     const [token, JSZip] = await Promise.all([user.getIdToken(), ensureJsZip()]);
-    const response = await fetch(`/api/spec-logos/${encodeURIComponent(hour)}/export`, {
+    const response = await fetch(`/api/spec-logos/${encodeURIComponent(hour)}/export?hour=${encodeURIComponent(hour)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     let payload;

@@ -10,6 +10,28 @@ function normalizeHour(value) {
   return ALLOWED_HOURS.has(hour) ? hour : null;
 }
 
+function getSpecLogoPathParams(event) {
+  for (const candidate of [event.rawUrl, event.path]) {
+    if (typeof candidate !== "string" || !candidate) continue;
+    try {
+      const segments = new URL(candidate, "https://netlify.invalid").pathname
+        .split("/")
+        .filter(Boolean)
+        .map(segment => decodeURIComponent(segment));
+      const marker = segments.lastIndexOf("spec-logos");
+      if (marker >= 0) {
+        return {
+          hour: segments[marker + 1] || "",
+          code: segments[marker + 2] || "",
+        };
+      }
+    } catch {
+      // Try the next available request path.
+    }
+  }
+  return { hour: "", code: "" };
+}
+
 function jsonResponse(statusCode, body) {
   return {
     statusCode,
@@ -44,8 +66,11 @@ exports.handler = async event => {
     return jsonResponse(405, { error: "Método não permitido." });
   }
 
-  const hour = normalizeHour(event.queryStringParameters?.hour);
-  const code = String(event.queryStringParameters?.code || "");
+  const pathParams = getSpecLogoPathParams(event);
+  const hour = normalizeHour(event.queryStringParameters?.hour) || normalizeHour(pathParams.hour);
+  const code = [event.queryStringParameters?.code, pathParams.code]
+    .map(value => String(value || ""))
+    .find(value => SPEC_CODE_PATTERN.test(value)) || "";
   if (!hour || !SPEC_CODE_PATTERN.test(code)) {
     return jsonResponse(400, { error: "Horário ou código de logo inválido." });
   }

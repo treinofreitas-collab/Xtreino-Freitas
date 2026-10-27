@@ -506,7 +506,6 @@ async function loadModoLigaLogoCatalog(force = false) {
     session.logoStatus = `Não foi possível carregar as logos personalizadas. A logo Freitas será usada como padrão. (${error.message || 'erro de acesso'})`;
   }).finally(() => {
     modoLigaLogoLoadPromise = null;
-    render();
   });
   return modoLigaLogoLoadPromise;
 }
@@ -2093,6 +2092,13 @@ async function exportJpeg() {
 export async function openFreefireScoringAdmin() {
   if (!canOpen() || !visible()) return;
   state.error = '';
-  await Promise.all([loadTemplate(), loadMatchResultTemplate()]);
+  // Render the workspace first; optional templates and logo catalogs must not
+  // prevent the scoring tools from opening when a network/storage request fails.
+  render();
+  await Promise.allSettled([
+    loadTemplate(),
+    loadMatchResultTemplate(),
+    matchResultState.eventType === 'modo-liga' ? loadModoLigaLogoCatalog(true) : Promise.resolve(),
+  ]);
   render();
 }

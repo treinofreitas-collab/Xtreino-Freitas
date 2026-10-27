@@ -69,6 +69,18 @@ test('SPEC logo deletion accepts hours with or without an H suffix', async () =>
   }
 });
 
+test('SPEC logo deletion accepts the original route path without query parameters', async () => {
+  const response = await deleteHandler({
+    httpMethod: 'DELETE',
+    path: '/api/spec-logos/19H/902000034',
+    rawUrl: 'https://orgfreitas.com.br/api/spec-logos/19H/902000034',
+    queryStringParameters: {},
+    headers: {},
+  });
+
+  assert.equal(response.statusCode, 401, 'valid path parameters should pass validation and reach authentication');
+});
+
 test('SPEC logo clear only accepts DELETE requests', async () => {
   const response = await clearHandler({
     httpMethod: 'POST',
@@ -101,4 +113,16 @@ test('SPEC logo clear accepts hours with or without an H suffix', async () => {
 
     assert.equal(response.statusCode, 401, `${hour} should pass validation and reach authentication`);
   }
+});
+
+test('SPEC logo clear accepts the original route path without query parameters', async () => {
+  const response = await clearHandler({
+    httpMethod: 'DELETE',
+    path: '/api/spec-logos/19H',
+    rawUrl: 'https://orgfreitas.com.br/api/spec-logos/19H',
+    queryStringParameters: {},
+    headers: {},
+  });
+
+  assert.equal(response.statusCode, 401, 'valid path parameters should pass validation and reach authentication');
 });
