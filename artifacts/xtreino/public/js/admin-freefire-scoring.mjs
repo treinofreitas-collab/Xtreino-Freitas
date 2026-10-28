@@ -917,6 +917,8 @@ async function exportMatchResultJpeg() {
   const data = matchResultViewState();
   if (!data.canExport) return;
   const bitmap = await createImageBitmap(matchResultState.template.blob);
+  const logoBitmaps = new Map();
+  const missingCustomLogos = [];
   try {
     const canvas = document.createElement('canvas');
     canvas.width = bitmap.width;
@@ -937,6 +939,7 @@ async function exportMatchResultJpeg() {
     } = getModoLigaTemplateLayout(bitmap.width);
     const organizationLogo = await loadLogoBitmap(ORGANIZATION_LOGO_URL);
     logoBitmaps.set('organization', organizationLogo);
+    const teamLogoCatalog = getModoLigaLogoCatalogForRoster(matchResultState.roster);
 
     context.textAlign = 'center';
     context.textBaseline = 'middle';
@@ -998,6 +1001,11 @@ async function exportMatchResultJpeg() {
       : '';
     matchResultState.exportMessage = `Imagem exportada com ${data.standings.length} equipes e ${matchResultState.dropCount} ${matchResultState.dropCount === 1 ? 'queda' : 'quedas'}.${fallbackNote}`;
   } finally {
+    const organizationLogo = logoBitmaps.get('organization');
+    for (const logoBitmap of new Set(logoBitmaps.values())) {
+      if (logoBitmap !== organizationLogo) logoBitmap.close?.();
+    }
+    organizationLogo?.close?.();
     bitmap.close?.();
     render();
   }
