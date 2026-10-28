@@ -460,6 +460,7 @@ function matchResultViewState() {
       bundled: Boolean(matchResultState.template?.bundled),
     },
     canExport,
+    canExportTop3,
     summary,
   };
 }
@@ -974,7 +975,7 @@ async function exportMatchResultJpeg() {
 
       let fontSize = Math.round(bitmap.width * 0.0185);
       const name = team.teamName.toLocaleUpperCase('pt-BR');
-      context.fillStyle = '#20302f';
+      context.fillStyle = '#fff';
       context.font = `700 ${fontSize}px Stapel, Arial, sans-serif`;
       while (fontSize > 12 && context.measureText(name).width > maxNameWidth) {
         fontSize -= 1;
@@ -983,8 +984,10 @@ async function exportMatchResultJpeg() {
       context.fillText(name, nameX, y, maxNameWidth);
 
       context.font = `700 ${Math.round(bitmap.width * 0.019)}px Stapel, Arial, sans-serif`;
+      context.fillStyle = '#fff';
       context.fillText(String(team.wins), winsX, y);
       context.fillText(String(team.kills), killsX, y);
+      context.fillStyle = '#10201e';
       context.fillText(String(team.points), pointsX, y);
     }
 

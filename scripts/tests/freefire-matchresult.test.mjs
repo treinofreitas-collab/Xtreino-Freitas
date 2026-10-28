@@ -56,7 +56,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-export-2['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-export-3['"]\)/,
   );
 });
 
@@ -65,7 +65,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-2"/);
+  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-3"/);
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
@@ -116,6 +116,31 @@ test('keeps the scoreboard export logo cache and fallback state in local scope',
   assert.match(regularExport, /const missingCustomLogos = \[\]/);
   assert.match(regularExport, /const teamLogoCatalog = getModoLigaLogoCatalogForRoster/);
   assert.match(top3Export, /const logoBitmaps = new Map\(\)/);
+});
+
+test('returns Top 3 availability and exports requested text in white', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  const stateStart = source.indexOf('function matchResultViewState()');
+  const stateEnd = source.indexOf('function updateMatchResultRosterText(', stateStart);
+  const stateSource = source.slice(stateStart, stateEnd);
+  assert.match(stateSource, /canExportTop3,/);
+
+  const exportStart = source.indexOf('async function exportMatchResultJpeg()');
+  const top3Start = source.indexOf('async function exportModoLigaTop3Jpeg()', exportStart);
+  const exportSource = source.slice(exportStart, top3Start);
+  const nameDraw = exportSource.indexOf('context.fillText(name, nameX, y, maxNameWidth)');
+  const winsDraw = exportSource.indexOf('context.fillText(String(team.wins), winsX, y)');
+  const killsDraw = exportSource.indexOf('context.fillText(String(team.kills), killsX, y)');
+  const pointsDraw = exportSource.indexOf('context.fillText(String(team.points), pointsX, y)');
+
+  assert.ok(exportSource.lastIndexOf("context.fillStyle = '#fff';", nameDraw) >= 0);
+  const whiteNumbers = exportSource.lastIndexOf("context.fillStyle = '#fff';", winsDraw);
+  assert.ok(whiteNumbers >= 0 && whiteNumbers < winsDraw && winsDraw < killsDraw);
+  const pointsColor = exportSource.lastIndexOf("context.fillStyle = '#10201e';", pointsDraw);
+  assert.ok(pointsColor > killsDraw && pointsColor < pointsDraw);
 });
 
 test('imports and displays logos from approved Modo Liga purchases', () => {
@@ -289,6 +314,9 @@ test('shows logo upload controls only for the Modo Liga slot list', () => {
   assert.match(container.innerHTML, /class="mr-standing-logo" src="\/assets\/logo-time-1\.webp"/);
   assert.match(container.innerHTML, /logo Freitas é usada por padrão/);
   assert.match(container.innerHTML, /data-export-top3/);
+  const top3Button = container.innerHTML.match(/<button\b[^>]*data-export-top3[^>]*>/)?.[0];
+  assert.ok(top3Button);
+  assert.equal(top3Button.includes('disabled'), false);
   assert.match(container.innerHTML, /ponto de interrogação/);
   assert.match(container.innerHTML, /data-import-purchase-logos/);
   assert.match(container.innerHTML, /Buscar logos nas compras/);
