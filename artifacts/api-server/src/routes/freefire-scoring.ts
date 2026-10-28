@@ -313,6 +313,19 @@ function normalizeTeams(result: unknown): OfficialTeam[] {
   return teams.sort((a, b) => a.slot - b.slot);
 }
 
+function normalizeKillCount(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value >= 0 && value <= 99 ? value : null;
+  }
+  if (typeof value !== "string" || !/^\d{1,2}$/.test(value.trim())) return null;
+  const parsed = Number(value.trim());
+  return parsed <= 99 ? parsed : null;
+}
+
+function formatKillCount(value: number | null) {
+  return Number.isInteger(value) ? String(value) : "ilegível";
+}
+
 function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
   if (!isRecord(result) || !Array.isArray(result.placements)) {
     throw new ApiError(503, "A IA não conseguiu identificar os resultados desta queda.");
@@ -326,14 +339,11 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
       rawSlot === null || rawSlot === undefined || rawSlot === ""
         ? null
         : Number(rawSlot);
-    const kills = Number(item.kills);
+    const kills = normalizeKillCount(item.kills);
     if (
       !Number.isInteger(position) ||
       position < 1 ||
       position > 12 ||
-      !Number.isInteger(kills) ||
-      kills < 0 ||
-      kills > 99 ||
       (slot !== null && (!Number.isInteger(slot) || slot < 1 || slot > 12))
     ) {
       return [];
@@ -342,7 +352,7 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
       ? item.players.flatMap((player) => {
           if (!isRecord(player)) return [];
           const name = typeof player.name === "string" ? player.name.trim().slice(0, 80) : "";
-          const playerKills = Number(player.kills);
+          const playerKills = normalizeKillCount(player.kills);
           const rawLobbySlot = player.lobbySlot;
           const parsedLobbySlot =
             rawLobbySlot === null || rawLobbySlot === undefined || rawLobbySlot === ""
@@ -355,9 +365,7 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
             parsedLobbySlot <= 12
               ? parsedLobbySlot
               : null;
-          return name && Number.isInteger(playerKills) && playerKills >= 0 && playerKills <= 99
-            ? [{ name, kills: playerKills, lobbySlot }]
-            : [];
+          return name ? [{ name, kills: playerKills, lobbySlot }] : [];
         }).slice(0, 6)
       : [];
     const playerSlotCounts = new Map<number, number>();
@@ -377,8 +385,13 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
     const resolvedSlot = majorityPlayerSlot ?? slot;
     const playerSlotConflict = playerSlotCounts.size > 1;
     const playerSlotMismatch = majorityPlayerSlot !== null && majorityPlayerSlot !== slot;
-    const playerKillsTotal = players.reduce((total, player) => total + player.kills, 0);
-    const killTotalMismatch = players.length > 0 && playerKillsTotal !== kills;
+    const unreadablePlayerKills = players.filter((player) => player.kills === null).length;
+    const playerKillsTotal = players.reduce((total, player) => total + (player.kills ?? 0), 0);
+    const teamKillsUnreadable = kills === null;
+    const killTotalMismatch =
+      teamKillsUnreadable ||
+      unreadablePlayerKills > 0 ||
+      (players.length > 0 && playerKillsTotal !== kills);
     const modelConfidence =
       item.confidence === "high" || item.confidence === "medium" || item.confidence === "low"
         ? item.confidence
@@ -387,7 +400,17 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
       killTotalMismatch || playerSlotConflict || playerSlotMismatch ? "low" : modelConfidence;
     const modelNotes = typeof item.notes === "string" ? item.notes.trim() : "";
     const validationNotes: string[] = [];
-    if (killTotalMismatch) {
+    if (teamKillsUnreadable) {
+      validationNotes.push("Total de abates da equipe ilegível; confira no placar.");
+    }
+    if (unreadablePlayerKills > 0) {
+      validationNotes.push(
+        `Abates ilegíveis para ${unreadablePlayerKills} ${
+          unreadablePlayerKills === 1 ? "jogador" : "jogadores"
+        }; confira no placar.`,
+      );
+    }
+    if (!teamKillsUnreadable && unreadablePlayerKills === 0 && players.length > 0 && playerKillsTotal !== kills) {
       validationNotes.push(
         `A soma individual (${playerKillsTotal}) difere do total (${kills}); confira os abates no placar.`,
       );
@@ -469,7 +492,7 @@ function reconcilePlacements(
 
     const differences: string[] = [];
     if (initial.kills !== reviewed.kills) {
-      differences.push(`abates: ${initial.kills} vs ${reviewed.kills}`);
+      differences.push(`abates: ${formatKillCount(initial.kills)} vs ${formatKillCount(reviewed.kills)}`);
     }
     if (initial.slot !== reviewed.slot) {
       differences.push(`slot: ${initial.slot ?? "?"} vs ${reviewed.slot ?? "?"}`);
@@ -558,18 +581,19 @@ router.post("/freefire/analyze", async (req, res) => {
       "Se um jogador aparecer no placar final dentro do grupo/slot de um time, mas não aparecer nas fotos iniciais do lobby, trate-o como reserva daquele time e inclua os abates dele na soma da equipe.",
       "Não marque um jogador como sem vínculo somente por ele não aparecer no lobby inicial. Use o grupo/slot em que aparece no placar final para associar reservas; não invente uma associação se o placar não mostrar claramente o time.",
       teamList,
-      "Leia a coluna de abates de cada jogador visível, sem pular linhas. Inclua reservas agrupadas com o time. Retorne cada jogador e seus abates em players; kills deve ser exatamente a soma dos abates listados.",
+      "Leia a coluna de abates de cada jogador visível, sem pular linhas. Inclua reservas agrupadas com o time. Retorne cada jogador e seus abates em players; kills deve ser exatamente a soma dos abates listados quando todos forem legíveis.",
+      "Use o número 0 somente quando o zero estiver claramente visível. Se um total ou abate estiver ausente ou ilegível, retorne null para esse valor; nunca transforme ilegível em zero nem deduza abates a partir de outros jogadores.",
       "Em cada jogador, inclua lobbySlot com o slot correspondente no lobby; use null para reserva não encontrada. Os jogadores reconhecidos da mesma equipe devem apontar para o mesmo slot. Se houver conflito, mantenha confidence como low e explique em notes.",
       "Faça uma conferência final: compare o total kills com a soma de players. Se algum número ou jogador estiver ilegível, não adivinhe; mantenha confidence como low e explique em notes.",
       "Não invente posições, slots, nomes, abates ou dados fora das imagens. Se não conseguir ligar um time ao resultado, use slot:null, teamName:null e explique em notes.",
-      "Retorne somente JSON no formato: {\"placements\":[{\"position\":1,\"slot\":1,\"teamName\":\"nome oficial ou null\",\"kills\":5,\"players\":[{\"name\":\"jogador\",\"kills\":2,\"lobbySlot\":1}],\"confidence\":\"high|medium|low\",\"notes\":\"\"}],\"unmatchedPlayers\":[\"jogador não associado\"]}.",
+      "Retorne somente JSON no formato: {\"placements\":[{\"position\":1,\"slot\":1,\"teamName\":\"nome oficial ou null\",\"kills\":5,\"players\":[{\"name\":\"jogador\",\"kills\":2,\"lobbySlot\":1}],\"confidence\":\"high|medium|low\",\"notes\":\"\"}],\"unmatchedPlayers\":[\"jogador não associado\"]}. Nos campos kills de equipes e jogadores, use null quando o valor estiver ilegível.",
       "Inclua no máximo 12 posições; cada jogador deve aparecer em players com o número de abates lido.",
       "A pontuação é calculada pelo sistema depois; não calcule pontos de colocação.",
     ].join("\n");
     const firstResult = normalizePlacements(await generateJson(prompt, images), officialTeams);
     const verificationPrompt = [
       "Faça uma segunda conferência independente das imagens abaixo para validar o placar.",
-      "Primeiro, leia o lobby, os slots, todos os jogadores visíveis e cada valor de abates diretamente nas imagens sem usar os valores da primeira leitura.",
+      "Primeiro, leia o lobby, os slots, todos os jogadores visíveis e cada valor de abates diretamente nas imagens sem usar os valores da primeira leitura. Use 0 somente para um zero claramente visível; use null para um valor ilegível, sem adivinhar.",
       "Depois, compare sua leitura independente com a primeira e corrija qualquer slot, jogador ou abate que não corresponda às imagens. Não presuma que a primeira leitura está correta.",
       "Retorne o resultado completo no mesmo formato JSON solicitado, incluindo todas as posições e jogadores reconhecidos. Não retorne apenas as diferenças.",
       "Primeira leitura para conferir:",

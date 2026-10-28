@@ -171,7 +171,7 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=logo-export-5/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=kill-readability-1/);
   assert.match(adminPage, /admin\.js\?v=streamer-prize-8/);
 });
 

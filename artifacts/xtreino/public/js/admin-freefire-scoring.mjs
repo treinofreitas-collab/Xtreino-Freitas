@@ -1231,7 +1231,7 @@ function dropReviewIssue(drop) {
     if (!Number.isInteger(slot) || slot < 1 || slot > 12 || !state.teams[slot - 1]?.teamName.trim()) return 'Associe cada colocação a um slot com equipe.';
     if (positions.has(position)) return 'Há colocações repetidas nesta queda.';
     if (slots.has(slot)) return 'Há equipes repetidas nesta queda.';
-    if (!Number.isInteger(Number(placement.kills)) || Number(placement.kills) < 0) return 'Corrija os abates desta queda.';
+    if (!Number.isInteger(placement.kills) || placement.kills < 0) return 'Informe os abates legíveis desta queda; valor em branco não conta como zero.';
     positions.add(position);
     slots.add(slot);
   }
@@ -1433,6 +1433,19 @@ function confidenceValue(value) {
   if (!Number.isFinite(number)) return 0;
   return Math.max(0, Math.min(1, number > 1 ? number / 100 : number));
 }
+export function normalizeExtractedKillCount(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 && value <= 99 ? value : null;
+  }
+  if (typeof value !== 'string' || !/^\d{1,2}$/.test(value.trim())) return null;
+  const parsed = Number(value.trim());
+  return parsed <= 99 ? parsed : null;
+}
+function formatExtractedKillCount(value) {
+  return normalizeExtractedKillCount(value) === null
+    ? 'ilegível'
+    : String(normalizeExtractedKillCount(value));
+}
 function renderPlacements(drop) {
   const wrap = $('ffExtraction');
   if (!drop.analyzed) {
@@ -1448,9 +1461,9 @@ function renderPlacements(drop) {
     ${drop.placements.map((p, i) => `<tr>
       <td><select data-edit="slot" data-index="${i}" aria-label="Slot da equipe" ${readOnly() ? 'disabled' : ''}><option value="" ${p.slot == null ? 'selected' : ''}>—</option>${Array.from({ length: 12 }, (_, x) => `<option value="${x + 1}" ${Number(p.slot) === x + 1 ? 'selected' : ''}>${String(x + 1).padStart(2, '0')}</option>`).join('')}</select></td>
       <td><strong class="ff-reviewed-team">${esc(state.teams[Number(p.slot) - 1]?.teamName || p.teamName || 'Não identificada')}</strong>
-        ${p.players?.length ? `<small class="ff-player-list">Jogadores: ${p.players.map(player => `${esc(player.name)} (${Number(player.kills) || 0})`).join(' · ')}</small>` : ''}</td>
+        ${p.players?.length ? `<small class="ff-player-list">Jogadores: ${p.players.map(player => `${esc(player.name)} (${esc(formatExtractedKillCount(player.kills))})`).join(' · ')}</small>` : ''}</td>
       <td><input data-edit="position" data-index="${i}" aria-label="Colocação" type="number" min="1" max="12" value="${esc(p.position)}" ${readOnly() ? 'disabled' : ''}></td>
-      <td><input data-edit="kills" data-index="${i}" aria-label="Abates" type="number" min="0" value="${esc(p.kills)}" ${readOnly() ? 'disabled' : ''}></td>
+      <td><input data-edit="kills" data-index="${i}" aria-label="Abates" type="number" min="0" placeholder="Abates ilegíveis" value="${Number.isInteger(p.kills) ? esc(p.kills) : ''}" ${readOnly() ? 'disabled' : ''}></td>
       <td><span class="ff-confidence ${confidenceValue(p.confidence) < .75 ? 'low' : ''}">${Math.round(confidenceValue(p.confidence) * 100)}%</span>${p.notes ? `<small class="ff-row-note">${esc(p.notes)}</small>` : ''}</td>
     </tr>`).join('') || '<tr><td colspan="5" class="ff-empty-row">Nenhuma equipe identificada nesta queda.</td></tr>'}</tbody></table></div>
     ${drop.placements.length ? `<label class="ff-review-confirm"><input type="checkbox" data-review-drop ${drop.reviewed ? 'checked' : ''} ${readOnly() ? 'disabled' : ''}><span>Revisei as colocações, os slots e os abates desta queda, incluindo os avisos de jogadores sem vínculo.</span></label>` : ''}`;
@@ -1474,8 +1487,8 @@ export function calculateStandings(teams, drops, dropsCount) {
     drop.placements.forEach(p => {
       const slot = Number(p.slot), total = totals.get(slot);
       if (!total) return;
-      const pos = Number(p.position), kills = Math.max(0, Number(p.kills) || 0);
-      if (!Number.isInteger(pos) || pos < 1 || pos > 12) return;
+      const pos = Number(p.position), kills = p.kills;
+      if (!Number.isInteger(pos) || pos < 1 || pos > 12 || !Number.isInteger(kills) || kills < 0) return;
       total.placementsByDrop[dropIndex] = pos;
       total.wins += pos === 1 ? 1 : 0;
       total.kills += kills;
@@ -1772,7 +1785,7 @@ function build(root) {
     state.drops[state.activeDrop].reviewed = false;
     placement[field] = field === 'slot'
       ? (e.target.value ? Number(e.target.value) : null)
-      : field === 'teamName' ? e.target.value : Number(e.target.value);
+      : field === 'teamName' ? e.target.value : field === 'kills' ? normalizeExtractedKillCount(e.target.value) : Number(e.target.value);
     if (field === 'slot') placement.teamName = state.teams[Number(placement.slot) - 1]?.teamName || '';
     refreshStandings();
   });
@@ -1789,7 +1802,7 @@ function build(root) {
       state.drops[state.activeDrop].reviewed = false;
       placement[field] = field === 'slot'
         ? (e.target.value ? Number(e.target.value) : null)
-        : field === 'teamName' ? e.target.value : Number(e.target.value);
+        : field === 'teamName' ? e.target.value : field === 'kills' ? normalizeExtractedKillCount(e.target.value) : Number(e.target.value);
       if (field === 'slot') placement.teamName = state.teams[Number(placement.slot) - 1]?.teamName || '';
       render();
     }
@@ -2147,7 +2160,7 @@ async function analyzeDrop() {
         position: Number(item.position) || 0,
         slot,
         teamName: slot ? state.teams[slot - 1]?.teamName || '' : '',
-        kills: Math.max(0, Number(item.kills) || 0),
+        kills: normalizeExtractedKillCount(item.kills),
         players: Array.isArray(item.players) ? item.players : [],
         confidence: confidenceValue(item.confidence),
         notes: String(item.notes || ''),
