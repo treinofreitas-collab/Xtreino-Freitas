@@ -4543,6 +4543,22 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (listPending) listPending.onclick = handler;
   }
 
+  function registrationMatchesManageEvent(registration, eventType, rawEventId = null, evFieldType = null) {
+    const normalize = value => String(value ?? '').trim().toLowerCase();
+    const registrationType = normalize(registration?.eventType || registration?.event_type);
+    const expectedTypes = [eventType, evFieldType].map(normalize).filter(Boolean);
+    const eventId = normalize(rawEventId);
+    const registrationIds = [
+      registration?.adminEventId,
+      registration?.admin_event_id,
+      registration?.eventId,
+      registration?.event_id,
+    ].map(normalize).filter(Boolean);
+    const matchesType = expectedTypes.some(type => registrationType.includes(type));
+    const matchesEventId = eventId && registrationIds.includes(eventId);
+    return (!expectedTypes.length && !eventId) || matchesType || matchesEventId;
+  }
+
   async function openManageHourModal(date, eventType, hour, rawEventId = null, evFieldType = null){
     const title         = document.getElementById('manageHourTitle');
     const listConfirmed = document.getElementById('manageHourListConfirmed');
@@ -4590,7 +4606,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
       listConfirmed.innerHTML = '';
       if (listPending) listPending.innerHTML = '';
 
-      const evLower    = String(eventType||'').toLowerCase();
       const rawIdLower = String(rawEventId||'').toLowerCase();
       const normalizeHour = (s)=>{ const m = String(s||'').match(/(\d{1,2})/); return m? String(parseInt(m[1],10)).padStart(2,'0') : null; };
       const targetHH = normalizeHour(hour);
@@ -4675,13 +4690,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
       snap.forEach(d=>{
         const r = d.data();
         if (!_validManageStatuses.has(r.status)) return;
-        // Aceitar registration se bate com tipo canônico OU com ID bruto do doc adminEvents
-        if (evLower || rawIdLower) {
-          const rEvL = String(r.eventType||'').toLowerCase();
-          const matchCanon = evLower    && rEvL.includes(evLower);
-          const matchRaw   = rawIdLower && rEvL.includes(rawIdLower);
-          if (!matchCanon && !matchRaw) return;
-        }
+        // Eventos dinâmicos podem ter o ID do adminEvents na inscrição; aceitar também o ID exato.
+        if (!registrationMatchesManageEvent(r, eventType, rawEventId, evFieldType)) return;
         const schedStr = String(r.schedule||'');
         const hourStr  = String(r.hour||'');
         const regHH    = normalizeHour(schedStr) || normalizeHour(hourStr);

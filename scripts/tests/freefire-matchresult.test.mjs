@@ -65,7 +65,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-3"/);
+  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-4"/);
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {

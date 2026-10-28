@@ -35,6 +35,33 @@ function snapshot(rows) {
     return { docs, forEach: fn => docs.forEach(fn) };
 }
 
+test('manage-hour filter matches dynamic event registrations by type or adminEvents ID', () => {
+    const helperStart = source.indexOf('function registrationMatchesManageEvent(');
+    assert.notEqual(helperStart, -1);
+    const modalStart = source.indexOf('async function openManageHourModal(', helperStart);
+    assert.notEqual(modalStart, -1);
+    const context = vm.createContext({});
+    vm.runInContext(source.slice(helperStart, modalStart), context);
+    const matches = context.registrationMatchesManageEvent;
+    assert.equal(matches({
+        eventType: 'camp-freitas',
+        adminEventId: 'season-seven-event-id',
+    }, 'stale-event-type', 'season-seven-event-id', 'another-stale-type'), true);
+    assert.equal(matches({
+        eventType: 'camp-freitas',
+        adminEventId: 'season-seven-event-id',
+    }, 'camp-freitas', 'other-event-id', 'camp-freitas'), true);
+    assert.equal(matches({
+        eventType: 'modo-liga',
+        adminEventId: 'other-event-id',
+    }, 'stale-event-type', 'season-seven-event-id', 'camp-freitas'), false);
+
+    assert.match(
+        source,
+        /registrationMatchesManageEvent\(r,\s*eventType,\s*rawEventId,\s*evFieldType\)/,
+    );
+});
+
 test('concurrent and sequential analytics share one read, and expire after 60 seconds', async () => {
     let clock = 0, reads = 0;
     const cache = helpers().createReadCache({ now: () => clock });
@@ -346,7 +373,7 @@ test('automatic startup scans are removed and board keeps manual overrides on li
     assert.ok(!source.includes('_boardRefreshInterval'));
     const init = snippet('  async function initAdmin()', '  // Start admin panel');
     assert.ok(!init.includes('setTimeout'));
-    assert.ok(html.indexOf('js/admin-read-control.js') < html.indexOf('src="admin.js"'));
+    assert.ok(html.indexOf('js/admin-read-control.js') < html.indexOf('src="admin.js?v='));
     assert.ok(html.includes("new Event('admin:pagechange')"));
     const applied = [];
     const context = vm.createContext({
