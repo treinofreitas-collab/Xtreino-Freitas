@@ -8,6 +8,7 @@ import {
   parseMatchResultRoster,
   parseMatchResultLog,
   matchResultTeamKey,
+  resolveMatchResultTeam,
 } from './freefire-matchresult.mjs';
 import {
   SPEC_LOGO_HOURS,
@@ -44,8 +45,29 @@ const MODO_LIGA_LOGO_TYPE = 'freefire-modo-liga-team-logo';
 const MODO_LIGA_LOGO_COLLECTION = 'championship_config';
 const ORGANIZATION_LOGO_URL = new URL('../assets/freefire-organizacao-logo.webp?v=logo-fallback-2', import.meta.url).href;
 const MAX_TEAM_LOGO_FILE_BYTES = 5 * 1024 * 1024;
+const MODO_LIGA_PURCHASE_SDK_TIMEOUT_MS = 10_000;
+const MODO_LIGA_PURCHASE_QUERY_TIMEOUT_MS = 20_000;
 let modoLigaLogoCatalog = new Map();
 let modoLigaLogoLoadPromise = null;
+
+export function withModoLigaPurchaseTimeout(promise, timeoutMs, message) {
+  let timeoutId;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]).finally(() => clearTimeout(timeoutId));
+}
+
+function purchaseTimestampMs(value) {
+  if (typeof value?.toMillis === 'function') return value.toMillis();
+  if (Number.isFinite(Number(value?.seconds))) return Number(value.seconds) * 1000;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value < 100_000_000_000 ? value * 1000 : value;
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 export function getModoLigaTemplateLayout(imageWidth) {
   return Object.fromEntries(
@@ -412,7 +434,7 @@ function matchResultViewState() {
     standings: standingsWithLogos,
     rosterText: matchResultState.rosterText,
     rosterFileName: matchResultState.rosterFileName,
-    rosterDraft,
+    rosterDraft: rosterWithLogos,
     rosterCount: rosterDraft.filter(team => team.teamName?.trim()).length,
     rosterDirty: matchResultState.rosterDirty,
     rosterError: matchResultState.rosterError,
@@ -574,15 +596,25 @@ async function loadModoLigaPurchaseLogos() {
 
   session.purchaseLogoAttempted = true;
   session.purchaseLogoBusy = true;
-  session.purchaseLogoStatus = 'Buscando logos nas compras aprovadas do Modo Liga…';
+  session.purchaseLogoStatus = 'Conectando ao Firebase para buscar as compras do Modo Liga…';
   render();
   try {
     const { collection, getDocs, query, where } =
-      await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-    const snapshot = await getDocs(query(
-      collection(window.firebaseDb, 'registrations'),
-      where('eventType', '==', 'modo-liga'),
-    ));
+      await withModoLigaPurchaseTimeout(
+        import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js'),
+        MODO_LIGA_PURCHASE_SDK_TIMEOUT_MS,
+        'A conexão com o Firebase demorou mais de 10 segundos.',
+      );
+    session.purchaseLogoStatus = 'Consultando as inscrições do Modo Liga…';
+    render();
+    const snapshot = await withModoLigaPurchaseTimeout(
+      getDocs(query(
+        collection(window.firebaseDb, 'registrations'),
+        where('eventType', '==', 'modo-liga'),
+      )),
+      MODO_LIGA_PURCHASE_QUERY_TIMEOUT_MS,
+      'A consulta das inscrições demorou mais de 20 segundos. Verifique a conexão e tente novamente.',
+    );
     session.purchaseLogoRows = snapshot.docs.map(item => item.data());
     session.purchaseLogoLoaded = true;
     const matchedCount = buildModoLigaPurchaseLogoCatalog(
@@ -590,8 +622,8 @@ async function loadModoLigaPurchaseLogos() {
       purchaseLookupRoster,
     ).size;
     session.purchaseLogoStatus = matchedCount
-      ? `Encontramos ${matchedCount} logo${matchedCount === 1 ? '' : 's'} para ${purchaseLookupRoster.length} time${purchaseLookupRoster.length === 1 ? '' : 's'} informado${purchaseLookupRoster.length === 1 ? '' : 's'}. A logo manual continua prioritária.`
-      : `Nenhuma logo corresponde aos ${purchaseLookupRoster.length} times informados. Confira os nomes nas inscrições.`;
+      ? `Encontramos ${matchedCount} logo${matchedCount === 1 ? '' : 's'} para ${purchaseLookupRoster.length} time${purchaseLookupRoster.length === 1 ? '' : 's'} informado${purchaseLookupRoster.length === 1 ? '' : 's'}, entre ${snapshot.size} inscrição(ões) do Modo Liga. A logo manual continua prioritária.`
+      : `Consulta concluída: ${snapshot.size} inscrição(ões) do Modo Liga, sem logo aprovada correspondente aos ${purchaseLookupRoster.length} times informados. Confira os nomes nas inscrições.`;
   } catch (error) {
     session.purchaseLogoStatus = `Não foi possível buscar logos das compras do Modo Liga. (${error.message || 'erro de acesso'})`;
   } finally {
@@ -1501,6 +1533,7 @@ function build(root) {
       ).join('\n');
       updateMatchResultRosterText(text);
     },
+    onImportPurchaseLogos: () => { loadModoLigaPurchaseLogos(); },
     onRosterFiles: files => { importMatchResultRosterFiles(files); },
     onDropFile: (dropIndex, file) => { readMatchResultFile(dropIndex, file); },
     onClearDrop: dropIndex => {

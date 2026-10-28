@@ -3,9 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { createMatchResultView } from '../../artifacts/xtreino/public/js/admin-freefire-matchresult-view.mjs';
 import {
+  buildModoLigaPurchaseLogoCatalog,
   getModoLigaTemplateLayout,
   getModoLigaTemplateRowCenter,
   parseRoster,
+  withModoLigaPurchaseTimeout,
 } from '../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs';
 import { specLogoCodeForLetter } from '../../artifacts/xtreino/public/js/admin-spec-logos.mjs';
 import {
@@ -53,7 +55,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-layout-3['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-purchase-1['"]\)/,
   );
 });
 
@@ -62,7 +64,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=logo-layout-3"/);
+  assert.match(adminPage, /src="admin\.js\?v=logo-purchase-1"/);
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
@@ -82,6 +84,50 @@ test('versions the MatchResult view module import used for logo layout', async (
     'utf8',
   );
   assert.match(source, /admin-freefire-matchresult-view\.mjs\?v=logo-layout-3/);
+});
+
+test('imports and displays logos from approved Modo Liga purchases', () => {
+  const roster = parseMatchResultRoster([
+    'TIME A: ONYX GAMING',
+    'TIME B: AKATSUKI',
+  ].join('\n')).roster;
+  const catalog = buildModoLigaPurchaseLogoCatalog([
+    {
+      teamName: 'ONYX GAMING',
+      status: 'approved',
+      teamLogoUrl: '/logos/onyx-old.webp',
+      createdAt: '2026-10-20T12:00:00.000Z',
+    },
+    {
+      teamName: 'ONYX GAMING',
+      status: 'paid',
+      teamLogoUrl: '/logos/onyx-current.webp',
+      createdAt: '2026-10-25T12:00:00.000Z',
+    },
+  ], roster);
+
+  assert.equal(catalog.get(matchResultTeamKey('ONYX GAMING'))?.logoUrl, '/logos/onyx-current.webp');
+});
+
+test('ends a stalled Modo Liga purchase-logo lookup with a timeout', async () => {
+  await assert.rejects(
+    withModoLigaPurchaseTimeout(
+      new Promise(() => {}),
+      5,
+      'Consulta do Firebase excedeu o tempo limite.',
+    ),
+    /Consulta do Firebase excedeu o tempo limite/,
+  );
+});
+
+test('routes purchase-logo retries and renders their logo-resolved roster', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /\bresolveMatchResultTeam\b/);
+  assert.match(source, /rosterDraft:\s*rosterWithLogos/);
+  assert.match(source, /onImportPurchaseLogos:\s*\(\)\s*=>\s*\{\s*loadModoLigaPurchaseLogos/);
 });
 
 function teamBlock(teamName, rank, playerKills, overrides = {}) {
