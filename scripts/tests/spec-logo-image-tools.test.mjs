@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyLogoBrush,
+  getVisibleAlphaBounds,
   hasTransparentEdgeBackground,
   hasUniformEdgeBackground,
   padImageDataToSquare,
@@ -38,6 +39,22 @@ test('pads a non-square logo into a transparent square without cropping', () => 
       assert.deepEqual([...square.data.slice(offset, offset + 4)], [12, 34, 56, 255]);
     }
   }
+});
+
+test('finds only visible logo pixels so transparent padding can be cropped', () => {
+  const image = createImageData(8, 7, [0, 0, 0, 0]);
+  for (let y = 2; y <= 5; y += 1) {
+    for (let x = 1; x <= 6; x += 1) setPixel(image, x, y, [20, 30, 40, 255]);
+  }
+  setPixel(image, 7, 6, [255, 255, 255, 8]);
+
+  assert.deepEqual(getVisibleAlphaBounds(image), {
+    x: 1,
+    y: 2,
+    width: 6,
+    height: 4,
+  });
+  assert.equal(getVisibleAlphaBounds(createImageData(2, 2, [0, 0, 0, 0])), null);
 });
 
 test('detects a uniform background from the four image edges', () => {

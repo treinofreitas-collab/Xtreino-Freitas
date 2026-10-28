@@ -15,6 +15,12 @@ import {
   loadModoLigaSpecLogoCatalog,
   specLogoCodeForLetter,
 } from './admin-spec-logos.mjs';
+import {
+  getVisibleAlphaBounds,
+  hasTransparentEdgeBackground,
+  hasUniformEdgeBackground,
+  removeConnectedEdgeBackground,
+} from './spec-logo-image-tools.mjs?v=leaderboard-logo-cleanup-1';
 
 const EVENTS = [
   ['TREINO FREITAS', 'treino'],
@@ -915,6 +921,44 @@ async function loadLogoBitmap(url, blob = null) {
   return createImageBitmap(await response.blob());
 }
 
+async function loadLeaderboardLogoBitmap(url, blob = null) {
+  const source = await loadLogoBitmap(url, blob);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('O navegador não conseguiu preparar a logo.');
+    context.drawImage(source, 0, 0);
+
+    let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    if (!hasTransparentEdgeBackground(imageData) && hasUniformEdgeBackground(imageData)) {
+      const cleaned = removeConnectedEdgeBackground(imageData, 42);
+      imageData = new ImageData(cleaned.data, cleaned.width, cleaned.height);
+      context.putImageData(imageData, 0, 0);
+    }
+
+    const bounds = getVisibleAlphaBounds(imageData, 8);
+    if (!bounds) return await createImageBitmap(source);
+    const padding = Math.max(1, Math.round(Math.min(bounds.width, bounds.height) * 0.015));
+    const cropX = Math.max(0, bounds.x - padding);
+    const cropY = Math.max(0, bounds.y - padding);
+    const cropRight = Math.min(canvas.width, bounds.x + bounds.width + padding);
+    const cropBottom = Math.min(canvas.height, bounds.y + bounds.height + padding);
+    const cropWidth = cropRight - cropX;
+    const cropHeight = cropBottom - cropY;
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = cropWidth;
+    cropCanvas.height = cropHeight;
+    const cropContext = cropCanvas.getContext('2d');
+    if (!cropContext) throw new Error('O navegador não conseguiu recortar a logo.');
+    cropContext.drawImage(canvas, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+    return await createImageBitmap(cropCanvas);
+  } finally {
+    source.close?.();
+  }
+}
+
 function triggerBlobDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -943,6 +987,8 @@ async function exportMatchResultJpeg() {
     const context = canvas.getContext('2d');
     if (!context) throw new Error('O navegador não conseguiu preparar a imagem.');
     context.drawImage(bitmap, 0, 0);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
     await document.fonts.load(`700 ${Math.round(bitmap.width * 0.02)}px Stapel`);
 
     const {
@@ -954,7 +1000,7 @@ async function exportMatchResultJpeg() {
       killsCenterX: killsX,
       pointsCenterX: pointsX,
     } = getModoLigaTemplateLayout(bitmap.width);
-    const organizationLogo = await loadLogoBitmap(ORGANIZATION_LOGO_URL);
+    const organizationLogo = await loadLeaderboardLogoBitmap(ORGANIZATION_LOGO_URL);
     logoBitmaps.set('organization', organizationLogo);
     const teamLogoCatalog = getModoLigaLogoCatalogForRoster(matchResultState.roster);
 
@@ -971,7 +1017,7 @@ async function exportMatchResultJpeg() {
           : customLogo.storagePath || customLogo.logoUrl;
         if (!logoBitmaps.has(cacheKey)) {
           try {
-            logoBitmaps.set(cacheKey, await loadLogoBitmap(customLogo.logoUrl, customLogo.blob));
+            logoBitmaps.set(cacheKey, await loadLeaderboardLogoBitmap(customLogo.logoUrl, customLogo.blob));
           } catch {
             missingCustomLogos.push(team.teamName);
             logoBitmaps.set(cacheKey, organizationLogo);
@@ -984,8 +1030,8 @@ async function exportMatchResultJpeg() {
         teamLogo.height,
         logoX,
         y,
-        logoSize,
-        logoSize,
+        logoSize * 0.88,
+        logoSize * 0.88,
       );
       context.drawImage(teamLogo, logoRect.x, logoRect.y, logoRect.width, logoRect.height);
 

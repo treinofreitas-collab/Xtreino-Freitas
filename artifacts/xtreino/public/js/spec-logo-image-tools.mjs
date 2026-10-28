@@ -10,6 +10,29 @@ function getSize(imageData) {
   return { width, height, pixelCount: width * height };
 }
 
+export function getVisibleAlphaBounds(imageData, alphaThreshold = 8) {
+  const { width, height } = getSize(imageData);
+  const threshold = Math.min(255, Math.max(0, Number(alphaThreshold) || 0));
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (imageData.data[(y * width + x) * 4 + 3] <= threshold) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  return maxX < 0
+    ? null
+    : { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
 export function padImageDataToSquare(imageData) {
   const { width, height } = getSize(imageData);
   const size = Math.max(width, height);

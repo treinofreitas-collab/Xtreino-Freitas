@@ -56,7 +56,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-export-4['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-export-5['"]\)/,
   );
 });
 
@@ -65,7 +65,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-5"/);
+  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-6"/);
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
@@ -139,6 +139,40 @@ test('Top 3 button is wired to an export and keeps the generated download alive'
   const templateStart = source.indexOf('async function loadTemplate()', top3Start);
   assert.match(source.slice(top3Start, templateStart),
     /triggerBlobDownload\(blob, 'freitas-modo-liga-top-3\.jpg'\)/);
+});
+
+test('prepares leaderboard logos without solid edge backgrounds and keeps them inside their slots', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  const helperStart = source.indexOf('async function loadLeaderboardLogoBitmap(');
+  const helperEnd = source.indexOf('\nfunction triggerBlobDownload', helperStart);
+  const helper = source.slice(helperStart, helperEnd);
+  assert.match(source, /spec-logo-image-tools\.mjs\?v=leaderboard-logo-cleanup-1/);
+  assert.match(helper, /hasTransparentEdgeBackground\(imageData\)/);
+  assert.match(helper, /hasUniformEdgeBackground\(imageData\)/);
+  assert.match(helper, /removeConnectedEdgeBackground\(imageData, 42\)/);
+  assert.match(helper, /getVisibleAlphaBounds\(imageData, 8\)/);
+  assert.match(helper, /cropContext\.drawImage\(canvas,/);
+
+  const exportStart = source.indexOf('async function exportMatchResultJpeg()');
+  const top3Start = source.indexOf('async function exportModoLigaTop3Jpeg()', exportStart);
+  const leaderboardExport = source.slice(exportStart, top3Start);
+  assert.match(leaderboardExport, /loadLeaderboardLogoBitmap\(ORGANIZATION_LOGO_URL\)/);
+  assert.match(leaderboardExport, /loadLeaderboardLogoBitmap\(customLogo\.logoUrl, customLogo\.blob\)/);
+  assert.match(leaderboardExport, /logoSize \* 0\.88/);
+
+  const admin = await readFile(
+    new URL('../../artifacts/xtreino/public/admin.js', import.meta.url),
+    'utf8',
+  );
+  const adminPage = await readFile(
+    new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
+    'utf8',
+  );
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=logo-export-5/);
+  assert.match(adminPage, /admin\.js\?v=streamer-prize-6/);
 });
 
 test('returns Top 3 availability and exports requested text in white', async () => {
