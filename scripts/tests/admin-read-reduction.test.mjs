@@ -374,6 +374,7 @@ test('board occupancy counts only the selected dynamic event and keeps the date 
                 return snapshot([
                     { eventType: 'modo-liga', adminEventId: 'season-seven-event-id', status: 'paid', schedule: 'Quinta - 17h' },
                     { eventType: 'modo-liga', adminEventId: 'treino-modo-liga-id', status: 'paid', schedule: 'Quinta - 17h' },
+                    { eventType: 'camp-season-7-custom', adminEventId: 'season-seven-event-id', status: 'paid', schedule: 'Quinta - 17h' },
                     { eventType: 'modo-liga', title: 'CAMPEONATO SEASON 7 - INÍCIO: 15/11 - 20h', status: 'confirmed', schedule: 'Quinta - 17h' },
                     { eventType: 'treino', status: 'paid', schedule: 'Quinta - 17h' },
                     { eventType: 'modo-liga', adminEventId: 'season-seven-event-id', status: 'pending', schedule: 'Quinta - 17h' },
@@ -386,17 +387,26 @@ test('board occupancy counts only the selected dynamic event and keeps the date 
     assert.ok(helperStart >= 0 && modalStart > helperStart);
     vm.runInContext(source.slice(helperStart, modalStart), context);
     vm.runInContext(snippet('  let boardIndexUnavailable =', '  // Busca e normaliza horário'), context);
+    assert.match(
+        source,
+        /fetchRegistrationsByDate\(date,\s*evFieldType,\s*ovEventType,\s*rawEventId,\s*eventName,\s*rawEvType\)/,
+    );
+    assert.match(
+        source,
+        /read:\s*\(\)\s*=>\s*fetchRegistrationsByDate\(_liveDate,\s*_liveField,\s*_liveOv,\s*_liveRaw,\s*_liveName,\s*_liveRawType\)/,
+    );
     const fetch = () => context.fetchRegistrationsByDate(
         '2026-10-15',
         'modo-liga',
         'modo-liga',
         'season-seven-event-id',
         'CAMPEONATO SEASON 7 - INÍCIO: 15/11',
+        'camp-season-7-custom',
     );
-    assert.equal((await fetch())['17:00'], 2);
+    assert.equal((await fetch())['17:00'], 3);
     assert.equal(queries[0][1][0], 'date');
     assert.equal(queries[0][2][0], 'eventType');
-    assert.equal(queries[0][2][2].length, 2); // Deduplicated aliases.
+    assert.equal(queries[0][2][2].length, 3); // Canonical type, event ID, and raw event type.
     fail = Object.assign(new Error('missing index'), { code: 'failed-precondition' });
     await fetch();
     assert.equal(queries.at(-1).length, 2); // Compatible daily-query fallback.

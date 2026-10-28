@@ -3537,13 +3537,13 @@ window.showWarningToast = function(message, title = 'Atenção') {
   // CRÍTICO: igual ao fetchOccupiedForDate do script.js — query por campo único sem composite index
   // date e status são filtrados em JS depois, evitando necessidade de índice composto no Firestore
   let boardIndexUnavailable = false;
-  async function fetchRegistrationsByDate(date, evFieldType, ovEventType = null, rawEventId = null, eventName = '') {
+  async function fetchRegistrationsByDate(date, evFieldType, ovEventType = null, rawEventId = null, eventName = '', rawEventType = null) {
     try {
       const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const regs = collection(window.firebaseDb, 'registrations');
       const validStatuses = new Set(['paid', 'confirmed', 'approved', 'lisagem_gratis']);
       // Coletar todos os valores distintos de eventType que podem estar salvos nas registrations
-      const typesToQuery = [...new Set([evFieldType, ovEventType, rawEventId].filter(Boolean))];
+      const typesToQuery = [...new Set([evFieldType, ovEventType, rawEventId, rawEventType].filter(Boolean))];
       if (!date || typesToQuery.length === 0) return {};
 
       // Filtro simples por data: reduz leituras ao dia selecionado sem exigir índice composto.
@@ -3982,7 +3982,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
       // Inscrições, ajustes e travas permanentes são independentes: buscar em paralelo.
       const [occupancyMap, overridesMap, permLockedHours] = await Promise.all([
-        fetchRegistrationsByDate(date, evFieldType, ovEventType, rawEventId, eventName),
+        fetchRegistrationsByDate(date, evFieldType, ovEventType, rawEventId, eventName, rawEvType),
         fetchScheduleOverrides(date, ovEventType, rawEventId, rawEvType),
         fetchPermanentLockedHours(ovEventType, rawEvType, rawEventId)
       ]);
@@ -4037,7 +4037,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId, evFieldType, rawEvType, eventName);
 
       // Keep automatic updates while this page is visible; refresh immediately on return.
-      const _liveDate = date, _liveField = evFieldType, _liveOv = ovEventType, _liveRaw = rawEventId, _liveName = eventName;
+      const _liveDate = date, _liveField = evFieldType, _liveOv = ovEventType, _liveRaw = rawEventId, _liveName = eventName, _liveRawType = rawEvType;
       const liveUid = window.firebaseAuth.currentUser?.uid;
       _boardPoller = window.AdminReadControl.createVisiblePoller({
         isVisible: () => {
@@ -4048,7 +4048,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             && !document.getElementById('dashboard')?.classList.contains('hidden')
             && !!section?.getClientRects().length;
         },
-        read: () => fetchRegistrationsByDate(_liveDate, _liveField, _liveOv, _liveRaw, _liveName),
+        read: () => fetchRegistrationsByDate(_liveDate, _liveField, _liveOv, _liveRaw, _liveName, _liveRawType),
         apply: freshOcc => {
           document.querySelectorAll('[data-board-count]').forEach(td => {
             const h = td.dataset.boardCount;
