@@ -49,6 +49,14 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
 });
 
+test('loads admin.js with the matching cache version', async () => {
+  const adminPage = await readFile(
+    new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
+    'utf8',
+  );
+  assert.match(adminPage, /src="admin\.js\?v=logo-fallback-1"/);
+});
+
 function teamBlock(teamName, rank, playerKills, overrides = {}) {
   const kills = playerKills.reduce((sum, value) => sum + value, 0);
   const rankPoints = LBFF_PLACEMENT_POINTS_15[rank - 1];
