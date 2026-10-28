@@ -404,6 +404,17 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
     });
+    const trainingAwardSection = document.getElementById('sectionPremiacaoTreino');
+    if (trainingAwardSection) {
+      const hideTrainingAward = resolvedRole === 'streamer';
+      trainingAwardSection.hidden = hideTrainingAward;
+      trainingAwardSection.setAttribute('aria-hidden', String(hideTrainingAward));
+      if (hideTrainingAward) {
+        trainingAwardSection.style.setProperty('display', 'none', 'important');
+      } else {
+        trainingAwardSection.style.removeProperty('display');
+      }
+    }
 
     // Determinar seções permitidas para o cargo
     const allowed = ROLE_SECTIONS[resolvedRole] || [];
@@ -13547,7 +13558,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionFreefireScoring':
-                    await import('./js/admin-freefire-scoring.mjs?v=logo-purchase-1')
+                    await import('./js/admin-freefire-scoring.mjs?v=logo-export-1')
                         .then(m => m.openFreefireScoringAdmin())
                         .catch(error => {
                             console.error('[Free Fire] Falha ao carregar o placar:', error);

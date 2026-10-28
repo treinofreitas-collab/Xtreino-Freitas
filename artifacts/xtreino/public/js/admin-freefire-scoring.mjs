@@ -41,6 +41,13 @@ const MODO_LIGA_TEMPLATE_LAYOUT = Object.freeze({
   killsCenterX: 0.4902,
   pointsCenterX: 0.5444,
 });
+const MODO_LIGA_TOP3_LOGO_POSITIONS = Object.freeze([
+  Object.freeze({ centerX: 0.5, centerY: 0.566, size: 0.18 }),
+  Object.freeze({ centerX: 0.186, centerY: 0.637, size: 0.18 }),
+  Object.freeze({ centerX: 0.813, centerY: 0.637, size: 0.18 }),
+]);
+const MODO_LIGA_TOP3_TEMPLATE_URL = new URL('../assets/freefire-modo-liga-top3.webp', import.meta.url).href;
+const MODO_LIGA_TOP3_PLACEHOLDER_URL = new URL('../assets/freefire-modo-liga-top3-placeholder.png', import.meta.url).href;
 const MODO_LIGA_LOGO_TYPE = 'freefire-modo-liga-team-logo';
 const MODO_LIGA_LOGO_COLLECTION = 'championship_config';
 const ORGANIZATION_LOGO_URL = new URL('../assets/freefire-organizacao-logo.webp?v=logo-fallback-2', import.meta.url).href;
@@ -897,6 +904,13 @@ async function changeMatchResultEvent(eventType) {
       : Promise.resolve(),
   ]);
   render();
+}
+
+async function loadLogoBitmap(url, blob = null) {
+  if (blob) return createImageBitmap(blob);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Não foi possível carregar a logo (${response.status}).`);
+  return createImageBitmap(await response.blob());
 }
 
 async function exportMatchResultJpeg() {

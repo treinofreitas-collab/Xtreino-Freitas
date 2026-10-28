@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   getModoLigaSpecLogoItems,
@@ -14,6 +15,22 @@ test('limits Streamer to hour selection and ZIP download mode', () => {
   assert.equal(getSpecLogoViewMode('admin'), 'manage');
   assert.equal(getSpecLogoViewMode('operador'), 'view');
   assert.equal(getSpecLogoViewMode('user'), 'denied');
+});
+
+test('hides training award from Streamer and refreshes the admin script', async () => {
+  const adminScript = await readFile(
+    new URL('../../artifacts/xtreino/public/admin.js', import.meta.url),
+    'utf8',
+  );
+  const adminPage = await readFile(
+    new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(adminScript, /const hideTrainingAward = resolvedRole === 'streamer'/);
+  assert.match(adminScript, /trainingAwardSection\.hidden = hideTrainingAward/);
+  assert.match(adminPage, /id="sectionPremiacaoTreino" hidden/);
+  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-1"/);
 });
 
 test('maps the exact SPEC code range from A through Z', () => {

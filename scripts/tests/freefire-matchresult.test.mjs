@@ -6,6 +6,7 @@ import {
   buildModoLigaPurchaseLogoCatalog,
   getModoLigaTemplateLayout,
   getModoLigaTemplateRowCenter,
+  getModoLigaTop3LogoLayout,
   parseRoster,
   withModoLigaPurchaseTimeout,
 } from '../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs';
@@ -55,7 +56,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-purchase-1['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-export-1['"]\)/,
   );
 });
 
@@ -64,7 +65,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=logo-purchase-1"/);
+  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-1"/);
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
@@ -84,6 +85,19 @@ test('versions the MatchResult view module import used for logo layout', async (
     'utf8',
   );
   assert.match(source, /admin-freefire-matchresult-view\.mjs\?v=logo-layout-3/);
+});
+
+test('includes the logo bitmap helper and Top 3 assets required by exports', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  const helperIndex = source.indexOf('async function loadLogoBitmap(');
+  const top3ExportIndex = source.indexOf('async function exportModoLigaTop3Jpeg(');
+  assert.ok(helperIndex >= 0 && helperIndex < top3ExportIndex);
+  assert.equal(getModoLigaTop3LogoLayout(1000, 600).length, 3);
+  assert.ok((await readFile(new URL('../../artifacts/xtreino/public/assets/freefire-modo-liga-top3.webp', import.meta.url))).length > 0);
+  assert.ok((await readFile(new URL('../../artifacts/xtreino/public/assets/freefire-modo-liga-top3-placeholder.png', import.meta.url))).length > 0);
 });
 
 test('imports and displays logos from approved Modo Liga purchases', () => {
