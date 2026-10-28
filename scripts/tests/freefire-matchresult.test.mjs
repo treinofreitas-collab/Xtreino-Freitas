@@ -53,7 +53,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-fallback-2['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-layout-3['"]\)/,
   );
 });
 
@@ -62,7 +62,26 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=logo-fallback-2"/);
+  assert.match(adminPage, /src="admin\.js\?v=logo-layout-3"/);
+});
+
+test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-matchresult-view.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /\.mr-view \.mr-roster-grid-logos\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/);
+  assert.match(source, /\.mr-view \.mr-roster-logo\{display:block;width:34px;height:34px;object-fit:contain/);
+  assert.match(source, /onRosterLogoFile/);
+  assert.match(source, /onImportPurchaseLogos/);
+});
+
+test('versions the MatchResult view module import used for logo layout', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /admin-freefire-matchresult-view\.mjs\?v=logo-layout-3/);
 });
 
 function teamBlock(teamName, rank, playerKills, overrides = {}) {

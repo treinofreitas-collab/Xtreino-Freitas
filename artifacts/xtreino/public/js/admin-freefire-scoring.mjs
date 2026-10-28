@@ -1,4 +1,4 @@
-import { createMatchResultView } from './admin-freefire-matchresult-view.mjs';
+import { createMatchResultView } from './admin-freefire-matchresult-view.mjs?v=logo-layout-3';
 import {
   MATCHRESULT_EVENT_TYPES,
   MAX_MATCHRESULT_FILE_BYTES,

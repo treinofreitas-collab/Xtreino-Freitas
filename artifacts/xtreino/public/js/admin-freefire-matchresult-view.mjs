@@ -34,8 +34,27 @@ const STYLES = `
 .mr-view .mr-roster-dropzone.ff-drop-target-active [data-roster-text]{border-color:#dc8052!important;background:#fffaf7!important;box-shadow:0 0 0 3px rgba(242,106,50,.14)!important}
 .mr-view .mr-roster-controls{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-top:.65rem}
 .mr-view .mr-roster-count{color:#72827a;font:500 .64rem 'DM Mono',monospace}
+.mr-view .mr-purchase-logo-controls{display:flex;align-items:center;gap:.65rem;margin-top:.55rem}
+.mr-view .mr-purchase-logo-controls button{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:32px;padding:.42rem .65rem;border:1px solid #c9ddd3;border-radius:7px;background:#f2faf6;color:#226b60;font-size:.66rem;font-weight:700;cursor:pointer}
+.mr-view .mr-purchase-logo-controls button:hover:not(:disabled){background:#e7f5ee;border-color:#087f78}
+.mr-view .mr-purchase-logo-controls button:disabled{opacity:.55;cursor:not-allowed}
+.mr-view .mr-purchase-logo-status{color:#718078;font-size:.63rem;line-height:1.4}
 .mr-view .mr-roster-help{margin:.55rem 0 0;color:#718078;font-size:.66rem;line-height:1.45}
 .mr-view .mr-roster-error{margin:.45rem 0 0}
+.mr-view .mr-roster-logo-status{margin:.55rem 0 0;color:#648075;font-size:.65rem;line-height:1.45}
+.mr-view .mr-roster-grid-logos{grid-template-columns:repeat(2,minmax(0,1fr))}
+.mr-view .mr-roster-row-logos{display:grid;grid-template-columns:29px 34px minmax(0,1fr) auto;align-items:center;gap:.42rem;min-width:0}
+.mr-view .mr-roster-row-logos input{min-width:0;width:100%;border:1px solid #dce3dd;border-radius:8px;background:#fff;color:#253235;padding:.45rem .55rem;font-size:.72rem}
+.mr-view .mr-roster-logo{display:block;width:34px;height:34px;object-fit:contain;border:1px solid #e2e9e2;border-radius:7px;background:#f7f8f5}
+.mr-view .mr-logo-upload,.mr-view .mr-logo-reset{display:grid;place-items:center;width:30px;height:30px;border:1px solid #dce3dd;border-radius:7px;background:#fff;color:#087f78;cursor:pointer}
+.mr-view .mr-logo-upload:hover,.mr-view .mr-logo-reset:hover{background:#edf7f2;border-color:#9dc8b5}
+.mr-view .mr-logo-upload input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0,0,0,0)}
+.mr-view .mr-logo-upload:focus-within,.mr-view .mr-logo-reset:focus-visible{outline:3px solid rgba(8,127,120,.22);outline-offset:2px}
+.mr-view .mr-logo-actions{display:flex;align-items:center;gap:.25rem}
+.mr-view .mr-logo-busy{color:#75847d;font-size:.58rem}
+.mr-view .mr-standing-team{display:flex;align-items:center;gap:.42rem;min-width:0}
+.mr-view .mr-standing-logo{width:24px;height:24px;flex:0 0 24px;object-fit:contain;border:1px solid #e2e9e2;border-radius:5px;background:#f7f8f5}
+.mr-view .mr-standing-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mr-view select{min-width:0;width:100%;border:1px solid #dce3dd;border-radius:8px;background:#fff;color:#253235;padding:.62rem .7rem;font-size:.78rem}
 .mr-view select:focus,.mr-view input:focus-visible,.mr-view button:focus-visible,.mr-view label.mr-upload:focus-within{outline:3px solid rgba(8,127,120,.22);outline-offset:2px;border-color:#087f78}
 .mr-view .mr-drops{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
@@ -96,6 +115,11 @@ export function createMatchResultView(container, handlers = {}) {
     else if (target.matches("[data-roster-slot]")) {
       call(handlers, "onRosterSlotInput", Number(target.dataset.rosterSlot), target.value);
     }
+    else if (target.matches("[data-roster-logo]")) {
+      const file = target.files?.[0];
+      if (file) call(handlers, "onRosterLogoFile", Number(target.dataset.rosterLogo), file);
+      target.value = "";
+    }
     else if (target.matches("[data-drop-file]")) {
       const file = target.files?.[0];
       if (file) call(handlers, "onDropFile", Number(target.dataset.dropFile), file);
@@ -117,11 +141,18 @@ export function createMatchResultView(container, handlers = {}) {
   };
   const onClick = (event) => {
     const target = event.target instanceof Element
-      ? event.target.closest("[data-clear-drop], [data-export]")
+      ? event.target.closest("[data-clear-drop], [data-export], [data-export-top3], [data-roster-logo-reset], [data-import-purchase-logos]")
       : null;
     if (!target || !container.contains(target)) return;
     if (target.hasAttribute("data-clear-drop")) call(handlers, "onClearDrop", Number(target.dataset.clearDrop));
-    else if (!target.disabled) call(handlers, "onExport");
+    else if (target.hasAttribute("data-roster-logo-reset")) {
+      if (!target.disabled) call(handlers, "onRosterLogoReset", Number(target.dataset.rosterLogoReset));
+    }
+    else if (target.hasAttribute("data-import-purchase-logos")) {
+      if (!target.disabled) call(handlers, "onImportPurchaseLogos");
+    }
+    else if (!target.disabled && target.hasAttribute("data-export-top3")) call(handlers, "onExportTop3");
+    else if (!target.disabled && target.hasAttribute("data-export")) call(handlers, "onExport");
   };
   const onDragOver = (event) => {
     const dropzone = event.target instanceof Element ? event.target.closest("[data-roster-dropzone]") : null;
@@ -260,7 +291,7 @@ export function createMatchResultView(container, handlers = {}) {
             ${eventType === "modo-liga" ? `<p class="mr-roster-logo-status" role="status" aria-live="polite">${esc(state.specLogoStatus || "Selecione um horário para carregar as logos SPEC pela letra do slot.")}</p>` : ""}
             <div class="ff-roster-grid ${eventType === "modo-liga" ? "mr-roster-grid-logos" : ""}" data-roster-grid>${rosterRows}</div>
           </div>
-          ${eventType === "modo-liga" ? `<p class="mr-roster-logo-status" role="status" aria-live="polite">${esc(state.logoStatus || "A logo Freitas é usada por padrão. Envie uma logo personalizada pelo ícone ao lado do time.")}</p>` : ""}
+          ${eventType === "modo-liga" ? `<p class="mr-roster-logo-status" role="status">${esc(state.logoStatus || "A logo Freitas é usada por padrão. Envie uma logo personalizada pelo ícone ao lado do time.")}</p>` : ""}
           ${state.rosterError ? `<div class="mr-report-line mr-report-error mr-roster-error" role="alert">${esc(state.rosterError)}</div>` : ""}
           <p class="ff-note mr-roster-help">Os slots aparecem automaticamente ao colar ou importar. Cortes e abreviações só são associados quando a correspondência é única; nomes ausentes ou ambíguos são sinalizados para revisão.</p>
         </section>
