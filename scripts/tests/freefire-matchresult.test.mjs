@@ -30,6 +30,14 @@ test('imports the team key normalizer used by the Modo Liga scoring view', async
   );
 });
 
+test('includes the Freitas logo used as the empty-slot fallback', async () => {
+  const image = await readFile(
+    new URL('../../artifacts/xtreino/public/assets/freefire-organizacao-logo.webp', import.meta.url),
+  );
+  assert.equal(image.subarray(0, 4).toString(), 'RIFF');
+  assert.equal(image.subarray(8, 12).toString(), 'WEBP');
+});
+
 function teamBlock(teamName, rank, playerKills, overrides = {}) {
   const kills = playerKills.reduce((sum, value) => sum + value, 0);
   const rankPoints = LBFF_PLACEMENT_POINTS_15[rank - 1];
