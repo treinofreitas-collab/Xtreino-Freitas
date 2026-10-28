@@ -4252,7 +4252,7 @@ const scheduleConfig =
     // 'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
     // 'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
 };
-const CAMP_SEASON_7_START_DATE = '2026-11-15';
+const CAMP_SEASON_7_START_DATE = '2026-11-16';
 
 function isCampSeason7Name(value) {
     const name = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -5699,7 +5699,7 @@ async function renderScheduleTimes() {
         stopScheduleAvailabilityListener();
         let msg = 'Esta data não está disponível para este evento.';
         if (eventType === 'xtreino-tokens') msg = 'Agendamentos não disponíveis em datas passadas.';
-        else if (getActiveScheduleConfig(eventType).dateScopedEventLinks) msg = 'O Camp Season 7 aceita inscrições a partir de 15/11/2026.';
+        else if (getActiveScheduleConfig(eventType).dateScopedEventLinks) msg = 'As vagas do Camp Season 7 estão disponíveis a partir de 16/11/2026.';
         else if (eventType === 'camp-freitas') msg = 'Camp Freitas (Semifinal) disponível somente em 22/11 e 23/11 às 17h.';
         else if (eventType === 'camp-final') msg = 'Vaga Direto na Final disponível apenas em 28/11 às 18h.';
         timesWrap.innerHTML = `<p class="text-red-500 text-center py-4">${msg}</p>`;
@@ -6177,7 +6177,8 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
           date: normalizedDate,
           selectedTimes,
           eventType: eventType || null,
-          numberOfTeams: Number(numberOfTeams || 1)
+          numberOfTeams: Number(numberOfTeams || 1),
+          adminEventId: document.getElementById('scheduleModal')?.dataset?.adminEventId || null
         }),
         signal: _ctrl.signal
       });

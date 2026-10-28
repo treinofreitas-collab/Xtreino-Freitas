@@ -50,6 +50,38 @@ test("availability reads only the chosen date/event and ignores pending, cancele
   assert.equal((await checkAvailability(db, { ...request, numberOfTeams: 2 })).available, false);
 });
 
+test("Camp Season 7 keeps 15 November closed and opens bookings on 16 November", async () => {
+  const eventId = "season-7-event";
+  const eventConfig = {
+    [`adminEvents/${eventId}`]: {
+      name: "CAMPEONATO SEASON 7 - INÍCIO: 15/11",
+      eventType: "camp-freitas",
+      status: "Aberto",
+      vagas: 15,
+    },
+  };
+  const campRequest = {
+    ...request,
+    eventType: "camp-freitas",
+    adminEventId: eventId,
+    selectedTimes: ["Domingo - 19h"],
+  };
+  const beforeStart = await checkAvailability(database(eventConfig), {
+    ...campRequest,
+    date: "2026-11-15",
+  });
+  assert.equal(beforeStart.available, false);
+  assert.match(beforeStart.message, /16\/11\/2026/);
+
+  const onStartDateDb = database(eventConfig);
+  const onStartDate = await checkAvailability(onStartDateDb, {
+    ...campRequest,
+    date: "2026-11-16",
+  });
+  assert.deepEqual(onStartDate, { available: true });
+  assert.ok(onStartDateDb.reads.some(read => read.name === "adminEvents" && read.id === eventId));
+});
+
 test("every selected hour must have enough room for every team", async () => {
   const db = database({ ...catalog, "registrations/full1": registration, "registrations/full2": registration });
   assert.equal((await checkAvailability(db, { ...request, selectedTimes: ["17h", "18h"] })).available, false);

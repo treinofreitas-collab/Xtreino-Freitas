@@ -1,4 +1,5 @@
 const UNAVAILABLE_MESSAGE = "Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.";
+const CAMP_SEASON_7_START_DATE = "2026-11-16";
 const ACTIVE_STATUSES = new Set(["paid", "confirmed", "approved", "lisagem_gratis"]);
 const DEFAULT_CAPACITIES = {
   "modo-liga": 15, acesso: 15, "camp-final": 2, "camp-freitas": 12,
@@ -21,6 +22,16 @@ function isModoLigaType(value) {
   return type === "liga" || type === "acesso" || type.includes("modo-liga");
 }
 
+function isCampSeason7(config) {
+  const name = [config?.name, config?.label, config?.title]
+    .filter(Boolean)
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return name.includes("camp") && /\bseason\s*7\b/.test(name);
+}
+
 function validateRequest(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) invalid("Dados da reserva inválidos.");
   const { date, eventType, selectedTimes } = body;
@@ -28,6 +39,10 @@ function validateRequest(body) {
       || Number.isNaN(new Date(`${date}T00:00:00Z`).getTime())
       || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) invalid("Data inválida.");
   if (typeof eventType !== "string" || !/^[\w.-]{1,128}$/.test(eventType)) invalid("Evento inválido.");
+  const rawAdminEventId = body.adminEventId;
+  if (rawAdminEventId != null && (typeof rawAdminEventId !== "string"
+      || !rawAdminEventId.trim() || rawAdminEventId.includes("/"))) invalid("Evento inválido.");
+  const adminEventId = typeof rawAdminEventId === "string" ? rawAdminEventId.trim() : "";
   if (!Array.isArray(selectedTimes) || selectedTimes.length < 1 || selectedTimes.length > 10
       || selectedTimes.some(time => typeof time !== "string" || time.length > 80)) invalid("Selecione horários válidos.");
   const hours = selectedTimes.map(hourOf);
@@ -35,22 +50,26 @@ function validateRequest(body) {
       || new Set(hours).size !== hours.length) invalid("Selecione horários válidos, sem repetições.");
   const numberOfTeams = Number(body.numberOfTeams);
   if (!Number.isInteger(numberOfTeams) || numberOfTeams < 1 || numberOfTeams > 100) invalid("Quantidade de times inválida.");
-  return { date, eventType, hours, numberOfTeams };
+  return { date, eventType, hours, numberOfTeams, ...(adminEventId ? { adminEventId } : {}) };
 }
 
 async function checkAvailability(db, body) {
-  const { date, eventType, hours, numberOfTeams } = validateRequest(body);
-  let catalog = await db.collection("adminEvents").doc(eventType).get();
-  if (!catalog.exists) {
+  const { date, eventType, adminEventId, hours, numberOfTeams } = validateRequest(body);
+  let catalog = await db.collection("adminEvents").doc(adminEventId || eventType).get();
+  if (!catalog.exists && !adminEventId) {
     const matches = await db.collection("adminEvents").where("eventType", "==", eventType).limit(1).get();
     catalog = matches.docs[0];
   }
   const config = catalog?.exists ? catalog.data() : null;
+  if (adminEventId && !config) return { available: false, message: "Evento não encontrado." };
   if (!config && !(eventType in DEFAULT_CAPACITIES)) {
     return { available: false, message: "Evento não encontrado." };
   }
   if (config?.status && !["Aberto", "Em breve"].includes(config.status)) {
     return { available: false, message: "Este evento não está disponível para reservas." };
+  }
+  if (isCampSeason7(config) && date < CAMP_SEASON_7_START_DATE) {
+    return { available: false, message: "As vagas do Camp Season 7 estão disponíveis a partir de 16/11/2026." };
   }
 
   const isModoLiga = [

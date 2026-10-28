@@ -56,7 +56,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-export-3['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-export-4['"]\)/,
   );
 });
 
@@ -65,7 +65,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-4"/);
+  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-5"/);
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
@@ -116,6 +116,29 @@ test('keeps the scoreboard export logo cache and fallback state in local scope',
   assert.match(regularExport, /const missingCustomLogos = \[\]/);
   assert.match(regularExport, /const teamLogoCatalog = getModoLigaLogoCatalogForRoster/);
   assert.match(top3Export, /const logoBitmaps = new Map\(\)/);
+});
+
+test('Top 3 button is wired to an export and keeps the generated download alive', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  const mountIndex = source.indexOf('matchResultView = createMatchResultView');
+  const handlerIndex = source.indexOf('onExportTop3:', mountIndex);
+  assert.ok(mountIndex >= 0 && handlerIndex > mountIndex);
+  assert.match(source.slice(handlerIndex, handlerIndex + 300), /exportModoLigaTop3Jpeg\(\)\.catch/);
+
+  const helperStart = source.indexOf('function triggerBlobDownload(blob, filename)');
+  const regularStart = source.indexOf('async function exportMatchResultJpeg()', helperStart);
+  const helper = source.slice(helperStart, regularStart);
+  assert.match(helper, /document\.body\.appendChild\(link\)/);
+  assert.match(helper, /link\.click\(\)/);
+  assert.match(helper, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 1000\)/);
+
+  const top3Start = source.indexOf('async function exportModoLigaTop3Jpeg()');
+  const templateStart = source.indexOf('async function loadTemplate()', top3Start);
+  assert.match(source.slice(top3Start, templateStart),
+    /triggerBlobDownload\(blob, 'freitas-modo-liga-top-3\.jpg'\)/);
 });
 
 test('returns Top 3 availability and exports requested text in white', async () => {

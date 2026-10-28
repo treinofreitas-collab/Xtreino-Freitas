@@ -443,6 +443,7 @@ function matchResultViewState() {
     rosterFileName: matchResultState.rosterFileName,
     rosterDraft: rosterWithLogos,
     rosterCount: rosterDraft.filter(team => team.teamName?.trim()).length,
+    organizationLogoUrl: ORGANIZATION_LOGO_URL,
     rosterDirty: matchResultState.rosterDirty,
     rosterError: matchResultState.rosterError,
     logoStatus: matchResultState.logoStatus,
@@ -914,6 +915,21 @@ async function loadLogoBitmap(url, blob = null) {
   return createImageBitmap(await response.blob());
 }
 
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.style.display = 'none';
+  try {
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
 async function exportMatchResultJpeg() {
   const data = matchResultViewState();
   if (!data.canExport) return;
@@ -927,7 +943,7 @@ async function exportMatchResultJpeg() {
     const context = canvas.getContext('2d');
     if (!context) throw new Error('O navegador não conseguiu preparar a imagem.');
     context.drawImage(bitmap, 0, 0);
-    await document.fonts.load('700 22px Stapel');
+    await document.fonts.load(`700 ${Math.round(bitmap.width * 0.02)}px Stapel`);
 
     const {
       logoCenterX: logoX,
@@ -993,12 +1009,7 @@ async function exportMatchResultJpeg() {
 
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
     if (!blob) throw new Error('O navegador não conseguiu gerar o JPEG.');
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `freitas-${matchResultState.eventType}-leaderboard.jpg`;
-    link.click();
-    URL.revokeObjectURL(url);
+    triggerBlobDownload(blob, `freitas-${matchResultState.eventType}-leaderboard.jpg`);
     const fallbackNote = missingCustomLogos.length
       ? ` ${missingCustomLogos.length} logo(s) SPEC/personalizada(s) não carregaram e foram substituídas pela Freitas.`
       : '';
@@ -1083,12 +1094,7 @@ async function exportModoLigaTop3Jpeg() {
 
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
     if (!blob) throw new Error('O navegador não conseguiu gerar o banner Top 3.');
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'freitas-modo-liga-top-3.jpg';
-    link.click();
-    URL.revokeObjectURL(url);
+    triggerBlobDownload(blob, 'freitas-modo-liga-top-3.jpg');
     const missingNote = missingCustomLogos.length
       ? ` Logo(s) sem carregamento: ${missingCustomLogos.join(', ')}.`
       : '';
@@ -1103,8 +1109,15 @@ async function exportModoLigaTop3Jpeg() {
 async function loadTemplate() {
   try {
     const value = await getTemplate(state.event);
-    state.template = value?.blob || null;
-    state.templateName = value?.name || '';
+    const savedBlob = value?.blob || null;
+    if (savedBlob && !(savedBlob instanceof Blob)) {
+      state.template = null;
+      state.templateName = '';
+      state.error = 'O modelo salvo neste navegador está inválido. Envie o arquivo do modelo novamente.';
+      return;
+    }
+    state.template = savedBlob;
+    state.templateName = state.template ? value?.name || '' : '';
   } catch (error) {
     state.template = null;
     state.templateName = '';
@@ -1473,7 +1486,6 @@ function standings() {
   return calculateStandings(state.teams, state.drops, state.dropsCount);
 }
 function build(root) {
-  state.built = true;
   root.innerHTML = `
     <nav class="ff-scoring-mode-switch" aria-label="Modo de pontuação">
       <button type="button" id="ffModeImages" aria-pressed="true">Analisar por imagens</button>
@@ -1558,6 +1570,8 @@ function build(root) {
       ).join('\n');
       updateMatchResultRosterText(text);
     },
+    onRosterLogoFile: (slot, file) => { saveModoLigaTeamLogo(slot, file); },
+    onRosterLogoReset: slot => { resetModoLigaTeamLogo(slot); },
     onImportPurchaseLogos: () => { loadModoLigaPurchaseLogos(); },
     onRosterFiles: files => { importMatchResultRosterFiles(files); },
     onDropFile: (dropIndex, file) => { readMatchResultFile(dropIndex, file); },
@@ -1576,6 +1590,12 @@ function build(root) {
     onExport: () => {
       exportMatchResultJpeg().catch(error => {
         matchResultState.exportMessage = error.message || 'Falha ao exportar a classificação.';
+        render();
+      });
+    },
+    onExportTop3: () => {
+      exportModoLigaTop3Jpeg().catch(error => {
+        matchResultState.exportMessage = error.message || 'Falha ao exportar o banner Top 3.';
         render();
       });
     },
@@ -1746,6 +1766,7 @@ function build(root) {
   attachImageDropTarget($('ffSlotUpload').closest('.ff-upload-tile'), $('ffSlotUpload'));
   attachImageDropTarget($('ffResultUpload').closest('.ff-upload-tile'), $('ffResultUpload'));
   $('ffExport').addEventListener('click', exportJpeg);
+  state.built = true;
   render();
 }
 function refreshStandings() {
