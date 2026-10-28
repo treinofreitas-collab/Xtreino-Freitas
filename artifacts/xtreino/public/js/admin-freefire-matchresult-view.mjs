@@ -178,7 +178,7 @@ export function createMatchResultView(container, handlers = {}) {
       if (eventType !== "modo-liga") {
         return `<label class="ff-roster-row"><span class="ff-slot">${String(slot).padStart(2, "0")}</span><input data-roster-slot="${slot}" aria-label="Equipe do slot ${slot}" value="${esc(team?.teamName || "")}" placeholder="Nome da equipe"></label>`;
       }
-      const logo = team?.logoUrl || "";
+      const logo = team?.logoUrl || state.organizationLogoUrl || "";
       const logoControls = state.canManageLogos
         ? `<div class="mr-logo-actions">
             <label class="mr-logo-upload" title="Enviar logo personalizada para ${esc(team?.teamName || `o time ${slot}`)}" aria-label="Enviar logo personalizada para o slot ${slot}">

@@ -162,6 +162,12 @@ test('shows logo upload controls only for the Modo Liga slot list', () => {
   assert.match(container.innerHTML, /Buscar logos nas compras/);
   assert.match(container.innerHTML, /Encontramos 1 logo para 3 times informados/);
 
+  view.render({ ...baseState, eventType: 'modo-liga', rosterDraft: [], rosterCount: 0 });
+  assert.equal(
+    (container.innerHTML.match(/class="mr-roster-logo" src="\/assets\/freefire-organizacao-logo\.webp"/g) || []).length,
+    15,
+  );
+
   view.render({ ...baseState, eventType: 'acesso' });
   assert.doesNotMatch(container.innerHTML, /data-roster-logo="/);
   assert.doesNotMatch(container.innerHTML, /data-roster-logo-reset="/);
