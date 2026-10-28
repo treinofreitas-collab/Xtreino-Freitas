@@ -3537,7 +3537,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   // CRÍTICO: igual ao fetchOccupiedForDate do script.js — query por campo único sem composite index
   // date e status são filtrados em JS depois, evitando necessidade de índice composto no Firestore
   let boardIndexUnavailable = false;
-  async function fetchRegistrationsByDate(date, evFieldType, ovEventType = null, rawEventId = null) {
+  async function fetchRegistrationsByDate(date, evFieldType, ovEventType = null, rawEventId = null, eventName = '') {
     try {
       const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const regs = collection(window.firebaseDb, 'registrations');
@@ -3564,6 +3564,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const r = d.data();
         if (!typesToQuery.includes(r.eventType)) return;
         if (!validStatuses.has(r.status)) return; // filtrar por status em JS
+        if (!registrationMatchesManageEvent(r, ovEventType || evFieldType, rawEventId, evFieldType, eventName)) return;
 
         const raw = String(r.schedule || r.hour || '').toLowerCase();
         const m = raw.match(/(\d{1,2})/);
@@ -3915,6 +3916,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // disponibilidade (rawEventType). Usar isso nas travas garante que o match sempre funciona.
       const rawEvType = selectedOpt?.dataset?.rawEventType || ovEventType;
       const rawEventId = selectedOpt?.dataset?.rawEventId || eventType;
+      const eventName = String(selectedOpt?.textContent || '').trim();
       // evFieldType = valor bruto do campo eventType do adminEvents doc (é o que o booking flow salva em r.eventType)
       const evFieldType = selectedOpt?.dataset?.evFieldType || rawEventId;
       const isCampSemifinalDate = CAMP_SEMIFINAL_DATES.includes(date);
@@ -3980,7 +3982,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
       // Inscrições, ajustes e travas permanentes são independentes: buscar em paralelo.
       const [occupancyMap, overridesMap, permLockedHours] = await Promise.all([
-        fetchRegistrationsByDate(date, evFieldType, ovEventType, rawEventId),
+        fetchRegistrationsByDate(date, evFieldType, ovEventType, rawEventId, eventName),
         fetchScheduleOverrides(date, ovEventType, rawEventId, rawEvType),
         fetchPermanentLockedHours(ovEventType, rawEvType, rawEventId)
       ]);
@@ -4032,10 +4034,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
       });
 
       // ===== Bind dos botões de ação =====
-      bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId, evFieldType, rawEvType);
+      bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId, evFieldType, rawEvType, eventName);
 
       // Keep automatic updates while this page is visible; refresh immediately on return.
-      const _liveDate = date, _liveField = evFieldType, _liveOv = ovEventType, _liveRaw = rawEventId;
+      const _liveDate = date, _liveField = evFieldType, _liveOv = ovEventType, _liveRaw = rawEventId, _liveName = eventName;
       const liveUid = window.firebaseAuth.currentUser?.uid;
       _boardPoller = window.AdminReadControl.createVisiblePoller({
         isVisible: () => {
@@ -4046,7 +4048,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             && !document.getElementById('dashboard')?.classList.contains('hidden')
             && !!section?.getClientRects().length;
         },
-        read: () => fetchRegistrationsByDate(_liveDate, _liveField, _liveOv, _liveRaw),
+        read: () => fetchRegistrationsByDate(_liveDate, _liveField, _liveOv, _liveRaw, _liveName),
         apply: freshOcc => {
           document.querySelectorAll('[data-board-count]').forEach(td => {
             const h = td.dataset.boardCount;
@@ -4084,7 +4086,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Binda ações dos botões da tabela
-  function bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId = null, evFieldType = null, rawEventType = null) {
+  function bindBoardTableActions(tbody, date, eventType, ovEventType, rawEventId = null, evFieldType = null, rawEventType = null, eventName = '') {
     // Remover listeners antigos para evitar duplicação
     if (!tbody || !tbody.parentNode) return;
     const newTbody = tbody.cloneNode(true);
@@ -4116,7 +4118,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         } 
         else if (btnManage) {
           const h = btnManage.getAttribute('data-manage-hour');
-          openManageHourModal(date, ovEventType, h, rawEventId, evFieldType);
+          openManageHourModal(date, ovEventType, h, rawEventId, evFieldType, eventName);
         } 
         else if (btnExport) {
           const h = btnExport.getAttribute('data-export-hour');
@@ -4543,10 +4545,16 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (listPending) listPending.onclick = handler;
   }
 
-  function registrationMatchesManageEvent(registration, eventType, rawEventId = null, evFieldType = null) {
-    const normalize = value => String(value ?? '').trim().toLowerCase();
-    const registrationType = normalize(registration?.eventType || registration?.event_type);
-    const expectedTypes = [eventType, evFieldType].map(normalize).filter(Boolean);
+  function registrationMatchesManageEvent(registration, eventType, rawEventId = null, evFieldType = null, eventName = '') {
+    const normalize = value => String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_\s]+/g, ' ');
+    const registrationTypeValues = [registration?.eventType, registration?.event_type].map(normalize).filter(Boolean);
+    const registrationTypes = registrationTypeValues.map(type => normalize(canonicalType(type)));
+    const expectedTypes = [eventType, evFieldType].map(type => normalize(canonicalType(type))).filter(Boolean);
     const eventId = normalize(rawEventId);
     const registrationIds = [
       registration?.adminEventId,
@@ -4554,12 +4562,28 @@ window.showWarningToast = function(message, title = 'Atenção') {
       registration?.eventId,
       registration?.event_id,
     ].map(normalize).filter(Boolean);
-    const matchesType = expectedTypes.some(type => registrationType.includes(type));
-    const matchesEventId = eventId && registrationIds.includes(eventId);
-    return (!expectedTypes.length && !eventId) || matchesType || matchesEventId;
+    if (eventId && registrationIds.length) return registrationIds.includes(eventId);
+
+    const selectedName = normalize(eventName);
+    if (selectedName) {
+      const registrationNames = [
+        registration?.eventName,
+        registration?.eventTitle,
+        registration?.title,
+        registration?.itemName,
+        registration?.item,
+      ].map(normalize).filter(Boolean);
+      if (registrationNames.some(name => name === selectedName || name.startsWith(`${selectedName} -`))) {
+        return true;
+      }
+    }
+
+    if (eventId && registrationTypeValues.includes(eventId)) return true;
+    if (eventId && !expectedTypes.includes(eventId)) return false;
+    return expectedTypes.some(type => registrationTypes.includes(type));
   }
 
-  async function openManageHourModal(date, eventType, hour, rawEventId = null, evFieldType = null){
+  async function openManageHourModal(date, eventType, hour, rawEventId = null, evFieldType = null, eventName = ''){
     const title         = document.getElementById('manageHourTitle');
     const listConfirmed = document.getElementById('manageHourListConfirmed');
     const listPending   = document.getElementById('manageHourListPending');
@@ -4568,7 +4592,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (!listConfirmed || !modal) return;
 
       // Salvar contexto para uso pelo botão SPEC
-      window._currentManageHour = { date, eventType, hour, rawEventId };
+      window._currentManageHour = { date, eventType, hour, rawEventId, eventName };
 
       // Mostrar botão SPEC apenas para Modo Liga
       const specFooter = document.getElementById('specFooter');
@@ -4691,7 +4715,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const r = d.data();
         if (!_validManageStatuses.has(r.status)) return;
         // Eventos dinâmicos podem ter o ID do adminEvents na inscrição; aceitar também o ID exato.
-        if (!registrationMatchesManageEvent(r, eventType, rawEventId, evFieldType)) return;
+        if (!registrationMatchesManageEvent(r, eventType, rawEventId, evFieldType, eventName)) return;
         const schedStr = String(r.schedule||'');
         const hourStr  = String(r.hour||'');
         const regHH    = normalizeHour(schedStr) || normalizeHour(hourStr);
@@ -4771,7 +4795,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
               slotDisplay: newDisplay,
             });
             showToast('success', `✅ Vaga atualizada para #${novoNum}`, 'Vaga editada');
-            openManageHourModal(date, eventType, hour, rawEventId, evFieldType);
+            openManageHourModal(date, eventType, hour, rawEventId, evFieldType, eventName);
           } catch (err) {
             showToast('error', 'Erro ao editar vaga: ' + (err.message || err), 'Erro');
           }
@@ -4815,7 +4839,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             showToast('success', '✅ Pagamento confirmado! Status atualizado para Pago.', 'Confirmado');
             // Reabrir o modal atualizado
             try{ await loadBoard(); }catch(_){}
-            openManageHourModal(date, eventType, hour, rawEventId, evFieldType);
+            openManageHourModal(date, eventType, hour, rawEventId, evFieldType, eventName);
           } else if (data.status === 'pending') {
             showToast('warning', '⏳ Pagamento ainda pendente no Mercado Pago.', 'Pendente');
             verifyBtn.disabled = false;

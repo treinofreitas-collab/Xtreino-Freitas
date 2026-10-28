@@ -32,6 +32,43 @@ function isCampSeason7(config) {
   return name.includes("camp") && /\bseason\s*7\b/.test(name);
 }
 
+function registrationMatchesSelectedEvent(record, eventType, adminEventId, eventName) {
+  const normalize = value => String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, " ");
+  const selectedId = normalize(adminEventId);
+  const selectedType = normalize(eventType);
+  const registrationIds = [
+    record.adminEventId,
+    record.admin_event_id,
+    record.eventId,
+    record.event_id,
+  ].map(normalize).filter(Boolean);
+  if (selectedId && registrationIds.length) return registrationIds.includes(selectedId);
+
+  const selectedName = normalize(eventName);
+  if (selectedName) {
+    const registrationNames = [
+      record.eventName,
+      record.eventTitle,
+      record.title,
+      record.itemName,
+      record.item,
+    ].map(normalize).filter(Boolean);
+    if (registrationNames.some(name => name === selectedName || name.startsWith(`${selectedName} -`))) {
+      return true;
+    }
+  }
+
+  const registrationType = normalize(record.eventType || record.event_type);
+  if (selectedId && selectedId !== selectedType) return registrationType === selectedId;
+  return registrationType === selectedType
+    || (isModoLigaType(registrationType) && isModoLigaType(selectedType));
+}
+
 function validateRequest(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) invalid("Dados da reserva inválidos.");
   const { date, eventType, selectedTimes } = body;
@@ -97,6 +134,12 @@ async function checkAvailability(db, body) {
   for (const doc of registrations.docs) {
     const record = doc.data();
     if (!ACTIVE_STATUSES.has(record.status)) continue;
+    if (!registrationMatchesSelectedEvent(
+      record,
+      eventType,
+      adminEventId || eventType,
+      config?.name || config?.label || config?.title || "",
+    )) continue;
     const hour = [record.schedule, record.hour, record.time]
       .map(hourOf)
       .find(value => value != null);

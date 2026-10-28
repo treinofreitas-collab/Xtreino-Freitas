@@ -35,30 +35,50 @@ function snapshot(rows) {
     return { docs, forEach: fn => docs.forEach(fn) };
 }
 
-test('manage-hour filter matches dynamic event registrations by type or adminEvents ID', () => {
+test('manage-hour filter isolates dynamic events that share a canonical event type', () => {
     const helperStart = source.indexOf('function registrationMatchesManageEvent(');
     assert.notEqual(helperStart, -1);
     const modalStart = source.indexOf('async function openManageHourModal(', helperStart);
     assert.notEqual(modalStart, -1);
-    const context = vm.createContext({});
+    const context = vm.createContext({
+        canonicalType(value) {
+            const normalized = String(value || '').toLowerCase();
+            return normalized === 'liga' || normalized.includes('modo liga') || normalized.includes('modo-liga')
+                ? 'modo-liga'
+                : normalized;
+        },
+    });
     vm.runInContext(source.slice(helperStart, modalStart), context);
     const matches = context.registrationMatchesManageEvent;
-    assert.equal(matches({
-        eventType: 'camp-freitas',
-        adminEventId: 'season-seven-event-id',
-    }, 'stale-event-type', 'season-seven-event-id', 'another-stale-type'), true);
-    assert.equal(matches({
-        eventType: 'camp-freitas',
-        adminEventId: 'season-seven-event-id',
-    }, 'camp-freitas', 'other-event-id', 'camp-freitas'), true);
+    const campId = 'season-seven-event-id';
+    const campName = 'CAMPEONATO SEASON 7 - INÍCIO: 15/11';
     assert.equal(matches({
         eventType: 'modo-liga',
-        adminEventId: 'other-event-id',
-    }, 'stale-event-type', 'season-seven-event-id', 'camp-freitas'), false);
+        adminEventId: campId,
+    }, 'modo-liga', campId, 'modo-liga', campName), true);
+    assert.equal(matches({
+        eventType: 'modo-liga',
+        adminEventId: 'treino-modo-liga-id',
+        title: `${campName} - 20:00`,
+    }, 'modo-liga', campId, 'modo-liga', campName), false);
+    assert.equal(matches({
+        eventType: 'modo-liga',
+        title: `${campName} - 20:00`,
+    }, 'modo-liga', campId, 'modo-liga', campName), true);
+    assert.equal(matches({
+        eventType: 'modo-liga',
+    }, 'modo-liga', campId, 'modo-liga', campName), false);
+    assert.equal(matches({
+        eventType: 'season-seven-event-id',
+    }, 'modo-liga', campId, 'modo-liga', campName), true);
 
     assert.match(
         source,
-        /registrationMatchesManageEvent\(r,\s*eventType,\s*rawEventId,\s*evFieldType\)/,
+        /registrationMatchesManageEvent\(r,\s*eventType,\s*rawEventId,\s*evFieldType,\s*eventName\)/,
+    );
+    assert.match(
+        source,
+        /registrationMatchesManageEvent\(r,\s*ovEventType\s*\|\|\s*evFieldType,\s*rawEventId,\s*evFieldType,\s*eventName\)/,
     );
 });
 
@@ -333,11 +353,17 @@ test('actual coupon listener runs only on the visible financial page and cancels
     assert.equal(subscriptions, 2);
 });
 
-test('actual board query narrows to date and event aliases and does not invent free slots on failure', async () => {
+test('board occupancy counts only the selected dynamic event and keeps the date query fallback', async () => {
     const queries = [];
     let fail = null;
     const context = vm.createContext({
         window: { firebaseDb: {} }, console: quiet,
+        canonicalType(value) {
+            const normalized = String(value || '').toLowerCase();
+            return normalized === 'liga' || normalized.includes('modo liga') || normalized.includes('modo-liga')
+                ? 'modo-liga'
+                : normalized;
+        },
         firebase: async () => ({
             collection: (db, name) => name,
             where: (...args) => args,
@@ -346,16 +372,27 @@ test('actual board query narrows to date and event aliases and does not invent f
                 queries.push(query);
                 if (fail) { const error = fail; fail = null; throw error; }
                 return snapshot([
-                    { eventType: 'modo-liga', status: 'paid', schedule: 'Quinta - 17h' },
-                    { eventType: 'legacy-liga', status: 'confirmed', schedule: 'Quinta - 17h' },
+                    { eventType: 'modo-liga', adminEventId: 'season-seven-event-id', status: 'paid', schedule: 'Quinta - 17h' },
+                    { eventType: 'modo-liga', adminEventId: 'treino-modo-liga-id', status: 'paid', schedule: 'Quinta - 17h' },
+                    { eventType: 'modo-liga', title: 'CAMPEONATO SEASON 7 - INÍCIO: 15/11 - 20h', status: 'confirmed', schedule: 'Quinta - 17h' },
                     { eventType: 'treino', status: 'paid', schedule: 'Quinta - 17h' },
-                    { eventType: 'modo-liga', status: 'pending', schedule: 'Quinta - 17h' },
+                    { eventType: 'modo-liga', adminEventId: 'season-seven-event-id', status: 'pending', schedule: 'Quinta - 17h' },
                 ]);
             },
         }),
     });
+    const helperStart = source.indexOf('  function registrationMatchesManageEvent(');
+    const modalStart = source.indexOf('\n\n  async function openManageHourModal(', helperStart);
+    assert.ok(helperStart >= 0 && modalStart > helperStart);
+    vm.runInContext(source.slice(helperStart, modalStart), context);
     vm.runInContext(snippet('  let boardIndexUnavailable =', '  // Busca e normaliza horário'), context);
-    const fetch = () => context.fetchRegistrationsByDate('2026-10-15', 'modo-liga', 'legacy-liga', 'modo-liga');
+    const fetch = () => context.fetchRegistrationsByDate(
+        '2026-10-15',
+        'modo-liga',
+        'modo-liga',
+        'season-seven-event-id',
+        'CAMPEONATO SEASON 7 - INÍCIO: 15/11',
+    );
     assert.equal((await fetch())['17:00'], 2);
     assert.equal(queries[0][1][0], 'date');
     assert.equal(queries[0][2][0], 'eventType');

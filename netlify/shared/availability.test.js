@@ -82,6 +82,62 @@ test("Camp Season 7 keeps 15 November closed and opens bookings on 16 November",
   assert.ok(onStartDateDb.reads.some(read => read.name === "adminEvents" && read.id === eventId));
 });
 
+test("availability does not count Modo Liga registrations against Camp Season 7 when they share eventType", async () => {
+  const campId = "camp-season-7-event";
+  const campName = "CAMPEONATO SEASON 7 - INÍCIO: 15/11";
+  const eventConfig = {
+    [`adminEvents/${campId}`]: {
+      name: campName,
+      eventType: "modo-liga",
+      status: "Aberto",
+      vagas: 15,
+    },
+  };
+  const campRequest = {
+    ...request,
+    date: "2026-11-16",
+    eventType: "modo-liga",
+    adminEventId: campId,
+    selectedTimes: ["Segunda - 20h"],
+    numberOfTeams: 15,
+  };
+  const modeLigaRegistration = {
+    date: campRequest.date,
+    eventType: "modo-liga",
+    adminEventId: "treino-modo-liga-event",
+    title: "TREINO MODO LIGA - 20h",
+    schedule: "Segunda - 20h",
+    status: "paid",
+  };
+
+  assert.deepEqual(
+    await checkAvailability(database({
+      ...eventConfig,
+      "registrations/modo-liga-sale": modeLigaRegistration,
+    }), campRequest),
+    { available: true },
+  );
+
+  const campSale = {
+    ...modeLigaRegistration,
+    adminEventId: campId,
+    title: `${campName} - 20h`,
+  };
+  const soldCampSlot = await checkAvailability(database({
+    ...eventConfig,
+    "registrations/camp-sale": campSale,
+  }), campRequest);
+  assert.equal(soldCampSlot.available, false);
+  assert.match(soldCampSlot.message, /Não há vagas suficientes/);
+
+  const legacyCampSale = { ...campSale };
+  delete legacyCampSale.adminEventId;
+  assert.equal((await checkAvailability(database({
+    ...eventConfig,
+    "registrations/legacy-camp-sale": legacyCampSale,
+  }), campRequest)).available, false);
+});
+
 test("every selected hour must have enough room for every team", async () => {
   const db = database({ ...catalog, "registrations/full1": registration, "registrations/full2": registration });
   assert.equal((await checkAvailability(db, { ...request, selectedTimes: ["17h", "18h"] })).available, false);

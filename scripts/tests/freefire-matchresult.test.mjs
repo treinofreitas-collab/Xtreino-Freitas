@@ -65,7 +65,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-6"/);
+  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-7"/);
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
@@ -172,7 +172,7 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     'utf8',
   );
   assert.match(admin, /admin-freefire-scoring\.mjs\?v=logo-export-5/);
-  assert.match(adminPage, /admin\.js\?v=streamer-prize-6/);
+  assert.match(adminPage, /admin\.js\?v=streamer-prize-7/);
 });
 
 test('returns Top 3 availability and exports requested text in white', async () => {
