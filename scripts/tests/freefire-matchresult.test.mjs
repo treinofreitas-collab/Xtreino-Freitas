@@ -38,6 +38,17 @@ test('includes the Freitas logo used as the empty-slot fallback', async () => {
   assert.equal(image.subarray(8, 12).toString(), 'WEBP');
 });
 
+test('loads the scoring module with a fresh cache version', async () => {
+  const adminScript = await readFile(
+    new URL('../../artifacts/xtreino/public/admin.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    adminScript,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-fallback-1['"]\)/,
+  );
+});
+
 function teamBlock(teamName, rank, playerKills, overrides = {}) {
   const kills = playerKills.reduce((sum, value) => sum + value, 0);
   const rankPoints = LBFF_PLACEMENT_POINTS_15[rank - 1];
