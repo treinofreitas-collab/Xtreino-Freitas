@@ -42,7 +42,7 @@ const MODO_LIGA_TEMPLATE_LAYOUT = Object.freeze({
 });
 const MODO_LIGA_LOGO_TYPE = 'freefire-modo-liga-team-logo';
 const MODO_LIGA_LOGO_COLLECTION = 'championship_config';
-const ORGANIZATION_LOGO_URL = new URL('../assets/freefire-organizacao-logo.webp', import.meta.url).href;
+const ORGANIZATION_LOGO_URL = new URL('../assets/freefire-organizacao-logo.webp?v=logo-fallback-2', import.meta.url).href;
 const MAX_TEAM_LOGO_FILE_BYTES = 5 * 1024 * 1024;
 let modoLigaLogoCatalog = new Map();
 let modoLigaLogoLoadPromise = null;

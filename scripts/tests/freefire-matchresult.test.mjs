@@ -38,6 +38,14 @@ test('includes the Freitas logo used as the empty-slot fallback', async () => {
   assert.equal(image.subarray(8, 12).toString(), 'WEBP');
 });
 
+test('versions the organization logo URL to avoid stale missing-image caches', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /freefire-organizacao-logo\.webp\?v=logo-fallback-2/);
+});
+
 test('loads the scoring module with a fresh cache version', async () => {
   const adminScript = await readFile(
     new URL('../../artifacts/xtreino/public/admin.js', import.meta.url),
@@ -45,7 +53,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-fallback-1['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-fallback-2['"]\)/,
   );
 });
 
@@ -54,7 +62,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=logo-fallback-1"/);
+  assert.match(adminPage, /src="admin\.js\?v=logo-fallback-2"/);
 });
 
 function teamBlock(teamName, rank, playerKills, overrides = {}) {
@@ -152,7 +160,7 @@ test('shows logo upload controls only for the Modo Liga slot list', () => {
   const rosterDraft = Array.from({ length: 15 }, (_, index) => ({
     slot: index + 1,
     teamName: `Time ${index + 1}`,
-    logoUrl: index === 0 ? '/assets/logo-time-1.webp' : '/assets/freefire-organizacao-logo.webp',
+    logoUrl: index === 0 ? '/assets/logo-time-1.webp' : '/assets/freefire-organizacao-logo.webp?v=logo-fallback-2',
     logoSource: index === 0 ? 'custom' : 'organization',
   }));
   const baseState = {
@@ -167,7 +175,7 @@ test('shows logo upload controls only for the Modo Liga slot list', () => {
       points: 15,
       logoUrl: '/assets/logo-time-1.webp',
     }],
-    organizationLogoUrl: '/assets/freefire-organizacao-logo.webp',
+    organizationLogoUrl: '/assets/freefire-organizacao-logo.webp?v=logo-fallback-2',
     drops: [],
     canManageLogos: true,
     canImportPurchaseLogos: true,
@@ -191,7 +199,20 @@ test('shows logo upload controls only for the Modo Liga slot list', () => {
 
   view.render({ ...baseState, eventType: 'modo-liga', rosterDraft: [], rosterCount: 0 });
   assert.equal(
-    (container.innerHTML.match(/class="mr-roster-logo" src="\/assets\/freefire-organizacao-logo\.webp"/g) || []).length,
+    (container.innerHTML.match(/class="mr-roster-logo" src="\/assets\/freefire-organizacao-logo\.webp\?v=logo-fallback-2"/g) || []).length,
+    15,
+  );
+
+  const withoutOrganizationLogo = {
+    ...baseState,
+    eventType: 'modo-liga',
+    rosterDraft: [],
+    rosterCount: 0,
+  };
+  delete withoutOrganizationLogo.organizationLogoUrl;
+  view.render(withoutOrganizationLogo);
+  assert.equal(
+    (container.innerHTML.match(/class="mr-roster-logo" src="\/assets\/freefire-organizacao-logo\.webp\?v=logo-fallback-2"/g) || []).length,
     15,
   );
 

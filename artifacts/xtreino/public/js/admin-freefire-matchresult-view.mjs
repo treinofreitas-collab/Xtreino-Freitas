@@ -4,6 +4,8 @@ const EVENTS = [
   ["Camp de Fases", "camp-fases"],
 ];
 
+const DEFAULT_ORGANIZATION_LOGO_URL = "/assets/freefire-organizacao-logo.webp?v=logo-fallback-2";
+
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[char]));
@@ -178,7 +180,7 @@ export function createMatchResultView(container, handlers = {}) {
       if (eventType !== "modo-liga") {
         return `<label class="ff-roster-row"><span class="ff-slot">${String(slot).padStart(2, "0")}</span><input data-roster-slot="${slot}" aria-label="Equipe do slot ${slot}" value="${esc(team?.teamName || "")}" placeholder="Nome da equipe"></label>`;
       }
-      const logo = team?.logoUrl || state.organizationLogoUrl || "";
+      const logo = team?.logoUrl || state.organizationLogoUrl || DEFAULT_ORGANIZATION_LOGO_URL;
       const logoControls = state.canManageLogos
         ? `<div class="mr-logo-actions">
             <label class="mr-logo-upload" title="Enviar logo personalizada para ${esc(team?.teamName || `o time ${slot}`)}" aria-label="Enviar logo personalizada para o slot ${slot}">
