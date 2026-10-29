@@ -222,7 +222,7 @@ export function createMatchResultView(container, handlers = {}) {
           </div>`
         : "";
       return `<div class="mr-roster-row-logos"><span class="ff-slot">${String(slot).padStart(2, "0")}</span>
-        <img class="mr-roster-logo" src="${esc(logo)}" alt="${team?.logoSource === "spec" ? "Logo SPEC do slot" : team?.logoSource === "custom" ? "Logo personalizada" : team?.logoSource === "purchase" ? "Logo da compra" : "Logo padrão Freitas"}">
+        <img class="mr-roster-logo" src="${esc(logo)}" alt="${team?.logoSource === "spec" ? "Logo SPEC do slot" : team?.logoSource === "custom" ? "Logo personalizada" : team?.logoSource === "purchase" ? "Logo da compra" : team?.logoSource === "association" ? "Logo associada a uma lista anterior" : "Logo padrão Freitas"}">
         <input data-roster-slot="${slot}" aria-label="Equipe do slot ${slot}" value="${esc(team?.teamName || "")}" placeholder="Nome da equipe">
         ${logoControls}</div>`;
     }).join("");
@@ -276,7 +276,7 @@ export function createMatchResultView(container, handlers = {}) {
           ${eventType === "modo-liga" ? `<label class="mr-field">Horário do Modo Liga<select data-event-hour aria-label="Horário do Modo Liga"><option value="">Selecione o horário</option>${eventHours.map(hour => `<option value="${esc(hour)}" ${eventHour === hour ? "selected" : ""}>${esc(hour)}H</option>`).join("")}</select></label>` : ""}
           <label class="mr-field">Quantidade de quedas<select data-drop-count aria-label="Quantidade de quedas">${[1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${dropCount === count ? "selected" : ""}>${count} ${count === 1 ? "queda" : "quedas"}</option>`).join("")}</select></label></div>
         </section>
-        <section class="mr-panel"><div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>${eventType === "modo-liga" ? "Escolha o horário para buscar as logos SPEC pela letra do slot; logos por nome continuam como alternativa." : "Cole a lista com os 15 times desta apuração."}</p></div></div>
+        <section class="mr-panel"><div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>${eventType === "modo-liga" ? "Prioridade das logos: envio manual, compra, SPEC do horário e associação salva pelo nome do time." : "Cole a lista com os 15 times desta apuração."}</p></div></div>
           <div class="mr-roster-dropzone" data-roster-dropzone>
             <label class="ff-field">Cole lista ou CSV <span class="ff-field-hint">Aceita também a lista decorada com letras/números estilizados</span><textarea data-roster-text rows="4" spellcheck="false" aria-label="Lista oficial com 15 equipes" placeholder="TIME A: Nome do time&#10;1, Nome do time&#10;⃟🩵 SLOT 01: Nome do time 🍀&#10;...">${esc(rosterText)}</textarea></label>
             <div class="ff-roster-actions"><label class="ff-button ff-button-light" for="mrRosterFile"><i class="fas fa-file-import" aria-hidden="true"></i> Importar ou arrastar lista</label><input id="mrRosterFile" data-roster-file type="file" accept=".csv,.txt,text/csv,text/plain" hidden><span class="ff-file-label" data-roster-file-label title="${esc(rosterFileName)}">${esc(rosterFileName || "Nenhum arquivo selecionado")}</span></div>
@@ -291,7 +291,7 @@ export function createMatchResultView(container, handlers = {}) {
             ${eventType === "modo-liga" ? `<p class="mr-roster-logo-status" role="status" aria-live="polite">${esc(state.specLogoStatus || "Selecione um horário para carregar as logos SPEC pela letra do slot.")}</p>` : ""}
             <div class="ff-roster-grid ${eventType === "modo-liga" ? "mr-roster-grid-logos" : ""}" data-roster-grid>${rosterRows}</div>
           </div>
-          ${eventType === "modo-liga" ? `<p class="mr-roster-logo-status" role="status">${esc(state.logoStatus || "A logo Freitas é usada por padrão. Envie uma logo personalizada pelo ícone ao lado do time.")}</p>` : ""}
+          ${eventType === "modo-liga" ? `<p class="mr-roster-logo-status" role="status">${esc(state.logoStatus || "A logo Freitas é usada por padrão. Envie uma logo personalizada pelo ícone ao lado do time.")}</p>${state.logoAssociationStatus ? `<p class="mr-roster-logo-status" role="status" aria-live="polite">${esc(state.logoAssociationStatus)}</p>` : ""}` : ""}
           ${state.rosterError ? `<div class="mr-report-line mr-report-error mr-roster-error" role="alert">${esc(state.rosterError)}</div>` : ""}
           <p class="ff-note mr-roster-help">Os slots aparecem automaticamente ao colar ou importar. Cortes e abreviações só são associados quando a correspondência é única; nomes ausentes ou ambíguos são sinalizados para revisão.</p>
         </section>
@@ -306,7 +306,7 @@ export function createMatchResultView(container, handlers = {}) {
         <button type="button" class="mr-export" data-export ${state.canExport ? "" : "disabled"}>Exportar imagem da classificação</button>
         <p class="mr-export-note" data-export-note aria-live="polite">${state.canExport ? "Apuração pronta para gerar a imagem final." : esc(state.summary || "Confirme os logs e verifique o modelo exigido para este evento antes de exportar.")}</p>
         ${eventType === "modo-liga" ? `<button type="button" class="mr-export mr-export-top3" data-export-top3 ${state.canExportTop3 ? "" : "disabled"}>Exportar banner Top 3</button>
-        <p class="mr-export-note" data-export-top3-note aria-live="polite">${state.canExportTop3 ? "Mostra as logos dos três primeiros; sem logo SPEC ou personalizada, aparece o ponto de interrogação." : esc(state.summary || "Confirme os logs antes de exportar o banner Top 3.")}</p>` : ""}
+        <p class="mr-export-note" data-export-top3-note aria-live="polite">${state.canExportTop3 ? "Mostra as logos dos três primeiros, respeitando a prioridade configurada; sem uma logo disponível, aparece o ponto de interrogação." : esc(state.summary || "Confirme os logs antes de exportar o banner Top 3.")}</p>` : ""}
       </aside></div></div>`;
     if (focusSelector) {
       const nextFocus = container.querySelector(focusSelector);

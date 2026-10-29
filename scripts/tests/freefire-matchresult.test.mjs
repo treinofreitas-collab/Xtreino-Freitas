@@ -3,11 +3,20 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { createMatchResultView } from '../../artifacts/xtreino/public/js/admin-freefire-matchresult-view.mjs';
 import {
+  applyMatchResultStandingsLogos,
   buildModoLigaPurchaseLogoCatalog,
+  getCenteredContainRect,
+  getModoLigaPurchaseLookupRoster,
+  getModoLigaLeaderboardLogoCenterY,
+  getModoLigaSpecLogoForSlot,
   getModoLigaTemplateLayout,
   getModoLigaTemplateRowCenter,
   getModoLigaTop3LogoLayout,
+  getModoLigaTop3Teams,
   parseRoster,
+  buildModoLigaLogoAssociationCandidates,
+  formatModoLigaRecoveredLogoStatus,
+  resolveModoLigaTeamLogo,
   withModoLigaPurchaseTimeout,
 } from '../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs';
 import { specLogoCodeForLetter } from '../../artifacts/xtreino/public/js/admin-spec-logos.mjs';
@@ -41,6 +50,47 @@ test('includes the Freitas logo used as the empty-slot fallback', async () => {
   assert.equal(image.subarray(8, 12).toString(), 'WEBP');
 });
 
+test('centers all 15 Modo Liga rows inside the supplied table slots', () => {
+  const templateRowCenters = [
+    459.9, 491.6, 523.4, 555.1, 586.9, 618.6, 650.4, 682.1,
+    713.8, 745.6, 777.3, 809.1, 840.8, 872.6, 904.3,
+  ];
+  templateRowCenters.forEach((center, index) => {
+    assert.ok(
+      Math.abs(getModoLigaTemplateRowCenter(1024, index) - center) < 1.2,
+      `updated Modo Liga slot ${index + 1} should be centered at approximately ${center}px`,
+    );
+  });
+});
+
+test('raises leaderboard logos slightly above the row center to avoid touching the bottom edge', () => {
+  const rowCenter = getModoLigaTemplateRowCenter(1024, 0);
+  const logoSize = getModoLigaTemplateLayout(1024).logoSize;
+  assert.equal(getModoLigaLeaderboardLogoCenterY(1024, 0, logoSize), rowCenter - logoSize * 0.07);
+  assert.ok(getModoLigaLeaderboardLogoCenterY(1024, 0, logoSize) < rowCenter);
+});
+
+test('aligns Modo Liga logos, names, and score values to the updated template columns', () => {
+  const layout = getModoLigaTemplateLayout(1024);
+
+  assert.deepEqual(
+    {
+      logoCenterX: layout.logoCenterX,
+      teamNameCenterX: layout.teamNameCenterX,
+      winsCenterX: layout.winsCenterX,
+      killsCenterX: layout.killsCenterX,
+      pointsCenterX: layout.pointsCenterX,
+    },
+    {
+      logoCenterX: 133.5296,
+      teamNameCenterX: 287.0272,
+      winsCenterX: 448,
+      killsCenterX: 501.9648,
+      pointsCenterX: 557.4656,
+    },
+  );
+});
+
 test('versions the organization logo URL to avoid stale missing-image caches', async () => {
   const source = await readFile(
     new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
@@ -56,7 +106,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=logo-export-5['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=leaderboard-logo-optical-align-1['"]\)/,
   );
 });
 
@@ -65,7 +115,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=streamer-prize-8"/);
+  assert.match(adminPage, /src="admin\.js\?v=leaderboard-logo-optical-align-1"/);
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
@@ -84,7 +134,7 @@ test('versions the MatchResult view module import used for logo layout', async (
     new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
     'utf8',
   );
-  assert.match(source, /admin-freefire-matchresult-view\.mjs\?v=logo-layout-3/);
+  assert.match(source, /admin-freefire-matchresult-view\.mjs\?v=logo-associations-1/);
 });
 
 test('includes the logo bitmap helper and Top 3 assets required by exports', async () => {
@@ -160,7 +210,17 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
   const top3Start = source.indexOf('async function exportModoLigaTop3Jpeg()', exportStart);
   const leaderboardExport = source.slice(exportStart, top3Start);
   assert.match(leaderboardExport, /loadLeaderboardLogoBitmap\(ORGANIZATION_LOGO_URL\)/);
-  assert.match(leaderboardExport, /loadLeaderboardLogoBitmap\(customLogo\.logoUrl, customLogo\.blob\)/);
+  assert.match(leaderboardExport, /loadLogoBlobsThroughApi\(urls\)/);
+  assert.match(leaderboardExport, /return Promise\.all\(\[\.\.\.customLogoSources\]/);
+  assert.match(source, /const preferProxy = isFirebaseStorageImage && isReplitPreview/);
+  assert.match(source, /\/api\/spec-logos\/images/);
+  const apiRoute = await readFile(
+    new URL('../../artifacts/api-server/src/routes/spec-logos.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(apiRoute, /router\.post\("\/spec-logos\/images"/);
+  assert.match(apiRoute, /requestedUrls\.length > MAX_LOGO_BATCH_COUNT/);
+  assert.match(apiRoute, /Promise\.all\(files\.map\(\(\{ file \}\) => file\.download\(\)\)\)/);
   assert.match(leaderboardExport, /logoSize \* 0\.88/);
 
   const admin = await readFile(
@@ -171,8 +231,8 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=kill-readability-1/);
-  assert.match(adminPage, /admin\.js\?v=streamer-prize-8/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=leaderboard-logo-optical-align-1/);
+  assert.match(adminPage, /admin\.js\?v=leaderboard-logo-optical-align-1/);
 });
 
 test('returns Top 3 availability and exports requested text in white', async () => {
@@ -223,7 +283,140 @@ test('imports and displays logos from approved Modo Liga purchases', () => {
   assert.equal(catalog.get(matchResultTeamKey('ONYX GAMING'))?.logoUrl, '/logos/onyx-current.webp');
 });
 
-test('ends a stalled Modo Liga purchase-logo lookup with a timeout', async () => {
+test('allows purchase-logo lookup with a partial roster but rejects ambiguous slot lists', () => {
+  const partialRoster = parseMatchResultRoster([
+    'SLOT 01: ASHURA',
+    'SLOT 02: LIVE ON TTK',
+    'SLOT 03: Colômbia team',
+  ].join('\n'));
+
+  const lookupRoster = getModoLigaPurchaseLookupRoster(partialRoster);
+  assert.deepEqual(
+    lookupRoster.map(team => team.teamName),
+    ['ASHURA', 'LIVE ON TTK', 'Colômbia team'],
+  );
+  const catalog = buildModoLigaPurchaseLogoCatalog([
+    { teamName: 'ASHURA', status: 'paid', teamLogoUrl: '/logos/ashura.webp' },
+    { teamName: 'LIVE ON TTK', status: 'confirmed', teamLogoThumb: '/logos/live.webp' },
+    { teamName: 'Colômbia team', status: 'approved', logoUrl: '/logos/colombia.webp' },
+  ], lookupRoster);
+  assert.equal(catalog.size, 3);
+
+  const duplicateRoster = parseMatchResultRoster([
+    'SLOT 01: ASHURA',
+    'SLOT 01: LIVE ON TTK',
+  ].join('\n'));
+  assert.deepEqual(getModoLigaPurchaseLookupRoster(duplicateRoster), []);
+});
+
+test('uses custom logos for the first three standings and leaves missing logos for the question-mark fallback', () => {
+  const standings = [
+    { rank: 1, teamName: 'Time A', points: 50 },
+    { rank: 2, teamName: 'Time B', points: 40 },
+    { rank: 3, teamName: 'Time C', points: 30 },
+    { rank: 4, teamName: 'Time D', points: 20 },
+  ];
+  const logoCatalog = new Map([
+    [matchResultTeamKey('time a'), { logoUrl: '/logos/time-a.webp' }],
+    [matchResultTeamKey('Time C'), { logoUrl: '/logos/time-c.webp' }],
+  ]);
+  const podium = getModoLigaTop3Teams(standings, logoCatalog);
+
+  assert.deepEqual(
+    podium.map(({ podiumPosition, teamName, customLogo }) => ({
+      podiumPosition,
+      teamName,
+      customLogo,
+    })),
+    [
+      { podiumPosition: 1, teamName: 'Time A', customLogo: { logoUrl: '/logos/time-a.webp' } },
+      { podiumPosition: 2, teamName: 'Time B', customLogo: null },
+      { podiumPosition: 3, teamName: 'Time C', customLogo: { logoUrl: '/logos/time-c.webp' } },
+    ],
+  );
+});
+
+test('resolves Modo Liga SPEC logos by the official slot letter', () => {
+  const logoA = { code: '902000034', letter: 'A', logoUrl: '/spec/19H/902000034.png' };
+  const logoO = { code: '902000048', letter: 'O', logoUrl: '/spec/19H/902000048.png' };
+  const catalog = new Map([
+    [specLogoCodeForLetter('A'), logoA],
+    [specLogoCodeForLetter('O'), logoO],
+    [specLogoCodeForLetter('P'), { code: '902000049', letter: 'P' }],
+  ]);
+
+  assert.equal(getModoLigaSpecLogoForSlot(1, catalog), logoA);
+  assert.equal(getModoLigaSpecLogoForSlot(15, catalog), logoO);
+  assert.equal(getModoLigaSpecLogoForSlot(16, catalog), null);
+  assert.equal(getModoLigaSpecLogoForSlot(0, catalog), null);
+});
+
+test('uses manual, purchase, SPEC, then previous-list logos but only remembers SPEC logos', () => {
+  const teamManual = 'TEAM MANUAL';
+  const teamPurchase = 'TEAM PURCHASE';
+  const teamSpec = 'TEAM SPEC';
+  const teamPrevious = 'TEAM PREVIOUS';
+  const keys = [teamManual, teamPurchase, teamSpec, teamPrevious].map(matchResultTeamKey);
+  const manualLogo = { logoUrl: '/logos/manual.webp' };
+  const purchaseLogo = { logoUrl: '/logos/purchase.webp' };
+  const specLogos = new Map([
+    [specLogoCodeForLetter('A'), { code: specLogoCodeForLetter('A'), letter: 'A', logoUrl: '/logos/spec-a.png' }],
+    [specLogoCodeForLetter('B'), { code: specLogoCodeForLetter('B'), letter: 'B', logoUrl: '/logos/spec-b.png' }],
+    [specLogoCodeForLetter('C'), { code: specLogoCodeForLetter('C'), letter: 'C', logoUrl: '/logos/spec-c.png' }],
+  ]);
+  const manualCatalog = new Map([[keys[0], manualLogo]]);
+  const purchaseCatalog = new Map([[keys[0], purchaseLogo], [keys[1], purchaseLogo]]);
+  const associationLogo = { logoUrl: '/logos/previous.webp', source: 'association' };
+  const associationCatalog = new Map([[keys[0], associationLogo], [keys[1], associationLogo], [keys[2], associationLogo], [keys[3], associationLogo]]);
+
+  assert.equal(resolveModoLigaTeamLogo({
+    manualLogo,
+    purchaseLogo,
+    specLogo: specLogos.get(specLogoCodeForLetter('A')),
+    associationLogo,
+  }).logoUrl, '/logos/manual.webp');
+  assert.equal(resolveModoLigaTeamLogo({
+    purchaseLogo,
+    specLogo: specLogos.get(specLogoCodeForLetter('B')),
+    associationLogo,
+  }).logoUrl, '/logos/purchase.webp');
+  assert.equal(resolveModoLigaTeamLogo({
+    specLogo: specLogos.get(specLogoCodeForLetter('C')),
+    associationLogo,
+  }).logoUrl, '/logos/spec-c.png');
+  assert.equal(resolveModoLigaTeamLogo({ associationLogo }).logoUrl, '/logos/previous.webp');
+
+  const candidates = buildModoLigaLogoAssociationCandidates([
+    { slot: 1, teamName: teamManual },
+    { slot: 2, teamName: teamPurchase },
+    { slot: 3, teamName: teamSpec },
+    { slot: 4, teamName: teamPrevious },
+  ], {
+    manualCatalog,
+    purchaseCatalog,
+    specCatalog: specLogos,
+    associationCatalog,
+    eventHour: '19',
+    specLoadedHour: '19',
+  });
+  assert.deepEqual(candidates.map(candidate => [candidate.teamName, candidate.logo.source]), [
+    [teamSpec, 'spec'],
+  ]);
+});
+
+test('reports team names whose logos came from an earlier list', () => {
+  assert.equal(formatModoLigaRecoveredLogoStatus([
+    { teamName: 'Salinas MG', logoSource: 'association' },
+    { teamName: 'TEAM RAVEX', logoSource: 'association' },
+    { teamName: 'TEAM RAVEX', logoSource: 'association' },
+    { teamName: 'Celtic Base', logoSource: 'spec' },
+  ]), 'Logos recuperadas de listas anteriores: Salinas MG, TEAM RAVEX.');
+  assert.equal(formatModoLigaRecoveredLogoStatus([
+    { teamName: 'Salinas MG', logoSource: 'association' },
+  ]), 'Logo recuperada de lista anterior: Salinas MG.');
+});
+
+test('stops a stalled Modo Liga purchase-logo request with a visible timeout error', async () => {
   await assert.rejects(
     withModoLigaPurchaseTimeout(
       new Promise(() => {}),

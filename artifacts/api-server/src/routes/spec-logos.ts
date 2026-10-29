@@ -9,6 +9,10 @@ const ALLOWED_HOURS = new Set(["19", "20", "21", "22", "23", "00"]);
 const ALLOWED_ROLES = new Set(["admin", "ceo", "gerente", "socio", "operador", "streamer"]);
 const ALLOWED_MANAGEMENT_ROLES = new Set(["admin", "ceo", "gerente"]);
 const MAX_EXPORT_BYTES = 4 * 1024 * 1024;
+const MAX_ORIGINAL_LOGO_BYTES = 10 * 1024 * 1024;
+const MAX_LOGO_BATCH_BYTES = 10 * 1024 * 1024;
+const MAX_LOGO_BATCH_COUNT = 15;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const STORAGE_ROOT = "teams/modo-liga/logos/spec";
 const SPEC_CODE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])\.png$/;
 const SPEC_CODE_VALUE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])$/;
@@ -115,6 +119,166 @@ function getStorageBucket(app: ReturnType<typeof getFirebaseApp>) {
     || `${projectId}.firebasestorage.app`;
   return getStorage(app).bucket(bucketName);
 }
+
+function getSafeObjectPath(urlValue: unknown, bucketName: string): string | null {
+  if (typeof urlValue !== "string" || !urlValue.trim()) return null;
+  try {
+    const url = new URL(urlValue.trim());
+    let objectPath: string | null = null;
+    if (url.protocol === "gs:") {
+      if (url.hostname !== bucketName) return null;
+      objectPath = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    } else if (url.hostname === "firebasestorage.googleapis.com") {
+      const match = url.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/);
+      if (!match || decodeURIComponent(match[1]) !== bucketName) return null;
+      objectPath = decodeURIComponent(match[2]);
+    } else if (url.hostname === "storage.googleapis.com") {
+      const path = url.pathname.replace(/^\/+/, "");
+      const separator = path.indexOf("/");
+      if (separator < 1 || decodeURIComponent(path.slice(0, separator)) !== bucketName) return null;
+      objectPath = decodeURIComponent(path.slice(separator + 1));
+    }
+
+    if (
+      !objectPath ||
+      objectPath.startsWith("/") ||
+      objectPath.includes("\\") ||
+      objectPath.split("/").some((part) => !part || part === "." || part === "..")
+    ) {
+      return null;
+    }
+    return objectPath;
+  } catch {
+    return null;
+  }
+}
+
+function getAllowedImageType(contentType: unknown, objectName: string): string | null {
+  const type = typeof contentType === "string"
+    ? contentType.split(";")[0].trim().toLowerCase()
+    : "";
+  if (ALLOWED_IMAGE_TYPES.has(type)) return type;
+  const extension = objectName.toLowerCase().match(/\.(png|jpe?g|webp)$/)?.[1];
+  if (extension === "png") return "image/png";
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "webp") return "image/webp";
+  return null;
+}
+
+function isAllowedLeaderboardLogoPath(objectPath: string): boolean {
+  if (objectPath.startsWith("teams/modo-liga/logos/")) return true;
+  return /^profile-photos\/[A-Za-z0-9_-]{1,128}\/team-logos\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/.test(objectPath);
+}
+
+router.get("/spec-logos/image", async (req, res): Promise<void> => {
+  try {
+    const app = await requireSpecLogoRole(
+      req,
+      ALLOWED_ROLES,
+      "Este download está disponível apenas para administradores e operadores.",
+    );
+    const bucket = getStorageBucket(app);
+    const objectPath = getSafeObjectPath(firstString(req.query.url), bucket.name);
+    if (!objectPath || !isAllowedLeaderboardLogoPath(objectPath)) {
+      throw new ApiError(400, "O endereço da logo não é permitido.");
+    }
+
+    const file = bucket.file(objectPath);
+    const [metadata] = await file.getMetadata();
+    const size = Number(metadata.size);
+    if (Number.isFinite(size) && size > MAX_ORIGINAL_LOGO_BYTES) {
+      throw new ApiError(413, "A logo ultrapassa o limite de 10 MB.");
+    }
+    const contentType = getAllowedImageType(metadata.contentType, objectPath);
+    if (!contentType) throw new ApiError(415, "A logo precisa estar em PNG, JPG ou WebP.");
+
+    const [contents] = await file.download();
+    if (contents.byteLength > MAX_ORIGINAL_LOGO_BYTES) {
+      throw new ApiError(413, "A logo ultrapassa o limite de 10 MB.");
+    }
+    res
+      .status(200)
+      .set({
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      })
+      .type(contentType)
+      .send(contents);
+  } catch (error) {
+    const apiError = error instanceof ApiError
+      ? error
+      : new ApiError(503, "Não foi possível carregar a logo para a exportação.");
+    if (apiError.statusCode >= 500) {
+      req.log.error({ statusCode: apiError.statusCode }, "Leaderboard logo proxy failed");
+    }
+    res.status(apiError.statusCode).json({ error: apiError.message });
+  }
+});
+
+router.post("/spec-logos/images", async (req, res): Promise<void> => {
+  try {
+    const requestedUrls: unknown = req.body?.urls;
+    if (
+      !Array.isArray(requestedUrls) ||
+      requestedUrls.length < 1 ||
+      requestedUrls.length > MAX_LOGO_BATCH_COUNT ||
+      requestedUrls.some((url) => typeof url !== "string" || !url.trim())
+    ) {
+      throw new ApiError(400, "A lista de logos para exportar é inválida.");
+    }
+
+    const app = await requireSpecLogoRole(
+      req,
+      ALLOWED_ROLES,
+      "Este download está disponível apenas para administradores e operadores.",
+    );
+    const bucket = getStorageBucket(app);
+    const urls = [...new Set(requestedUrls as string[])];
+    const files = urls.map((url) => {
+      const objectPath = getSafeObjectPath(url, bucket.name);
+      if (!objectPath || !isAllowedLeaderboardLogoPath(objectPath)) {
+        throw new ApiError(400, "Um endereço de logo não é permitido.");
+      }
+      return { file: bucket.file(objectPath), objectPath };
+    });
+
+    const metadata = await Promise.all(files.map(({ file }) => file.getMetadata()));
+    const contentTypes = metadata.map(([item], index) => {
+      const size = Number(item.size);
+      if (Number.isFinite(size) && size > MAX_ORIGINAL_LOGO_BYTES) {
+        throw new ApiError(413, "Uma logo ultrapassa o limite de 10 MB.");
+      }
+      const contentType = getAllowedImageType(item.contentType, files[index].objectPath);
+      if (!contentType) throw new ApiError(415, "As logos precisam estar em PNG, JPG ou WebP.");
+      return contentType;
+    });
+    const estimatedBytes = metadata.reduce((total, [item]) => total + (Number(item.size) || 0), 0);
+    if (estimatedBytes > MAX_LOGO_BATCH_BYTES) {
+      throw new ApiError(413, "O total das logos ultrapassa o limite de 10 MB.");
+    }
+
+    const contents = await Promise.all(files.map(({ file }) => file.download()));
+    const actualBytes = contents.reduce((total, [buffer]) => total + buffer.byteLength, 0);
+    if (actualBytes > MAX_LOGO_BATCH_BYTES) {
+      throw new ApiError(413, "O total das logos ultrapassa o limite de 10 MB.");
+    }
+
+    res.set("Cache-Control", "private, no-store").json({
+      images: contents.map(([buffer], index) => ({
+        contentType: contentTypes[index],
+        base64: buffer.toString("base64"),
+      })),
+    });
+  } catch (error) {
+    const apiError = error instanceof ApiError
+      ? error
+      : new ApiError(503, "Não foi possível carregar as logos para a exportação.");
+    if (apiError.statusCode >= 500) {
+      req.log.error({ statusCode: apiError.statusCode }, "Leaderboard logo batch proxy failed");
+    }
+    res.status(apiError.statusCode).json({ error: apiError.message });
+  }
+});
 
 router.get("/spec-logos/:hour/export", async (req, res) => {
   try {

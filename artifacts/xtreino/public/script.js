@@ -10366,13 +10366,20 @@ async function loadDynamicEvents() {
         const placeholderImg = 'assets/images/events/CAMP.jpeg';
         const categoryLabels = { camp: 'CAMP', xtreino: 'XTREINO', diario: 'DIÁRIO' };
 
-        // Ordenar: ordem asc (null/undefined vai pro final), depois createdAt desc
+        // Modo Liga aparece primeiro na vitrine; os demais mantêm a ordem do painel.
         const docsSorted = [...snap.docs].sort((a, b) => {
-            const oa = a.data().ordem != null ? a.data().ordem : 9999;
-            const ob = b.data().ordem != null ? b.data().ordem : 9999;
+            const eventDataA = a.data();
+            const eventDataB = b.data();
+            const isModoLiga = ev => [ev.eventType, ev.name]
+                .some(value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').includes('modo liga'));
+            const modoLigaPriority = Number(isModoLiga(eventDataB)) - Number(isModoLiga(eventDataA));
+            if (modoLigaPriority !== 0) return modoLigaPriority;
+
+            const oa = eventDataA.ordem != null ? eventDataA.ordem : 9999;
+            const ob = eventDataB.ordem != null ? eventDataB.ordem : 9999;
             if (oa !== ob) return oa - ob;
-            const ca = a.data().createdAt || '';
-            const cb = b.data().createdAt || '';
+            const ca = eventDataA.createdAt || '';
+            const cb = eventDataB.createdAt || '';
             return cb > ca ? 1 : cb < ca ? -1 : 0;
         });
 
