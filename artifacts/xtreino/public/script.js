@@ -5109,11 +5109,7 @@ function openScheduleModal(eventType, options = {}) {
     (function () {
         const dateInput = document.getElementById('schedDate');
         if (!dateInput) return;
-        const today = new Date();
-        const y = today.getFullYear();
-        const m = String(today.getMonth() + 1).padStart(2, '0');
-        const d = String(today.getDate()).padStart(2, '0');
-        const todayStr = `${y}-${m}-${d}`;
+        const todayStr = window.BrasiliaTime.dateKey();
         const activeConfig = getActiveScheduleConfig(eventType);
         dateInput.removeAttribute('max');
         if (activeConfig.dateScopedEventLinks) {
@@ -5177,15 +5173,15 @@ function openScheduleModal(eventType, options = {}) {
     (() => {
         const _inp = document.getElementById('schedDate');
         const _existingVal = _inp?.value;
-        const _now = new Date();
-        const _pad = n => String(n).padStart(2, '0');
+        const _today = window.BrasiliaTime.dateKey();
+        const [_todayYear, _todayMonth] = _today.split('-').map(Number);
         let _initYear, _initMonth;
         if (_existingVal && /^\d{4}-\d{2}-\d{2}$/.test(_existingVal)) {
             const [_ey, _em] = _existingVal.split('-').map(Number);
             _initYear = _ey; _initMonth = _em - 1;
         } else {
-            _initYear = _now.getFullYear(); _initMonth = _now.getMonth();
-            if (_inp) _inp.value = `${_initYear}-${_pad(_initMonth + 1)}-${_pad(_now.getDate())}`;
+            _initYear = _todayYear; _initMonth = _todayMonth - 1;
+            if (_inp) _inp.value = _today;
         }
         window._calState = { year: _initYear, month: _initMonth, lockedDates: new Set(), globalLocked: false };
         renderCustomCalendar(_initYear, _initMonth);
@@ -5285,8 +5281,7 @@ function renderSelectedDatesList() {
     const fmt = (d) => {
         try {
             const [y, m, dd] = d.split('-').map(n => parseInt(n, 10));
-            const date = new Date(y, m - 1, dd);
-            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', weekday: 'short' });
+            return window.BrasiliaTime.formatDate(d, { day: '2-digit', month: '2-digit', year: 'numeric', weekday: 'short' });
         } catch (_) { return d; }
     };
     list.innerHTML = selectedDates.map(d => (
@@ -5347,24 +5342,17 @@ function clearSelectedDates() {
 function initScheduleDate() {
     const input = document.getElementById('schedDate');
     if (!input) return;
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    input.value = `${y}-${m}-${d}`;
-    if (!window._calState) window._calState = { year: y, month: today.getMonth(), lockedDates: new Set(), globalLocked: false };
+    const today = window.BrasiliaTime.dateKey();
+    const [year, month] = today.split('-').map(Number);
+    input.value = today;
+    if (!window._calState) window._calState = { year, month: month - 1, lockedDates: new Set(), globalLocked: false };
     renderCustomCalendar(window._calState.year, window._calState.month);
 }
 function setSchedToday() {
-    const today = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    selectCalendarDate(`${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`);
+    selectCalendarDate(window.BrasiliaTime.dateKey());
 }
 function setSchedTomorrow() {
-    const t = new Date();
-    t.setDate(t.getDate() + 1);
-    const pad = n => String(n).padStart(2, '0');
-    selectCalendarDate(`${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`);
+    selectCalendarDate(window.BrasiliaTime.addDays(window.BrasiliaTime.dateKey(), 1));
 }
 
 // ===== CALENDÁRIO CUSTOMIZADO =====
@@ -5399,11 +5387,8 @@ async function loadLockedDatesForCalendar(eventType) {
         }
         state.globalLocked = false;
         // O calendário só oferece hoje e amanhã; não leia o histórico inteiro do evento.
-        const now = new Date();
-        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const tomorrow = new Date(now);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+        const todayStr = window.BrasiliaTime.dateKey();
+        const tomorrowStr = window.BrasiliaTime.addDays(todayStr, 1);
         const ovSnap = await getDocs(query(
             collection(window.firebaseDb, 'schedule_overrides'),
             where('date', 'in', [todayStr, tomorrowStr])
@@ -5440,19 +5425,14 @@ function renderCustomCalendar(year, month) {
 
     const modal      = document.getElementById('scheduleModal');
     const eventType  = modal?.dataset?.eventType || window._currentScheduleEventType || null;
-    const today      = new Date();
-    today.setHours(0, 0, 0, 0);
-    const pad        = n => String(n).padStart(2, '0');
-    const todayStr   = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    const todayStr   = window.BrasiliaTime.dateKey();
     const currentVal = document.getElementById('schedDate')?.value || '';
     const selDates   = (typeof selectedDates !== 'undefined') ? selectedDates : [];
     const lockedSet  = window._calState?.lockedDates || new Set();
     const globalLocked = !!window._calState?.globalLocked;
 
     // Apenas botões Hoje / Amanhã
-    const tom        = new Date(today);
-    tom.setDate(today.getDate() + 1);
-    const tomStr     = `${tom.getFullYear()}-${pad(tom.getMonth() + 1)}-${pad(tom.getDate())}`;
+    const tomStr     = window.BrasiliaTime.addDays(todayStr, 1);
     const todayOk    = !globalLocked && !lockedSet.has(todayStr) && isValidScheduleDate(todayStr, eventType);
     const tomorrowOk = !globalLocked && !lockedSet.has(tomStr) && isValidScheduleDate(tomStr, eventType);
 
@@ -5506,20 +5486,8 @@ function updateSelectedDate() {
     const selectedDateDisplay = document.getElementById('schedSelectedDate');
     if (dateInput && selectedDateDisplay) {
         const raw = dateInput.value;
-        let date = null;
-        if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-            // Criar Date no fuso local para evitar retroceder um dia (UTC)
-            const [y, m, d] = raw.split('-').map(n => parseInt(n, 10));
-            date = new Date(y, m - 1, d);
-        } else if (raw) {
-            // Fallback seguro: normalizar para meia-noite local
-            const tmp = new Date(raw);
-            if (!isNaN(tmp.getTime())) {
-                date = new Date(tmp.getFullYear(), tmp.getMonth(), tmp.getDate());
-            }
-        }
-        selectedDateDisplay.textContent = (date && !isNaN(date.getTime()))
-            ? date.toLocaleDateString('pt-BR', {
+        selectedDateDisplay.textContent = window.BrasiliaTime.isValidDateKey(raw)
+            ? window.BrasiliaTime.formatDate(raw, {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
@@ -5626,10 +5594,8 @@ function getEventPrice(eventType, hourStr, dateStr) {
 
 // Valida datas futuras; dias sem atendimento são controlados pelos bloqueios manuais de horários.
 function isValidScheduleDate(dateStr, eventType) {
-    const date = new Date(dateStr + 'T00:00:00');
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (Number.isNaN(date.getTime()) || date < today) return false;
+    if (!window.BrasiliaTime.isValidDateKey(dateStr)
+        || dateStr < window.BrasiliaTime.dateKey()) return false;
 
     // Xtreino Tokens (gratuito): permite todos os dias da semana
     if (eventType === 'xtreino-tokens') {
@@ -5652,12 +5618,11 @@ function isValidScheduleDate(dateStr, eventType) {
         const cfg = activeConfig;
         if (cfg.startDate) {
             // aceitar datas a partir do startDate e somente em weekdays permitidos
-            const normalizedStart = new Date(cfg.startDate + 'T00:00:00');
-            if (isNaN(normalizedStart.getTime())) {
+            if (!window.BrasiliaTime.isValidDateKey(cfg.startDate)) {
                 // fallback: não permitir
                 return false;
             }
-            if (date < normalizedStart) return false;
+            if (dateStr < cfg.startDate) return false;
             return true;
         }
 
@@ -5707,8 +5672,7 @@ async function renderScheduleTimes() {
     }
 
     const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    const d = new Date(date + 'T00:00:00');
-    const day = dayNames[d.getDay()];
+    const day = dayNames[window.BrasiliaTime.weekday(date)];
 
     // Verificar trava geral do evento (event_global_locks)
     try {
@@ -5730,9 +5694,8 @@ async function renderScheduleTimes() {
     } catch(_) {}
 
     const cfg = getActiveScheduleConfig(eventType);
-    const now = new Date();
-    const selectedDate = new Date(date + 'T00:00:00');
-    const isToday = selectedDate.toDateString() === now.toDateString();
+    const now = Date.now();
+    const isToday = date === window.BrasiliaTime.dateKey(now);
 
     // Buscar horários travados E vagas ocupadas em PARALELO antes de renderizar qualquer botão
     let lockedHours = new Set();
@@ -5882,9 +5845,7 @@ async function renderScheduleTimes() {
 
         // Horário já passou (hoje) — ocultar
         if (isToday) {
-            const eventTime = new Date(selectedDate);
-            eventTime.setHours(hour, 0, 0, 0);
-            if ((eventTime - now) / (1000 * 60) < 0) continue;
+            if (window.BrasiliaTime.minutesUntil(date, hour, now) < 0) continue;
         }
 
         // Horário travado pelo admin — ocultar
@@ -6301,9 +6262,8 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
         });
     }
 
-    const now = new Date();
-    const selectedDate = new Date(date + 'T00:00:00');
-    const isToday = selectedDate.toDateString() === now.toDateString();
+    const now = Date.now();
+    const isToday = date === window.BrasiliaTime.dateKey(now);
 
     Array.from(container.children).forEach(btn => {
         const schedule = btn.dataset.schedule;
@@ -6327,10 +6287,7 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
         let isTimeAvailable = true;
         let timeMessage = '';
         if (isToday) {
-            const eventTime = new Date(selectedDate);
-            eventTime.setHours(hour, 0, 0, 0);
-
-            const minutesUntilEvent = (eventTime - now) / (1000 * 60); // minutos até o evento
+            const minutesUntilEvent = window.BrasiliaTime.minutesUntil(date, hour, now);
 
             if (minutesUntilEvent < 0) {
                 // Horário já passou

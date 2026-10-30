@@ -1587,6 +1587,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (btnOrd) btnOrd.onclick = exportOrdersCsv;
     const btnSch = document.getElementById('btnExportSchedulesCsv');
     if (btnSch) btnSch.onclick = exportSchedulesCsv;
+    const boardDate = document.getElementById('boardDate');
+    if (boardDate && !boardDate.value) boardDate.value = window.BrasiliaTime.dateKey();
     const btnLoadBoard = document.getElementById('btnLoadBoard');
     if (btnLoadBoard) btnLoadBoard.onclick = loadBoard;
     const formAddTeam = document.getElementById('formAddTeam');
@@ -13791,7 +13793,7 @@ window.limparInscricoesSemHorario = async function() {
 
     // Usar a data do board se disponível, senão usar hoje (BR)
     const boardDateEl = document.getElementById('boardDate');
-    const dateRef = boardDateEl?.value || new Date(Date.now() - 3*60*60*1000).toISOString().split('T')[0];
+    const dateRef = boardDateEl?.value || window.BrasiliaTime.dateKey();
 
     // Buscar TODAS as inscrições da data selecionada e filtrar em JS
     const snap = await getDocs(
