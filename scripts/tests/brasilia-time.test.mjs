@@ -7,6 +7,8 @@ import vm from 'node:vm';
 
 const helperPath = fileURLToPath(new URL('../../artifacts/xtreino/public/js/brasilia-time.js', import.meta.url));
 const source = readFileSync(helperPath, 'utf8');
+const bookingScriptPath = fileURLToPath(new URL('../../artifacts/xtreino/public/script.js', import.meta.url));
+const bookingScript = readFileSync(bookingScriptPath, 'utf8');
 
 function loadBrasiliaTime() {
   const context = { window: {} };
@@ -57,6 +59,16 @@ test('Brasília weekday and booking-hour comparison use the event timezone', () 
   assert.equal(brasiliaTime.minutesUntil('2026-10-30', 19, atBrasilia18h), 60);
   assert.equal(brasiliaTime.minutesUntil('2026-10-30', 19, atBrasilia18h + 61 * 60_000), -1);
   assert.equal(brasiliaTime.formatDate('2026-10-30', { weekday: 'long' }), 'sexta-feira');
+});
+
+test('same-day booking filters use Brasília time without an undefined local date', () => {
+  const brasiliaTime = loadBrasiliaTime();
+  const atBrasilia1432 = Date.parse('2026-10-30T17:32:00.000Z');
+
+  assert.ok(brasiliaTime.minutesUntil('2026-10-30', 14, atBrasilia1432) < 0);
+  assert.ok(brasiliaTime.minutesUntil('2026-10-30', 16, atBrasilia1432) > 6);
+  assert.doesNotMatch(bookingScript, /new Date\(selectedDate\)/);
+  assert.match(bookingScript, /BrasiliaTime\.minutesUntil\(date, hour, now\)/);
 });
 
 test('invalid calendar dates are rejected instead of being normalized', () => {

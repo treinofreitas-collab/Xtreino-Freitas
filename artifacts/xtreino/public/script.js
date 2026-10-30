@@ -5863,9 +5863,7 @@ async function renderScheduleTimes() {
 
         // Menos de 6 min para o horário (hoje) — mostrar desabilitado
         if (isToday) {
-            const eventTime = new Date(selectedDate);
-            eventTime.setHours(hour, 0, 0, 0);
-            const mins = (eventTime - now) / (1000 * 60);
+            const mins = window.BrasiliaTime.minutesUntil(date, hour, now);
             if (mins < 6) {
                 btn.className = 'slot-btn bg-gray-300 text-gray-500 cursor-not-allowed';
                 btn.disabled = true;
