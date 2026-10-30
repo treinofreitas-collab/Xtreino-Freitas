@@ -115,7 +115,7 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=freefire-image-event-templates-fixed-1"/);
+  assert.match(adminPage, /src="admin\.js\?v=modo-liga-manager-spec-1"/);
 });
 
 test('uses only the fixed official event tables', async () => {
@@ -256,7 +256,7 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     'utf8',
   );
   assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-image-event-templates-fixed-1/);
-  assert.match(adminPage, /admin\.js\?v=freefire-image-event-templates-fixed-1/);
+  assert.match(adminPage, /admin\.js\?v=modo-liga-manager-spec-1/);
 });
 
 test('returns Top 3 availability and exports requested text in white', async () => {

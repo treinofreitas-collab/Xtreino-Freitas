@@ -8,6 +8,7 @@ import {
 
 const HOURS = ['19', '20', '21', '22', '23', '00'];
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const MODO_LIGA_LETTERS = LETTERS.join('');
 const FIRST_CODE = 902000034;
 const STORAGE_ROOT = 'teams/modo-liga/logos/spec';
 const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/+esm';
@@ -28,6 +29,11 @@ let brushMode = 'restore';
 function codeForLetter(letter) {
   const index = LETTERS.indexOf(String(letter || '').toUpperCase());
   return index < 0 ? '' : String(FIRST_CODE + index);
+}
+
+export function normalizeModoLigaSpecLetter(value) {
+  const letter = String(value || '').trim().toUpperCase();
+  return MODO_LIGA_LETTERS.includes(letter) ? letter : '';
 }
 
 function letterForCode(code) {
@@ -328,16 +334,16 @@ function clearPendingPreview() {
   if (undoButton) undoButton.disabled = true;
 }
 
-function loadBackgroundRemover() {
+function loadBackgroundRemover(onProgress = setStatus) {
   if (!backgroundRemoverPromise) {
     backgroundRemoverPromise = import(/* @vite-ignore */ TRANSFORMERS_URL)
       .then(({ pipeline }) => pipeline('background-removal', BACKGROUND_MODEL, {
         progress_callback: event => {
           if (event?.status === 'progress' && Number.isFinite(event.progress)) {
             const progress = event.progress <= 1 ? event.progress * 100 : event.progress;
-            setStatus(`Preparando o removedor de fundo: ${Math.round(progress)}%. Na primeira utilização, o modelo pode demorar para baixar.`);
+            onProgress(`Preparando o removedor de fundo: ${Math.round(progress)}%. Na primeira utilização, o modelo pode demorar para baixar.`);
           } else if (event?.status === 'downloading') {
-            setStatus('Baixando os arquivos do removedor de fundo. Isso acontece principalmente na primeira utilização.');
+            onProgress('Baixando os arquivos do removedor de fundo. Isso acontece principalmente na primeira utilização.');
           }
         },
       }))
@@ -424,6 +430,58 @@ function resizeImageData(imageData, width, height) {
   if (!targetContext) throw new Error('Não foi possível ajustar a prévia da IA.');
   targetContext.drawImage(sourceCanvas, 0, 0, width, height);
   return targetContext.getImageData(0, 0, width, height);
+}
+
+async function makeAutomaticSpecLogoPng(file, onProgress = setStatus) {
+  const prepared = await prepareSourceImage(file);
+  try {
+    const source = prepared.sourceImageData;
+    let processed;
+    let methodDescription;
+
+    if (hasTransparentEdgeBackground(source)) {
+      processed = cloneImageData(source);
+      methodDescription = 'logo já transparente';
+    } else if (hasUniformEdgeBackground(source)) {
+      const result = removeConnectedEdgeBackground(source, 42);
+      if (!result.removedCount) {
+        throw new Error('Não foi possível remover o fundo uniforme da logo.');
+      }
+      processed = new ImageData(result.data, result.width, result.height);
+      methodDescription = 'fundo liso removido';
+    } else {
+      onProgress('Fundo complexo detectado. Carregando o removedor automático…');
+      const remover = await loadBackgroundRemover(onProgress);
+      const results = await remover([prepared.modelInputUrl]);
+      if (!results?.[0]?.data) {
+        throw new Error('O removedor automático não retornou uma imagem válida.');
+      }
+      processed = resizeImageData(
+        rawImageToImageData(results[0]),
+        source.width,
+        source.height,
+      );
+      if (!hasTransparentEdgeBackground(processed)) {
+        throw new Error('O removedor não deixou transparência nas bordas; a logo não foi salva.');
+      }
+      methodDescription = 'fundo complexo removido automaticamente';
+    }
+
+    const square = padImageDataToSquare(processed);
+    const canvas = document.createElement('canvas');
+    canvas.width = square.width;
+    canvas.height = square.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Não foi possível preparar o PNG da logo.');
+    context.putImageData(
+      new ImageData(new Uint8ClampedArray(square.data), square.width, square.height),
+      0,
+      0,
+    );
+    return { blob: await canvasToBlob(canvas), methodDescription };
+  } finally {
+    URL.revokeObjectURL(prepared.modelInputUrl);
+  }
 }
 
 function drawPreview(imageData) {
@@ -747,6 +805,96 @@ async function savePendingLogo() {
   } finally {
     if (button) button.disabled = !pendingLogo?.imageData;
   }
+}
+
+export async function saveRegistrationLogoToSpec(file, {
+  hour,
+  letter,
+  registrationId,
+  teamName,
+  previousLetter,
+  previousHour,
+  onProgress,
+} = {}) {
+  if (!canUpload()) {
+    throw new Error('Seu perfil não pode cadastrar logos para o SPEC.');
+  }
+  ensureFirebaseAccess();
+
+  const normalizedHour = String(hour || '').trim().toUpperCase().replace(/H$/, '');
+  const normalizedLetter = normalizeModoLigaSpecLetter(letter);
+  if (!HOURS.includes(normalizedHour)) throw new Error('O horário da compra não é válido para o SPEC.');
+  if (!normalizedLetter) throw new Error('Informe uma letra válida de A a Z.');
+  if (!file || !/^image\/(png|jpeg|webp)$/i.test(file.type || '')) {
+    throw new Error('A inscrição não tem uma logo original PNG, JPG ou WebP compatível.');
+  }
+  if (file.size > MAX_FILE_BYTES) throw new Error('A logo original ultrapassa o limite de 10 MB.');
+
+  const code = codeForLetter(normalizedLetter);
+  const path = storagePath(normalizedHour, code);
+  const { ref, uploadBytes, getMetadata, deleteObject } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+  const target = ref(window.firebaseStorage, path);
+  let existingMetadata = null;
+  try {
+    existingMetadata = await getMetadata(target);
+  } catch (error) {
+    if (error?.code !== 'storage/object-not-found') {
+      throw new Error(error?.code === 'storage/unauthorized'
+        ? 'O Firebase não permitiu verificar se já existe uma logo neste código.'
+        : error?.message || 'Não foi possível verificar o código SPEC.');
+    }
+  }
+  if (existingMetadata && !window.confirm(
+    `Já existe uma logo para ${normalizedLetter} às ${normalizedHour}H. Deseja substituí-la?`,
+  )) {
+    return { cancelled: true, hour: normalizedHour, letter: normalizedLetter, code };
+  }
+
+  onProgress?.('Preparando a logo e removendo o fundo automaticamente…');
+  const { blob, methodDescription } = await makeAutomaticSpecLogoPng(file, onProgress);
+  const uploaded = await uploadBytes(target, blob, {
+    contentType: 'image/png',
+    cacheControl: 'public,max-age=60',
+    customMetadata: {
+      source: 'modo-liga-registration',
+      sourceRegistrationId: String(registrationId || '').slice(0, 128),
+      teamName: String(teamName || '').slice(0, 100),
+      letter: normalizedLetter,
+      hour: normalizedHour,
+      backgroundTreatment: methodDescription,
+    },
+  });
+  if (!uploaded.ref?.fullPath) throw new Error('O Firebase não confirmou o salvamento da logo SPEC.');
+
+  let removedOldMapping = false;
+  const oldLetter = normalizeModoLigaSpecLetter(previousLetter);
+  const oldHour = String(previousHour || normalizedHour).trim().toUpperCase().replace(/H$/, '');
+  if (
+    oldLetter &&
+    (oldLetter !== normalizedLetter || oldHour !== normalizedHour) &&
+    HOURS.includes(oldHour) &&
+    registrationId
+  ) {
+    try {
+      const oldTarget = ref(window.firebaseStorage, storagePath(oldHour, codeForLetter(oldLetter)));
+      const oldMetadata = await getMetadata(oldTarget);
+      if (oldMetadata.customMetadata?.sourceRegistrationId === String(registrationId)) {
+        await deleteObject(oldTarget);
+        removedOldMapping = true;
+      }
+    } catch {
+      // A manually registered or inaccessible logo is kept; never delete an unverified file.
+    }
+  }
+
+  return {
+    cancelled: false,
+    hour: normalizedHour,
+    letter: normalizedLetter,
+    code,
+    methodDescription,
+    removedOldMapping,
+  };
 }
 
 async function listLogos(hour) {

@@ -4633,6 +4633,26 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const rawIdLower = String(rawEventId||'').toLowerCase();
       const normalizeHour = (s)=>{ const m = String(s||'').match(/(\d{1,2})/); return m? String(parseInt(m[1],10)).padStart(2,'0') : null; };
       const targetHH = normalizeHour(hour);
+      const normalizeModoLigaValue = value =>
+        String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const isModoLigaRegistration = registration => {
+        const existingDetection = [
+          registration?.eventType,
+          eventType,
+          rawEventId,
+          eventName,
+        ].some(value => normalizeModoLigaValue(value).includes('modoliga'));
+        if (String(window.adminRoleLower || '').toLowerCase().trim() !== 'gerente') {
+          return existingDetection;
+        }
+
+        return existingDetection || [
+          registration?.eventName,
+          registration?.eventId,
+          registration?.eventTitle,
+          registration?.trainingType,
+        ].some(value => normalizeModoLigaValue(value).includes('modoliga'));
+      };
 
       let countConfirmed = 0, countPending = 0;
 
@@ -4653,12 +4673,15 @@ window.showWarningToast = function(message, title = 'Atenção') {
             : '<span class="text-xs bg-green-100 text-green-700 border border-green-300 rounded px-1.5 py-0.5">✓ Pago</span>';
         const _mgEmail = r.email || r.clientEmail || '';
         const _mgPhone = r.contact || r.phone || '';
-        // Badge posicional — igual ao painel Ver Detalhes > Inscritos
-        // Modo Liga: exibe letra (A, B, C…) em vez de número
-        // Usa r.eventType (campo do registro) para garantir detecção correta
-        const _isLigaRow = (r.eventType || rawIdLower || '').toLowerCase() === 'modo-liga';
+        // Modo Liga: mantém a letra SPEC atribuída; sem atribuição, mostra a posição atual.
+        const _isLigaRow = isModoLigaRegistration(r);
+        const _storedSpecLetter = String(r.modoLigaSpecLetter || '').trim().toUpperCase();
+        const _storedSpecHour = normalizeHour(r.modoLigaSpecHour || '');
+        const _hasCurrentSpecLetter = _isLigaRow
+          && /^[A-Z]$/.test(_storedSpecLetter)
+          && (!_storedSpecHour || _storedSpecHour === targetHH);
         const slotBadgeLabel = _isLigaRow
-          ? String.fromCharCode(64 + posIdx)
+          ? (_hasCurrentSpecLetter ? _storedSpecLetter : (posIdx ? String.fromCharCode(64 + posIdx) : ''))
           : `#${posIdx}`;
         const slotBadge = posIdx != null
           ? `<span class="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 flex-shrink-0">${slotBadgeLabel}</span>`
@@ -4695,7 +4718,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
               <i class="fas fa-download"></i> Logo
             </button>
             <button class="px-2.5 py-1 bg-orange-50 border border-orange-200 text-orange-600 rounded-lg text-xs hover:bg-orange-500 hover:text-white transition-colors font-medium"
-                    data-edit-slot-reg-id="${d.id}" data-edit-slot-current="${posIdx}" title="Editar número da vaga">✏️ Vaga</button>
+                    data-edit-slot-reg-id="${d.id}" data-edit-slot-current="${posIdx || ''}"
+                    data-edit-slot-current-letter="${_hasCurrentSpecLetter ? _storedSpecLetter : (_isLigaRow && posIdx ? String.fromCharCode(64 + posIdx) : '')}"
+                    title="${_isLigaRow ? 'Atribuir letra e cadastrar logo no SPEC para este horário' : 'Editar número da vaga'}">${_isLigaRow ? '🔠 LETRA SPEC' : '✏️ Editar vaga'}</button>
             <button class="px-2.5 py-1 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs hover:bg-red-600 hover:text-white transition-colors" data-remove-reg-id="${d.id}">Remover</button>
           </div>`;
         const logoDownloadBtn = row.querySelector('[data-download-team-logo]');
@@ -4781,6 +4806,112 @@ window.showWarningToast = function(message, title = 'Atenção') {
         if (editBtn) {
           const regId    = editBtn.getAttribute('data-edit-slot-reg-id');
           const current  = editBtn.getAttribute('data-edit-slot-current') || '';
+          const registrationDoc = _matchedDocs.find(item => item.id === regId);
+          const registration = registrationDoc?.data?.() || {};
+          const isModoLiga = isModoLigaRegistration(registration);
+          if (isModoLiga) {
+            if (registration.status === 'pending') {
+              showToast('warning', 'Confirme o pagamento antes de vincular a logo ao SPEC.', 'Vaga pendente');
+              return;
+            }
+            const currentLetter = editBtn.getAttribute('data-edit-slot-current-letter') || '';
+            const typedLetter = window.prompt(
+              `Letra SPEC desta vaga (A–Z) para ${targetHH}H:`,
+              currentLetter,
+            );
+            if (typedLetter === null || typedLetter.trim() === '') return;
+
+            const originalButtonText = editBtn.textContent;
+            editBtn.disabled = true;
+            editBtn.textContent = 'Preparando logo…';
+            try {
+              const specLogos = await import('./js/admin-spec-logos.mjs?v=modo-liga-manager-spec-1');
+              const letter = specLogos.normalizeModoLigaSpecLetter(typedLetter);
+              if (!letter) {
+                window.alert('Letra inválida. Use uma letra de A a Z.');
+                return;
+              }
+              if (!['19', '20', '21', '22', '23', '00'].includes(targetHH)) {
+                throw new Error('O horário selecionado não é válido para as logos Modo Liga.');
+              }
+
+              const logoUrl = await resolveSpecOriginalLogoUrl(registration);
+              if (!logoUrl) {
+                showToast(
+                  'warning',
+                  'Não encontrei o arquivo original desta inscrição. Peça ao cliente para reenviar a logo; não usarei a miniatura.',
+                  'Logo original ausente',
+                );
+                return;
+              }
+
+              showToast('info', `Buscando e preparando a logo original para ${targetHH}H • ${letter}…`, 'Logo SPEC');
+              const response = await fetch(logoUrl, { mode: 'cors' });
+              if (!response.ok) throw new Error('Não foi possível baixar a logo original da inscrição.');
+              const sourceBlob = await response.blob();
+              const supportedMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
+              let mimeType = String(sourceBlob.type || '').split(';')[0].trim().toLowerCase();
+              if (mimeType === 'image/jpg') mimeType = 'image/jpeg';
+              if (!supportedMimeTypes.has(mimeType)) {
+                const extension = new URL(logoUrl, window.location.href).pathname.match(/\.(png|jpe?g|webp)$/i)?.[1]?.toLowerCase();
+                mimeType = extension === 'png' ? 'image/png'
+                  : ['jpg', 'jpeg'].includes(extension) ? 'image/jpeg'
+                    : extension === 'webp' ? 'image/webp' : '';
+              }
+              if (!supportedMimeTypes.has(mimeType)) {
+                throw new Error('A logo original precisa estar em PNG, JPG ou WebP para remover o fundo.');
+              }
+              const logoFile = new File(
+                [sourceBlob],
+                `logo-${regId}.${mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg'}`,
+                { type: mimeType },
+              );
+
+              const result = await specLogos.saveRegistrationLogoToSpec(logoFile, {
+                hour: targetHH,
+                letter,
+                registrationId: regId,
+                teamName: registration.teamName || registration.name || '',
+                previousLetter: registration.modoLigaSpecLetter || '',
+                previousHour: registration.modoLigaSpecHour || targetHH,
+                onProgress: message => {
+                  editBtn.title = message;
+                  editBtn.textContent = /baixando|carregando/i.test(message)
+                    ? 'Carregando IA…'
+                    : /fundo complexo|removendo|preparando/i.test(message)
+                      ? 'Removendo fundo…'
+                      : 'Salvando logo…';
+                },
+              });
+              if (result.cancelled) return;
+
+              const { doc: firestoreDoc, updateDoc } =
+                await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+              await updateDoc(firestoreDoc(window.firebaseDb, 'registrations', regId), {
+                modoLigaSpecLetter: letter,
+                modoLigaSpecHour: targetHH,
+                modoLigaSpecAssignedAt: Date.now(),
+              });
+
+              const cleanupMessage = result.removedOldMapping
+                ? ' A logo SPEC anterior desta inscrição também foi removida.'
+                : '';
+              showToast(
+                'success',
+                `Logo sem fundo salva para ${targetHH}H • letra ${letter} • código ${result.code}. A vaga numérica foi mantida.${cleanupMessage}`,
+                'Logo vinculada ao SPEC',
+              );
+              openManageHourModal(date, eventType, hour, rawEventId, evFieldType, eventName);
+            } catch (err) {
+              showToast('error', err.message || 'Não foi possível vincular a logo ao SPEC.', 'Erro na logo SPEC');
+            } finally {
+              editBtn.disabled = false;
+              editBtn.textContent = originalButtonText;
+              editBtn.removeAttribute('title');
+            }
+            return;
+          }
+
           const novoStr  = window.prompt(`Novo número para a vaga (atual: #${current}):`, current);
           if (!novoStr || novoStr.trim() === '') return;
           const novoNum  = parseInt(novoStr.trim(), 10);
@@ -13583,7 +13714,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                     }
                     break;
                 case 'sectionSpecLogos':
-                    await import('./js/admin-spec-logos.mjs')
+                    await import('./js/admin-spec-logos.mjs?v=modo-liga-manager-spec-1')
                         .then(m => m.openSpecLogosAdmin())
                         .catch(error => {
                             console.error('[SPEC] Falha ao carregar as logos:', error);
