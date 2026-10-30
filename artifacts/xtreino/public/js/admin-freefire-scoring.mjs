@@ -28,14 +28,50 @@ const EVENTS = [
   ['CAMP FREITAS', 'camp'],
   ['SEMANAL FREITAS', 'semanal'],
 ];
+const IMAGE_EVENT_TEMPLATES = Object.freeze({
+  treino: Object.freeze({
+    name: 'TABELA_TREINO_FREITAS.webp',
+    assetUrl: new URL('../assets/freefire-image-template-treino.webp', import.meta.url),
+    layout: Object.freeze({
+      rowTop: 0.444, rowPitch: 0.0387, nameX: 0.278, nameMaxWidth: 0.30,
+      winsX: 0.468, killsX: 0.527, pointsX: 0.587,
+      nameColor: '#171717', winsColor: '#10201e', killsColor: '#10201e', pointsColor: '#10201e',
+    }),
+  }),
+  intensivo: Object.freeze({
+    name: 'TABELA_INTENSIVO_FREITAS.webp',
+    assetUrl: new URL('../assets/freefire-image-template-intensivo.webp', import.meta.url),
+    layout: Object.freeze({
+      rowTop: 0.445, rowPitch: 0.03915, nameX: 0.413, nameMaxWidth: 0.40,
+      winsX: 0.663, killsX: 0.737, pointsX: 0.810,
+      nameColor: '#171717', winsColor: '#171717', killsColor: '#171717', pointsColor: '#171717',
+    }),
+  }),
+  camp: Object.freeze({
+    name: 'TABELA_CAMP_FREITAS.webp',
+    assetUrl: new URL('../assets/freefire-image-template-camp.webp', import.meta.url),
+    layout: Object.freeze({
+      rowTop: 0.424, rowPitch: 0.0388, nameX: 0.413, nameMaxWidth: 0.43,
+      winsX: 0.676, killsX: 0.755, pointsX: 0.838,
+      nameColor: '#171717', winsColor: '#ffffff', killsColor: '#ffffff', pointsColor: '#ffffff',
+    }),
+  }),
+  semanal: Object.freeze({
+    name: 'TABELA_SEMANAL_FREITAS.webp',
+    assetUrl: new URL('../assets/freefire-image-template-semanal.webp', import.meta.url),
+    layout: Object.freeze({
+      rowTop: 0.441, rowPitch: 0.039, nameX: 0.416, nameMaxWidth: 0.38,
+      winsX: 0.664, killsX: 0.748, pointsX: 0.835,
+      nameColor: '#171717', winsColor: '#171717', killsColor: '#171717', pointsColor: '#ffffff',
+    }),
+  }),
+});
 const PLACE_POINTS = [12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0];
 const SUPPORTED_IMAGES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_ANALYSIS_IMAGE_BYTES = 800 * 1024;
 const MAX_ANALYSIS_TOTAL_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_ANALYSIS_REQUEST_BYTES = 5_700_000;
 const MAX_DROPPED_REMOTE_IMAGE_BYTES = 25 * 1024 * 1024;
-const DB_NAME = 'freitas-freefire-config';
-const DB_STORE = 'table-templates';
 const MODO_LIGA_FIRST_ROW_CENTER = 0.4493;
 const MODO_LIGA_ROW_PITCH = 0.031;
 const MODO_LIGA_TEMPLATE_LAYOUT = Object.freeze({
@@ -89,6 +125,31 @@ export function getModoLigaTemplateLayout(imageWidth) {
   return Object.fromEntries(
     Object.entries(MODO_LIGA_TEMPLATE_LAYOUT).map(([key, ratio]) => [key, imageWidth * ratio]),
   );
+}
+
+export function getImageEventTemplateInfo(event) {
+  const template = IMAGE_EVENT_TEMPLATES[event];
+  return template ? { name: template.name, assetUrl: template.assetUrl.href } : null;
+}
+
+export function getImageEventTemplateLayout(event, imageWidth, imageHeight) {
+  const template = IMAGE_EVENT_TEMPLATES[event];
+  if (!template || !Number.isFinite(imageWidth) || imageWidth <= 0 ||
+      !Number.isFinite(imageHeight) || imageHeight <= 0) return null;
+  const layout = template.layout;
+  return {
+    rowTop: imageHeight * layout.rowTop,
+    rowPitch: imageHeight * layout.rowPitch,
+    nameX: imageWidth * layout.nameX,
+    nameMaxWidth: imageWidth * layout.nameMaxWidth,
+    winsX: imageWidth * layout.winsX,
+    killsX: imageWidth * layout.killsX,
+    pointsX: imageWidth * layout.pointsX,
+    nameColor: layout.nameColor,
+    winsColor: layout.winsColor,
+    killsColor: layout.killsColor,
+    pointsColor: layout.pointsColor,
+  };
 }
 
 export function getModoLigaTemplateRowCenter(imageHeight, rowIndex) {
@@ -339,31 +400,6 @@ function canOpen() { return allowed.includes(String(window.lastAppliedRole || wi
 function readOnly() { return ['socio', 'sócio'].includes(String(window.lastAppliedRole || window.adminRoleLower || '').toLowerCase().trim()); }
 function visible() { return $('sectionFreefireScoring')?.style.display !== 'none'; }
 
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function getTemplate(key) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(DB_STORE).objectStore(DB_STORE).get(key);
-    req.onsuccess = () => { db.close(); resolve(req.result || null); };
-    req.onerror = () => { db.close(); reject(req.error); };
-  });
-}
-async function putTemplate(key, value) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(DB_STORE, 'readwrite');
-    tx.objectStore(DB_STORE).put(value, key);
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
-  });
-}
 async function loadMatchResultTemplate() {
   matchResultState.templateError = '';
   try {
@@ -1516,21 +1552,23 @@ async function exportModoLigaTop3Jpeg() {
 }
 
 async function loadTemplate() {
+  state.template = null;
+  state.templateName = '';
+  state.error = '';
   try {
-    const value = await getTemplate(state.event);
-    const savedBlob = value?.blob || null;
-    if (savedBlob && !(savedBlob instanceof Blob)) {
-      state.template = null;
-      state.templateName = '';
-      state.error = 'O modelo salvo neste navegador está inválido. Envie o arquivo do modelo novamente.';
-      return;
+    const template = IMAGE_EVENT_TEMPLATES[state.event];
+    if (!template) throw new Error('Não existe uma tabela oficial configurada para este evento.');
+    const response = await fetch(template.assetUrl);
+    if (!response.ok) {
+      const eventName = EVENTS.find(([, key]) => key === state.event)?.[0] || 'este evento';
+      throw new Error(`A tabela oficial de ${eventName} não carregou.`);
     }
-    state.template = savedBlob;
-    state.templateName = state.template ? value?.name || '' : '';
+    state.template = await response.blob();
+    state.templateName = template.name;
   } catch (error) {
     state.template = null;
     state.templateName = '';
-    state.error = `Não foi possível acessar o modelo local neste navegador: ${error.message}`;
+    state.error = error.message || 'Não foi possível carregar a tabela oficial deste evento.';
   }
 }
 export function parseRoster(text) {
@@ -1606,7 +1644,7 @@ function canExport() {
     standings().some(row => row.teamName) && !state.busy;
 }
 function exportIssue() {
-  if (!state.template) return 'Envie o modelo em branco deste evento para habilitar o JPEG.';
+  if (!state.template) return 'A tabela oficial deste evento não carregou; atualize o painel e tente novamente.';
   if (!hasCompleteRoster()) return 'Preencha os nomes dos 12 slots antes de exportar.';
   const issue = state.drops.slice(0, state.dropsCount).map(dropReviewIssue).find(Boolean);
   return issue || 'O JPEG preserva a proporção do modelo e limita o maior lado a 1080 px.';
@@ -1639,11 +1677,12 @@ function render() {
   $('ffDrops').disabled = viewer;
   $('ffImageQualityMode').disabled = viewer || state.busy;
   $('ffRosterText').disabled = viewer;
-  $('ffTemplateUpload').disabled = viewer;
   $('ffRosterUpload').disabled = viewer;
   $('ffAnalyzeRoster').disabled = viewer || state.busy || !state.rosterImages.length;
   $('ffTemplateName').textContent = state.templateName || 'Nenhum modelo configurado para este evento';
-  $('ffTemplateHint').textContent = state.template ? 'Modelo salvo somente neste navegador.' : 'Envie o modelo oficial em branco para liberar a exportação.';
+  $('ffTemplateHint').textContent = state.template
+    ? 'Modelo oficial fixado para este evento e disponível para todos os administradores.'
+    : 'A tabela oficial deste evento não carregou.';
   if (previewUrl) URL.revokeObjectURL(previewUrl);
   previewUrl = state.template ? URL.createObjectURL(state.template) : '';
   $('ffTemplatePreview').innerHTML = state.template
@@ -1930,8 +1969,8 @@ function build(root) {
             <label class="ff-field">Quantidade de quedas<select id="ffDrops">${[1, 2, 3, 4, 5].map(n => `<option value="${n}">${n} ${n === 1 ? 'queda' : 'quedas'}</option>`).join('')}</select></label>
           </div>
           <div class="ff-quality-setting"><label for="ffImageQualityMode">Qualidade das imagens para análise</label><select id="ffImageQualityMode"><option value="auto">Otimizar automaticamente (recomendado)</option><option value="original">Enviar original sem recompressão</option></select><small id="ffImageQualityHint"></small></div>
-          <div class="ff-template-config"><div class="ff-template-preview" id="ffTemplatePreview"></div><div class="ff-template-meta"><span class="ff-mini-label">TABELA EM BRANCO</span><b id="ffTemplateName"></b><small id="ffTemplateHint"></small><label class="ff-button ff-button-light" for="ffTemplateUpload"><i class="fas fa-upload"></i> Enviar ou arrastar modelo</label><input id="ffTemplateUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden></div></div>
-          <p class="ff-note">Cada evento mantém seu próprio modelo neste navegador. O JPEG preserva a proporção e limita o maior lado a 1080 px.</p>
+          <div class="ff-template-config"><div class="ff-template-preview" id="ffTemplatePreview"></div><div class="ff-template-meta"><span class="ff-mini-label">TABELA EM BRANCO</span><b id="ffTemplateName"></b><small id="ffTemplateHint"></small></div></div>
+          <p class="ff-note">Cada evento tem sua tabela oficial fixa no sistema. O JPEG preserva a proporção e limita o maior lado a 1080 px.</p>
         </section>
         <section class="ff-panel">
           <div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>Doze posições fixas. Um slot sem equipe não participa do placar.</p></div></div>
@@ -2170,20 +2209,6 @@ function build(root) {
       render();
     }
   });
-  $('ffTemplateUpload').addEventListener('change', async e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('Selecione um arquivo PNG, JPG ou WebP.');
-      if (file.size > 25 * 1024 * 1024) throw new Error('O modelo deve ter até 25 MB.');
-      await putTemplate(state.event, { blob: file, name: file.name });
-      await loadTemplate();
-      setNotice('success', 'Modelo atualizado e armazenado somente neste navegador.');
-    } catch (error) { setNotice('error', error.message || 'Não foi possível salvar o modelo neste navegador.'); }
-    e.target.value = '';
-    render();
-  });
-  attachImageDropTarget(document.querySelector('label[for="ffTemplateUpload"]'), $('ffTemplateUpload'));
   attachImageDropTarget(document.querySelector('label[for="ffRosterUpload"]'), $('ffRosterUpload'));
   attachImageDropTarget($('ffSlotUpload').closest('.ff-upload-tile'), $('ffSlotUpload'));
   attachImageDropTarget($('ffResultUpload').closest('.ff-upload-tile'), $('ffResultUpload'));
@@ -2554,31 +2579,27 @@ async function exportJpeg() {
     ctx.drawImage(bitmap, 0, 0);
     await document.fonts.load('700 48px Stapel');
     const rows = standings();
-    const rowTop = bitmap.height * 0.445;
-    const rowPitch = bitmap.height * 0.03915;
-    // Centers aligned to the empty cells in the supplied 1024px leaderboard template.
-    const nameX = bitmap.width * 0.413;
-    const winsX = bitmap.width * 0.663;
-    const killsX = bitmap.width * 0.737;
-    const pointsX = bitmap.width * 0.81;
+    const layout = getImageEventTemplateLayout(state.event, bitmap.width, bitmap.height);
+    if (!layout) throw new Error('Não existe uma configuração de tabela para este evento.');
     const fontSize = Math.max(24, Math.round(bitmap.width * 0.017));
     ctx.textBaseline = 'middle';
     ctx.font = `700 ${fontSize}px Stapel`;
-    ctx.fillStyle = '#171717';
     ctx.textAlign = 'center';
     rows.slice(0, 12).forEach((row, index) => {
-      const y = rowTop + index * rowPitch;
+      const y = layout.rowTop + index * layout.rowPitch;
       ctx.save();
       ctx.font = `700 ${fontSize}px Stapel`;
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#121212';
-      const maxNameWidth = bitmap.width * 0.40;
+      ctx.fillStyle = layout.nameColor;
       let name = row.teamName.toLocaleUpperCase('pt-BR');
-      while (name.length > 2 && ctx.measureText(name).width > maxNameWidth) name = `${name.slice(0, -2).trim()}…`;
-      ctx.fillText(name, nameX, y, maxNameWidth);
-      ctx.fillText(String(row.wins), winsX, y);
-      ctx.fillText(String(row.kills), killsX, y);
-      ctx.fillText(String(row.points), pointsX, y);
+      while (name.length > 2 && ctx.measureText(name).width > layout.nameMaxWidth) name = `${name.slice(0, -2).trim()}…`;
+      ctx.fillText(name, layout.nameX, y, layout.nameMaxWidth);
+      ctx.fillStyle = layout.winsColor;
+      ctx.fillText(String(row.wins), layout.winsX, y);
+      ctx.fillStyle = layout.killsColor;
+      ctx.fillText(String(row.kills), layout.killsX, y);
+      ctx.fillStyle = layout.pointsColor;
+      ctx.fillText(String(row.points), layout.pointsX, y);
       ctx.restore();
     });
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));

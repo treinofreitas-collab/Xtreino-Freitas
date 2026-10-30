@@ -106,7 +106,7 @@ test('loads the scoring module with a fresh cache version', async () => {
   );
   assert.match(
     adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=leaderboard-logo-optical-align-1['"]\)/,
+    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=freefire-image-event-templates-fixed-1['"]\)/,
   );
 });
 
@@ -115,7 +115,31 @@ test('loads admin.js with the matching cache version', async () => {
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(adminPage, /src="admin\.js\?v=leaderboard-logo-optical-align-1"/);
+  assert.match(adminPage, /src="admin\.js\?v=freefire-image-event-templates-fixed-1"/);
+});
+
+test('uses only the fixed official event tables', async () => {
+  const assets = new URL('../../artifacts/xtreino/public/assets/', import.meta.url);
+  for (const name of [
+    'freefire-image-template-treino.webp',
+    'freefire-image-template-intensivo.webp',
+    'freefire-image-template-camp.webp',
+    'freefire-image-template-semanal.webp',
+  ]) {
+    const image = await readFile(new URL(name, assets));
+    assert.equal(image.subarray(0, 4).toString('ascii'), 'RIFF');
+    assert.equal(image.subarray(8, 12).toString('ascii'), 'WEBP');
+    assert.ok(image.length < 2 * 1024 * 1024);
+  }
+
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(
+    source,
+    /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/,
+  );
 });
 
 test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
@@ -231,8 +255,8 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=leaderboard-logo-optical-align-1/);
-  assert.match(adminPage, /admin\.js\?v=leaderboard-logo-optical-align-1/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-image-event-templates-fixed-1/);
+  assert.match(adminPage, /admin\.js\?v=freefire-image-event-templates-fixed-1/);
 });
 
 test('returns Top 3 availability and exports requested text in white', async () => {
