@@ -3186,6 +3186,32 @@ function normalizeEventType(t) {
     if (s === 'camp-final' || s === 'final' || s.includes('camp-final') || s.includes('camp final')) return 'camp-final';
     return s;
 }
+function isIntensivoFreitasSchedule(eventType, eventConfig = {}) {
+    if (String(eventConfig.urlSlug || '').trim().toLowerCase() === 'intensivo') return true;
+    return [eventConfig.name, eventConfig.label, eventConfig.title]
+        .filter(Boolean)
+        .some(value => {
+            const normalized = String(value)
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, ' ')
+                .trim();
+            return normalized === 'intensivo freitas';
+        });
+}
+function isIntensivoFreitasLockType(value) {
+    const normalized = String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim()
+        .replace(/[\s_]+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    return normalized === 'intensivo' || normalized === 'intensivo-freitas';
+}
 function bookingLockEventTypes(eventType, eventConfig = {}) {
     const values = [
         eventType,
@@ -3200,13 +3226,19 @@ function bookingLockEventTypes(eventType, eventConfig = {}) {
         return type === 'liga' || type === 'acesso' || type.includes('modo-liga');
     });
     const canonicalType = isModoLiga ? 'modo-liga' : (eventConfig.eventType || eventType);
-    return [...new Set([eventType, canonicalType].filter(Boolean))];
+    const isIntensivoFreitas = isIntensivoFreitasSchedule(eventType, eventConfig);
+    const types = [eventType, canonicalType];
+    if (isIntensivoFreitas) {
+        types.push(eventConfig.name, eventConfig.label, eventConfig.title, 'intensivo-freitas', 'intensivo');
+    }
+    return [...new Set(types.filter(Boolean))];
 }
 function bookingLockAppliesToEvent(lockData, eventType, eventConfig = {}) {
     const lockType = lockData?.eventType || lockData?.event_type || '';
     if (!lockType) return true;
     const eventTypes = bookingLockEventTypes(eventType, eventConfig);
     return eventTypes.includes(lockType)
+        || (isIntensivoFreitasSchedule(eventType, eventConfig) && isIntensivoFreitasLockType(lockType))
         || (eventTypes.includes('modo-liga') && normalizeEventType(lockType) === 'modo-liga');
 }
 function matchesPermanentHourLock(lockData, eventType, eventConfig = {}) {
@@ -10355,6 +10387,7 @@ async function loadDynamicEvents() {
                 category: ev.category || '',
                 regras: ev.regras || '',
                 eventType: ev.eventType || '',
+                urlSlug: ev.urlSlug || '',
                 adminEventId: d.id,
                 dateScopedEventLinks: isCampSeason7Name(ev.name),
                 ...(isCampSeason7Name(ev.name) ? { startDate: CAMP_SEASON_7_START_DATE } : {}),

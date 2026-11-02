@@ -245,6 +245,48 @@ test("Modo Liga applies the same per-hour lock check to 19h and 00h", async () =
   assert.equal((await checkAvailability(onlyMidnightLocked, requestFor(0))).available, false);
 });
 
+test("Intensivo Freitas fixed locks block its hours but not other events", async () => {
+  const intensiveId = "intensivo-freitas-event";
+  const requestFor = (eventType, adminEventId = eventType) => ({
+    date: "2026-11-02",
+    eventType,
+    adminEventId,
+    selectedTimes: ["Segunda - 15h"],
+    numberOfTeams: 1,
+  });
+  const sharedLock = {
+    "event_hour_locks/intensivo-15": {
+      event_type: "INTENSIVO FREITAS",
+      hour: "15",
+      locked: true,
+    },
+  };
+  const intensiveDb = database({
+    ...sharedLock,
+    [`adminEvents/${intensiveId}`]: {
+      name: "INTENSIVO FREITAS",
+      category: "SQUAD",
+      status: "Aberto",
+      vagas: 12,
+    },
+  });
+  const locked = await checkAvailability(intensiveDb, requestFor(intensiveId));
+  assert.equal(locked.available, false);
+  assert.match(locked.message, /horário 15h está bloqueado/);
+
+  const otherId = "other-daily-event";
+  const otherDb = database({
+    ...sharedLock,
+    [`adminEvents/${otherId}`]: {
+      name: "OUTRO EVENTO",
+      category: "SQUAD",
+      status: "Aberto",
+      vagas: 12,
+    },
+  });
+  assert.equal((await checkAvailability(otherDb, requestFor(otherId))).available, true);
+});
+
 test("Modo Liga midnight availability uses the event catalog, not only its Firestore document ID", async () => {
   const events = [
     ["EventDocumentAa", { name: "TREINO MODO LIGA", eventType: "modo-liga" }],

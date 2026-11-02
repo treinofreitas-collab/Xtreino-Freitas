@@ -32,6 +32,31 @@ function isCampSeason7(config) {
   return name.includes("camp") && /\bseason\s*7\b/.test(name);
 }
 
+function isIntensivoFreitas(config) {
+  if (String(config?.urlSlug || "").trim().toLowerCase() === "intensivo") return true;
+  return [config?.name, config?.label, config?.title]
+    .filter(Boolean)
+    .some(value => String(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim() === "intensivo freitas");
+}
+
+function isIntensivoFreitasLockType(value) {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return normalized === "intensivo" || normalized === "intensivo-freitas";
+}
+
 function registrationMatchesSelectedEvent(record, eventType, adminEventId, eventName) {
   const normalize = value => String(value ?? "")
     .normalize("NFD")
@@ -114,7 +139,14 @@ async function checkAvailability(db, body) {
   ].some(isModoLigaType);
   if (!isModoLiga && hours.includes(0)) invalid("O horário 00h00 está disponível apenas no Modo Liga.");
   const canonicalType = isModoLiga ? "modo-liga" : (config?.eventType || eventType);
-  const types = [...new Set([eventType, canonicalType])];
+  const isIntensivo = isIntensivoFreitas(config);
+  const types = [...new Set([
+    eventType,
+    canonicalType,
+    ...(isIntensivo
+      ? [config?.name, config?.label, config?.title, "intensivo-freitas", "intensivo"]
+      : []),
+  ].filter(Boolean))];
   const [registrations, overrides, hourLocks, globalLocks] = await Promise.all([
     db.collection("registrations").where("date", "==", date).where("eventType", "==", eventType).get(),
     db.collection("schedule_overrides").where("date", "==", date).get(),
@@ -128,7 +160,9 @@ async function checkAvailability(db, body) {
   const applies = record => {
     const recordType = record.eventType || record.event_type || "";
     if (!recordType) return true;
-    return types.includes(recordType) || (isModoLiga && isModoLigaType(recordType));
+    return types.includes(recordType)
+      || (isIntensivo && isIntensivoFreitasLockType(recordType))
+      || (isModoLiga && isModoLigaType(recordType));
   };
   const counts = {};
   for (const doc of registrations.docs) {

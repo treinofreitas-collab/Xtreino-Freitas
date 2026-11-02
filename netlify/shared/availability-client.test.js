@@ -11,6 +11,7 @@ assert.ok(start >= 0 && end > start);
 function checkWith(fetch) {
   const context = vm.createContext({
     authenticatedPaymentFetch: fetch, AbortController, setTimeout, clearTimeout, logError: () => {},
+    document: { getElementById: () => null },
   });
   vm.runInContext(source.slice(start, end), context);
   return context.checkMultipleSlotAvailability;
@@ -82,6 +83,29 @@ test("calendar lock scope matches the server's canonical event mapping", () => {
   assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "treino-freitas" }, "EventDocumentBb", config), false);
   assert.equal(helpers.bookingLockAppliesToEvent({}, "EventDocumentBb", config), true);
   assert.equal(helpers.bookingLockAppliesToEvent({ eventType: "TREINO MODO LIGA" }, "EventDocumentBb", config), true);
+});
+
+test("permanent locks match Intensivo Freitas by name without affecting other events", () => {
+  const matches = permanentLockMatcher();
+  const intensive = {
+    urlSlug: "intensivo",
+    label: "INTENSIVO FREITAS",
+    adminEventId: "intensivo-event-document",
+  };
+  assert.equal(matches({
+    locked: true, eventType: "INTENSIVO FREITAS", hour: "15",
+  }, "intensivo-event-document", intensive), true);
+  assert.equal(matches({
+    locked: true, event_type: "intensivo_freitas", hour: "21",
+  }, "intensivo-event-document", intensive), true);
+  assert.equal(matches({
+    locked: true, eventType: "INTENSIVO FREITAS", hour: "15",
+  }, "other-event-document", {
+    urlSlug: "other", label: "Outro Evento",
+  }), false);
+  assert.equal(matches({
+    locked: true, eventType: "outro-evento", hour: "15",
+  }, "intensivo-event-document", intensive), false);
 });
 
 test("initial and refreshed customer calendars use the same lock matching rules", () => {
