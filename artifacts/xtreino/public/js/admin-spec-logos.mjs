@@ -14,6 +14,7 @@ const STORAGE_ROOT = 'teams/modo-liga/logos/spec';
 const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/+esm';
 const BACKGROUND_MODEL = 'onnx-community/ormbg-ONNX';
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_DOWNLOAD_BATCH_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION = 2048;
 
 let root;
@@ -25,6 +26,8 @@ let selectedSourcePreviewUrl = '';
 let editHistory = [];
 let activeStroke = null;
 let brushMode = 'restore';
+let specLogoExportsByHour = new Map();
+let specZipLibraryPromise = null;
 
 function codeForLetter(letter) {
   const index = LETTERS.indexOf(String(letter || '').toUpperCase());
@@ -85,6 +88,38 @@ export function getSpecLogoViewMode(role) {
   if (normalizedRole === 'streamer') return 'download-only';
   if (['socio', 'sócio', 'operador'].includes(normalizedRole)) return 'view';
   return 'denied';
+}
+
+export function splitSpecLogoDownloadBatches(files, maxBytes = MAX_DOWNLOAD_BATCH_BYTES) {
+  if (!Array.isArray(files) || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new Error('A lista de logos não pôde ser dividida em partes.');
+  }
+  const parts = [];
+  let current = null;
+  files.forEach((file, fileIndex) => {
+    if (!/^9020000(?:3[4-9]|[45][0-9])$/.test(file?.code || '')) {
+      throw new Error('O servidor retornou um código de logo inválido.');
+    }
+    const knownSize = Number.isSafeInteger(file.totalBytes) && file.totalBytes >= 0;
+    const totalBytes = knownSize ? file.totalBytes : maxBytes;
+    if (current && (current.totalBytes + totalBytes > maxBytes || current.files.length >= 8)) {
+      parts.push(current);
+      current = null;
+    }
+    if (!current) {
+      current = {
+        files: [],
+        startFileIndex: fileIndex,
+        endFileIndex: fileIndex,
+        totalBytes: 0,
+      };
+    }
+    current.files.push(file);
+    current.endFileIndex = fileIndex + 1;
+    current.totalBytes += totalBytes;
+  });
+  if (current) parts.push(current);
+  return parts;
 }
 
 function currentViewMode() {
@@ -203,15 +238,16 @@ function renderShell() {
     ? `
       <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
         <h3 class="font-semibold text-slate-800">Baixar logos para SPEC</h3>
-        <p class="mt-1 text-xs text-slate-500">Escolha o horário e baixe as logos cadastradas em um arquivo ZIP.</p>
+        <p class="mt-1 text-xs text-slate-500">Baixe um único arquivo ZIP com todas as logos dentro da pasta do horário.</p>
         <div class="mt-4 flex flex-wrap items-end gap-3">
           <label class="min-w-40 text-xs font-semibold text-slate-600">Horário
             <select id="specLogoHourView" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800">${hourOptions}</select>
           </label>
-          <button id="specLogoDownload" type="button" class="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50">
-            <i class="fas fa-download mr-2" aria-hidden="true"></i>Baixar logos <span data-spec-hour-label>${HOURS[0]}H</span> (ZIP)
+          <button id="specLogoDownload" type="button" disabled class="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50">
+            <i class="fas fa-download mr-2" aria-hidden="true"></i>Baixar todas as logos
           </button>
         </div>
+        <p class="mt-2 text-xs text-slate-500">O ZIP terá uma única pasta chamada LOGOS do horário, com todos os PNGs dentro.</p>
       </div>
     `
     : '';
@@ -233,11 +269,12 @@ function renderShell() {
               <i class="fas fa-trash-alt mr-1" aria-hidden="true"></i>Limpar tudo
             </button>
           ` : ''}
-          <button id="specLogoDownload" type="button" class="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50">
-            <i class="fas fa-download mr-2" aria-hidden="true"></i>Baixar logos <span data-spec-hour-label>${HOURS[0]}H</span> (ZIP)
+          <button id="specLogoDownload" type="button" disabled class="rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50">
+            <i class="fas fa-download mr-2" aria-hidden="true"></i>Baixar todas as logos
           </button>
         </div>
       </div>
+      <p class="mt-2 text-xs text-slate-500">Será baixado um único ZIP com os PNGs juntos na pasta LOGOS do horário selecionado.</p>
       <p id="specLogoCount" class="mt-3 text-xs text-slate-500" aria-live="polite"></p>
       <div id="specLogoList" class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <div class="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Carregando logos…</div>
@@ -254,7 +291,7 @@ function renderShell() {
             <h2 class="text-lg font-bold text-slate-900">LOGOS PARA SPEC</h2>
           </div>
           <p class="mt-2 max-w-3xl text-sm text-slate-600">${streamerMode
-            ? 'Escolha o horário desejado e baixe as logos SPEC em ZIP.'
+            ? 'Escolha o horário e baixe todas as logos para uma única pasta.'
             : 'Cadastre uma logo por horário e letra. O PNG mantém o código exato usado pelo SPEC; o fundo pode ser removido ou mantido como na imagem original.'}</p>
         </div>
       </div>
@@ -267,9 +304,11 @@ function renderShell() {
 }
 
 function getHourForList() {
-  return root?.querySelector('#specLogoHour')?.value
+  const rawHour = root?.querySelector('#specLogoHour')?.value
     || root?.querySelector('#specLogoHourView')?.value
     || HOURS[0];
+  const normalizedHour = String(rawHour).trim().toUpperCase().replace(/H$/, '');
+  return HOURS.includes(normalizedHour) ? normalizedHour : '';
 }
 
 function updateCodeLabel() {
@@ -1039,12 +1078,21 @@ async function refreshLogoList(hour = getHourForList()) {
   const list = root?.querySelector('#specLogoList');
   const count = root?.querySelector('#specLogoCount');
   const downloadButton = root?.querySelector('#specLogoDownload');
-  if (!list) return [];
   if (downloadButton) downloadButton.disabled = true;
-  list.innerHTML = '<div class="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Carregando logos…</div>';
+  if (list) {
+    list.innerHTML = '<div class="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Carregando logos…</div>';
+  }
   try {
-    const entries = await listLogos(hour);
-    if (count) count.textContent = `${entries.length} logo(s) cadastrada(s) para ${hour}H.`;
+    const [manifest, entries] = await Promise.all([
+      loadSpecLogoExportManifest(hour, true),
+      list ? listLogos(hour) : Promise.resolve([]),
+    ]);
+    updateSpecLogoDownloadButton(hour, manifest);
+    if (count) count.textContent = `${manifest.files.length} logo(s) cadastrada(s) para ${hour}H.`;
+    if (!list && manifest.files.length) {
+      setStatus(`${manifest.files.length} logo(s) disponíveis para baixar no horário ${hour}H.`, 'info');
+    }
+    if (!list) return manifest.files;
     if (!entries.length) {
       list.innerHTML = '<div class="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500 sm:col-span-2 lg:col-span-3">Ainda não há logos cadastradas para este horário.</div>';
       return entries;
@@ -1074,40 +1122,101 @@ async function refreshLogoList(hour = getHourForList()) {
     return entries;
   } catch (error) {
     if (count) count.textContent = '';
-    list.innerHTML = `<div class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">${escapeHtml(error?.message || 'Não foi possível carregar as logos.')}</div>`;
+    if (list) {
+      list.innerHTML = `<div class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">${escapeHtml(error?.message || 'Não foi possível carregar as logos.')}</div>`;
+    } else {
+      setStatus(error?.message || 'Não foi possível carregar a lista de partes.', 'error');
+    }
     return [];
   } finally {
-    if (downloadButton && !list.querySelector('.border-red-200')) {
-      downloadButton.disabled = !list.querySelector('a[download]');
+    if (downloadButton && root?.contains(downloadButton)) {
+      const manifest = specLogoExportsByHour.get(hour);
+      downloadButton.disabled = !manifest?.batches?.length;
     }
   }
 }
 
-async function ensureJsZip() {
-  if (window.JSZip) return window.JSZip;
-  await new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-    script.onload = resolve;
-    script.onerror = () => reject(new Error('Não foi possível carregar o gerador de ZIP.'));
-    document.head.appendChild(script);
+async function loadSpecLogoExportManifest(hour, forceRefresh = false) {
+  if (!forceRefresh && specLogoExportsByHour.has(hour)) {
+    return specLogoExportsByHour.get(hour);
+  }
+  const user = window.firebaseAuth?.currentUser;
+  if (!user) throw new Error('Sua sessão expirou. Entre novamente no painel.');
+  const token = await user.getIdToken();
+  const url = new URL(`/api/spec-logos/${encodeURIComponent(hour)}/export`, window.location.origin);
+  url.searchParams.set('hour', hour);
+  url.searchParams.set('manifest', '1');
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
   });
-  if (!window.JSZip) throw new Error('O gerador de ZIP não ficou disponível.');
-  return window.JSZip;
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    throw new Error(payload?.error || `Falha ao carregar as partes (HTTP ${response.status}).`);
+  }
+  if (!Array.isArray(payload?.files) || payload.totalFiles !== payload.files.length) {
+    throw new Error('O servidor não retornou a lista de logos para dividir o download.');
+  }
+  const manifest = {
+    files: payload.files,
+    batches: splitSpecLogoDownloadBatches(payload.files),
+  };
+  specLogoExportsByHour.set(hour, manifest);
+  return manifest;
 }
 
-async function downloadHourZip() {
-  const hour = getHourForList();
-  const button = root?.querySelector('#specLogoDownload');
-  if (button) {
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i>Preparando ZIP…';
+async function ensureSpecZipLibrary() {
+  if (window.JSZip) return window.JSZip;
+  if (!specZipLibraryPromise) {
+    specZipLibraryPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      script.onload = () => {
+        if (window.JSZip) resolve(window.JSZip);
+        else reject(new Error('A biblioteca de compactação não foi carregada.'));
+      };
+      script.onerror = () => {
+        specZipLibraryPromise = null;
+        reject(new Error('Não foi possível carregar a biblioteca para montar o ZIP.'));
+      };
+      document.head.appendChild(script);
+    });
   }
-  try {
-    const user = window.firebaseAuth?.currentUser;
-    if (!user) throw new Error('Sua sessão expirou. Entre novamente no painel.');
-    const [token, JSZip] = await Promise.all([user.getIdToken(), ensureJsZip()]);
-    const response = await fetch(`/api/spec-logos/${encodeURIComponent(hour)}/export?hour=${encodeURIComponent(hour)}`, {
+  return specZipLibraryPromise;
+}
+
+function updateSpecLogoDownloadButton(hour, manifest) {
+  const downloadButton = root?.querySelector('#specLogoDownload');
+  if (downloadButton) {
+    downloadButton.disabled = !manifest?.batches?.length;
+    downloadButton.innerHTML = '<i class="fas fa-download mr-2" aria-hidden="true"></i>Baixar todas as logos';
+  }
+  if (!manifest?.batches?.length) {
+    setStatus(`Não há logos cadastradas para ${hour}H.`, 'warning');
+  }
+}
+
+async function fetchSpecLogoBatchFiles(hour, token, part, batchIndex, batchCount) {
+  const logoChunks = new Map();
+  const expectedCodes = new Set(part.files.map(file => file.code));
+  let cursor = { fileIndex: part.startFileIndex, offset: 0 };
+  let downloadedBytes = 0;
+  let complete = false;
+  let requestCount = 0;
+
+  while (!complete) {
+    requestCount += 1;
+    if (requestCount > 200) throw new Error(`O lote ${batchIndex + 1} recebeu blocos demais.`);
+    const url = new URL(`/api/spec-logos/${encodeURIComponent(hour)}/export`, window.location.origin);
+    url.searchParams.set('hour', hour);
+    url.searchParams.set('fileIndex', String(cursor.fileIndex));
+    url.searchParams.set('offset', String(cursor.offset));
+    url.searchParams.set('endFileIndex', String(part.endFileIndex));
+    const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
     let payload;
@@ -1117,43 +1226,148 @@ async function downloadHourZip() {
       payload = null;
     }
     if (!response.ok) {
-      throw new Error(payload?.error || `Falha ao carregar as logos (HTTP ${response.status}).`);
+      throw new Error(payload?.error || `Falha ao carregar o lote ${batchIndex + 1} (HTTP ${response.status}).`);
     }
-    if (!Array.isArray(payload?.logos) || !payload.logos.length) {
-      setStatus(`Não há logos cadastradas para ${hour}H.`, 'warning');
-      return;
+    if (!Array.isArray(payload?.logos) || !payload?.next
+      || !Number.isSafeInteger(payload.next.fileIndex)
+      || !Number.isSafeInteger(payload.next.offset)
+      || typeof payload.complete !== 'boolean') {
+      throw new Error('O servidor retornou um bloco de logos em formato inválido.');
     }
-    const zip = new JSZip();
-    const folder = zip.folder(`LOGOS ${hour}H`);
+    let receivedChunkBytes = 0;
     for (const logo of payload.logos) {
       if (!/^9020000(?:3[4-9]|[45][0-9])$/.test(logo?.code || '')
+        || !expectedCodes.has(logo.code)
+        || !Number.isSafeInteger(logo.offset) || logo.offset < 0
+        || !Number.isSafeInteger(logo.totalBytes) || logo.totalBytes < 1
         || typeof logo.base64 !== 'string'
         || !/^[A-Za-z0-9+/]+={0,2}$/.test(logo.base64)) {
-        throw new Error('O servidor retornou uma logo em formato inválido.');
+        throw new Error('O servidor retornou uma logo inesperada ou em formato inválido.');
       }
       const binary = atob(logo.base64);
       const bytes = new Uint8Array(binary.length);
       for (let index = 0; index < binary.length; index += 1) {
         bytes[index] = binary.charCodeAt(index);
       }
-      folder.file(`${logo.code}.png`, bytes);
+      const entry = logoChunks.get(logo.code) || { chunks: [], bytes: 0, totalBytes: logo.totalBytes };
+      if (entry.totalBytes !== logo.totalBytes || entry.bytes !== logo.offset) {
+        throw new Error('O download recebeu blocos fora de ordem. Tente novamente.');
+      }
+      entry.chunks.push(bytes);
+      entry.bytes += bytes.byteLength;
+      logoChunks.set(logo.code, entry);
+      receivedChunkBytes += bytes.byteLength;
     }
-    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
-    const url = URL.createObjectURL(zipBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `LOGOS ${hour}H.zip`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    setStatus(`Download iniciado: LOGOS ${hour}H.zip, com ${payload.logos.length} logo(s) nomeada(s) somente pelo código.`, 'success');
+    downloadedBytes += receivedChunkBytes;
+    const nextCursor = payload.next;
+    const cursorAdvanced = nextCursor.fileIndex > cursor.fileIndex
+      || (nextCursor.fileIndex === cursor.fileIndex && nextCursor.offset > cursor.offset);
+    if (!payload.complete && !cursorAdvanced) {
+      throw new Error('O download não conseguiu avançar. Tente novamente.');
+    }
+    if (nextCursor.fileIndex > part.endFileIndex) {
+      throw new Error('O servidor ultrapassou o limite da parte selecionada.');
+    }
+    cursor = nextCursor;
+    complete = payload.complete;
+    if (!complete) {
+      setStatus(`Baixando lote ${batchIndex + 1}/${batchCount}: ${logoChunks.size} logo(s), ${Math.round(downloadedBytes / 1024 / 1024)} MB…`, 'warning');
+    }
+  }
+
+  if (logoChunks.size !== expectedCodes.size) {
+    throw new Error('A lista de logos mudou durante o download. Atualize o horário e tente novamente.');
+  }
+  const files = [];
+  for (const [code, entry] of logoChunks) {
+    if (entry.bytes !== entry.totalBytes) {
+      throw new Error(`A logo ${code}.png chegou incompleta. Tente novamente.`);
+    }
+    files.push({
+      code,
+      blob: new Blob(entry.chunks, { type: 'image/png' }),
+    });
+  }
+  return files;
+}
+
+function triggerSpecArchiveDownload(blob, filename) {
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = filename;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+}
+
+async function downloadAllSpecLogos() {
+  const hour = getHourForList();
+  if (!hour) {
+    setStatus('Selecione um horário válido para baixar as logos.', 'error');
+    return;
+  }
+  let manifest = specLogoExportsByHour.get(hour);
+  if (!manifest) {
+    try {
+      manifest = await loadSpecLogoExportManifest(hour);
+      updateSpecLogoDownloadButton(hour, manifest);
+    } catch (error) {
+      setStatus(error?.message || 'Não foi possível preparar o download.', 'error');
+      return;
+    }
+  }
+  if (!manifest.batches.length) {
+    setStatus(`Não há logos cadastradas para ${hour}H.`, 'warning');
+    return;
+  }
+  const button = root?.querySelector('#specLogoDownload');
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i>Preparando ZIP…';
+  }
+  try {
+    const user = window.firebaseAuth?.currentUser;
+    if (!user) throw new Error('Sua sessão expirou. Entre novamente no painel.');
+    const [token, JSZip] = await Promise.all([
+      user.getIdToken(),
+      ensureSpecZipLibrary(),
+    ]);
+    const archive = new JSZip();
+    const folder = archive.folder(`LOGOS ${hour}H`);
+    if (!folder) throw new Error('Não foi possível criar a pasta dentro do arquivo ZIP.');
+    let savedLogos = 0;
+    for (let batchIndex = 0; batchIndex < manifest.batches.length; batchIndex += 1) {
+      const batch = manifest.batches[batchIndex];
+      setStatus(`Baixando lote ${batchIndex + 1}/${manifest.batches.length}…`, 'warning');
+      const files = await fetchSpecLogoBatchFiles(
+        hour,
+        token,
+        batch,
+        batchIndex,
+        manifest.batches.length,
+      );
+      for (const file of files) {
+        folder.file(`${file.code}.png`, file.blob, { binary: true });
+        savedLogos += 1;
+      }
+      setStatus(`${savedLogos}/${manifest.files.length} logos adicionadas à pasta única do ZIP.`, 'warning');
+      files.length = 0;
+    }
+    setStatus('Compactando tudo em um único arquivo…', 'warning');
+    const zipBlob = await archive.generateAsync(
+      { type: 'blob', compression: 'STORE' },
+      metadata => setStatus(`Montando o arquivo ZIP: ${Math.round(metadata.percent)}%…`, 'warning'),
+    );
+    triggerSpecArchiveDownload(zipBlob, `LOGOS ${hour}H.zip`);
+    setStatus(`Download iniciado: um único ZIP com ${savedLogos} PNG(s) dentro da pasta LOGOS ${hour}H.`, 'success');
   } catch (error) {
-    setStatus(error?.message || 'Não foi possível gerar o ZIP deste horário.', 'error');
+    setStatus(error?.message || 'Não foi possível baixar todas as logos.', 'error');
   } finally {
     if (button) {
-      button.disabled = false;
-      button.innerHTML = `<i class="fas fa-download mr-2" aria-hidden="true"></i>Baixar logos <span data-spec-hour-label>${hour}H</span> (ZIP)`;
+      updateSpecLogoDownloadButton(hour, manifest);
     }
   }
 }
@@ -1209,7 +1423,7 @@ function attachEvents() {
   toleranceInput?.addEventListener('input', updateMethodControls);
   viewHourSelect?.addEventListener('change', () => {
     updateHourLabel();
-    if (!isStreamer()) refreshLogoList(viewHourSelect.value);
+    refreshLogoList(viewHourSelect.value);
   });
   fileInput?.addEventListener('change', () => selectFile(fileInput.files?.[0]));
   chooseButton?.addEventListener('click', () => {
@@ -1260,7 +1474,7 @@ function attachEvents() {
   root.querySelector('#specLogoSave')?.addEventListener('click', savePendingLogo);
   root.querySelector('#specLogoRefresh')?.addEventListener('click', () => refreshLogoList());
   root.querySelector('#specLogoClear')?.addEventListener('click', clearHourLogos);
-  root.querySelector('#specLogoDownload')?.addEventListener('click', downloadHourZip);
+   root.querySelector('#specLogoDownload')?.addEventListener('click', downloadAllSpecLogos);
   root.querySelector('#specLogoList')?.addEventListener('click', event => {
     const button = event.target?.closest?.('[data-spec-logo-delete]');
     if (!button) return;

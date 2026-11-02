@@ -33,7 +33,7 @@ test('hides training award from Admin and Streamer and refreshes the admin scrip
   assert.match(adminScript, /const hideTrainingAward = \['admin', 'streamer'\]\.includes\(resolvedRole\)/);
   assert.match(adminScript, /trainingAwardSection\.hidden = hideTrainingAward/);
   assert.match(adminPage, /id="sectionPremiacaoTreino" hidden/);
-  assert.match(adminPage, /src="admin\.js\?v=admin-role-freefire-only-3"/);
+  assert.match(adminPage, /src="admin\.js\?v=spec-logo-single-folder-archive-10"/);
 });
 
 test('accepts only the 26 Modo Liga letters for purchase-logo assignment', () => {
@@ -129,4 +129,17 @@ test('MatchResult only reads logos A–O from the selected hour catalog', () => 
       { code: '902000048', letter: 'O' },
     ],
   );
+});
+
+test('downloads all SPEC logos in one ZIP with one top-level folder', async () => {
+  const adminScript = await readFile(new URL('../../artifacts/xtreino/public/admin.js', import.meta.url), 'utf8');
+  const specSource = await readFile(new URL('../../artifacts/xtreino/public/js/admin-spec-logos.mjs', import.meta.url), 'utf8');
+  assert.ok(adminScript.includes('admin-spec-logos.mjs?v=spec-logo-single-folder-archive-10'));
+  assert.equal(specSource.includes('id="specLogoPart"'), false);
+  assert.ok(specSource.includes('Baixar todas as logos'));
+  assert.ok(specSource.includes("url.searchParams.set('manifest', '1')"));
+  assert.ok(specSource.includes("url.searchParams.set('endFileIndex', String(part.endFileIndex))"));
+  assert.ok(specSource.includes('archive.folder(`LOGOS ${hour}H`)'));
+  assert.ok(specSource.includes('folder.file(`${file.code}.png`, file.blob'));
+  assert.equal(specSource.includes('window.showDirectoryPicker'), false);
 });

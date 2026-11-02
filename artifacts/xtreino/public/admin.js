@@ -13863,7 +13863,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                     }
                     break;
                 case 'sectionSpecLogos':
-                    await import('./js/admin-spec-logos.mjs?v=modo-liga-manager-spec-1')
+                    await import('./js/admin-spec-logos.mjs?v=spec-logo-single-folder-archive-10')
                         .then(m => m.openSpecLogosAdmin())
                         .catch(error => {
                             console.error('[SPEC] Falha ao carregar as logos:', error);
