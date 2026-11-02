@@ -35,6 +35,28 @@ service cloud.firestore {
         ['gerente','Gerente','GERENTE','Ceo','CEO','ceo'];
     }
 
+    function isManagerAssignableUserRole(role) {
+      return role in [
+        'user','User','USER','usuario','Usuario','Usuário','Associado','Associado Treino','Cliente','cliente',
+        'vendedor','Vendedor','VENDEDOR',
+        'admin','Admin','ADMIN',
+        'streamer','Streamer','STREAMER',
+        'afiliado','Afiliado','AFILIADO'
+      ];
+    }
+
+    function canManagerUpdateUser(userId) {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return isGerente() && (
+        !changedKeys.hasAny(['role']) ||
+        (
+          request.auth.uid != userId &&
+          isManagerAssignableUserRole(resource.data.get('role', 'user')) &&
+          isManagerAssignableUserRole(request.resource.data.get('role', 'user'))
+        )
+      );
+    }
+
     // CEO/ADMIN com email autorizado (whitelist para ações destrutivas)
     function isAuthorizedAdmin() {
       return isSignedIn() &&
@@ -105,7 +127,7 @@ service cloud.firestore {
                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tokens']) &&
                         request.resource.data.tokens < resource.data.tokens &&
                         request.resource.data.tokens >= 0) ||
-                       isAdmin() || isGerente() || isVendedor();
+                       isAdmin() || canManagerUpdateUser(userId) || isVendedor();
       allow delete: if isAdmin() || isGerente();
     }
 

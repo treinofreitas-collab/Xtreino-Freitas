@@ -7037,16 +7037,33 @@ function getCurrentAdminRole() {
   return undefined;
 }
 
+function normalizePermissionsRole(role) {
+  const normalized = String(role || 'user').trim().toLowerCase();
+  if (['usuario', 'usuário', 'associado', 'associado treino', 'cliente'].includes(normalized)) {
+    return 'user';
+  }
+  if (['designer', 'desgin'].includes(normalized)) return 'design';
+  if (normalized === 'sócio') return 'socio';
+  return normalized;
+}
+
+const MANAGER_PERMISSION_ASSIGNABLE_ROLES = ['vendedor', 'admin', 'streamer'];
+const MANAGER_PERMISSION_EDITABLE_CURRENT_ROLES = ['user', ...MANAGER_PERMISSION_ASSIGNABLE_ROLES];
+
+function canManagerEditPermissionsTarget(userRole) {
+  return MANAGER_PERMISSION_EDITABLE_CURRENT_ROLES.includes(normalizePermissionsRole(userRole));
+}
+
 function canAssignRole(targetRole) {
-  const role = (getCurrentAdminRole() || '').toLowerCase();
-  const target = String(targetRole || '').toLowerCase();
+  const role = normalizePermissionsRole(getCurrentAdminRole());
+  const target = normalizePermissionsRole(targetRole);
   
   // CEO: pode atribuir qualquer cargo
   if (role === 'ceo') return true;
   
-  // Gerente: pode atribuir apenas cargo de Vendedor
+  // Gerente: pode atribuir apenas Vendedor, Admin ou Streamer
   if (role === 'gerente') {
-    return target === 'vendedor';
+    return MANAGER_PERMISSION_ASSIGNABLE_ROLES.includes(target);
   }
   
   // Outros cargos: não podem alterar funções de ninguém
@@ -7065,7 +7082,7 @@ function setupRoleGuards() {
           // Reverter seleção
           const prev = el.getAttribute('data-prev') || '';
           if (prev) el.value = prev;
-          alert('Gerente não pode definir cargo CEO.');
+          alert('Gerente só pode atribuir Vendedor, Admin ou Streamer.');
         } else {
           el.setAttribute('data-prev', newVal);
         }
@@ -7564,9 +7581,9 @@ function renderPermissionsTable() {
   // Verificar se o usuário atual pode editar e quais cargos pode atribuir
   const roleFromWindow = (window.adminRoleLower || '').toLowerCase();
   const roleFromSession = (getCurrentAdminRole() || '').toLowerCase();
-  const currentUserRole = roleFromWindow || roleFromSession;
+  const currentUserRole = normalizePermissionsRole(roleFromWindow || roleFromSession);
   
-  const canEdit = ['ceo', 'gerente'].includes(currentUserRole.toLowerCase()); // CEO e Gerente podem editar
+  const canEdit = ['ceo', 'gerente'].includes(currentUserRole); // CEO e Gerente podem editar
   
   // Função para gerar opções de cargo baseado na permissão do usuário
   function getRoleOptions(userRole) {
@@ -7584,61 +7601,72 @@ function renderPermissionsTable() {
     if (currentUserRole === 'ceo') {
       // CEO pode atribuir qualquer cargo
       return allRoles.map(role => 
-        `<option value="${role.value}" ${String(userRole).toLowerCase() === role.value ? 'selected' : ''}>${role.label}</option>`
+        `<option value="${role.value}" ${normalizePermissionsRole(userRole) === role.value ? 'selected' : ''}>${role.label}</option>`
       ).join('');
     } else if (currentUserRole === 'socio') {
       // Sócio vê todos os cargos mas não pode editar (somente leitura)
       return allRoles.map(role => 
-        `<option value="${role.value}" ${String(userRole).toLowerCase() === role.value ? 'selected' : ''}>${role.label}</option>`
+        `<option value="${role.value}" ${normalizePermissionsRole(userRole) === role.value ? 'selected' : ''}>${role.label}</option>`
       ).join('');
     } else if (currentUserRole === 'gerente') {
-      // Gerente pode atribuir apenas Vendedor
+      // Gerente pode administrar somente contas comuns, com estes cargos.
+      if (!canManagerEditPermissionsTarget(userRole)) {
+        return '<option value="" selected>Sem permissão</option>';
+      }
       return allRoles
-        .filter(role => role.value === 'vendedor')
-        .map(role => 
-          `<option value="${role.value}" ${userRole === role.value ? 'selected' : ''}>${role.label}</option>`
+        .filter(role => MANAGER_PERMISSION_ASSIGNABLE_ROLES.includes(role.value))
+        .map(role =>
+          `<option value="${role.value}" ${normalizePermissionsRole(userRole) === role.value ? 'selected' : ''}>${role.label}</option>`
         ).join('');
     } else {
       // Outros não podem atribuir nenhum cargo
       return allRoles
-        .filter(role => role.value === userRole) // Apenas o cargo atual
+        .filter(role => role.value === normalizePermissionsRole(userRole)) // Apenas o cargo atual
         .map(role => 
           `<option value="${role.value}" selected>${role.label}</option>`
         ).join('');
     }
   }
   
-  tbody.innerHTML = usersPage.map(user => `
-    <tr class="border-b border-gray-100 hover:bg-gray-50">
-      <td class="py-3 px-2 text-gray-700 font-medium">${user.displayName}</td>
-      <td class="py-3 px-2 text-gray-600">${user.email}</td>
-      <td class="py-3 px-2">
-        <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">${getRoleDisplayName(user.role)}</span>
-      </td>
-      <td class="py-3 px-2">
-        <select class="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                data-user-id="${user.id}" data-current-role="${user.role}" ${!canEdit ? 'disabled' : ''}>
-          ${getRoleOptions(user.role)}
-        </select>
-      </td>
-      <td class="py-3 px-2">
-        ${canEdit ? `
-          <button onclick="updatePermissionsUserRole('${user.id}')" 
-                  class="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-1">
-            Salvar
-          </button>
-        ` : currentUserRole === 'socio' ? `
-          <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium cursor-not-allowed">
-            Sócio - Somente Leitura
-          </span>
-        ` : `
-          <span class="px-3 py-1 bg-gray-300 text-gray-600 rounded text-xs font-medium cursor-not-allowed">
-            Somente Leitura
-          </span>
-        `}
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = usersPage.map(user => {
+    const canEditUser = canEdit &&
+      (currentUserRole !== 'gerente' || canManagerEditPermissionsTarget(user.role));
+    return `
+      <tr class="border-b border-gray-100 hover:bg-gray-50">
+        <td class="py-3 px-2 text-gray-700 font-medium">${user.displayName}</td>
+        <td class="py-3 px-2 text-gray-600">${user.email}</td>
+        <td class="py-3 px-2">
+          <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">${getRoleDisplayName(user.role)}</span>
+        </td>
+        <td class="py-3 px-2">
+          <select class="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  data-user-id="${user.id}" data-current-role="${user.role}" ${!canEditUser ? 'disabled' : ''}>
+            ${getRoleOptions(user.role)}
+          </select>
+        </td>
+        <td class="py-3 px-2">
+          ${canEditUser ? `
+            <button onclick="updatePermissionsUserRole('${user.id}')"
+                    class="px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-1">
+              Salvar
+            </button>
+          ` : currentUserRole === 'gerente' ? `
+            <span class="px-3 py-1 bg-gray-300 text-gray-600 rounded text-xs font-medium cursor-not-allowed">
+              Cargo protegido
+            </span>
+          ` : currentUserRole === 'socio' ? `
+            <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium cursor-not-allowed">
+              Sócio - Somente Leitura
+            </span>
+          ` : `
+            <span class="px-3 py-1 bg-gray-300 text-gray-600 rounded text-xs font-medium cursor-not-allowed">
+              Somente Leitura
+            </span>
+          `}
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // Função para obter nome de exibição da função
@@ -7667,56 +7695,71 @@ async function updatePermissionsUserRole(userId) {
     
     const newRole = selectElement.value;
     const currentRole = selectElement.getAttribute('data-current-role');
-    
-    if (newRole === currentRole) {
-      
-      return;
-    }
+    const targetUser = permissionsUsersData.find(user => user.id === userId);
+    const currentAdminRole = normalizePermissionsRole(getCurrentAdminRole());
+
+    if (!newRole || normalizePermissionsRole(newRole) === normalizePermissionsRole(currentRole)) return;
     
     // Verificar se o usuário atual tem permissão para atribuir este cargo
-    if (!canAssignRole(newRole)) {
+    if (!canAssignRole(newRole) ||
+        (currentAdminRole === 'gerente' && !canManagerEditPermissionsTarget(targetUser?.role))) {
       alert('❌ Você não tem permissão para atribuir este cargo.');
-      // Reverter o select para o valor anterior
-      selectElement.value = currentRole;
+      selectElement.value = normalizePermissionsRole(currentRole);
       return;
     }
-    
-    // Atualizar estado local primeiro
-    const userIndex = permissionsUsersData.findIndex(user => user.id === userId);
-    if (userIndex !== -1) {
-      permissionsUsersData[userIndex].role = newRole;
-      selectElement.setAttribute('data-current-role', newRole);
+
+    const button = selectElement.parentElement.nextElementSibling.querySelector('button');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Salvando...';
     }
-    
+
     // Atualizar no Firestore
     const { updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const userRef = doc(window.firebaseDb, 'users', userId);
     await updateDoc(userRef, { role: newRole });
     
-    // Log da ação
-    const user = permissionsUsersData.find(u => u.id === userId);
-    if (user) {
-      await logAdminAction('change_role', `Alterou cargo de ${user.email} para ${getRoleDisplayName(newRole)}`);
+    if (targetUser) {
+      targetUser.role = newRole;
+      selectElement.setAttribute('data-current-role', newRole);
+      const roleBadge = selectElement.closest('tr')?.querySelector('td:nth-child(3) span');
+      if (roleBadge) roleBadge.textContent = getRoleDisplayName(newRole);
     }
-    
-    
-    
+
+    // Falha no registro de auditoria não deve marcar uma alteração já salva como falha.
+    try {
+      if (targetUser) {
+        await logAdminAction('change_role', `Alterou cargo de ${targetUser.email} para ${getRoleDisplayName(newRole)}`);
+      }
+    } catch (logError) {
+      console.error('Falha ao registrar a alteração de cargo:', logError);
+    }
+
     // Mostrar feedback visual
-    const button = selectElement.parentElement.nextElementSibling.querySelector('button');
-    const originalText = button.textContent;
-    button.textContent = 'Salvo!';
-    button.className = 'px-3 py-1 bg-green-600 text-white rounded text-xs font-medium transition-colors';
-    
-    setTimeout(() => {
-      button.textContent = originalText;
-      button.className = 'px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-1';
-    }, 2000);
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Salvo!';
+      button.className = 'px-3 py-1 bg-green-600 text-white rounded text-xs font-medium transition-colors';
+      setTimeout(() => {
+        button.textContent = 'Salvar';
+        button.className = 'px-3 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-1';
+      }, 2000);
+    }
     
   } catch (error) {
     console.error('❌ Erro ao atualizar função do usuário:', error);
     alert('Erro ao atualizar função do usuário');
     
     // Reverter mudança local em caso de erro
+    const selectElement = document.querySelector(`select[data-user-id="${userId}"]`);
+    if (selectElement) {
+      selectElement.value = normalizePermissionsRole(selectElement.getAttribute('data-current-role'));
+      const button = selectElement.parentElement.nextElementSibling.querySelector('button');
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Salvar';
+      }
+    }
     loadPermissionsUsers();
   }
 }
