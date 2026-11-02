@@ -10277,7 +10277,8 @@ const EVENT_URL_MAP = {
     'acesso':          '/acesso',
 };
 function _eventoUrl(eventType, docId, eventData) {
-    if (eventData?.urlSlug === 'camp-season-7') return 'camp-season-7';
+    const urlSlug = String(eventData?.urlSlug || '').trim();
+    if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(urlSlug)) return '/' + encodeURIComponent(urlSlug);
     // Eventos dinâmicos sempre usam seu documento exato, evitando abrir outro evento do mesmo tipo.
     if (docId) return 'evento.html?id=' + encodeURIComponent(docId);
     // Eventos estáticos: usar URL limpa do mapa

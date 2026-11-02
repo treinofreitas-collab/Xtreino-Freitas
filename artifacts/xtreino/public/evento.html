@@ -204,8 +204,10 @@ const _rawHash = location.hash.replace('#', '').split('?')[0];
 const _pathEventType = URL_SLUG_MAP[location.pathname] || null;
 // ?event=eventType (gerado pelos links novos)
 const _queryEventType = _searchParams.get('event') || null;
-// Slug exclusivo persistido no evento, por exemplo ?slug=camp-season-7
-const _querySlug = _searchParams.get('slug') || (location.pathname.replace(/\/+$/, '').endsWith('/camp-season-7') ? 'camp-season-7' : null);
+// Slugs exclusivos persistidos no evento, por exemplo /camp-season-7 ou /intensivo
+const _pathSlug = location.pathname.replace(/\/+$/, '').split('/').pop() || '';
+const _uniquePathSlugs = new Set(['camp-season-7', 'intensivo']);
+const _querySlug = _searchParams.get('slug') || (_uniquePathSlugs.has(_pathSlug) ? _pathSlug : null);
 // Tipo resolvido — path tem prioridade
 const _resolvedEventType = _pathEventType || _queryEventType || null;
 // ID legado (doc ID ou hash) — mantido para retrocompatibilidade

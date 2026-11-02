@@ -12458,6 +12458,9 @@ function validateEventForm(category) {
     if (urlType === 'camp-season-7' && (category !== 'camp' || !isCampSeason7EventName(name))) {
         return 'A URL /camp-season-7 só pode ser usada pelo evento Camp Season 7.';
     }
+    if (urlType === 'intensivo-freitas' && (category !== 'diario' || !isIntensivoFreitasEventName(name))) {
+        return 'A URL /intensivo só pode ser usada pelo evento Intensivo Freitas na categoria Diário.';
+    }
 
     if (modo === 'NORMAL') {
         if (vagas % 12 !== 0) return `Modo NORMAL: a quantidade de vagas deve ser múltiplo de 12. Você informou ${vagas}.`;
@@ -12476,6 +12479,11 @@ function validateEventForm(category) {
 function isCampSeason7EventName(value) {
     const normalized = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     return normalized.includes('camp') && /\bseason\s*7\b/.test(normalized);
+}
+
+function isIntensivoFreitasEventName(value) {
+    const normalized = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return normalized.includes('intensivo') && normalized.includes('freitas');
 }
 
 let _isSavingEvent = false;
@@ -12588,12 +12596,13 @@ async function saveEventForm() {
     const entrada = document.getElementById('evtEntrada').value;
     const selectedUrlType = (document.getElementById('evtEventType')?.value || '').trim();
     const usesCampSeason7Url = selectedUrlType === 'camp-season-7';
+    const usesIntensivoFreitasUrl = selectedUrlType === 'intensivo-freitas';
 
     const data = {
         category,
         name: document.getElementById('evtName').value.trim(),
-        eventType: usesCampSeason7Url ? 'camp-freitas' : (selectedUrlType || null),
-        urlSlug: usesCampSeason7Url ? 'camp-season-7' : null,
+        eventType: usesCampSeason7Url ? 'camp-freitas' : usesIntensivoFreitasUrl ? null : (selectedUrlType || null),
+        urlSlug: usesCampSeason7Url ? 'camp-season-7' : usesIntensivoFreitasUrl ? 'intensivo' : null,
         tipo: document.getElementById('evtTipo').value,
         modo: document.getElementById('evtModo').value,
         formato: (document.getElementById('evtFormato')?.value || 'MISTO').toUpperCase(),
@@ -12723,8 +12732,8 @@ async function loadEventsList(category) {
             const statusCls = statusColors[ev.status] || 'bg-gray-100 text-gray-600';
             const dateStr = ev.eventDate ? new Date(ev.eventDate).toLocaleString('pt-BR') : '—';
             const gruposStr = category === 'camp' && ev.grupos ? `<span class="text-xs text-gray-500">Grupos: <b>${ev.grupos}</b></span>` : '';
-            const eventPageUrl = ev.urlSlug === 'camp-season-7'
-                ? 'camp-season-7'
+            const eventPageUrl = typeof ev.urlSlug === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(ev.urlSlug)
+                ? `/${encodeURIComponent(ev.urlSlug)}`
                 : `evento.html?id=${encodeURIComponent(d.id)}`;
             return `<div class="bg-white border border-gray-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div class="flex-1 min-w-0">
@@ -12779,9 +12788,13 @@ async function editEventItem(eventId) {
         document.getElementById('evtName').value = ev.name || '';
         const evtEventTypeEl = document.getElementById('evtEventType');
         if (evtEventTypeEl) {
-            evtEventTypeEl.value = ev.urlSlug === 'camp-season-7' || (ev.category === 'camp' && isCampSeason7EventName(ev.name))
-                ? 'camp-season-7'
-                : (ev.eventType || '');
+            if (ev.urlSlug === 'camp-season-7' || (ev.category === 'camp' && isCampSeason7EventName(ev.name))) {
+                evtEventTypeEl.value = 'camp-season-7';
+            } else if (ev.urlSlug === 'intensivo' || (ev.category === 'diario' && isIntensivoFreitasEventName(ev.name))) {
+                evtEventTypeEl.value = 'intensivo-freitas';
+            } else {
+                evtEventTypeEl.value = ev.eventType || '';
+            }
         }
         document.getElementById('evtTipo').value = ev.tipo || 'SOLO';
         document.getElementById('evtModo').value = ev.modo || 'NORMAL';

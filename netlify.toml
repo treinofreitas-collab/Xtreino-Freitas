@@ -7,6 +7,12 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/intensivo"
+  to = "/evento.html?slug=intensivo"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/spec-logos/:hour/export"
   to = "/.netlify/functions/spec-logos-export?hour=:hour"
   status = 200

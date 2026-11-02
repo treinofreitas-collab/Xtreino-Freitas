@@ -19,7 +19,24 @@ const basePath = process.env.BASE_PATH ?? "/";
 
 export default defineConfig({
   base: basePath,
-  plugins: [],
+  plugins: [{
+    name: "xtreino-clean-event-preview-routes",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        const requestUrl = new URL(req.url || "/", "http://localhost");
+        const slug = requestUrl.pathname.replace(/\/+$/, "").split("/").pop();
+        if (!new Set(["camp-season-7", "intensivo"]).has(slug || "")) {
+          next();
+          return;
+        }
+
+        const query = new URLSearchParams(requestUrl.search);
+        query.set("slug", slug);
+        req.url = `/evento.html?${query.toString()}`;
+        next();
+      });
+    },
+  }],
   root: path.resolve(import.meta.dirname, "public"),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist"),
