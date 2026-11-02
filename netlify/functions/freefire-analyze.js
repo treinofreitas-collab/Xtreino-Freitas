@@ -379,6 +379,74 @@ function reconcilePlacements(first, second) {
   };
 }
 
+function duplicateSlotGroups(placements) {
+  const positionsBySlot = new Map();
+  for (const placement of placements) {
+    if (!Number.isInteger(placement.slot)) continue;
+    const positions = positionsBySlot.get(placement.slot) || [];
+    positions.push(placement.position);
+    positionsBySlot.set(placement.slot, positions);
+  }
+  return [...positionsBySlot.entries()]
+    .filter(([, positions]) => positions.length > 1)
+    .map(([slot, positions]) => ({ slot, positions }));
+}
+
+function applySlotRecheck(placements, result, officialTeams, conflictingPositions) {
+  const officialNames = new Map(officialTeams.map((team) => [team.slot, team.teamName]));
+  const assignments = new Map();
+  if (isRecord(result) && Array.isArray(result.assignments)) {
+    for (const item of result.assignments) {
+      if (!isRecord(item)) continue;
+      const position = Number(item.position);
+      if (
+        !Number.isInteger(position) ||
+        !conflictingPositions.has(position) ||
+        assignments.has(position)
+      ) {
+        continue;
+      }
+      const rawSlot = item.slot;
+      const slot = rawSlot === null || rawSlot === undefined || rawSlot === ""
+        ? null
+        : Number(rawSlot);
+      if (slot !== null && (!Number.isInteger(slot) || slot < 1 || slot > 12)) continue;
+      assignments.set(position, {
+        slot,
+        teamName: slot === null ? null : officialNames.get(slot) || null,
+      });
+    }
+  }
+
+  return placements.map((placement) => {
+    if (!conflictingPositions.has(placement.position)) return placement;
+    const assignment = assignments.get(placement.position);
+    if (!assignment) {
+      return markPlacementForReview(
+        placement,
+        "A conferência adicional não confirmou o slot; revise esta associação manualmente.",
+      );
+    }
+    return markPlacementForReview(
+      { ...placement, ...assignment },
+      "Slot conferido novamente nas fotos do lobby; confirme a associação.",
+    );
+  });
+}
+
+function clearDuplicateSlots(
+  placements,
+  duplicateGroups,
+  reason = "As fotos do lobby não permitiram resolver este slot repetido; associe manualmente.",
+) {
+  const duplicatePositions = new Set(duplicateGroups.flatMap((group) => group.positions));
+  return placements.map((placement) =>
+    duplicatePositions.has(placement.position)
+      ? markPlacementForReview({ ...placement, slot: null, teamName: null }, reason)
+      : placement,
+  );
+}
+
 function getAiClient() {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
   if (!apiKey) {
@@ -534,6 +602,7 @@ async function analyze(body) {
     "Use o número do slot no lobby para atribuir cada jogador ao time da lista oficial abaixo.",
     "A lista oficial por slot é a fonte de verdade: ignore tags ou nomes de clã que indiquem outro time.",
     "Trabalhe em duas etapas: primeiro leia os nicks e slots do lobby; depois associe cada nick do placar a esse registro. Não use a posição da equipe no ranking para inferir o slot.",
+    "Em uma mesma queda, cada slot oficial pode aparecer em no máximo uma colocação. Se o mesmo slot parecer corresponder a duas equipes, volte às fotos do lobby e compare os jogadores; se não conseguir distinguir, use slot:null em vez de repetir o slot.",
     "Se um jogador aparecer no placar final dentro do grupo/slot de um time, mas não aparecer nas fotos iniciais do lobby, trate-o como reserva daquele time e inclua os abates dele na soma da equipe.",
     "Não marque um jogador como sem vínculo somente por ele não aparecer no lobby inicial. Use o grupo/slot em que aparece no placar final para associar reservas; não invente uma associação se o placar não mostrar claramente o time.",
     teamList,
@@ -551,6 +620,7 @@ async function analyze(body) {
     "Faça uma segunda conferência independente das imagens abaixo para validar o placar.",
       "Primeiro, leia o lobby, os slots, todos os jogadores visíveis e cada valor de abates diretamente nas imagens sem usar os valores da primeira leitura. Use 0 somente para um zero claramente visível; use null para um valor ilegível, sem adivinhar.",
     "Depois, compare sua leitura independente com a primeira e corrija qualquer slot, jogador ou abate que não corresponda às imagens. Não presuma que a primeira leitura está correta.",
+    "Confira especificamente se algum slot foi atribuído a mais de uma colocação nesta queda. Releia as fotos originais do lobby para resolver o conflito; um slot só pode pertencer a uma equipe nesta queda. Se continuar incerto, retorne slot:null para a posição ambígua.",
     "Retorne o resultado completo no mesmo formato JSON solicitado, incluindo todas as posições e jogadores reconhecidos. Não retorne apenas as diferenças.",
     "Primeira leitura para conferir:",
     JSON.stringify(firstResult),
@@ -561,7 +631,54 @@ async function analyze(body) {
     await generateJson(verificationPrompt, images),
     officialTeams,
   );
-  return reconcilePlacements(firstResult, secondResult);
+  const reconciled = reconcilePlacements(firstResult, secondResult);
+  const duplicateGroups = duplicateSlotGroups(reconciled.placements);
+  if (!duplicateGroups.length) return reconciled;
+
+  const conflictingPositions = new Set(duplicateGroups.flatMap((group) => group.positions));
+  const conflictingPlacements = reconciled.placements
+    .filter((placement) => conflictingPositions.has(placement.position))
+    .map(({ position, slot, teamName, players }) => ({
+      position,
+      slot,
+      teamName,
+      players: players.map(({ name, lobbySlot }) => ({ name, lobbySlot })),
+    }));
+  const slotRecheckPrompt = [
+    `Reavalie os slots repetidos na queda ${body.dropNumber} usando novamente as imagens originais.`,
+    "As primeiras três imagens são as fotos do lobby. Releia os números dos slots e os nicks; use as imagens do placar para localizar os mesmos jogadores ou grupos.",
+    "A lista oficial por slot é a fonte de verdade. Não use colocação no ranking, semelhança de nome ou tag de clã para adivinhar.",
+    "Cada slot pode aparecer em apenas uma posição nesta queda. Reatribua as posições conflitantes abaixo; se as imagens não permitirem distinguir uma equipe, use slot:null para essa posição.",
+    `Lista oficial:\n${teamList}`,
+    `Conflitos para rever:\n${JSON.stringify(duplicateGroups)}`,
+    `Leitura atual dessas posições:\n${JSON.stringify(conflictingPlacements)}`,
+    "Retorne somente JSON no formato {\"assignments\":[{\"position\":5,\"slot\":6}]}. Inclua uma atribuição para cada posição conflitante e use null quando não for possível confirmar o slot.",
+  ].join("\n");
+  try {
+    const slotRecheck = await generateJson(slotRecheckPrompt, images);
+    const correctedPlacements = applySlotRecheck(
+      reconciled.placements,
+      slotRecheck,
+      officialTeams,
+      conflictingPositions,
+    );
+    const remainingDuplicates = duplicateSlotGroups(correctedPlacements);
+    return {
+      ...reconciled,
+      placements: remainingDuplicates.length
+        ? clearDuplicateSlots(correctedPlacements, remainingDuplicates)
+        : correctedPlacements,
+    };
+  } catch {
+    return {
+      ...reconciled,
+      placements: clearDuplicateSlots(
+        reconciled.placements,
+        duplicateGroups,
+        "Não foi possível confirmar novamente este slot nas fotos do lobby; associe manualmente.",
+      ),
+    };
+  }
 }
 
 exports.handler = async (event) => {
