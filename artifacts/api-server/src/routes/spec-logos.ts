@@ -6,8 +6,8 @@ import { Router, type IRouter, type Request } from "express";
 
 const router: IRouter = Router();
 const ALLOWED_HOURS = new Set(["19", "20", "21", "22", "23", "00"]);
-const ALLOWED_ROLES = new Set(["admin", "ceo", "gerente", "socio", "operador", "streamer"]);
-const ALLOWED_MANAGEMENT_ROLES = new Set(["admin", "ceo", "gerente"]);
+const ALLOWED_ROLES = new Set(["ceo", "gerente", "socio", "operador", "streamer"]);
+const ALLOWED_MANAGEMENT_ROLES = new Set(["ceo", "gerente"]);
 const MAX_EXPORT_BYTES = 4 * 1024 * 1024;
 const MAX_ORIGINAL_LOGO_BYTES = 10 * 1024 * 1024;
 const MAX_LOGO_BATCH_BYTES = 10 * 1024 * 1024;

@@ -5,6 +5,8 @@ const CAMP_FINAL_DATES = ['2024-11-28','2025-11-28'];
 let campSemifinalLinks = {};
 let campSemifinalLinksLoaded = false;
 let cachedAdminEventNameMap = null;
+let currentAdminRoleUnsubscribe = null;
+let currentAdminRoleGeneration = 0;
 
 const adminReportCache = window.AdminReadControl.createReadCache();
 async function readAdminReportCollection(name) {
@@ -314,12 +316,15 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // Security: Show dashboard
   function showDashboard(userRole) {
+    const normalizedRole = String(userRole || '').toLowerCase().trim();
+    window.adminRoleLower = normalizedRole;
     authGate.classList.add('hidden');
     // Aplicar permissões ANTES de exibir o dashboard — evita flash de conteúdo não autorizado
     window.visibilityApplied = false;
-    controlSectionVisibility((userRole || '').toLowerCase().trim());
+    window.lastAppliedRole = null;
+    controlSectionVisibility(normalizedRole);
     dashboard.classList.remove('hidden');
-    setView(userRole);
+    setView(normalizedRole);
     startSessionTimer();
   }
   
@@ -356,8 +361,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
                'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
                'sectionProducts'],
-    // ADMIN: gerenciador de eventos + horários
-    admin: ['sectionEvents','sectionMarketReports','sectionSchedules','sectionEventLinks','sectionFreefireScoring','sectionSpecLogos'],
+    // ADMIN: somente o placar do Free Fire
+    admin: ['sectionFreefireScoring'],
     // STAFF: eventos
     staff: ['sectionEvents'],
     // MODERADOR: igual ao staff
@@ -390,7 +395,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   function controlSectionVisibility(userRole) {
     const role = (userRole || '').toLowerCase().trim();
 
-    if (window.lastAppliedRole === role && window.visibilityApplied) return;
+    if (window.lastAppliedRole === role && window.visibilityApplied && role !== 'admin') return;
     window.lastAppliedRole = role;
     window.visibilityApplied = true;
     
@@ -406,7 +411,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     });
     const trainingAwardSection = document.getElementById('sectionPremiacaoTreino');
     if (trainingAwardSection) {
-      const hideTrainingAward = resolvedRole === 'streamer';
+      const hideTrainingAward = ['admin', 'streamer'].includes(resolvedRole);
       trainingAwardSection.hidden = hideTrainingAward;
       trainingAwardSection.setAttribute('aria-hidden', String(hideTrainingAward));
       if (hideTrainingAward) {
@@ -562,7 +567,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
                '#sectionProducts','#sectionSpecLogos'],
     suporte:  ['#sectionTokens','#sectionShirtOrders'],
     streamer: ['#sectionSpecLogos', '.sidebar-link', '#btnLogout'],
-    admin:    ['#sectionEvents','#sectionEventLinks','#sectionSpecLogos'],
+    admin:    ['#sectionFreefireScoring','.sidebar-link','#adminSidebarToggle','#btnLogout'],
   };
 
   function controlEditPermissions(userRole) {
@@ -652,7 +657,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   function setView(authRole){
-    const role = (authRole||'').toLowerCase();
+    const role = String(authRole || '').toLowerCase().trim();
+    window.adminRoleLower = role;
     roleBadge.textContent = `Permissão: ${authRole||'desconhecida'}`;
 
     // Aplicar visibilidade imediatamente (solução definitiva — sem esperar 1500ms)
@@ -1479,6 +1485,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
   window.submitAddTeam = submitAddTeam;
   
   onAuthStateChanged(window.firebaseAuth, async (user) => {
+    const roleGeneration = ++currentAdminRoleGeneration;
+    currentAdminRoleUnsubscribe?.();
+    currentAdminRoleUnsubscribe = null;
     if (window.adminDataUid !== (user?.uid || null)) {
       window.adminDataUid = user?.uid || null;
       window.adminDataReady = false;
@@ -1494,6 +1503,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }
     adminReportCache.setScope(user?.uid || null);
     if (!user){
+      window.adminRoleLower = '';
+      window.visibilityApplied = false;
+      window.lastAppliedRole = null;
       window.adminDataReady = false;
       window._adminPages?.initialized.clear();
       window._adminPages?.loadedAt.clear();
@@ -1509,26 +1521,46 @@ window.showWarningToast = function(message, title = 'Atenção') {
     // fetch role
     const uid = user.uid;
     let role = 'Vendedor';
+    let roleRef = null;
+    let onSnapshotRole = null;
     try{
-      const { getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      const { doc, collection } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      const ref = doc(collection(window.firebaseDb,'users'), uid);
-      const snap = await getDoc(ref);
+      const { doc, getDoc, collection, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      roleRef = doc(collection(window.firebaseDb,'users'), uid);
+      onSnapshotRole = onSnapshot;
+      const snap = await getDoc(roleRef);
       if (snap.exists()) role = (snap.data().role)||'Vendedor';
-    }catch(e){}
+      else roleRef = null;
+    }catch(e){
+      roleRef = null;
+      onSnapshotRole = null;
+    }
 
-    // 
-    if (!['admin','ceo','gerente','vendedor','design','designer','desgin','socio','sócio','afiliado','staff','streamer','Streamer','STREAMER','Socio','Gerente','Designer','Staff','Vendedor','Ceo'].includes((role||''))){
+    if (roleGeneration !== currentAdminRoleGeneration) return;
+    const roleLower = String(role || '').toLowerCase().trim();
+    const authorizedRoles = ['admin','ceo','gerente','vendedor','design','designer','desgin','socio','sócio','afiliado','staff','streamer'];
+    if (!authorizedRoles.includes(roleLower)){
+      window.adminRoleLower = '';
       authGate.classList.remove('hidden');
       dashboard.classList.add('hidden');
       return;
     }
-    const roleLower = (role||'').toLowerCase().trim();
+    window.adminRoleLower = roleLower;
     authGate.classList.add('hidden');
     // Aplicar permissões ANTES de exibir o dashboard — evita flash de conteúdo não autorizado
     window.visibilityApplied = false;
+    window.lastAppliedRole = null;
     controlSectionVisibility(roleLower);
     dashboard.classList.remove('hidden');
+    if (roleLower === 'admin') {
+      window._pendingSection = 'sectionFreefireScoring';
+      const scoringLink = document.querySelector('.sidebar-link[onclick*="sectionFreefireScoring"]');
+      if (typeof window.adminNav === 'function') {
+        window.adminNav('operacoes', 'sectionFreefireScoring', scoringLink);
+      } else {
+        window.location.hash = 'operacoes';
+        window.dispatchEvent(new Event('hashchange'));
+      }
+    }
     
     const isManager = ['ceo','gerente'].includes(roleLower);
     const isCeo = roleLower==='ceo';
@@ -1536,7 +1568,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const isAffiliate = roleLower==='afiliado';
     const isStaff = roleLower==='staff';
     const canViewAll = ['ceo','gerente','socio'].includes(roleLower);
-    window.adminRoleLower = roleLower;
     // Garantir que a sessão conheça o papel atual (corrige bloqueio de CEO)
     try {
       const sess = JSON.parse(sessionStorage.getItem('adminSession')||'{}');
@@ -1548,6 +1579,60 @@ window.showWarningToast = function(message, title = 'Atenção') {
         timestamp: Date.now()
       }));
     } catch(_) {}
+
+    // Apply role changes immediately while this account remains signed in.
+    if (roleRef && onSnapshotRole) {
+      currentAdminRoleUnsubscribe = onSnapshotRole(roleRef, snapshot => {
+        if (roleGeneration !== currentAdminRoleGeneration || !snapshot.exists()) return;
+        const nextRole = String(snapshot.data().role || '').toLowerCase().trim();
+        if (!authorizedRoles.includes(nextRole)) {
+          currentAdminRoleUnsubscribe?.();
+          currentAdminRoleUnsubscribe = null;
+          window.adminRoleLower = '';
+          void logout();
+          return;
+        }
+        if (nextRole === window.adminRoleLower) return;
+
+        window.adminRoleLower = nextRole;
+        window.visibilityApplied = false;
+        window.lastAppliedRole = null;
+        try {
+          const sess = JSON.parse(sessionStorage.getItem('adminSession') || '{}');
+          sessionStorage.setItem('adminSession', JSON.stringify({
+            ...sess,
+            role: nextRole,
+            uid: sess.uid || user.uid,
+            email: sess.email || user.email,
+            timestamp: Date.now()
+          }));
+        } catch (_) {}
+
+        controlSectionVisibility(nextRole);
+        setView(nextRole);
+        if (nextRole === 'admin') {
+          if (typeof window.adminNav === 'function') {
+            window.adminNav(
+              'operacoes',
+              'sectionFreefireScoring',
+              document.querySelector('.sidebar-link[onclick*="sectionFreefireScoring"]')
+            );
+          }
+          showToast('info', 'Seu acesso agora está limitado ao Placar Free Fire.', 'Permissão atualizada');
+        } else if (window._activeAdminPage && window._activeAdminSection) {
+          const targetLink = Array.from(document.querySelectorAll('.sidebar-link[data-page]')).find(link =>
+            link.dataset.page === window._activeAdminPage
+            && link.getAttribute('onclick')?.includes(window._activeAdminSection)
+          );
+          if (typeof window.adminNav === 'function') {
+            window.adminNav(window._activeAdminPage, window._activeAdminSection, targetLink || null);
+          }
+          showToast('info', 'Seu cargo foi atualizado.', 'Permissão atualizada');
+        }
+      }, error => {
+        console.warn('[Admin] Não foi possível sincronizar o cargo atual.', error?.code || 'erro');
+      });
+    }
     // Atualiza badge de papel na UI
     try{
       const badge = document.getElementById('roleBadge');
@@ -11759,6 +11844,11 @@ window.setProdCategory = setProdCategory;
 window.updateProdBannerPreview = updateProdBannerPreview;
 
 async function premiarVencedorTreino() {
+    const role = String(window.adminRoleLower || '').toLowerCase().trim();
+    if (['admin', 'streamer'].includes(role)) {
+        showToast('error', 'Seu perfil não tem permissão para premiar treinos.', 'Acesso negado');
+        return;
+    }
     const emailEl = document.getElementById('premiacaoEmail');
     const eventoEl = document.getElementById('premiacaoEvento');
     const email = emailEl?.value?.trim().toLowerCase();
@@ -13672,10 +13762,11 @@ window.loadPageData = async function(page, requestedSectionId) {
 
     const role = (window.adminRoleLower || '').toLowerCase();
     const allowedSections = window._adminAllowedSections || [];
-    if (sectionId !== 'sectionAffiliatePanel'
-        && allowedSections.length
-        && !allowedSections.includes(sectionId)) return;
-    if (sectionId === 'sectionAffiliatePanel' && role !== 'afiliado') return;
+    if (sectionId === 'sectionAffiliatePanel') {
+        if (role !== 'afiliado') return;
+    } else if (!allowedSections.includes(sectionId)) {
+        return;
+    }
 
     if (sectionId !== 'sectionCouponUsage' && _couponUsageUnsubscribe) {
         stopCouponUsage();

@@ -73,7 +73,7 @@ let currentDb;
 const firestore = () => currentDb;
 firestore.FieldValue = { serverTimestamp: () => 1234 };
 firebase.getAdmin = () => ({ firestore });
-const { preparePurchase, completePurchase, payPurchaseWithTokens, eventPrice, safeBackUrl } = require("./purchase");
+const { preparePurchase, completePurchase, payPurchaseWithTokens, eventPrice, safeBackUrl, assertCanConfirm } = require("./purchase");
 const { handler: webhook } = require("../functions/mp-webhook");
 const crypto = require("node:crypto");
 
@@ -876,7 +876,7 @@ test("the token endpoint returns the existing response contract using the single
   }
 });
 
-test("admin Verificar validates the provider amount before confirming an event with no customer profile", async () => {
+test("CEO Verificar validates the provider amount before confirming an event with no customer profile", async () => {
   const path = require.resolve("../functions/confirm-purchase");
   const provider = require("./credit-token-order");
   const verify = firebase.verifyFirebaseUser;
@@ -884,7 +884,7 @@ test("admin Verificar validates the provider amount before confirming an event w
   let providerAmount = 0.01;
   let providerCalls = 0;
   delete require.cache[path];
-  firebase.verifyFirebaseUser = async () => ({ uid: "admin" });
+  firebase.verifyFirebaseUser = async () => ({ uid: "ceo" });
   provider.findPaymentsByExternalReference = async reference => {
     providerCalls++;
     return [{ ...payment(reference), transaction_amount: providerAmount }];
@@ -892,7 +892,7 @@ test("admin Verificar validates the provider amount before confirming an event w
   try {
     const { handler } = require(path);
     currentDb = fakeDatabase({
-      "users/admin": { role: "Admin" },
+      "users/ceo": { role: "CEO" },
       "adminEvents/liga": { name: "Liga", preco: 1, status: "Aberto" },
       "registrations/r": {
         userId: "buyer", status: "pending", eventType: "liga", date: "2026-10-14",
@@ -918,6 +918,14 @@ test("admin Verificar validates the provider amount before confirming an event w
     provider.findPaymentsByExternalReference = findPayments;
     delete require.cache[path];
   }
+});
+
+test("Admin cannot confirm another user's purchase", async () => {
+  currentDb = fakeDatabase({
+    "users/admin": { role: "Admin" },
+    "users/buyer": { role: "Usuario" },
+  });
+  await assert.rejects(assertCanConfirm("admin", "buyer"), error => error.statusCode === 403);
 });
 
 test("confirm-purchase checks a direct Pix by its saved payment ID instead of search indexing", async () => {

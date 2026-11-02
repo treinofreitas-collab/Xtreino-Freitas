@@ -4,9 +4,13 @@ service cloud.firestore {
     function isSignedIn() { return request.auth != null; }
     function isSelf(userId) { return isSignedIn() && request.auth.uid == userId; }
 
-    // CEO / super-admin (via email whitelist)
+    // CEO with elevated administrative permissions. Admin is scoped to Free Fire scoring below.
     function isAdmin() {
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN','Ceo','CEO','ceo'];
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Ceo','CEO','ceo'];
+    }
+
+    function isAdminRole() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN'];
     }
 
     // VENDEDOR
@@ -23,10 +27,10 @@ service cloud.firestore {
       );
     }
 
-    // STAFF / ADMIN-role / MODERADOR
+    // STAFF / MODERADOR
     function isStaff() {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in
-        ['staff','Staff','STAFF','admin','Admin','ADMIN','moderador','Moderador','MODERADOR'];
+        ['staff','Staff','STAFF','moderador','Moderador','MODERADOR'];
     }
 
     // GERENTE (inclui ceo para herança)
@@ -60,7 +64,7 @@ service cloud.firestore {
     // CEO/ADMIN com email autorizado (whitelist para ações destrutivas)
     function isAuthorizedAdmin() {
       return isSignedIn() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN','Ceo','CEO','ceo'] &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Ceo','CEO','ceo'] &&
         request.auth.token.email in [
           'cleitondouglass@gmail.com',
           'cleitondouglass123@hotmail.com',
@@ -75,7 +79,7 @@ service cloud.firestore {
     // Admin autorizado OU designer (para conteúdo)
     function isAuthorizedAdminOrDesign() {
       return isSignedIn() && (
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin','Admin','ADMIN','Ceo','CEO','ceo'] &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Ceo','CEO','ceo'] &&
          request.auth.token.email in [
            'cleitondouglass@gmail.com',
            'cleitondouglass123@hotmail.com',
@@ -99,6 +103,14 @@ service cloud.firestore {
     function isSocio() {
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in
         ['socio','Socio','SOCIO','sócio','Sócio','SÓCIO','ceo','CEO','Ceo'];
+    }
+
+    function isFreeFireScoringRole() {
+      return isAdminRole() || isAdmin() || isGerente() || isSocio();
+    }
+
+    function isModoLigaScoringLogoType(configType) {
+      return configType in ['freefire-modo-liga-team-logo','freefire-modo-liga-spec-team-logo-association'];
     }
 
     // Quem pode ler tudo no painel
@@ -273,6 +285,7 @@ service cloud.firestore {
       allow get, list: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
         canReadAll() ||
+        (isAdminRole() && resource.data.eventType == 'modo-liga') ||
         (
           isStaff() && (
             ((resource.data.hour is number) && resource.data.hour >= 14 && resource.data.hour <= 18) ||
@@ -552,7 +565,10 @@ service cloud.firestore {
     // championship_config — tabela LBFF e banner do campeonato semanal
     match /championship_config/{configId} {
       allow read: if true;
-      allow create, update, delete: if isAuthorizedAdmin() || isGerente();
+      allow create, update: if isAuthorizedAdmin() || isGerente() ||
+        (isAdminRole() && isModoLigaScoringLogoType(request.resource.data.type));
+      allow delete: if isAuthorizedAdmin() || isGerente() ||
+        (isAdminRole() && isModoLigaScoringLogoType(resource.data.type));
     }
 
     // Mercado da Bala: perfis públicos contêm apenas dados escolhidos pelo jogador.

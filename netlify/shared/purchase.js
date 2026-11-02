@@ -530,7 +530,7 @@ module.exports.assertCanConfirm = async (uid, ownerUid) => {
   if (uid === ownerUid) return;
   const profile = await getAdmin().firestore().collection("users").doc(uid).get();
   const role = String(profile.data()?.role || "").toLowerCase();
-  if (!["admin", "ceo", "gerente", "staff", "moderador", "vendedor", "operador"].includes(role)) {
+  if (!["ceo", "gerente", "staff", "moderador", "vendedor", "operador"].includes(role)) {
     fail("Esta compra não pertence à sua conta.", 403);
   }
 };

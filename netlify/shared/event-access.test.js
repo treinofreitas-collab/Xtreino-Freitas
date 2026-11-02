@@ -64,14 +64,14 @@ test("anonymous and forbidden roles cannot read or manage the private catalog", 
   const env = setup();
   assert.equal((await env.call({ action: "list" }, null)).status, 401);
   assert.equal(env.reads.length, 0);
-  for (const uid of ["buyer", "staff", "member"]) {
+  for (const uid of ["buyer", "staff", "member", "admin"]) {
     for (const action of ["list", "save", "remove"]) assert.equal((await env.call({ action }, uid)).status, 403);
   }
   assert.equal(env.writes.length, 0);
 });
 
-test("CEO, admin and gerente manage; socio only views; catalog reads never leak to normal users", async () => {
-  for (const uid of ["ceo", "admin", "gerente", "socio"]) {
+test("CEO and gerente manage; socio only views; Admin cannot access the catalog", async () => {
+  for (const uid of ["ceo", "gerente", "socio"]) {
     const env = setup();
     const result = await env.call({ action: "list" }, uid);
     assert.equal(result.status, 200);
@@ -81,6 +81,9 @@ test("CEO, admin and gerente manage; socio only views; catalog reads never leak 
     assert.equal(result.body.events[0].id, "modo-liga");
   }
   const env = setup();
+  for (const action of ["list", "save", "remove"]) {
+    assert.equal((await env.call({ action, eventType: "modo-liga", schedule: "19h", url: "https://example.test", active: true }, "admin")).status, 403);
+  }
   assert.equal((await env.call({ action: "save", eventType: "modo-liga", schedule: "19h", url: "https://example.test", active: true }, "socio")).status, 403);
   assert.equal((await env.call({ action: "remove", id: "modo-liga__19h" }, "socio")).status, 403);
 });
@@ -110,7 +113,7 @@ test("a random event document ID saves under its booking eventType and resolves 
   assert.equal(saved.body.link.label, "TREINO MODO LIGA");
   assert.equal((await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0].url, "https://example.test/correct");
   const custom = await env.call({ action: "save", eventType: "CustomDocumentBb", schedule: "20h",
-    url: "https://example.test/custom", active: true }, "admin");
+    url: "https://example.test/custom", active: true }, "ceo");
   assert.equal(custom.body.link.eventType, "customdocumentbb");
 });
 
@@ -185,18 +188,18 @@ test("Camp Season 7 links cannot be configured before 15/11/2026 or fall back to
 
 test("create/edit is one recurring document per event/hour; deactivate and delete revoke subsequent resolves", async () => {
   const env = setup();
-  const save = active => env.call({ action: "save", eventType: "modo-liga", schedule: "19:00", url: "https://example.test/new", active }, "admin");
+  const save = active => env.call({ action: "save", eventType: "modo-liga", schedule: "19:00", url: "https://example.test/new", active }, "ceo");
   assert.equal((await save(true)).body.link.id, "modo-liga__19h");
   assert.equal((await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0].url, "https://example.test/new");
   await save(false);
   assert.equal((await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0].status, "inactive");
-  assert.equal((await env.call({ action: "remove", id: "modo-liga__19h" }, "admin")).status, 200);
+  assert.equal((await env.call({ action: "remove", id: "modo-liga__19h" }, "ceo")).status, 200);
   assert.equal((await env.call({ action: "resolve", registrationIds: ["a"] })).body.access[0].status, "not_configured");
 });
 
 test("moving an edited event/hour removes the previous key atomically", async () => {
   const env = setup();
-  const result = await env.call({ action: "save", previousId: "modo-liga__19h", eventType: "modo-liga", schedule: "21h", url: "https://example.test/21", active: true }, "admin");
+  const result = await env.call({ action: "save", previousId: "modo-liga__19h", eventType: "modo-liga", schedule: "21h", url: "https://example.test/21", active: true }, "ceo");
   assert.equal(result.status, 200);
   assert.equal(env.docs.has("event_access_links/modo-liga__19h"), false);
   assert.equal(env.docs.has("event_access_links/modo-liga__21h"), true);

@@ -15,12 +15,12 @@ test('limits Streamer to hour selection and ZIP download mode', () => {
   assert.equal(getSpecLogoViewMode('streamer'), 'download-only');
   assert.equal(getSpecLogoViewMode('ceo'), 'manage');
   assert.equal(getSpecLogoViewMode('gerente'), 'manage');
-  assert.equal(getSpecLogoViewMode('admin'), 'manage');
+  assert.equal(getSpecLogoViewMode('admin'), 'denied');
   assert.equal(getSpecLogoViewMode('operador'), 'view');
   assert.equal(getSpecLogoViewMode('user'), 'denied');
 });
 
-test('hides training award from Streamer and refreshes the admin script', async () => {
+test('hides training award from Admin and Streamer and refreshes the admin script', async () => {
   const adminScript = await readFile(
     new URL('../../artifacts/xtreino/public/admin.js', import.meta.url),
     'utf8',
@@ -30,10 +30,10 @@ test('hides training award from Streamer and refreshes the admin script', async 
     'utf8',
   );
 
-  assert.match(adminScript, /const hideTrainingAward = resolvedRole === 'streamer'/);
+  assert.match(adminScript, /const hideTrainingAward = \['admin', 'streamer'\]\.includes\(resolvedRole\)/);
   assert.match(adminScript, /trainingAwardSection\.hidden = hideTrainingAward/);
   assert.match(adminPage, /id="sectionPremiacaoTreino" hidden/);
-  assert.match(adminPage, /src="admin\.js\?v=modo-liga-manager-spec-1"/);
+  assert.match(adminPage, /src="admin\.js\?v=admin-role-freefire-only-3"/);
 });
 
 test('accepts only the 26 Modo Liga letters for purchase-logo assignment', () => {

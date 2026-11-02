@@ -1,6 +1,6 @@
 const { jsonResponse, parseJsonBody } = require("./token-purchase");
 
-const MANAGERS = new Set(["ceo", "admin", "gerente"]);
+const MANAGERS = new Set(["ceo", "gerente"]);
 const VIEWERS = new Set([...MANAGERS, "socio"]);
 const CONFIRMED = new Set(["paid", "confirmed", "approved", "lisagem_gratis"]);
 const ID = /^[a-zA-Z0-9_-]{1,160}$/;

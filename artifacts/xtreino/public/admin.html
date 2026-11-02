@@ -1771,7 +1771,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="js/admin-read-control.js"></script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-    <script src="admin.js?v=brasilia-schedule-1"></script>
+    <script src="admin.js?v=admin-role-freefire-only-3"></script>
     <script type="module" src="js/admin-market-reports.mjs"></script>
 
     <!-- Sidebar / Page Router -->
@@ -1835,6 +1835,10 @@
 
         /* Show a page, then load only the selected menu section */
         function showPage(page, sectionId) {
+            if (String(window.adminRoleLower || '').toLowerCase().trim() === 'admin') {
+                page = 'operacoes';
+                sectionId = 'sectionFreefireScoring';
+            }
             sectionId = sectionId || defaultSectionForPage(page);
             setActiveRoute(page, sectionId);
             PAGES.forEach(function(p) {
@@ -1864,6 +1868,12 @@
 
         /* Navigate: update hash → triggers hashchange → showPage */
         window.adminNav = function(page, sectionId, btn) {
+            if (String(window.adminRoleLower || '').toLowerCase().trim() === 'admin'
+                && sectionId !== 'sectionFreefireScoring') {
+                page = 'operacoes';
+                sectionId = 'sectionFreefireScoring';
+                btn = document.querySelector('.sidebar-link[onclick*="sectionFreefireScoring"]') || btn;
+            }
             if (PAGES.indexOf(page) === -1) page = 'principal';
             /* Update active link */
             document.querySelectorAll('.sidebar-link').forEach(function(l) {
@@ -1937,6 +1947,12 @@
         /* Handle hash changes */
         function onHashChange() {
             var hash = (window.location.hash || '').replace('#', '').trim();
+            var scoringOnlyAdmin = String(window.adminRoleLower || '').toLowerCase().trim() === 'admin';
+            if (scoringOnlyAdmin && hash !== 'operacoes') {
+                window._pendingSection = 'sectionFreefireScoring';
+                window.location.hash = 'operacoes';
+                return;
+            }
             if (PAGES.indexOf(hash) === -1) {
                 hash = PAGES.indexOf(window._activeAdminPage) !== -1
                     ? window._activeAdminPage
@@ -1946,6 +1962,7 @@
                 || (window._adminActiveSections && window._adminActiveSections[hash])
                 || (window._activeAdminPage === hash ? window._activeAdminSection : null)
                 || defaultSectionForPage(hash);
+            if (scoringOnlyAdmin) sectionId = 'sectionFreefireScoring';
             showPage(hash, sectionId);
             /* Highlight matching sidebar link */
             document.querySelectorAll('.sidebar-link').forEach(function(l) {

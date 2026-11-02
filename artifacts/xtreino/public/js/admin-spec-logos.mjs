@@ -81,7 +81,7 @@ function escapeHtml(value) {
 
 export function getSpecLogoViewMode(role) {
   const normalizedRole = String(role || '').toLowerCase().trim();
-  if (['admin', 'ceo', 'gerente'].includes(normalizedRole)) return 'manage';
+  if (['ceo', 'gerente'].includes(normalizedRole)) return 'manage';
   if (normalizedRole === 'streamer') return 'download-only';
   if (['socio', 'sócio', 'operador'].includes(normalizedRole)) return 'view';
   return 'denied';

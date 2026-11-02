@@ -1,7 +1,7 @@
 const { getAdmin, verifyFirebaseUser } = require("../shared/firebase-admin");
 
 const ALLOWED_HOURS = new Set(["19", "20", "21", "22", "23", "00"]);
-const ALLOWED_ROLES = new Set(["admin", "ceo", "gerente", "socio", "operador", "streamer"]);
+const ALLOWED_ROLES = new Set(["ceo", "gerente", "socio", "operador", "streamer"]);
 const MAX_EXPORT_BYTES = 4 * 1024 * 1024;
 const STORAGE_ROOT = "teams/modo-liga/logos/spec";
 const SPEC_CODE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])\.png$/;
