@@ -4,6 +4,10 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../artifacts/xtreino/public/script.js', import.meta.url), 'utf8');
+const indexHtml = readFileSync(new URL('../../artifacts/xtreino/public/index.html', import.meta.url), 'utf8');
+const availabilityMessagesStart = source.indexOf('function getAvailabilityFailureMessage(');
+const availabilityMessagesEnd = source.indexOf('async function checkMultipleSlotAvailability(', availabilityMessagesStart);
+const availabilityMessages = source.slice(availabilityMessagesStart, availabilityMessagesEnd);
 function extract(name, next) {
     const start = source.indexOf(`async function ${name}(`);
     return source.slice(start, source.indexOf(next, start));
@@ -41,6 +45,18 @@ function setup(overrides = {}) {
     return { context, calls };
 }
 const verified = { eventType: 'modo-liga', numberOfTeams: 1, timesByDate: { '2026-10-13': ['Terça - 19h'] } };
+
+test('availability failures explain auth, timeout, and server outages without allowing checkout', () => {
+    const context = {};
+    vm.createContext(context);
+    new vm.Script(availabilityMessages).runInContext(context);
+    assert.match(context.getAvailabilityFailureMessage(401), /sessão não foi reconhecida/);
+    assert.match(context.getAvailabilityFailureMessage(403), /não está autorizada/);
+    assert.match(context.getAvailabilityFailureMessage(503), /serviço de confirmação de vagas está indisponível/);
+    assert.match(context.getAvailabilityFailureMessage(0, { name: 'AbortError' }), /demorou mais que o esperado/);
+    assert.match(context.getAvailabilityFailureMessage(0, new Error('network failed')), /Verifique sua conexão/);
+    assert.match(indexHtml, /script\.js\?v=booking-availability-errors-1/);
+});
 
 test('event modal puts Pix checkout first and keeps token checkout second', () => {
     const elements = {

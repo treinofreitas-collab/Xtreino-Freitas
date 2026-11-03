@@ -6133,12 +6133,37 @@ async function checkSlotAvailability(date, schedule, eventType) {
     } catch (_) { return false; }
 }
 
+function getAvailabilityFailureMessage(status, error = null) {
+  if (error?.name === 'AbortError') {
+    return 'A confirmação das vagas demorou mais que o esperado. Nenhuma cobrança foi iniciada. Tente novamente.';
+  }
+  if (error?.message === 'Faça login para concluir o pagamento.') {
+    return 'Sua sessão não foi reconhecida. Entre novamente para reservar. Nenhuma cobrança foi iniciada.';
+  }
+  if (status === 401) {
+    return 'Sua sessão não foi reconhecida. Entre novamente para reservar. Nenhuma cobrança foi iniciada.';
+  }
+  if (status === 403) {
+    return 'Sua conta não está autorizada a fazer esta reserva. Nenhuma cobrança foi iniciada.';
+  }
+  if (status === 429) {
+    return 'Muitas tentativas de consulta. Aguarde um pouco e tente novamente. Nenhuma cobrança foi iniciada.';
+  }
+  if (Number(status) >= 500) {
+    return 'O serviço de confirmação de vagas está indisponível. Nenhuma cobrança foi iniciada. Tente novamente em alguns minutos.';
+  }
+  if (status === 0 || status == null) {
+    return 'Não foi possível conectar ao serviço de confirmação de vagas. Nenhuma cobrança foi iniciada. Verifique sua conexão e tente novamente.';
+  }
+  return 'Não foi possível confirmar as vagas. Nenhuma cobrança foi iniciada. Tente novamente.';
+}
+
 // Verifica disponibilidade para múltiplos horários e times
 async function checkMultipleSlotAvailability(date, selectedTimes, eventType, numberOfTeams) {
-  const unavailable = () => ({
+  const unavailable = (message = 'Não foi possível confirmar as vagas. Nenhuma cobrança foi iniciada. Tente novamente.') => ({
     available: false,
     reason: 'verification_failed',
-    message: 'Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.'
+    message
   });
   try {
     if (!date || !eventType || !Array.isArray(selectedTimes) || selectedTimes.length === 0) {
@@ -6178,21 +6203,18 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
     }
 
     if (!response.ok) {
-      if (response.status === 400) {
-        const failure = await response.json().catch(() => null);
-        if (typeof failure?.message === 'string' && failure.message.trim()) {
-          return { available: false, message: failure.message };
-        }
+      const failure = await response.json().catch(() => null);
+      if (response.status === 400 && typeof failure?.message === 'string' && failure.message.trim()) {
+        return { available: false, message: failure.message };
       }
-      return unavailable();
+      return unavailable(getAvailabilityFailureMessage(response.status));
     }
 
     const result = await response.json();
 
     // Garantia mínima de contrato
     if (typeof result !== 'object' || result === null || typeof result.available !== 'boolean') {
-      
-      return unavailable();
+      return unavailable('O servidor não confirmou a disponibilidade das vagas. Nenhuma cobrança foi iniciada. Tente novamente.');
     }
 
     return result;
@@ -6210,7 +6232,7 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
       // logging não pode quebrar fluxo
     }
 
-    return unavailable();
+    return unavailable(getAvailabilityFailureMessage(0, error));
   }
 }
 
