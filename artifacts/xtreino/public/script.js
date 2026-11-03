@@ -6159,7 +6159,7 @@ function getAvailabilityFailureMessage(status, error = null) {
 }
 
 // Verifica disponibilidade para múltiplos horários e times
-async function checkMultipleSlotAvailability(date, selectedTimes, eventType, numberOfTeams) {
+async function checkMultipleSlotAvailability(date, selectedTimes, eventType, numberOfTeams, teamCandidates = []) {
   const unavailable = (message = 'Não foi possível confirmar as vagas. Nenhuma cobrança foi iniciada. Tente novamente.') => ({
     available: false,
     reason: 'verification_failed',
@@ -6194,6 +6194,10 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
           selectedTimes,
           eventType: eventType || null,
           numberOfTeams: Number(numberOfTeams || 1),
+          teamCandidates: Array.isArray(teamCandidates) ? teamCandidates.map(team => ({
+            name: String(team?.name || '').trim(),
+            email: String(team?.email || '').trim().toLowerCase()
+          })) : [],
           adminEventId: document.getElementById('scheduleModal')?.dataset?.adminEventId || null
         }),
         signal: _ctrl.signal
@@ -6215,6 +6219,31 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
     // Garantia mínima de contrato
     if (typeof result !== 'object' || result === null || typeof result.available !== 'boolean') {
       return unavailable('O servidor não confirmou a disponibilidade das vagas. Nenhuma cobrança foi iniciada. Tente novamente.');
+    }
+
+    if (!result.available) return result;
+
+    const allocation = result.allocation;
+    if (!allocation || typeof allocation !== 'object'
+        || !allocation.slotCountsByHour || typeof allocation.slotCountsByHour !== 'object'
+        || !allocation.maxSlotsByHour || typeof allocation.maxSlotsByHour !== 'object'
+        || !Array.isArray(allocation.duplicateCounts)
+        || allocation.duplicateCounts.length !== teamCandidates.length) {
+      return unavailable('O servidor não confirmou todos os dados das vagas. Nenhuma cobrança foi iniciada. Tente novamente.');
+    }
+
+    const hourKeyFor = value => {
+      const match = String(value || '').match(/(\d{1,2})(?:\s*h|\s*:|$)/i);
+      return match ? String(parseInt(match[1], 10)).padStart(2, '0') : null;
+    };
+    const validCount = value => Number.isInteger(value) && value >= 0 && value <= 100000;
+    const requestedHourKeys = [...new Set(selectedTimes.map(hourKeyFor))];
+    if (requestedHourKeys.some(key => key == null
+        || !validCount(allocation.slotCountsByHour[key])
+        || !validCount(allocation.maxSlotsByHour[key])
+        || allocation.duplicateCounts.some(counts =>
+          !counts || typeof counts !== 'object' || !validCount(counts[key])))) {
+      return unavailable('O servidor não confirmou todos os dados das vagas. Nenhuma cobrança foi iniciada. Tente novamente.');
     }
 
     return result;
@@ -8003,7 +8032,8 @@ async function submitSchedule(e, useTokens = false) {
         });
         const availabilitySelection = {
             eventType: rawEventType, numberOfTeams: teamsData.length,
-            timesByDate: Object.fromEntries(Object.entries(timesByDate).map(([d, times]) => [d, [...times]]))
+            timesByDate: Object.fromEntries(Object.entries(timesByDate).map(([d, times]) => [d, [...times]])),
+            allocationByDate: {}
         };
 
         // ── DISPARAR TUDO EM PARALELO ─────────────────────────────────────────
@@ -8013,8 +8043,10 @@ async function submitSchedule(e, useTokens = false) {
         // 2) Checks de disponibilidade para TODAS as datas em paralelo
         const _availPromises = datesToUse
             .filter(d => (timesByDate[d] || []).length > 0)
-            .map(d => checkMultipleSlotAvailability(d, timesByDate[d], rawEventType, teamsData.length)
+            .map(d => checkMultipleSlotAvailability(d, timesByDate[d], rawEventType, teamsData.length, teamsData)
+                .then(result => ({ ...result, date: d }))
                 .catch(() => ({
+                    date: d,
                     available: false,
                     message: 'Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.'
                 })));
@@ -8052,6 +8084,9 @@ async function submitSchedule(e, useTokens = false) {
                 return;
             }
         }
+        availabilitySelection.allocationByDate = Object.fromEntries(
+            availResults.map(check => [check.date, check.allocation])
+        );
 
         // Processar anti-duplicação camp
         if (campExistNames) {
@@ -8230,7 +8265,7 @@ async function submitSchedule(e, useTokens = false) {
             })();
             const [_slotAlloc, _wlArr] = await Promise.all([
                 Object.keys(_sc).length > 0
-                    ? allocateSlotsFromDB(rawEventType, _sc, datesToUse)
+                    ? allocateSlotsFromDB(rawEventType, _sc, datesToUse, availabilitySelection.allocationByDate)
                     : Promise.resolve({}),
                 Promise.all(_schedPairs.map(p => getWhatsAppLink(rawEventType, p.normalizedHour, p.d).catch(() => null))),
             ]);
@@ -8506,35 +8541,13 @@ async function fetchRegsForSlotCount(rawEventType) {
     } catch(_) { return []; }
 }
 
-async function fetchRegistrationDocsForDates(eventType, dates, firestoreApi) {
-    const uniqueDates = [...new Set((Array.isArray(dates) ? dates : [])
-        .filter(date => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)))];
-    if (uniqueDates.length === 0) return [];
-
-    const { collection, query, where, getDocs } = firestoreApi;
-    const dateChunks = [];
-    for (let i = 0; i < uniqueDates.length; i += 30) {
-        dateChunks.push(uniqueDates.slice(i, i + 30));
-    }
-
-    const snapshots = await Promise.all(dateChunks.map((datesChunk) => {
-        const dateFilter = datesChunk.length === 1
-            ? where('date', '==', datesChunk[0])
-            : where('date', 'in', datesChunk);
-        return getDocs(query(collection(window.firebaseDb, 'registrations'), dateFilter));
-    }));
-
-    return snapshots.flatMap(snapshot => snapshot.docs)
-        .filter(doc => !eventType || doc.data().eventType === eventType);
-}
-
 // ===== Helper: aloca slots a partir do maior slot já no banco =====
 // scheduleCounts: { "schedule_key": numSlotsNeeded }
 // Retorna: { "schedule_key": firstSlotNumber } ou null se ambos os métodos falharem
 // Nível 1: transação atômica via slotCounters
 // Nível 2: fallback com seeding atômico — elimina race condition entre compradores simultâneos
-async function allocateSlotsFromDB(rawEventType, scheduleCounts, targetDates = null, existingDocsPromise = null) {
-    const { doc, runTransaction, collection, query, where, getDocs } =
+async function allocateSlotsFromDB(rawEventType, scheduleCounts, targetDates = null, allocationByDate = null) {
+    const { doc, runTransaction } =
         await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const counterRef = doc(window.firebaseDb, 'slotCounters', rawEventType);
 
@@ -8548,29 +8561,33 @@ async function allocateSlotsFromDB(rawEventType, scheduleCounts, targetDates = n
         return str;
     };
 
-    // Conta registrations reais por horário (COUNT, não MAX) — imune a dados corrompidos.
-    // Para reservas com datas definidas, consulta somente essas datas em vez do histórico inteiro.
     const regSlotCount = {};
-    try {
-        const registrationDocs = existingDocsPromise ? await existingDocsPromise : Array.isArray(targetDates)
-            ? await fetchRegistrationDocsForDates(rawEventType, targetDates, { collection, query, where, getDocs })
-            : (await getDocs(query(
-                collection(window.firebaseDb, 'registrations'),
-                where('eventType', '==', rawEventType)
-            ))).docs;
-        registrationDocs.forEach(d => {
-            const data = d.data();
-            if (!data.schedule) return;
-            // Pendentes não contam — só confirmaados/pagos ocupam slot
-            if (data.status === 'pending') return;
-            // Filtrar por data quando disponível
-            if (targetDates && Array.isArray(targetDates) && !targetDates.includes(data.date)) return;
-            // Contar a registration (COUNT) — ignora o valor do slot para evitar inflação
-            const normKey = _normH(data.schedule);
-            regSlotCount[normKey] = (regSlotCount[normKey] || 0) + 1;
-        });
-    } catch (_) {
-        throw new Error('Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.');
+    if (Array.isArray(targetDates)) {
+        if (!allocationByDate || typeof allocationByDate !== 'object') {
+            throw new Error('Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.');
+        }
+        for (const date of targetDates) {
+            const allocation = allocationByDate[date];
+            if (!allocation) continue;
+            const countsByHour = allocation.slotCountsByHour;
+            if (!countsByHour || typeof countsByHour !== 'object') {
+                throw new Error('Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.');
+            }
+            for (const [hourKey, rawCount] of Object.entries(countsByHour)) {
+                const hour = Number(hourKey);
+                const count = Number(rawCount);
+                if (!Number.isInteger(hour) || hour < 0 || hour > 23
+                    || !Number.isInteger(count) || count < 0) {
+                    throw new Error('Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.');
+                }
+                const normKey = `${hour}h`;
+                regSlotCount[normKey] = (regSlotCount[normKey] || 0) + count;
+            }
+        }
+        for (const schedule of Object.keys(scheduleCounts)) {
+            const normKey = _normH(schedule);
+            if (regSlotCount[normKey] == null) regSlotCount[normKey] = 0;
+        }
     }
 
     // Transação atômica: usa COUNT(regs) como base quando targetDates fornecido
@@ -8681,7 +8698,7 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
         await waitForFirebase(3000);
         if (!window.firebaseReady || !window.firebaseDb) throw new Error('Não foi possível conectar ao banco de dados. Verifique sua internet e tente novamente.');
 
-        const { collection, query, where, getDocs, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
 
         const isLiga = (cfg.modo || '').toUpperCase().includes('LIGA');
         const vagas = cfg.vagas || 0;
@@ -8706,13 +8723,15 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
         const dates = datesToUse && datesToUse.length > 0 ? datesToUse : [Object.keys(timesByDate)[0] || new Date().toISOString().slice(0, 10)];
 
         // Eventos gratuitos também precisam confirmar vagas antes de criar inscrições.
+        const allocationByDate = {};
         for (const date of dates) {
             const selectedSchedules = timesByDate[date] || [];
-            const availability = await checkMultipleSlotAvailability(date, selectedSchedules, rawEventType, teamsData.length);
+            const availability = await checkMultipleSlotAvailability(date, selectedSchedules, rawEventType, teamsData.length, teamsData);
             if (!availability.available) throw new Error(availability.message || 'Não foi possível confirmar as vagas.');
+            allocationByDate[date] = availability.allocation;
         }
 
-        // Para eventos grátis: leitura direta (sem transações — slotCounters pode não ter permissão)
+        // Use o agregado do servidor para evitar leitura de inscrições de outros clientes.
         {
             const scheduleKeys = new Set();
             for (const _d of dates) {
@@ -8721,26 +8740,23 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
                 }
             }
             if (vagas > 0 && scheduleKeys.size > 0) {
-                // Ler somente inscrições das datas desta compra, não o histórico do evento.
-                try {
-                    const registrationDocs = await fetchRegistrationDocsForDates(
-                        rawEventType,
-                        dates,
-                        { collection, query, where, getDocs }
-                    );
-                    registrationDocs.forEach(d => {
-                        const r = d.data();
-                        if (!r.schedule) return;
-                        // Filtrar por data (evita slots históricos de datas anteriores)
-                        if (!dates.includes(r.date)) return;
-                        const sn = Number(r.slotNumber || r.slot || 0);
-                        // Ignorar timestamps gravados como slot (> 9999)
-                        if (!isNaN(sn) && sn > 0 && sn <= 9999 && sn > (scheduleSlotCount[r.schedule] || 0)) {
-                            scheduleSlotCount[r.schedule] = sn;
+                for (const date of dates) {
+                    const allocation = allocationByDate[date];
+                    const maxSlotsByHour = allocation?.maxSlotsByHour;
+                    if (!maxSlotsByHour || typeof maxSlotsByHour !== 'object') {
+                        throw new Error('Não foi possível confirmar as vagas agora. Nenhuma inscrição foi criada. Tente novamente.');
+                    }
+                    for (const schedule of timesByDate[date] || []) {
+                        const hourMatch = String(schedule).match(/(\d{1,2})(?:\s*h|\s*:|$)/i);
+                        const hourKey = hourMatch
+                            ? String(parseInt(hourMatch[1], 10)).padStart(2, '0')
+                            : null;
+                        const maxSlot = Number(hourKey == null ? NaN : maxSlotsByHour[hourKey]);
+                        if (!Number.isInteger(maxSlot) || maxSlot < 0 || maxSlot > 9999) {
+                            throw new Error('Não foi possível confirmar as vagas agora. Nenhuma inscrição foi criada. Tente novamente.');
                         }
-                    });
-                } catch (_) {
-                    throw new Error('Não foi possível confirmar as vagas agora. Nenhuma inscrição foi criada. Tente novamente.');
+                        scheduleSlotCount[schedule] = Math.max(scheduleSlotCount[schedule] || 0, maxSlot);
+                    }
                 }
             }
             // Inicializar chaves ausentes em 0 (slots começam em 1 no loop abaixo)
@@ -9348,25 +9364,34 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
     });
 
     // Direct calls still check availability. The normal submit has just checked it.
+    let allocationByDate = availabilitySelection?.allocationByDate || null;
     const availabilityVerified = availabilitySelection?.eventType === eventType
         && availabilitySelection.numberOfTeams === teamsData.length
         && datesToUse.every(d => (timesByDate[d] || []).every(schedule =>
-            availabilitySelection.timesByDate?.[d]?.includes(schedule)));
+            availabilitySelection.timesByDate?.[d]?.includes(schedule)))
+        && datesToUse.filter(d => (timesByDate[d] || []).length > 0)
+            .every(d => allocationByDate?.[d]?.slotCountsByHour);
     if (!availabilityVerified) {
         const checks = await Promise.all(datesToUse.filter(d => (timesByDate[d] || []).length)
-            .map(d => checkMultipleSlotAvailability(d, timesByDate[d], eventType, teamsData.length)));
+            .map(async d => ({
+                ...(await checkMultipleSlotAvailability(d, timesByDate[d], eventType, teamsData.length, teamsData)),
+                date: d,
+            })));
         for (const check of checks) {
             if (!check.available) {
                 showErrorToast(check.message || 'Horário indisponível', 'EVENT_001');
                 return;
             }
         }
+        allocationByDate = Object.fromEntries(checks.map(check => [check.date, check.allocation]));
     }
 
     // Criar reservas pendentes; débito e confirmação são uma única transação.
     const externalRef = `tokens_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     try {
-        const { regIds, assignedSlots: assignedSlotsTokens } = await createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, 'pending', appliedScheduleCoupon);
+        const { regIds, assignedSlots: assignedSlotsTokens } = await createRegistrationsForEvent(
+            eventType, datesToUse, teamsData, timesByDate, externalRef, 'pending', appliedScheduleCoupon, allocationByDate
+        );
         await payOrderWithTokens(externalRef, _capturedTokenCoupon?.code || null, finalPrice);
 
         // Coupon reporting must not delay an already committed payment.
@@ -9539,7 +9564,7 @@ async function getWhatsAppLink(eventType, schedule = null, date = null) {
 window.getWhatsAppLink = getWhatsAppLink;
 
 
-async function createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, status = 'pending', couponInfo = null) {
+async function createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, status = 'pending', couponInfo = null, allocationByDate = null) {
     const cfg = getActiveScheduleConfig(eventType);
     const isLiga = (cfg.modo || '').toUpperCase().includes('LIGA');
     const vagas = cfg.vagas || 0;
@@ -9547,32 +9572,63 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
     const regIds = [];
     const assignedSlots = [];
     const pendingWrites = [];
-    const { collection, addDoc, serverTimestamp, query: _fsQuery, where: _fsWhere, getDocs: _fsGetDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+    const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
 
-    // Read only booked dates, sharing this read with slot allocation.
-    const existingDocsPromise = fetchRegistrationDocsForDates(eventType, datesToUse, {
-        collection, query: _fsQuery, where: _fsWhere, getDocs: _fsGetDocs
-    });
-    const _dupExistMap = {};
-    const collectDuplicates = docs => {
-        docs.forEach(d => {
-            const rd = d.data();
-            const rdEmail = (rd.email || '').trim().toLowerCase();
-            // Remove sufixo " B", " C"... para encontrar o nome base
-            const rdBase = (rd.teamName || '').trim()
-                .replace(/\s+[B-Z]$/i, '')
-                .toLowerCase().replace(/\s+/g, ' ');
-            // Extrai a hora do horário (ex: "Quarta - 22h" → "22", "22:00" → "22")
-            const rdSchedStr = String(rd.schedule || rd.hour || '');
-            const rdHourMatch = rdSchedStr.match(/(\d{1,2})/);
-            const rdHour = rdHourMatch ? String(parseInt(rdHourMatch[1], 10)).padStart(2, '0') : '';
-            if (rdEmail && rdBase) {
-                // Chave inclui hora: sufixo só se o mesmo time reservar o MESMO horário
-                const k = `${rdBase}|${rdEmail}|${rdHour}`;
-                _dupExistMap[k] = (_dupExistMap[k] || 0) + 1;
+    const requiredDates = datesToUse.filter(date => (timesByDate[date] || []).length > 0);
+    if (!allocationByDate || requiredDates.some(date => !allocationByDate[date])) {
+        const checks = await Promise.all(requiredDates.map(async date => ({
+            ...(await checkMultipleSlotAvailability(
+                date,
+                timesByDate[date],
+                eventType,
+                teamsData.length,
+                teamsData,
+            )),
+            date,
+        })));
+        for (const check of checks) {
+            if (!check.available) {
+                throw new Error(check.message || 'Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.');
             }
-        });
-    };
+        }
+        allocationByDate = Object.fromEntries(checks.map(check => [check.date, check.allocation]));
+    }
+
+    const _dupExistMap = {};
+    const seenDuplicateSnapshots = new Set();
+    for (const date of requiredDates) {
+        const allocation = allocationByDate[date];
+        if (!Array.isArray(allocation.duplicateCounts)
+            || allocation.duplicateCounts.length !== teamsData.length) {
+            throw new Error('Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.');
+        }
+        for (const schedule of timesByDate[date] || []) {
+            const hourMatch = String(schedule).match(/(\d{1,2})(?:\s*h|\s*:|$)/i);
+            const hourKey = hourMatch
+                ? String(parseInt(hourMatch[1], 10)).padStart(2, '0')
+                : null;
+            if (hourKey == null) {
+                throw new Error('Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.');
+            }
+            teamsData.forEach((team, index) => {
+                const teamEmail = (team.email || '').trim().toLowerCase();
+                const teamBase = (team.name || '').trim()
+                    .replace(/\s+[B-Z]$/i, '')
+                    .toLowerCase().replace(/\s+/g, ' ');
+                if (!teamEmail || !teamBase) return;
+                const normalizedHour = normalizeHour(schedule) || '';
+                const key = `${teamBase}|${teamEmail}|${normalizedHour}`;
+                const snapshotKey = `${date}|${key}`;
+                if (seenDuplicateSnapshots.has(snapshotKey)) return;
+                seenDuplicateSnapshots.add(snapshotKey);
+                const duplicateCount = Number(allocation.duplicateCounts[index]?.[hourKey]);
+                if (!Number.isInteger(duplicateCount) || duplicateCount < 0) {
+                    throw new Error('Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.');
+                }
+                _dupExistMap[key] = (_dupExistMap[key] || 0) + duplicateCount;
+            });
+        }
+    }
     // Contador em memória para esta compra (evita conflito quando múltiplas datas compradas de uma vez)
     const _dupBatchCount = {};
 
@@ -9597,13 +9653,9 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
         }));
         return _map;
     })();
-    const [_slotAlloc, existingDocs] = await Promise.all([
-        Object.keys(_sc).length > 0
-            ? allocateSlotsFromDB(eventType, _sc, datesToUse, existingDocsPromise)
-            : Promise.resolve({}),
-        existingDocsPromise
-    ]);
-    collectDuplicates(existingDocs);
+    const _slotAlloc = Object.keys(_sc).length > 0
+        ? await allocateSlotsFromDB(eventType, _sc, datesToUse, allocationByDate)
+        : {};
 
     const slotCount = {};
     for (const [_k, _v] of Object.entries(_slotAlloc)) slotCount[_k] = _v - 1;

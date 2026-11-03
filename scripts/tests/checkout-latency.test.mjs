@@ -12,14 +12,22 @@ function extract(name, next) {
     const start = source.indexOf(`async function ${name}(`);
     return source.slice(start, source.indexOf(next, start));
 }
+const availabilityCheck = extract('checkMultipleSlotAvailability', 'async function updateOccupiedAndRefreshButtons');
 const buttonOrderStart = source.indexOf('function setSchedulePaymentButtonOrder(');
 const buttonOrderEnd = source.indexOf('\nfunction _updateFreeSlotPaymentUI', buttonOrderStart);
 const buttonOrderFunction = source.slice(buttonOrderStart, buttonOrderEnd);
 const tokens = extract('useTokensForEvent', 'async function loadCampSemifinalLinksFromFirestore');
 const registrations = extract('createRegistrationsForEvent', '// --- Edição de Perfil ---')
     .replace(/await import\('https:\/\/www\.gstatic\.com\/firebasejs\/10\.13\.0\/firebase-firestore\.js'\)/g, 'sdk');
+const slotAllocator = extract('allocateSlotsFromDB', '// ===== Helper: calcula o texto do slot')
+    .replace(/await import\('https:\/\/www\.gstatic\.com\/firebasejs\/10\.13\.0\/firebase-firestore\.js'\)/g, 'sdk');
 const selected = [{ date: '2026-10-13', schedule: 'Terça - 19h' }];
 const team = [{ name: 'Equipe teste', email: 'teste@example.test', phone: '11999999999' }];
+const allocation = {
+    slotCountsByHour: { '19': 0 },
+    maxSlotsByHour: { '19': 0 },
+    duplicateCounts: [{ '19': 0 }],
+};
 const scheduleConfig = {
     'modo-liga': { label: 'MODO LIGA', price: 3, modo: 'LIGA', vagas: 12, grupos: 1 },
 };
@@ -31,7 +39,7 @@ function setup(overrides = {}) {
         getActiveScheduleConfig: eventType => scheduleConfig[eventType],
         getActiveEventRegistrationMetadata: () => ({}),
         canSpendTokens: () => true,
-        checkMultipleSlotAvailability: async () => { calls.push('check'); return { available: true }; },
+        checkMultipleSlotAvailability: async () => { calls.push('check'); return { available: true, allocation }; },
         createRegistrationsForEvent: async () => { calls.push('persist'); return { regIds: ['r1'], assignedSlots: [{ team: 'Equipe teste', schedule: '19h' }] }; },
         payOrderWithTokens: async () => { calls.push('debit'); },
         closeScheduleModal: () => { calls.push('close'); },
@@ -44,7 +52,12 @@ function setup(overrides = {}) {
     new vm.Script(tokens).runInContext(context);
     return { context, calls };
 }
-const verified = { eventType: 'modo-liga', numberOfTeams: 1, timesByDate: { '2026-10-13': ['Terça - 19h'] } };
+const verified = {
+    eventType: 'modo-liga',
+    numberOfTeams: 1,
+    timesByDate: { '2026-10-13': ['Terça - 19h'] },
+    allocationByDate: { '2026-10-13': allocation },
+};
 
 test('availability failures explain auth, timeout, and server outages without allowing checkout', () => {
     const context = {};
@@ -55,7 +68,47 @@ test('availability failures explain auth, timeout, and server outages without al
     assert.match(context.getAvailabilityFailureMessage(503), /serviço de confirmação de vagas está indisponível/);
     assert.match(context.getAvailabilityFailureMessage(0, { name: 'AbortError' }), /demorou mais que o esperado/);
     assert.match(context.getAvailabilityFailureMessage(0, new Error('network failed')), /Verifique sua conexão/);
-    assert.match(indexHtml, /script\.js\?v=booking-availability-errors-1/);
+    assert.match(indexHtml, /script\.js\?v=booking-allocation-server-1/);
+});
+
+test('availability client sends team candidates and fails closed without allocation data', async () => {
+    let requestBody;
+    let responseBody = {
+        available: true,
+        allocation: {
+            slotCountsByHour: { '19': 0 },
+            maxSlotsByHour: { '19': 0 },
+            duplicateCounts: [{ '19': 0 }],
+        },
+    };
+    const context = {
+        AbortController, setTimeout, clearTimeout, console,
+        document: { getElementById: () => ({ dataset: {} }) },
+        authenticatedPaymentFetch: async (_url, options) => {
+            requestBody = JSON.parse(options.body);
+            return { ok: true, json: async () => responseBody };
+        },
+        logError: () => {},
+    };
+    vm.createContext(context);
+    new vm.Script(availabilityMessages + availabilityCheck).runInContext(context);
+
+    const result = await context.checkMultipleSlotAvailability(
+        '2026-10-13',
+        ['Terça - 19h'],
+        'modo-liga',
+        1,
+        [{ name: 'Equipe teste', email: 'TESTE@example.test' }],
+    );
+    assert.equal(result.available, true);
+    assert.deepEqual(requestBody.teamCandidates, [{ name: 'Equipe teste', email: 'teste@example.test' }]);
+
+    responseBody = { available: true };
+    const incomplete = await context.checkMultipleSlotAvailability(
+        '2026-10-13', ['Terça - 19h'], 'modo-liga', 1, [{ name: 'Equipe teste', email: 'teste@example.test' }]
+    );
+    assert.equal(incomplete.available, false);
+    assert.match(incomplete.message, /Nenhuma cobrança foi iniciada/);
 });
 
 test('event modal puts Pix checkout first and keeps token checkout second', () => {
@@ -128,7 +181,7 @@ function setupSubmission(result) {
 
 test('event submit uses the server lock/capacity check without duplicate client lock queries', async () => {
     assert.doesNotMatch(submission, /event_global_locks|event_hour_locks|_lockPromise/);
-    const { context, calls, elements } = setupSubmission({ available: true });
+    const { context, calls, elements } = setupSubmission({ available: true, allocation });
     await context.submitSchedule({ preventDefault() {} }, true);
     assert.deepEqual(calls, ['ready', 'check', 'tokens']);
     assert.equal(JSON.stringify(context.proof), JSON.stringify(verified));
@@ -179,20 +232,22 @@ test('coupon reporting does not block a server-confirmed token booking', async (
     assert.deepEqual(calls, ['persist', 'debit', 'close', 'confirm']);
 });
 
-test('token reservations share a date-scoped read with allocation and persist concurrently in stable order', async () => {
-    let reads = 0;
+test('token reservations use server aggregates without reading other registrations', async () => {
     const writes = [];
     const releases = [];
     let allocationRead;
+    const allocationByDate = {
+        '2026-10-13': {
+            slotCountsByHour: { '19': 0, '20': 0 },
+            maxSlotsByHour: { '19': 0, '20': 0 },
+            duplicateCounts: [{ '19': 0, '20': 0 }],
+        },
+    };
     const { context } = setup({
         window: { firebaseDb: {}, firebaseAuth: { currentUser: { uid: 'buyer' } }, currentUserProfile: {} },
         _equipeAtual: null,
-        fetchRegistrationDocsForDates: async (type, dates) => {
-            reads++; assert.equal(type, 'modo-liga'); assert.deepEqual([...dates], ['2026-10-13']);
-            return [];
-        },
-        allocateSlotsFromDB: async (type, counts, dates, promise) => {
-            allocationRead = await promise;
+        allocateSlotsFromDB: async (type, counts, dates, allocations) => {
+            allocationRead = allocations;
             return { 'Terça - 19h': 1, 'Terça - 20h': 1 };
         },
         normalizeHour: value => value,
@@ -209,10 +264,9 @@ test('token reservations share a date-scoped read with allocation and persist co
     });
     new vm.Script(registrations).runInContext(context);
     const pending = context.createRegistrationsForEvent('modo-liga', ['2026-10-13'], team,
-        { '2026-10-13': ['Terça - 19h', 'Terça - 20h'] }, 'tokens_test');
+        { '2026-10-13': ['Terça - 19h', 'Terça - 20h'] }, 'tokens_test', 'pending', null, allocationByDate);
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(reads, 1);
-    assert.deepEqual(allocationRead, []);
+    assert.deepEqual(allocationRead, allocationByDate);
     assert.equal(writes.length, 2, 'both writes started before either completed');
     assert.ok(writes.every(p => p.status === 'pending' && p.userId === 'buyer' && !p.paymentStatus));
     releases.reverse().forEach(resolve => resolve());
@@ -220,4 +274,33 @@ test('token reservations share a date-scoped read with allocation and persist co
     assert.deepEqual([...result.regIds], ['r1', 'r2']);
     assert.equal(result.assignedSlots[0].regId, 'r1');
     assert.equal(result.assignedSlots[1].regId, 'r2');
+});
+
+test('slot allocation uses server counts and never queries customer registrations', async () => {
+    const transaction = { reads: 0, writes: [] };
+    const context = {
+        window: { firebaseDb: {} },
+        sdk: {
+            doc: (_db, collection, id) => ({ collection, id }),
+            runTransaction: async (_db, callback) => callback({
+                get: async () => {
+                    transaction.reads++;
+                    return { exists: () => false, data: () => ({}) };
+                },
+                set: (_ref, counts) => transaction.writes.push(counts),
+            }),
+        },
+        console,
+    };
+    vm.createContext(context);
+    new vm.Script(slotAllocator).runInContext(context);
+    const starts = await context.allocateSlotsFromDB(
+        'modo-liga',
+        { 'Terça - 19h': 2 },
+        ['2026-10-13'],
+        { '2026-10-13': { slotCountsByHour: { '19': 5 } } },
+    );
+    assert.deepEqual(JSON.parse(JSON.stringify(starts)), { 'Terça - 19h': 6 });
+    assert.equal(transaction.reads, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(transaction.writes)), [{ '19h': 7 }]);
 });

@@ -94,6 +94,14 @@ function registrationMatchesSelectedEvent(record, eventType, adminEventId, event
     || (isModoLigaType(registrationType) && isModoLigaType(selectedType));
 }
 
+function normalizedTeamName(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+[B-Z]$/i, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 function validateRequest(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) invalid("Dados da reserva inválidos.");
   const { date, eventType, selectedTimes } = body;
@@ -112,11 +120,34 @@ function validateRequest(body) {
       || new Set(hours).size !== hours.length) invalid("Selecione horários válidos, sem repetições.");
   const numberOfTeams = Number(body.numberOfTeams);
   if (!Number.isInteger(numberOfTeams) || numberOfTeams < 1 || numberOfTeams > 100) invalid("Quantidade de times inválida.");
-  return { date, eventType, hours, numberOfTeams, ...(adminEventId ? { adminEventId } : {}) };
+  const rawCandidates = body.teamCandidates;
+  if (rawCandidates != null && (!Array.isArray(rawCandidates) || rawCandidates.length > 100)) {
+    invalid("Lista de times inválida.");
+  }
+  const teamCandidates = (rawCandidates || []).map(candidate => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      invalid("Lista de times inválida.");
+    }
+    const name = candidate.name == null ? "" : candidate.name;
+    const email = candidate.email == null ? "" : candidate.email;
+    if (typeof name !== "string" || name.length > 120
+        || typeof email !== "string" || email.length > 254) {
+      invalid("Dados de time inválidos.");
+    }
+    return { name: name.trim(), email: email.trim().toLowerCase() };
+  });
+  return {
+    date,
+    eventType,
+    hours,
+    numberOfTeams,
+    teamCandidates,
+    ...(adminEventId ? { adminEventId } : {}),
+  };
 }
 
 async function checkAvailability(db, body) {
-  const { date, eventType, adminEventId, hours, numberOfTeams } = validateRequest(body);
+  const { date, eventType, adminEventId, hours, numberOfTeams, teamCandidates } = validateRequest(body);
   let catalog = await db.collection("adminEvents").doc(adminEventId || eventType).get();
   if (!catalog.exists && !adminEventId) {
     const matches = await db.collection("adminEvents").where("eventType", "==", eventType).limit(1).get();
@@ -165,9 +196,13 @@ async function checkAvailability(db, body) {
       || (isModoLiga && isModoLigaType(recordType));
   };
   const counts = {};
+  const slotCountsByHour = Object.fromEntries(hours.map(hour => [String(hour).padStart(2, "0"), 0]));
+  const maxSlotsByHour = Object.fromEntries(hours.map(hour => [String(hour).padStart(2, "0"), 0]));
+  const duplicateCounts = teamCandidates.map(() =>
+    Object.fromEntries(hours.map(hour => [String(hour).padStart(2, "0"), 0])),
+  );
   for (const doc of registrations.docs) {
     const record = doc.data();
-    if (!ACTIVE_STATUSES.has(record.status)) continue;
     if (!registrationMatchesSelectedEvent(
       record,
       eventType,
@@ -177,7 +212,28 @@ async function checkAvailability(db, body) {
     const hour = [record.schedule, record.hour, record.time]
       .map(hourOf)
       .find(value => value != null);
-    if (hour != null) counts[hour] = (counts[hour] || 0) + 1;
+    if (hour == null || !hours.includes(hour)) continue;
+
+    const hourKey = String(hour).padStart(2, "0");
+    if (record.status !== "pending") {
+      slotCountsByHour[hourKey] += 1;
+    }
+    const slotNumber = Number(record.slotNumber || record.slot || 0);
+    if (Number.isInteger(slotNumber) && slotNumber > 0 && slotNumber <= 9999) {
+      maxSlotsByHour[hourKey] = Math.max(maxSlotsByHour[hourKey], slotNumber);
+    }
+
+    if (ACTIVE_STATUSES.has(record.status)) counts[hour] = (counts[hour] || 0) + 1;
+
+    const teamName = normalizedTeamName(record.teamName);
+    const email = String(record.email || "").trim().toLowerCase();
+    if (teamName && email) {
+      teamCandidates.forEach((candidate, index) => {
+        if (normalizedTeamName(candidate.name) === teamName && candidate.email === email) {
+          duplicateCounts[index][hourKey] += 1;
+        }
+      });
+    }
   }
 
   for (const hour of hours) {
@@ -200,7 +256,10 @@ async function checkAvailability(db, body) {
       return { available: false, message: `Não há vagas suficientes às ${hour}h para ${numberOfTeams} time(s). Escolha outro horário ou reduza os times.` };
     }
   }
-  return { available: true };
+  return {
+    available: true,
+    allocation: { slotCountsByHour, maxSlotsByHour, duplicateCounts },
+  };
 }
 
 module.exports = { checkAvailability, validateRequest, UNAVAILABLE_MESSAGE };

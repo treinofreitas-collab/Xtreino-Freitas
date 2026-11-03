@@ -11,6 +11,7 @@ assert.ok(start >= 0 && end > start);
 function checkWith(fetch) {
   const context = vm.createContext({
     authenticatedPaymentFetch: fetch, AbortController, setTimeout, clearTimeout, logError: () => {},
+    getAvailabilityFailureMessage: () => "Não foi possível confirmar as vagas. Nenhuma cobrança foi iniciada. Tente novamente.",
     document: { getElementById: () => null },
   });
   vm.runInContext(source.slice(start, end), context);
@@ -28,6 +29,11 @@ function permanentLockMatcher() {
   return lockHelperContext().matchesPermanentHourLock;
 }
 const args = ["2026-10-14", ["Quarta - 17h"], "custom-event", 2];
+const validAllocation = {
+  slotCountsByHour: { "17": 1 },
+  maxSlotsByHour: { "17": 1 },
+  duplicateCounts: [],
+};
 
 test("client never approves failed HTTP, network, timeout, JSON or invalid contracts", async () => {
   for (const fetch of [
@@ -38,6 +44,7 @@ test("client never approves failed HTTP, network, timeout, JSON or invalid contr
     async () => ({ ok: true, json: async () => { throw new Error("invalid JSON"); } }),
     async () => ({ ok: true, json: async () => null }),
     async () => ({ ok: true, json: async () => ({}) }),
+    async () => ({ ok: true, json: async () => ({ available: true }) }),
     async () => ({ ok: true, json: async () => ({ available: "true" }) }),
   ]) {
     const result = await checkWith(fetch)(...args);
@@ -46,15 +53,36 @@ test("client never approves failed HTTP, network, timeout, JSON or invalid contr
   }
 });
 
-test("client accepts only explicit server approval and preserves an insufficient-slot message", async () => {
+test("client accepts only a complete server allocation snapshot", async () => {
+  const candidate = { name: "Alpha", email: "alpha@example.com" };
   const check = checkWith(async (url, options) => {
     assert.equal(url, "/.netlify/functions/check-availability");
     assert.equal(JSON.parse(options.body).eventType, "custom-event");
-    return { ok: true, json: async () => ({ available: true }) };
+    assert.deepEqual(JSON.parse(options.body).teamCandidates, [candidate]);
+    return {
+      ok: true,
+      json: async () => ({
+        available: true,
+        allocation: {
+          ...validAllocation,
+          duplicateCounts: [{ "17": 0 }],
+        },
+      }),
+    };
   });
-  assert.equal((await check(...args)).available, true);
+  const result = await check(...args, [candidate]);
+  assert.equal(result.available, true);
+  assert.equal(result.allocation.slotCountsByHour["17"], 1);
   const closed = checkWith(async () => ({ ok: true, json: async () => ({ available: false, message: "Lotado" }) }));
   assert.equal((await closed(...args)).message, "Lotado");
+  const missingCounts = checkWith(async () => ({
+    ok: true,
+    json: async () => ({
+      available: true,
+      allocation: { slotCountsByHour: { "17": 1 }, duplicateCounts: [] },
+    }),
+  }));
+  assert.equal((await missingCounts(...args)).available, false);
 });
 
 test("invalid client input never starts the request", async () => {

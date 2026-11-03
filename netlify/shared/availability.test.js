@@ -50,6 +50,54 @@ test("availability reads only the chosen date/event and ignores pending, cancele
   assert.equal((await checkAvailability(db, { ...request, numberOfTeams: 2 })).available, false);
 });
 
+test("availability returns slot totals and duplicate counts without exposing team data", async () => {
+  const result = await checkAvailability(database({
+    ...catalog,
+    "registrations/paid": {
+      ...registration,
+      teamName: "Time Alpha B",
+      email: "captain@example.com",
+      slotNumber: 4,
+    },
+    "registrations/pending": {
+      ...registration,
+      status: "pending",
+      teamName: "Time Alpha",
+      email: "CAPTAIN@example.com",
+      slotNumber: 7,
+    },
+    "registrations/other-hour": {
+      ...registration,
+      schedule: "Quarta - 18h",
+      teamName: "Other Team",
+      email: "other@example.com",
+      slotNumber: 3,
+    },
+  }), {
+    ...request,
+    teamCandidates: [{ name: "Time Alpha", email: "captain@example.com" }],
+  });
+
+  assert.equal(result.available, true);
+  assert.deepEqual(result.allocation, {
+    slotCountsByHour: { "17": 1 },
+    maxSlotsByHour: { "17": 7 },
+    duplicateCounts: [{ "17": 2 }],
+  });
+  assert.doesNotMatch(JSON.stringify(result), /captain@example\.com|Time Alpha/);
+});
+
+test("availability rejects malformed team candidates", () => {
+  assert.throws(() => validateRequest({
+    ...request,
+    teamCandidates: [{ name: "A".repeat(121), email: "a@example.com" }],
+  }), /Dados de time inválidos/);
+  assert.throws(() => validateRequest({
+    ...request,
+    teamCandidates: "not-an-array",
+  }), /Lista de times inválida/);
+});
+
 test("Camp Season 7 keeps 15 November closed and opens bookings on 16 November", async () => {
   const eventId = "season-7-event";
   const eventConfig = {
@@ -78,7 +126,7 @@ test("Camp Season 7 keeps 15 November closed and opens bookings on 16 November",
     ...campRequest,
     date: "2026-11-16",
   });
-  assert.deepEqual(onStartDate, { available: true });
+  assert.equal(onStartDate.available, true);
   assert.ok(onStartDateDb.reads.some(read => read.name === "adminEvents" && read.id === eventId));
 });
 
@@ -110,12 +158,12 @@ test("availability does not count Modo Liga registrations against Camp Season 7 
     status: "paid",
   };
 
-  assert.deepEqual(
-    await checkAvailability(database({
+  assert.equal(
+    (await checkAvailability(database({
       ...eventConfig,
       "registrations/modo-liga-sale": modeLigaRegistration,
-    }), campRequest),
-    { available: true },
+    }), campRequest)).available,
+    true,
   );
 
   const campSale = {
@@ -206,7 +254,13 @@ test("endpoint returns a strict boolean contract and performs no writes", async 
   handlerDb = database(catalog);
   const response = await handler(event);
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(JSON.parse(response.body), { available: true });
+  const body = JSON.parse(response.body);
+  assert.equal(body.available, true);
+  assert.deepEqual(body.allocation, {
+    slotCountsByHour: { "17": 0 },
+    maxSlotsByHour: { "17": 0 },
+    duplicateCounts: [],
+  });
   assert.equal((await handler({ httpMethod: "GET" })).statusCode, 405);
 });
 
@@ -379,7 +433,7 @@ test("availability endpoint accepts 00h after resolving a Modo Liga event docume
     body: JSON.stringify({ ...saturdayMidnightLiga, eventType: "EventDocumentAa" }),
   });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(JSON.parse(response.body), { available: true });
+  assert.equal(JSON.parse(response.body).available, true);
 });
 
 test("malformed three-digit lock hour does not accidentally block midnight", async () => {
