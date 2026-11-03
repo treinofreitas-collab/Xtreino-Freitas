@@ -170,7 +170,7 @@ test('one OR query unifies every compatible identity field, including team membe
         condition.value === actor.uid || condition.value === actor.email)));
 });
 
-test('regular-customer order permissions fall back only to owned userId; remember the plan', async () => {
+test('order and registration permission failures fall back only to owned userId', async () => {
     const { adapter, calls } = adapterWith({ read: async query => {
         if (query.filter.or) throw Object.assign(new Error('denied'), { code: 'permission-denied' });
         return { docs: [{ id: 'owned', data: () => ({ userId: actor.uid }) }] };
@@ -180,9 +180,19 @@ test('regular-customer order permissions fall back only to owned userId; remembe
     assert.equal(calls.length, 3);
     assert.deepEqual(calls[1].filter, { field: 'userId', op: '==', value: actor.uid });
     assert.deepEqual(calls[2].filter, calls[1].filter);
+    assert.equal((await adapter.read('registrations', actor))[0].id, 'owned');
+    assert.equal(calls.length, 5);
+    assert.deepEqual(calls[3].filter, { or: [
+        { field: 'userId', op: '==', value: actor.uid },
+        { field: 'uid', op: '==', value: actor.uid },
+        { field: 'membrosUids', op: 'array-contains', value: actor.uid },
+        { field: 'contact', op: '==', value: actor.email },
+        { field: 'email', op: '==', value: actor.email },
+    ] });
+    assert.deepEqual(calls[4].filter, { field: 'userId', op: '==', value: actor.uid });
     adapter.reset();
     await adapter.read('orders', actor);
-    assert.equal(calls.length, 5);
+    assert.equal(calls.length, 7);
 });
 
 test('quota/index errors are not converted to empty results or an unfiltered query', async () => {
@@ -193,23 +203,28 @@ test('quota/index errors are not converted to empty results or an unfiltered que
     }
 });
 
-test('live order permission fallback reconnects once and both streams are disposed', () => {
+test('live order and registration permission fallbacks reconnect once', () => {
     const streams = [];
     let stopped = 0, received;
     const { adapter } = adapterWith({ subscribe: (query, next, error) => {
         streams.push({ query, next, error });
         return () => stopped++;
     } });
-    const stop = adapter.watch('orders', actor, data => { received = data; }, error => { throw error; });
+    const stopOrders = adapter.watch('orders', actor, data => { received = data; }, error => { throw error; });
     streams[0].error({ code: 'permission-denied' });
     assert.equal(streams.length, 2);
     assert.equal(streams[1].query.filter.field, 'userId');
     streams[1].next({ docs: [{ id: 'one', data: () => ({ status: 'paid' }) }], metadata: { fromCache: false } });
     assert.equal(received[0].data.status, 'paid');
-    stop();
-    streams[1].next({ docs: [], metadata: { fromCache: false } });
-    assert.equal(received.length, 1);
-    assert.equal(stopped, 2);
+    const stopRegistrations = adapter.watch('registrations', actor, data => { received = data; }, error => { throw error; });
+    streams[2].error({ code: 'permission-denied' });
+    assert.equal(streams.length, 4);
+    assert.equal(streams[3].query.filter.field, 'userId');
+    streams[3].next({ docs: [{ id: 'event', data: () => ({ status: 'paid' }) }], metadata: { fromCache: false } });
+    assert.equal(received[0].id, 'event');
+    stopOrders();
+    stopRegistrations();
+    assert.equal(stopped, 4);
 });
 
 test('an empty offline cache is not displayed as an empty purchase history', () => {

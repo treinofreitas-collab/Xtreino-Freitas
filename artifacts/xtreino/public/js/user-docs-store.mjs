@@ -133,13 +133,13 @@ export function createUserDocsStore({ read, watch, now = Date.now, ttl = 120000 
 
 export function createUserDocsFirestoreAdapter({ collection, query, where, or, getDocs, onSnapshot, getDb }) {
     const primaryOnly = new Set();
-    const keyFor = user => `${user.uid}\0${user.email || ''}`;
+    const keyFor = (name, user) => `${name}\0${user.uid}\0${user.email || ''}`;
     const permissionDenied = error => String(error?.code || '').replace(/^firestore\//, '') === 'permission-denied';
     const records = snapshot => snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
 
     function scopedQuery(name, user) {
         const conditions = [where('userId', '==', user.uid)];
-        if (!(name === 'orders' && primaryOnly.has(keyFor(user)))) {
+        if (!primaryOnly.has(keyFor(name, user))) {
             conditions.push(where('uid', '==', user.uid));
             if (name === 'registrations') conditions.push(where('membrosUids', 'array-contains', user.uid));
             if (user.email) {
@@ -151,10 +151,11 @@ export function createUserDocsFirestoreAdapter({ collection, query, where, or, g
     }
 
     function fallback(name, user, error) {
-        // Existing order rules authorize ordinary customers by userId only.
-        // Staff may also see legacy purchases matched by email/uid.
-        if (name !== 'orders' || !permissionDenied(error) || primaryOnly.has(keyFor(user))) return false;
-        primaryOnly.add(keyFor(user));
+        // Customer rules authorize records through userId. Keep broader legacy
+        // identity matches when allowed, but retry safely if rules reject them.
+        const key = keyFor(name, user);
+        if (!['orders', 'registrations'].includes(name) || !permissionDenied(error) || primaryOnly.has(key)) return false;
+        primaryOnly.add(key);
         return true;
     }
 

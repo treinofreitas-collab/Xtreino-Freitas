@@ -133,7 +133,8 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/fireba
 import { getAuth, onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, or, getDocs, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
-import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-docs-store.mjs';
+import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-docs-store.mjs?v=customer-order-recovery-1';
+import { isDisplayableEventRegistration } from './js/customer-event-orders.mjs?v=customer-order-recovery-1';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
 let app = null;
@@ -831,30 +832,10 @@ async function loadRecentOrders() {
             return;
         }
         
-        // Orders pagos/confirmados (Mercado Pago)
-        const ordersData = await fetchUserDocs('orders', 5, true);
-        const orders = ordersData.map(d => ({
-            id: d.id,
-            date: d.data.createdAt?.toDate?.() || new Date(),
-            title: d.data.title || d.data.item || 'Pedido',
-            status: d.data.status || 'pending',
-            price: d.data.amount ?? d.data.total ?? 0,
-            eventDate: d.data.date || null,
-            schedule: d.data.schedule || d.data.hour || d.data.time || '',
-            eventType: d.data.eventType || '',
-            paidWithTokens: d.data.paidWithTokens || false,
-            tokensUsed: d.data.tokensUsed || 0
-        })).filter(o => o.status !== 'confirmed');
-
-        // Registrations de eventos: incluir TODOS os pagos com tokens (qualquer status) e os com status 'paid'
+        // Incluir pagamentos confirmados, aprovados, gratuitos e feitos com tokens.
         const regsData = await fetchUserDocs('registrations', 10, true);
         const regEvents = regsData
-            .filter(d => {
-                const paidWithTokens = d.data.paidWithTokens === true;
-                const status = d.data.status || '';
-                // Inclui se pago com tokens OU se status for 'paid'
-                return paidWithTokens || status === 'paid';
-            })
+            .filter(d => isDisplayableEventRegistration(d.data))
             .map(d => ({
                 id: d.id,
                 date: d.data.createdAt?.toDate?.() || new Date(),
@@ -955,7 +936,7 @@ async function loadOrders() {
 
         // Incluir eventos das registrations: tokens e pagamentos aprovados (paid/confirmed/approved)
         const mappedRegs = regsData
-            .filter(d => d.data.paidWithTokens === true || ['paid', 'confirmed', 'approved', 'lisagem_gratis'].includes(d.data.status))
+            .filter(d => isDisplayableEventRegistration(d.data))
             .map(d => ({
                 id: d.id,
                 source: 'registration', // <-- ADICIONADO
@@ -1080,11 +1061,7 @@ async function displayAllOrdersPaginated() {
         // Se for um produto (source === 'order'), excluir
         if (order.source === 'order') return false;
         
-        const status = (order.status || '').toLowerCase();
-        const paidWithTokens = order.paidWithTokens === true;
-        
-        // Para registrations, considerar apenas se estiver pago/confirmado
-        return ['paid', 'confirmed', 'approved', 'lisagem_gratis'].includes(status) || paidWithTokens;
+        return isDisplayableEventRegistration(order);
     });
     
     if (allOrders.length === 0) {
