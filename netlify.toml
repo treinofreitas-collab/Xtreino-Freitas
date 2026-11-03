@@ -7,6 +7,12 @@
   node_bundler = "esbuild"
 
 [[redirects]]
+  from = "/api/spec-logos/registrations/:registrationId/original"
+  to = "/.netlify/functions/spec-logo-registration-original?registrationId=:registrationId"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/intensivo"
   to = "/evento.html?slug=intensivo"
   status = 200

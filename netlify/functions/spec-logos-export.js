@@ -11,6 +11,23 @@ function normalizeHour(value) {
   return ALLOWED_HOURS.has(normalizedHour) ? normalizedHour : null;
 }
 
+function getSpecLogoPathHour(event) {
+  for (const candidate of [event.rawUrl, event.path]) {
+    if (typeof candidate !== "string" || !candidate) continue;
+    try {
+      const segments = new URL(candidate, "https://netlify.invalid").pathname
+        .split("/")
+        .filter(Boolean)
+        .map(segment => decodeURIComponent(segment));
+      const marker = segments.lastIndexOf("spec-logos");
+      if (marker >= 0) return segments[marker + 1] || "";
+    } catch {
+      // Try the next available request path.
+    }
+  }
+  return "";
+}
+
 function jsonResponse(statusCode, body) {
   return {
     statusCode,
@@ -59,7 +76,8 @@ function createHandler({
       return jsonResponse(405, { error: "Método não permitido." });
     }
 
-    const hour = normalizeHour(event.queryStringParameters?.hour);
+    const hour = normalizeHour(event.queryStringParameters?.hour)
+      || normalizeHour(getSpecLogoPathHour(event));
     if (!hour) {
       return jsonResponse(400, { error: "Horário inválido para exportar logos." });
     }
