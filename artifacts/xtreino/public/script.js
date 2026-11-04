@@ -5686,11 +5686,7 @@ async function renderScheduleTimes() {
     window.__schedRenderGeneration = renderGeneration;
 
     // Mostrar loader imediatamente — evita flash de todos os horários antes dos dados carregarem
-    const hasLiveSchedule = window.__schedListenerKey === cacheKey
-        && Object.prototype.hasOwnProperty.call(scheduleCache, cacheKey);
-    if (!hasLiveSchedule) {
-        timesWrap.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm"><i class="fas fa-spinner fa-spin mr-1"></i> Carregando horários...</div>';
-    }
+    timesWrap.innerHTML = '<div class="text-center py-4 text-gray-400 text-sm"><i class="fas fa-spinner fa-spin mr-1"></i> Carregando horários...</div>';
 
     if (!isValidScheduleDate(date, eventType)) {
         stopScheduleAvailabilityListener();
@@ -5728,15 +5724,24 @@ async function renderScheduleTimes() {
     const cfg = getActiveScheduleConfig(eventType);
     const now = Date.now();
     const isToday = date === window.BrasiliaTime.dateKey(now);
+    const eventConfig = getActiveScheduleConfig(eventType);
+    const isModoLiga = [eventType, eventConfig.eventType, eventConfig.label, eventConfig.modo]
+        .some(value => normalizeEventType(value) === 'modo-liga');
+    const slots = [
+        ...(isModoLiga ? [{ value: '0h', label: '00h00' }] : []),
+        ...['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h']
+            .map(value => ({ value, label: value }))
+    ];
 
     // Buscar horários travados E vagas ocupadas em PARALELO antes de renderizar qualquer botão
     let lockedHours = new Set();
     let occupied = {};
+    let unavailableHours = new Set();
     try {
-        const { collection, query, where, getDocs, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         if (renderGeneration !== window.__schedRenderGeneration) return;
 
-        // ── Disparar travas e ocupação em paralelo; inscrições vêm de um único listener por data ──
+        // Ocupação vem do servidor autenticado: o navegador não lê reservas de outras contas.
         window._freeHoursMap = window._freeHoursMap || {};
         window._freeHoursMap[date] = {};
 
@@ -5756,74 +5761,20 @@ async function renderScheduleTimes() {
                 return hours;
             }).catch(() => new Set());
 
-        let initialOccupiedPromise;
-        if (window.__schedListenerKey === cacheKey
-            && Object.prototype.hasOwnProperty.call(scheduleCache, cacheKey)) {
-            initialOccupiedPromise = Promise.resolve(scheduleCache[cacheKey]);
-        } else {
-            if (window.__schedListenerKey !== cacheKey) stopScheduleAvailabilityListener();
-            window.__schedListenerKey = cacheKey;
-
-            if (window.__schedInitialOccupiedKey === cacheKey && window.__schedInitialOccupiedPromise) {
-                initialOccupiedPromise = window.__schedInitialOccupiedPromise;
-            } else {
-                window.__schedInitialOccupiedKey = cacheKey;
-                window.__schedInitialOccupiedPromise = new Promise((resolve) => {
-                    window.__schedResolveInitialOccupied = resolve;
-                    const registrationFilters = [where('date', '==', date)];
-                    if (eventType) registrationFilters.push(where('eventType', '==', eventType));
-                    const registrationQuery = query(collection(window.firebaseDb, 'registrations'), ...registrationFilters);
-
-                    window.__schedUnsub = onSnapshot(
-                        registrationQuery,
-                        (snapshot) => {
-                            if (window.__schedListenerKey !== cacheKey) return;
-                            const occupiedFromSnapshot = countOccupiedRegistrations(snapshot, day, date, eventType);
-                            scheduleCache[cacheKey] = occupiedFromSnapshot;
-                            const resolveInitial = window.__schedResolveInitialOccupied;
-                            if (resolveInitial && window.__schedInitialOccupiedKey === cacheKey) {
-                                window.__schedResolveInitialOccupied = null;
-                                window.__schedInitialOccupiedPromise = null;
-                                window.__schedInitialOccupiedKey = null;
-                                resolveInitial(occupiedFromSnapshot);
-                            } else {
-                                updateOccupiedAndRefreshButtons(day, date, eventType, timesWrap)
-                                    .catch(error => console.warn('[Horários] Falha ao atualizar vagas:', error?.code || 'erro'));
-                            }
-                        },
-                        (error) => {
-                            if (window.__schedListenerKey !== cacheKey) return;
-                            console.warn('[Horários] Não foi possível carregar as inscrições:', error?.code || 'erro');
-                            const resolveInitial = window.__schedResolveInitialOccupied;
-                            window.__schedResolveInitialOccupied = null;
-                            window.__schedInitialOccupiedPromise = null;
-                            window.__schedInitialOccupiedKey = null;
-                            window.__schedUnsub = null;
-                            window.__schedListenerKey = null;
-                            delete scheduleCache[cacheKey];
-                            if (resolveInitial) resolveInitial(null);
-                            if (document.getElementById('schedDate')?.value === date) {
-                                timesWrap.innerHTML = '<div class="text-center py-4 text-red-600 text-sm">Não foi possível verificar as vagas agora. Tente novamente.<br><button type="button" class="mt-2 underline font-semibold" onclick="renderScheduleTimes()">Tentar novamente</button></div>';
-                            }
-                        }
-                    );
-                });
-                initialOccupiedPromise = window.__schedInitialOccupiedPromise;
-            }
-        }
-
-        const [_initOvSnap, _initHlHours, _initOccupied] = await Promise.all([
+        const [_initOvSnap, _initHlHours, availabilitySnapshot] = await Promise.all([
             getDocs(query(collection(window.firebaseDb, 'schedule_overrides'), where('date', '==', date))).catch(() => null),
             _initHlPromise,
-            initialOccupiedPromise
+            fetchScheduleAvailabilitySnapshot(date, eventType, slots.map(slot => slot.value))
         ]);
         if (renderGeneration !== window.__schedRenderGeneration) return;
-        if (_initOccupied === null) {
-            timesWrap.innerHTML = '<div class="text-center py-4 text-red-600 text-sm">Não foi possível verificar as vagas agora. Tente novamente.<br><button type="button" class="mt-2 underline font-semibold" onclick="renderScheduleTimes()">Tentar novamente</button></div>';
-            return;
-        }
-
-        occupied = { ...(scheduleCache[cacheKey] || _initOccupied) };
+        occupied = Object.fromEntries(slots.map(slot => {
+            const hour = parseInt(slot.value, 10);
+            const hourKey = String(hour).padStart(2, '0');
+            if (availabilitySnapshot.availabilityByHour[hourKey] !== true) unavailableHours.add(hour);
+            return [`${day} - ${hour}h`, availabilitySnapshot.occupiedByHour[hourKey]];
+        }));
+        scheduleCache[cacheKey] = occupied;
+        window.__schedListenerKey = cacheKey;
         lockedHours = new Set(_initHlHours);
         if (_initOvSnap) {
             _initOvSnap.forEach(doc => {
@@ -5857,14 +5808,6 @@ async function renderScheduleTimes() {
     }
 
     // ── Renderizar horários em uma única passagem (sem flash) ───────────────
-    const eventConfig = getActiveScheduleConfig(eventType);
-    const isModoLiga = [eventType, eventConfig.eventType, eventConfig.label, eventConfig.modo]
-        .some(value => normalizeEventType(value) === 'modo-liga');
-    const slots = [
-        ...(isModoLiga ? [{ value: '0h', label: '00h00' }] : []),
-        ...['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h']
-            .map(value => ({ value, label: value }))
-    ];
     timesWrap.innerHTML = '';
     let hasVisibleSlot = false;
 
@@ -5881,7 +5824,7 @@ async function renderScheduleTimes() {
         }
 
         // Horário travado pelo admin — ocultar
-        if (lockedHours.has(hour)) continue;
+        if (lockedHours.has(hour) || unavailableHours.has(hour)) continue;
 
         const taken = Math.min(occupied[schedule] || 0, capacity);
         const available = Math.max(0, capacity - taken);
@@ -5937,200 +5880,43 @@ function highlightSelectedSlot(selectedBtn, container) {
     selectedBtn.classList.add('selected');
 }
 async function fetchOccupiedForDate(day, date, eventType) {
-    const map = {};
     try {
-        if (!window.firebaseReady) return map;
-        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const regsRef = collection(window.firebaseDb, 'registrations');
-        // Restringir a leitura à data escolhida. Sem o filtro de data, cada abertura
-        // relia todo o histórico do evento.
-        const validStatuses = new Set(['paid', 'confirmed', 'approved', 'lisagem_gratis']);
-        const registrationFilters = [where('date', '==', date)];
-        if (eventType) registrationFilters.push(where('eventType', '==', eventType));
-        const q = query(regsRef, ...registrationFilters);
-        const snap = await getDocs(q);
-        const parseHourFromRecord = (r) => {
-            // Try multiple fields that may contain hour info
-            const candidates = [];
-            if (r == null) return null;
-            const pushIf = (v) => { if (v !== undefined && v !== null) candidates.push(String(v)); };
-            pushIf(r.schedule);
-            pushIf(r.hour);
-            pushIf(r.time);
-            pushIf(r.selectedTime);
-            pushIf(r.slot);
-            pushIf(r.scheduledTime);
-            pushIf(r.hourString);
-
-            for (const raw of candidates) {
-                if (!raw) continue;
-                // Examples: 'Segunda - 19h', '19:00', '19h', '19', 'Seg - 19h (algum texto)'
-                // Try patterns in order
-                const m1 = raw.match(/(\d{1,2})\s*h/); // 19h
-                if (m1) return parseInt(m1[1], 10);
-                const m2 = raw.match(/(\d{1,2})\s*:\s*\d{2}/); // 19:00
-                if (m2) return parseInt(m2[1], 10);
-                const m3 = raw.match(/\b(\d{1,2})\b/); // any standalone number
-                if (m3) return parseInt(m3[1], 10);
-            }
-            return null;
-        };
-
-        const normalizeToScheduleKey = (r) => {
-            const hh = parseHourFromRecord(r);
-            if (hh == null || Number.isNaN(hh)) return null;
-            const hourStr = `${hh}h`;
-            return `${day} - ${hourStr}`;
-        };
-        snap.forEach(doc => {
-            const r = doc.data();
-            if (!validStatuses.has(r.status)) return; // filtrar status em JS
-            if (r.date !== date || (eventType && r.eventType !== eventType)) return;
-            const key = normalizeToScheduleKey(r);
-            if (!key) return;
-            map[key] = (map[key] || 0) + 1;
-        });
-        // Aplicar travas manuais (schedule_overrides): se locked, marcar como lotado; se extraOccupied, somar
-        try {
-            const { collection: col2, query: q2, where: w2, getDocs: get2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            const overridesRef = col2(window.firebaseDb, 'schedule_overrides');
-
-            // CRÍTICO: Garantir que a data está normalizada (YYYY-MM-DD)
-            const normalizedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-            if (!normalizedDate) {
-                
-                return map;
-            }
-
-            // Buscar APENAS overrides da data específica (normalizada)
-            const allOverrides = await get2(q2(overridesRef, w2('date', '==', normalizedDate)));
-
-            allOverrides.forEach(doc => {
-                const ov = doc.data();
-
-                // VALIDAÇÃO CRÍTICA: Garantir que o override é realmente para esta data
-                const ovDate = ov.date || '';
-                if (ovDate !== normalizedDate) {
-                    
-                    return; // Ignorar override de data diferente
-                }
-
-                const _hnM = String(bookingLockHourValue(ov)).match(/^(\d{1,2})/);
-                const hourNum = _hnM ? parseInt(_hnM[1], 10) : NaN;
-                if (Number.isNaN(hourNum)) return;
-
-                const key = `${day} - ${hourNum}h`;
-                const ovEventType = ov.eventType || null;
-                const shouldApply = !ovEventType || !eventType ||
-                    ovEventType === eventType ||
-                    normalizeEventType(ovEventType) === normalizeEventType(eventType);
-
-                if (shouldApply) {
-                    if (ov.extraOccupied) {
-                        map[key] = (map[key] || 0) + Number(ov.extraOccupied || 0);
-                    }
-                    if (ov.locked) {
-                        // Horário travado pelo admin: usar capacidade do tipo para forçar lotado
-                        const cap = getEventCapacity(eventType, `${hourNum}h`, normalizedDate);
-                        map[key] = cap;
-                        
-                    }
-                }
-            });
-        } catch (err) {
-            
+        const eventConfig = getActiveScheduleConfig(eventType);
+        const isModoLiga = [eventType, eventConfig.eventType, eventConfig.label, eventConfig.modo]
+            .some(value => normalizeEventType(value) === 'modo-liga');
+        const times = [
+            ...(isModoLiga ? ['0h'] : []),
+            ...['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h']
+        ];
+        const snapshot = await fetchScheduleAvailabilitySnapshot(date, eventType, times);
+        const map = {};
+        for (const time of times) {
+            const hour = parseInt(time, 10);
+            const key = String(hour).padStart(2, '0');
+            const scheduleKey = `${day} - ${hour}h`;
+            map[scheduleKey] = snapshot.availabilityByHour[key] === true
+                ? snapshot.occupiedByHour[key]
+                : getEventCapacity(eventType, time, date);
         }
-    } catch (_) { }
-    return map;
+        return map;
+    } catch (error) {
+        console.warn('[Horários] Não foi possível atualizar as vagas:', error?.message || 'erro');
+        return {};
+    }
 }
 
 // Verifica disponibilidade por horário (capacidade por tipo de evento)
 async function checkSlotAvailability(date, schedule, eventType) {
     try {
-        if (!window.firebaseReady) return false;
-        const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        const regsRef = collection(window.firebaseDb, 'registrations');
-        // Limitar a busca ao dia e evento consultados, não ao histórico inteiro do evento.
-        const validStatuses2 = new Set(['paid', 'confirmed', 'approved']);
-        const registrationFilters = [where('date', '==', date)];
-        if (eventType) registrationFilters.push(where('eventType', '==', eventType));
-        const q = query(regsRef, ...registrationFilters);
-        const snap = await getDocs(q);
-        // Normalizar para comparar por hora
-        const wantedHour = parseInt(String(schedule).match(/(\d{1,2})\s*h/)?.[1] || 'NaN', 10);
-        let occupied = 0;
-        snap.forEach(d => {
-            const r = d.data();
-            if (!validStatuses2.has(r.status)) return; // filtrar status em JS
-            if (r.date !== date || (eventType && r.eventType !== eventType)) return;
-            const rawSchedule = String(r.schedule || '');
-            const rawHour = String(r.hour || '');
-            let hh = rawSchedule.match(/(\d{1,2})\s*h/)?.[1]
-                || rawSchedule.match(/(\d{1,2})\s*:/)?.[1]
-                || rawHour.match(/(\d{1,2})/)?.[1];
-            hh = parseInt(hh || 'NaN', 10);
-            if (!Number.isNaN(hh) && hh === wantedHour) occupied++;
-        });
-        // Considerar overrides (horários travados pelo admin)
-        try {
-            const { collection: c2, query: q2, where: w2, getDocs: g2 } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            const ovRef = c2(window.firebaseDb, 'schedule_overrides');
-
-            // CRÍTICO: Garantir que a data está normalizada (YYYY-MM-DD)
-            const normalizedDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
-            if (!normalizedDate) {
-                
-                return occupied < getEventCapacity(eventType, `${wantedHour}h`, date);
-            }
-
-            // Buscar APENAS overrides da data específica (normalizada)
-            const ovSnap = await g2(q2(ovRef, w2('date', '==', normalizedDate)));
-
-            ovSnap.forEach(doc => {
-                const ov = doc.data();
-
-                // VALIDAÇÃO CRÍTICA: Garantir que o override é realmente para esta data
-                const ovDate = ov.date || '';
-                if (ovDate !== normalizedDate) {
-                    
-                    return; // Ignorar override de data diferente
-                }
-
-                const _ohM = String(bookingLockHourValue(ov)).match(/^(\d{1,2})/);
-                const ovHour = _ohM ? parseInt(_ohM[1], 10) : NaN;
-
-                // Verificar se é o horário que queremos
-                if (ovHour === wantedHour) {
-                    const ovEventType = ov.eventType || null;
-
-                    // Aplicar override se:
-                    // 1. Não tem eventType (genérico) OU
-                    // 2. O eventType do override corresponde ao eventType do evento OU
-                    // 3. Não temos eventType na verificação
-                    // 4. Tipos canônicos batem (normalização para retrocompat)
-                    const shouldApply = !ovEventType || !eventType ||
-                        ovEventType === eventType ||
-                        normalizeEventType(ovEventType) === normalizeEventType(eventType);
-
-                    if (shouldApply) {
-                        if (ov.locked) {
-                            // Horário travado pelo admin: marcar como lotado (capacidade total)
-                            occupied = getEventCapacity(eventType, `${wantedHour}h`, normalizedDate);
-                            
-                        }
-                        if (ov.extraOccupied) {
-                            occupied += Number(ov.extraOccupied || 0);
-                        }
-                    }
-                }
-            });
-        } catch (err) {
-            throw err;
-        }
-        const capacity = getEventCapacity(eventType, `${wantedHour}h`, date);
-        // Não permitir compra se ocupado >= capacidade (não pode ultrapassar)
-        return occupied < capacity;
-    } catch (_) { return false; }
+        const hourMatch = String(schedule || '').match(/(\d{1,2})/);
+        if (!hourMatch) return false;
+        const hourKey = String(parseInt(hourMatch[1], 10)).padStart(2, '0');
+        const snapshot = await fetchScheduleAvailabilitySnapshot(date, eventType, [schedule]);
+        return snapshot.availabilityByHour[hourKey] === true;
+    } catch (error) {
+        console.warn('[Disponibilidade] Não foi possível consultar o horário:', error?.message || 'erro');
+        return false;
+    }
 }
 
 function getAvailabilityFailureMessage(status, error = null) {
@@ -6263,6 +6049,32 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
 
     return unavailable(getAvailabilityFailureMessage(0, error));
   }
+}
+
+async function fetchScheduleAvailabilitySnapshot(date, eventType, selectedTimes) {
+    const result = await checkMultipleSlotAvailability(date, selectedTimes, eventType, 1, []);
+    if (!result || result.reason === 'verification_failed') {
+        throw new Error(result?.message || 'Não foi possível verificar as vagas agora.');
+    }
+
+    const availabilityByHour = result.availabilityByHour;
+    const occupiedByHour = result.allocation?.occupiedByHour;
+    const hourKeyFor = value => {
+        const match = String(value || '').match(/(\d{1,2})(?:\s*h|\s*:|$)/i);
+        return match ? String(parseInt(match[1], 10)).padStart(2, '0') : null;
+    };
+    if (!availabilityByHour || typeof availabilityByHour !== 'object'
+        || !occupiedByHour || typeof occupiedByHour !== 'object') {
+        throw new Error(result.message || 'O servidor não retornou a disponibilidade dos horários.');
+    }
+    for (const selectedTime of selectedTimes) {
+        const key = hourKeyFor(selectedTime);
+        if (!key || typeof availabilityByHour[key] !== 'boolean'
+            || !Number.isInteger(occupiedByHour[key]) || occupiedByHour[key] < 0) {
+            throw new Error('O servidor não retornou a disponibilidade completa dos horários.');
+        }
+    }
+    return { availabilityByHour, occupiedByHour };
 }
 
 

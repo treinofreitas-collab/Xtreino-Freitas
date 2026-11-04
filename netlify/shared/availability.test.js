@@ -82,9 +82,32 @@ test("availability returns slot totals and duplicate counts without exposing tea
   assert.deepEqual(result.allocation, {
     slotCountsByHour: { "17": 1 },
     maxSlotsByHour: { "17": 7 },
+    occupiedByHour: { "17": 1 },
     duplicateCounts: [{ "17": 2 }],
   });
   assert.doesNotMatch(JSON.stringify(result), /captain@example\.com|Time Alpha/);
+});
+
+test("availability returns per-hour status and aggregate counts even when one requested hour is full", async () => {
+  const db = database({
+    ...catalog,
+    "adminEvents/custom-event": { vagas: 1, eventType: "treino-freitas", status: "Aberto" },
+    "registrations/full-hour": {
+      ...registration,
+      schedule: "Quarta - 17h",
+      status: "paid",
+      slotNumber: 2,
+    },
+  });
+  const result = await checkAvailability(db, {
+    ...request,
+    selectedTimes: ["Quarta - 17h", "Quarta - 18h"],
+  });
+
+  assert.equal(result.available, false);
+  assert.deepEqual(result.availabilityByHour, { "17": false, "18": true });
+  assert.deepEqual(result.allocation.occupiedByHour, { "17": 1, "18": 0 });
+  assert.match(result.message, /Não há vagas suficientes às 17h/);
 });
 
 test("availability rejects malformed team candidates", () => {
@@ -259,6 +282,7 @@ test("endpoint returns a strict boolean contract and performs no writes", async 
   assert.deepEqual(body.allocation, {
     slotCountsByHour: { "17": 0 },
     maxSlotsByHour: { "17": 0 },
+    occupiedByHour: { "17": 0 },
     duplicateCounts: [],
   });
   assert.equal((await handler({ httpMethod: "GET" })).statusCode, 405);

@@ -185,9 +185,7 @@ async function checkAvailability(db, body) {
     db.collection("event_hour_locks").get(),
     Promise.all(types.map(type => db.collection("event_global_locks").doc(type).get())),
   ]);
-  if (globalLocks.some(lock => lock.exists && lock.data().locked === true)) {
-    return { available: false, message: "Este evento está temporariamente suspenso." };
-  }
+  const globalLocked = globalLocks.some(lock => lock.exists && lock.data().locked === true);
   const applies = record => {
     const recordType = record.eventType || record.event_type || "";
     if (!recordType) return true;
@@ -198,6 +196,7 @@ async function checkAvailability(db, body) {
   const counts = {};
   const slotCountsByHour = Object.fromEntries(hours.map(hour => [String(hour).padStart(2, "0"), 0]));
   const maxSlotsByHour = Object.fromEntries(hours.map(hour => [String(hour).padStart(2, "0"), 0]));
+  const occupiedByHour = Object.fromEntries(hours.map(hour => [String(hour).padStart(2, "0"), 0]));
   const duplicateCounts = teamCandidates.map(() =>
     Object.fromEntries(hours.map(hour => [String(hour).padStart(2, "0"), 0])),
   );
@@ -223,7 +222,10 @@ async function checkAvailability(db, body) {
       maxSlotsByHour[hourKey] = Math.max(maxSlotsByHour[hourKey], slotNumber);
     }
 
-    if (ACTIVE_STATUSES.has(record.status)) counts[hour] = (counts[hour] || 0) + 1;
+    if (ACTIVE_STATUSES.has(record.status)) {
+      counts[hour] = (counts[hour] || 0) + 1;
+      occupiedByHour[hourKey] += 1;
+    }
 
     const teamName = normalizedTeamName(record.teamName);
     const email = String(record.email || "").trim().toLowerCase();
@@ -236,7 +238,15 @@ async function checkAvailability(db, body) {
     }
   }
 
+  const availabilityByHour = {};
+  let unavailableMessage = globalLocked ? "Este evento está temporariamente suspenso." : "";
   for (const hour of hours) {
+    const hourKey = String(hour).padStart(2, "0");
+    if (globalLocked) {
+      availabilityByHour[hourKey] = false;
+      continue;
+    }
+
     const locked = hourLocks.docs.some(doc => {
       const record = doc.data();
       return applies(record) && hourOf(record.hour) === hour && record.locked === true;
@@ -244,7 +254,9 @@ async function checkAvailability(db, body) {
     const relevantOverrides = overrides.docs.map(doc => doc.data())
       .filter(record => applies(record) && (hourOf(record.hour) ?? hourOf(record.hh)) === hour);
     if (locked || relevantOverrides.some(record => record.locked === true)) {
-      return { available: false, message: `O horário ${hour}h está bloqueado pelo administrador.` };
+      availabilityByHour[hourKey] = false;
+      unavailableMessage ||= `O horário ${hour}h está bloqueado pelo administrador.`;
+      continue;
     }
     let defaultCapacity = DEFAULT_CAPACITIES[canonicalType] || 12;
     if (canonicalType === "semanal-freitas" && hour === 22) defaultCapacity = 4;
@@ -252,13 +264,17 @@ async function checkAvailability(db, body) {
         && ["2024-11-22", "2024-11-23", "2025-11-22", "2025-11-23"].includes(date)) defaultCapacity = 3;
     const capacity = Number(config?.vagas) > 0 ? Number(config.vagas) : defaultCapacity;
     const extra = relevantOverrides.reduce((total, record) => total + Math.max(0, Number(record.extraOccupied) || 0), 0);
-    if ((counts[hour] || 0) + extra + numberOfTeams > capacity) {
-      return { available: false, message: `Não há vagas suficientes às ${hour}h para ${numberOfTeams} time(s). Escolha outro horário ou reduza os times.` };
-    }
+    const available = (counts[hour] || 0) + extra + numberOfTeams <= capacity;
+    availabilityByHour[hourKey] = available;
+    if (!available) unavailableMessage ||= `Não há vagas suficientes às ${hour}h para ${numberOfTeams} time(s). Escolha outro horário ou reduza os times.`;
   }
+
+  const available = Object.values(availabilityByHour).every(Boolean);
   return {
-    available: true,
-    allocation: { slotCountsByHour, maxSlotsByHour, duplicateCounts },
+    available,
+    availabilityByHour,
+    ...(unavailableMessage ? { message: unavailableMessage } : {}),
+    allocation: { slotCountsByHour, maxSlotsByHour, occupiedByHour, duplicateCounts },
   };
 }
 
