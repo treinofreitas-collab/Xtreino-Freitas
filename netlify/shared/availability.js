@@ -105,6 +105,10 @@ function normalizedTeamName(value) {
 function validateRequest(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) invalid("Dados da reserva inválidos.");
   const { date, eventType, selectedTimes } = body;
+  if (body.availabilitySnapshot != null && typeof body.availabilitySnapshot !== "boolean") {
+    invalid("Consulta de disponibilidade inválida.");
+  }
+  const availabilitySnapshot = body.availabilitySnapshot === true;
   if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)
       || Number.isNaN(new Date(`${date}T00:00:00Z`).getTime())
       || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) invalid("Data inválida.");
@@ -113,7 +117,8 @@ function validateRequest(body) {
   if (rawAdminEventId != null && (typeof rawAdminEventId !== "string"
       || !rawAdminEventId.trim() || rawAdminEventId.includes("/"))) invalid("Evento inválido.");
   const adminEventId = typeof rawAdminEventId === "string" ? rawAdminEventId.trim() : "";
-  if (!Array.isArray(selectedTimes) || selectedTimes.length < 1 || selectedTimes.length > 10
+  const maxRequestedHours = availabilitySnapshot ? 11 : 10;
+  if (!Array.isArray(selectedTimes) || selectedTimes.length < 1 || selectedTimes.length > maxRequestedHours
       || selectedTimes.some(time => typeof time !== "string" || time.length > 80)) invalid("Selecione horários válidos.");
   const hours = selectedTimes.map(hourOf);
   if (hours.some(hour => hour == null || hour < 0 || hour > 23)
@@ -136,18 +141,22 @@ function validateRequest(body) {
     }
     return { name: name.trim(), email: email.trim().toLowerCase() };
   });
+  if (availabilitySnapshot && (numberOfTeams !== 1 || teamCandidates.length > 0)) {
+    invalid("Consulta de disponibilidade inválida.");
+  }
   return {
     date,
     eventType,
     hours,
     numberOfTeams,
     teamCandidates,
+    availabilitySnapshot,
     ...(adminEventId ? { adminEventId } : {}),
   };
 }
 
 async function checkAvailability(db, body) {
-  const { date, eventType, adminEventId, hours, numberOfTeams, teamCandidates } = validateRequest(body);
+  const { date, eventType, adminEventId, hours, numberOfTeams, teamCandidates, availabilitySnapshot } = validateRequest(body);
   let catalog = await db.collection("adminEvents").doc(adminEventId || eventType).get();
   if (!catalog.exists && !adminEventId) {
     const matches = await db.collection("adminEvents").where("eventType", "==", eventType).limit(1).get();
@@ -168,6 +177,9 @@ async function checkAvailability(db, body) {
   const isModoLiga = [
     eventType, config?.eventType, config?.name, config?.label, config?.title, config?.modo,
   ].some(isModoLigaType);
+  if (hours.length > 10 && (!availabilitySnapshot || !isModoLiga)) {
+    invalid("Selecione no máximo 10 horários para esta reserva.");
+  }
   if (!isModoLiga && hours.includes(0)) invalid("O horário 00h00 está disponível apenas no Modo Liga.");
   const canonicalType = isModoLiga ? "modo-liga" : (config?.eventType || eventType);
   const isIntensivo = isIntensivoFreitas(config);

@@ -5945,7 +5945,7 @@ function getAvailabilityFailureMessage(status, error = null) {
 }
 
 // Verifica disponibilidade para múltiplos horários e times
-async function checkMultipleSlotAvailability(date, selectedTimes, eventType, numberOfTeams, teamCandidates = []) {
+async function checkMultipleSlotAvailability(date, selectedTimes, eventType, numberOfTeams, teamCandidates = [], options = {}) {
   const unavailable = (message = 'Não foi possível confirmar as vagas. Nenhuma cobrança foi iniciada. Tente novamente.') => ({
     available: false,
     reason: 'verification_failed',
@@ -5984,7 +5984,8 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
             name: String(team?.name || '').trim(),
             email: String(team?.email || '').trim().toLowerCase()
           })) : [],
-          adminEventId: document.getElementById('scheduleModal')?.dataset?.adminEventId || null
+          adminEventId: document.getElementById('scheduleModal')?.dataset?.adminEventId || null,
+          ...(options?.availabilitySnapshot === true ? { availabilitySnapshot: true } : {})
         }),
         signal: _ctrl.signal
       });
@@ -6052,7 +6053,9 @@ async function checkMultipleSlotAvailability(date, selectedTimes, eventType, num
 }
 
 async function fetchScheduleAvailabilitySnapshot(date, eventType, selectedTimes) {
-    const result = await checkMultipleSlotAvailability(date, selectedTimes, eventType, 1, []);
+    const result = await checkMultipleSlotAvailability(
+        date, selectedTimes, eventType, 1, [], { availabilitySnapshot: true }
+    );
     if (!result || result.reason === 'verification_failed') {
         throw new Error(result?.message || 'Não foi possível verificar as vagas agora.');
     }

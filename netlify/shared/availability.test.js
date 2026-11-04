@@ -303,6 +303,41 @@ test("Modo Liga accepts midnight reservations on weekends", async () => {
   assert.equal((await checkAvailability(db, saturdayMidnightLiga)).available, true);
 });
 
+test("Modo Liga availability snapshot can check all 11 calendar hours without raising the booking limit", async () => {
+  const selectedTimes = ["0h", "14h", "15h", "16h", "17h", "18h", "19h", "20h", "21h", "22h", "23h"];
+  const snapshotRequest = {
+    ...saturdayMidnightLiga,
+    selectedTimes,
+    availabilitySnapshot: true,
+  };
+  assert.equal(validateRequest(snapshotRequest).hours.length, 11);
+  assert.throws(() => validateRequest({ ...snapshotRequest, availabilitySnapshot: false }), /horários válidos/);
+  assert.throws(() => validateRequest({
+    ...snapshotRequest,
+    teamCandidates: [{ name: "Team", email: "team@example.com" }],
+  }), /Consulta de disponibilidade inválida/);
+
+  const db = database({
+    "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
+    "registrations/taken": {
+      date: saturdayMidnightLiga.date,
+      eventType: "modo-liga",
+      schedule: "Sábado - 20h",
+      status: "paid",
+    },
+  });
+  const result = await checkAvailability(db, snapshotRequest);
+  assert.equal(result.available, true);
+  assert.deepEqual(Object.keys(result.availabilityByHour).sort(), selectedTimes.map(time =>
+    String(parseInt(time, 10)).padStart(2, "0")).sort());
+  assert.equal(result.allocation.occupiedByHour["20"], 1);
+
+  await assert.rejects(checkAvailability(database(catalog), {
+    ...snapshotRequest,
+    eventType: "custom-event",
+  }), /no máximo 10 horários/);
+});
+
 test("Modo Liga applies the same per-hour lock check to 19h and 00h", async () => {
   const catalog = {
     "adminEvents/modo-liga": { eventType: "modo-liga", status: "Aberto", vagas: 15 },
