@@ -7830,6 +7830,19 @@ function forgetSchedulePixCheckout(externalReference) {
     }
 }
 
+function renderAndTrackExistingSchedulePix(checkout) {
+    const args = Array.isArray(checkout?.modalArgs) ? checkout.modalArgs : [];
+    const pixData = checkout?.pixData || args[0];
+    const externalReference = checkout?.externalReference || args[2];
+    const assignedSlotsData = Array.isArray(args[3]) ? args[3] : [];
+    const cfg = args[4] || {};
+    const finalPrice = args[5];
+    renderSchedulePixFallback(pixData, cfg, finalPrice);
+    if (externalReference) {
+        startSchedulePixFallbackStatusChecks(externalReference, assignedSlotsData, cfg);
+    }
+}
+
 function handleSchedulePixSelectionChange() {
     if (!window._schedulePixPending && !window._schedulePixPaid) return false;
     const previousKey = window._schedulePixSelectionKey;
@@ -7844,7 +7857,11 @@ function handleSchedulePixSelectionChange() {
         window._schedulePixPaid = false;
         setSchedulePixCheckoutState('pending');
         if (Array.isArray(existingCheckout.modalArgs) && typeof window.openPixModal === 'function') {
-            window.openPixModal(...existingCheckout.modalArgs);
+            try {
+                window.openPixModal(...existingCheckout.modalArgs);
+            } catch (_) {
+                renderAndTrackExistingSchedulePix(existingCheckout);
+            }
         }
         showToast(
             'info',
@@ -8011,7 +8028,7 @@ async function submitSchedule(e, useTokens = false) {
                 try {
                     window.openPixModal(...existingSchedulePix.modalArgs);
                 } catch (_) {
-                    renderSchedulePixFallback(existingSchedulePix.pixData, existingSchedulePix.modalArgs[4], existingSchedulePix.modalArgs[5]);
+                    renderAndTrackExistingSchedulePix(existingSchedulePix);
                 }
             }
             document.getElementById('pixPaymentModal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });

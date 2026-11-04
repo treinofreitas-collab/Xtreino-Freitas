@@ -388,6 +388,32 @@ test('automatic Pix checks continue during review and after tab resume', async (
     assert.equal(listeners.has('visibilitychange'), false);
 });
 
+test('reopening a saved Pix uses automatic checks when the full modal fails', () => {
+    const helperStart = script.indexOf('function renderAndTrackExistingSchedulePix(');
+    const helperEnd = script.indexOf('\nfunction handleSchedulePixSelectionChange', helperStart);
+    const helper = script.slice(helperStart, helperEnd);
+    const calls = [];
+    const context = vm.createContext({
+        renderSchedulePixFallback: (...args) => calls.push({ action: 'render', args }),
+        startSchedulePixFallbackStatusChecks: (...args) => calls.push({ action: 'poll', args }),
+    });
+    vm.runInContext(`${helper}\nglobalThis.restore = renderAndTrackExistingSchedulePix;`, context);
+    const slotData = [{ time: '19h' }];
+    const cfg = { label: 'Treino Freitas' };
+    context.restore({
+        externalReference: 'ref_reopened',
+        pixData: { qr_code: 'pix-code' },
+        modalArgs: [{ qr_code: 'fallback-code' }, [], 'ref_args', slotData, cfg, 1],
+    });
+
+    assert.deepEqual(calls.map(call => call.action), ['render', 'poll']);
+    assert.equal(calls[0].args[0].qr_code, 'pix-code');
+    assert.deepEqual(calls[0].args.slice(1), [cfg, 1]);
+    assert.deepEqual(calls[1].args, ['ref_reopened', slotData, cfg]);
+    assert.ok(script.includes('renderAndTrackExistingSchedulePix(existingCheckout)'));
+    assert.ok(script.includes('renderAndTrackExistingSchedulePix(existingSchedulePix)'));
+});
+
 test('closing the successful Pix confirmation does not redirect to Minha Conta', () => {
     const closeStart = script.indexOf('window.closePixModal = function() {');
     const closeEnd = script.indexOf('\n};', closeStart);
