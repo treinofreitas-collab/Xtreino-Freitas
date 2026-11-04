@@ -8232,6 +8232,7 @@ async function submitSchedule(e, useTokens = false) {
         // --- SALVAR NO FIRESTORE ---
         let externalRef = `schedule_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         let regIds = [];
+        let assignedSlotsData = [];
         let _prefFetchPromise = null; // requisição preparada; enviada após persistir as reservas
 
         try {
@@ -8250,7 +8251,6 @@ async function submitSchedule(e, useTokens = false) {
             const mpIsLiga = (cfg.modo || '').toUpperCase().includes('LIGA');
             const mpVagas = cfg.vagas || 0;
             const mpGrupos = Math.max(1, cfg.grupos || 1);
-            const assignedSlotsData = [];
 
             const _schedPairs = [];
             for (const d of datesToUse) {

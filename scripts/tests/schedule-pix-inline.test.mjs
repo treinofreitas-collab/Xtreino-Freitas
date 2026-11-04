@@ -159,6 +159,12 @@ test('a created Pix stays on the schedule screen and blocks duplicate submission
     assert.match(submit, /currentSelectionKey\s*===\s*window\._schedulePixSelectionKey/);
     assert.match(submit, /getActiveSchedulePixCheckout\(scheduleSelectionKey\)/);
     assert.ok(paymentStart >= 0);
+    const assignedSlotsDeclaration = submit.indexOf('let assignedSlotsData = [];');
+    const firestoreSaveTry = submit.indexOf('try {', submit.indexOf('// --- SALVAR NO FIRESTORE ---'));
+    const pixModalArgsUse = submit.indexOf('(Array.isArray(assignedSlotsData) ? assignedSlotsData : [])');
+    assert.ok(assignedSlotsDeclaration >= 0 && assignedSlotsDeclaration < firestoreSaveTry);
+    assert.ok(firestoreSaveTry < pixModalArgsUse);
+    assert.doesNotMatch(submit, /const assignedSlotsData = \[\]/);
     assert.match(paymentFlow, /renderSchedulePixFallback\(data, cfg, finalPrice\)/);
     assert.match(paymentFlow, /setSchedulePixCheckoutState/);
     assert.doesNotMatch(paymentFlow, /closeScheduleModal\(\)/);
