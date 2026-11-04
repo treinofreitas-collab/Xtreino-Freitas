@@ -32,7 +32,14 @@ export function createUserDocsStore({ read, watch, now = Date.now, ttl = 120000 
         const session = epoch;
         const requestUser = { ...user };
         const entry = entryFor(name);
-        if (entry.initial) await entry.initial;
+        if (entry.initial) {
+            try {
+                await entry.initial;
+            } catch (error) {
+                // A failed live subscription must not prevent a fresh one-shot read.
+                if (session !== epoch || error?.code === 'session-changed') throw canceled();
+            }
+        }
         if (session !== epoch) throw canceled();
         if (!entry.data || entry.expires <= now()) {
             if (!entry.pending) {
@@ -64,10 +71,10 @@ export function createUserDocsStore({ read, watch, now = Date.now, ttl = 120000 
             .slice(0, max);
     }
 
-    function startLive(onChange, onError) {
+    function startLive(onChange, onError, collections = ['orders', 'registrations']) {
         if (!user || subscriptions.size) return;
         const session = epoch;
-        for (const name of ['orders', 'registrations']) {
+        for (const name of collections) {
             const entry = entryFor(name);
             let active = true;
             let resolveInitial, rejectInitial;

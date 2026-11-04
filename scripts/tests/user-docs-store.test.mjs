@@ -90,6 +90,30 @@ test('leaving the tab ignores late snapshots and cancels unresolved initial load
     assert.deepEqual(await store.fetch('orders'), []);
 });
 
+test('a failed live listener falls back to a one-shot read for only the requested collection', async t => {
+    const watched = [];
+    const fail = {};
+    let reads = 0;
+    const store = createUserDocsStore({
+        read: async name => { reads++; return [row(`${name}-read`, '2026-11-04')]; },
+        watch: (name, user, next, onError) => {
+            watched.push(name);
+            fail[name] = onError;
+            return () => {};
+        },
+    });
+    t.after(() => store.stopLive());
+    store.setUser(actor);
+    store.startLive(() => {}, () => {}, ['registrations']);
+    const loading = store.fetch('registrations');
+    await pause();
+
+    assert.deepEqual(watched, ['registrations']);
+    fail.registrations(Object.assign(new Error('offline'), { code: 'unavailable' }));
+    assert.equal((await loading)[0].id, 'registrations-read');
+    assert.equal(reads, 1);
+});
+
 test('logout/account switch clears history, closes subscriptions and rejects old in-flight reads', async () => {
     const request = deferred();
     let oldUser, reads = 0;

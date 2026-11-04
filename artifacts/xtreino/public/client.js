@@ -133,7 +133,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/fireba
 import { getAuth, onAuthStateChanged, signOut, browserLocalPersistence, setPersistence } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, or, getDocs, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
-import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-docs-store.mjs?v=customer-order-recovery-1';
+import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-docs-store.mjs?v=customer-orders-query-isolation-2';
 import { isDisplayableEventRegistration } from './js/customer-event-orders.mjs?v=customer-order-recovery-1';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
@@ -187,6 +187,7 @@ const userDocsStore = createUserDocsStore({
 });
 let _ordersLoadGeneration = 0;
 let _ordersRenderTimer = null;
+let _ordersLiveErrorCode = '';
 let _pendingReconcilePromise = null;
 let _pendingReconciledAt = 0;
 
@@ -258,6 +259,7 @@ async function checkAuthState() {
             userDocsAdapter.reset();
             _stopOrdersAutoRefresh();
             _ordersLoadGeneration++;
+            _ordersLiveErrorCode = '';
             _pendingReconcilePromise = null;
             _pendingReconciledAt = 0;
             allOrdersData = [];
@@ -909,31 +911,10 @@ async function loadOrders() {
     const generation = ++_ordersLoadGeneration;
     const uid = currentUser?.uid;
     try {
-        const [ordersData, regsData] = await Promise.all([
-            fetchUserDocs('orders', 200, true),
-            fetchUserDocs('registrations', 200, true)
-        ]);
+        // Esta aba mostra somente inscrições em eventos. Não consulte pedidos
+        // da loja aqui: uma falha naquela coleção não pode bloquear os eventos.
+        const regsData = await fetchUserDocs('registrations', 200, true);
         if (generation !== _ordersLoadGeneration || uid !== currentUser?.uid) return;
-        
-        const mappedOrders = ordersData.map(d => ({
-            id: d.id,
-            source: 'order', // <-- ADICIONADO
-            date: d.data.createdAt?.toDate?.() || new Date(),
-            title: d.data.title || d.data.item || 'Pedido',
-            status: d.data.status || 'pending',
-            price: d.data.amount ?? d.data.total ?? 0,
-            eventDate: d.data.date || null,
-            schedule: d.data.schedule || d.data.hour || d.data.time || '',
-            teamName: d.data.teamName || d.data.team || d.data.name || '',
-            email: d.data.email || null,
-            contact: d.data.contact || d.data.phone || null,
-            eventType: d.data.eventType || '',
-            paidWithTokens: d.data.paidWithTokens || false,
-            tokensUsed: d.data.tokensUsed || 0,
-            whatsappLink: d.data.whatsappLink || d.data.groupLink || d.data.group_link || null
-        }));
-        
-
         // Incluir eventos das registrations: tokens e pagamentos aprovados (paid/confirmed/approved)
         const mappedRegs = regsData
             .filter(d => isDisplayableEventRegistration(d.data))
@@ -956,20 +937,25 @@ async function loadOrders() {
             }));
         
 
-        allOrdersData = [...mappedOrders, ...mappedRegs]
+        allOrdersData = mappedRegs
           .sort((a,b)=> (b.date?.getTime?.()||0) - (a.date?.getTime?.()||0));
-        
-        
-
         await displayAllOrdersPaginated();
         const status = document.getElementById('ordersSyncStatus');
-        if (status) status.textContent = 'Pedidos carregados. Atualização automática quando houver mudanças.';
+        if (status) {
+            status.textContent = _ordersLiveErrorCode
+                ? `Pedidos carregados. Atualização automática indisponível (${_ordersLiveErrorCode}); toque em “Atualizar pedidos”.`
+                : 'Pedidos carregados. Atualização automática quando houver mudanças.';
+        }
     } catch (error) {
         if (generation !== _ordersLoadGeneration || uid !== currentUser?.uid) return;
+        const code = String(error?.code || '').replace(/^firestore\//, '');
+        console.error('[Meus Pedidos] falha ao carregar inscrições', { code: code || 'unknown' });
         const list = document.getElementById('allOrders');
         if (list) list.innerHTML = '<p class="text-red-600 text-center">Não foi possível carregar seus pedidos. Use “Atualizar pedidos” para tentar novamente.</p>';
         const status = document.getElementById('ordersSyncStatus');
-        if (status) status.textContent = 'Atualização indisponível. Tente novamente.';
+        if (status) status.textContent = code
+            ? `Atualização indisponível (${code}). Tente novamente.`
+            : 'Atualização indisponível. Tente novamente.';
     }
 }
 
@@ -3820,15 +3806,24 @@ document.addEventListener('visibilitychange', () => {
 
 function _startOrdersAutoRefresh() {
     if (!isOrdersVisible() || !currentUser?.uid) return;
+    _ordersLiveErrorCode = '';
     userDocsStore.startLive(() => {
+        _ordersLiveErrorCode = '';
         clearTimeout(_ordersRenderTimer);
         _ordersRenderTimer = setTimeout(() => {
             if (isOrdersVisible()) loadOrders().catch(console.error);
         }, 150);
-    }, () => {
+    }, error => {
+        _ordersLiveErrorCode = String(error?.code || '').replace(/^firestore\//, '');
+        console.warn('[Meus Pedidos] atualização automática falhou', {
+            collection: 'registrations',
+            code: _ordersLiveErrorCode || 'unknown'
+        });
         const status = document.getElementById('ordersSyncStatus');
-        if (status) status.textContent = 'Não foi possível manter os pedidos atualizados. Clique em “Atualizar pedidos”.';
-    });
+        if (status) status.textContent = _ordersLiveErrorCode
+            ? `Atualização automática indisponível (${_ordersLiveErrorCode}). Clique em “Atualizar pedidos”.`
+            : 'Não foi possível manter os pedidos atualizados. Clique em “Atualizar pedidos”.';
+    }, ['registrations']);
 }
 function _stopOrdersAutoRefresh() {
     clearTimeout(_ordersRenderTimer);
