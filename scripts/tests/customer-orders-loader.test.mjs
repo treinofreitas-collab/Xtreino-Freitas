@@ -33,6 +33,6 @@ test('event orders subscribe only to registration changes', () => {
 });
 
 test('the client and its updated cache are versioned together', () => {
-  assert.match(clientPage, /client\.js\?v=customer-orders-query-isolation-2/);
+  assert.match(clientPage, /client\.js\?v=pending-dashboard-qr-3/);
   assert.match(source, /user-docs-store\.mjs\?v=customer-orders-query-isolation-2/);
 });

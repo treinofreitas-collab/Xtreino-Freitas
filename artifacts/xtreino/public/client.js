@@ -253,6 +253,9 @@ async function checkAuthState() {
             pendingPaymentsGeneration += 1;
             if (pendingPaymentsExpiryTimer) clearTimeout(pendingPaymentsExpiryTimer);
             pendingPaymentsExpiryTimer = null;
+            todayRegistrationsGeneration += 1;
+            if (todayRegistrationsExpiryTimer) clearTimeout(todayRegistrationsExpiryTimer);
+            todayRegistrationsExpiryTimer = null;
             const pendingSection = document.getElementById('pendingPaymentsSection');
             if (pendingSection) pendingSection.style.display = 'none';
             clearEventAccessCache();
@@ -340,6 +343,20 @@ function setupEventListeners() {
                 void loadPendingPayments();
                 return;
             }
+            if (target.matches('[data-resume-pix]')) {
+                void resumePendingPix(target);
+                return;
+            }
+            if (target.matches('[data-copy-pix-code]')) {
+                void copyPendingPixCode(target);
+            }
+        });
+    }
+    const todayRegistrations = document.getElementById('todayRegistrations');
+    if (todayRegistrations) {
+        todayRegistrations.addEventListener('click', event => {
+            const target = event.target?.closest?.('button');
+            if (!target) return;
             if (target.matches('[data-resume-pix]')) {
                 void resumePendingPix(target);
                 return;
@@ -461,6 +478,8 @@ async function loadUserProfile() {
 // Load dashboard
 let pendingPaymentsGeneration = 0;
 let pendingPaymentsExpiryTimer = null;
+let todayRegistrationsExpiryTimer = null;
+let todayRegistrationsGeneration = 0;
 const PENDING_PIX_TTL_MS = 30 * 60 * 1000;
 
 function pendingPaymentTimestampMillis(value) {
@@ -504,6 +523,37 @@ function pendingPaymentExpiryMillis(data = {}) {
     return null;
 }
 
+function filterTodayRegistrations(registrationDocs = [], today, now = Date.now()) {
+    const validStatuses = new Set(['paid', 'confirmed', 'approved', 'pending', 'lisagem_gratis']);
+    return (Array.isArray(registrationDocs) ? registrationDocs : []).flatMap(row => {
+        const data = row?.data && typeof row.data === 'object' ? row.data : row || {};
+        const status = String(data.status || '').toLowerCase();
+        if (String(data.date || '') < today || !validStatuses.has(status)) return [];
+        if (status === 'pending') {
+            const expiresAt = pendingPaymentExpiryMillis(data);
+            if (expiresAt != null && expiresAt <= now) return [];
+        }
+        return [{ id: row?.id || '', ...data, status }];
+    });
+}
+
+function scheduleTodayRegistrationsExpiryReload(registrations, userId) {
+    if (todayRegistrationsExpiryTimer) clearTimeout(todayRegistrationsExpiryTimer);
+    todayRegistrationsExpiryTimer = null;
+    const nextExpiry = (Array.isArray(registrations) ? registrations : [])
+        .filter(row => String(row?.status || '').toLowerCase() === 'pending')
+        .map(pendingPaymentExpiryMillis)
+        .filter(value => Number.isFinite(value) && value > Date.now())
+        .reduce((earliest, value) => Math.min(earliest, value), Infinity);
+    if (!Number.isFinite(nextExpiry)) return;
+
+    const delay = Math.min(Math.max(0, nextExpiry - Date.now() + 50), 2_147_000_000);
+    todayRegistrationsExpiryTimer = setTimeout(() => {
+        todayRegistrationsExpiryTimer = null;
+        if (currentUser?.uid === userId) void loadTodayRegistrations();
+    }, delay);
+}
+
 async function loadDashboard() {
     try {
         // Garantir que o userProfile seja carregado primeiro
@@ -544,16 +594,20 @@ async function loadTodayRegistrations() {
     }
 
     if (!currentUser?.uid) {
+        todayRegistrationsGeneration += 1;
+        if (todayRegistrationsExpiryTimer) clearTimeout(todayRegistrationsExpiryTimer);
+        todayRegistrationsExpiryTimer = null;
         container.innerHTML = '<p style="color:#9ca3af;text-align:center;font-size:13px;padding:4px 0">Faça login para ver suas inscrições.</p>';
         return;
     }
 
+    const requestId = ++todayRegistrationsGeneration;
+    const userId = currentUser.uid;
     try {
         const allRegs = await fetchUserDocs('registrations', 200, false);
-        const validStatuses = new Set(['paid', 'confirmed', 'approved', 'pending', 'lisagem_gratis']);
-        const todayRegs = allRegs
-            .filter(d => d.data.date >= hoje && validStatuses.has(d.data.status || ''))
-            .map(d => ({ id: d.id, ...d.data }));
+        if (requestId !== todayRegistrationsGeneration || currentUser?.uid !== userId) return;
+        const todayRegs = filterTodayRegistrations(allRegs, hoje);
+        scheduleTodayRegistrationsExpiryReload(todayRegs, userId);
 
         // Ordenar por hora do schedule ("14h" → 14)
         const getHour = s => {
@@ -584,28 +638,43 @@ async function loadTodayRegistrations() {
             lisagem_gratis: { label: '🆓 Grátis',    color: '#07b7b4', bg: '#ccfbf1' },
         };
 
+        const renderedPendingReferences = new Set();
         container.innerHTML = todayRegs.map(r => {
             const icon = eventIcons[r.eventType] || '🎮';
-            const s    = statusInfo[r.status] || statusInfo.pending;
+            const status = String(r.status || '').toLowerCase();
+            const s    = statusInfo[status] || statusInfo.pending;
             const schedule = r.schedule || r.hour || '';
+            const externalReference = String(r.external_reference || r.externalReference || '').trim();
+            const canResumePayment = status === 'pending'
+                && /^[a-zA-Z0-9_-]{1,160}$/.test(externalReference)
+                && !renderedPendingReferences.has(externalReference);
+            if (canResumePayment) renderedPendingReferences.add(externalReference);
             // Slot and league letters are internal; show only the customer's event/hour.
             const name = (r.title || r.eventType || r.teamName || 'Evento')
                 .replace(/\s*[-–]\s*(Slot\s*\d+|Letra\s*[A-Za-z]|Vaga\s*#?\d+|Vaga\s*[A-Za-z]|Grupo\s+\d+\s*[•·]\s*Slot\s*\d+)$/i, '');
             return `
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6;last-child:border-bottom:none">
+            <article ${canResumePayment ? 'data-pending-payment-card' : ''} style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6;last-child:border-bottom:none;flex-wrap:wrap">
                 <div style="width:38px;height:38px;background:linear-gradient(135deg,#ede9fe,#dbeafe);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${icon}</div>
                 <div style="flex:1;min-width:0">
                     <div style="font-size:13px;font-weight:800;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
                     <div style="font-size:11px;color:#6b7280;margin-top:2px">${r.date !== hoje ? String(r.date).split('-').reverse().join('/') + ' &bull; ' : ''}${schedule}</div>
-                    ${r.status !== 'pending' ? eventAccessPlaceholder(r.id) : ''}
+                    ${status !== 'pending' ? eventAccessPlaceholder(r.id) : ''}
+                    ${canResumePayment ? `
+                        <button type="button" data-resume-pix data-external-reference="${escapeHtml(externalReference)}"
+                            style="display:block;margin-top:8px;border:0;border-radius:8px;padding:8px 10px;background:#07b7b4;color:#07111f;font-size:11px;font-weight:900;cursor:pointer">
+                            <i class="fas fa-qrcode" style="margin-right:5px"></i>Ver QR Code Pix
+                        </button>
+                        <div data-pending-payment-result role="status" style="margin-top:8px"></div>
+                    ` : ''}
                 </div>
                 <div style="flex-shrink:0">
                     <span style="font-size:10px;font-weight:700;color:${s.color};background:${s.bg};border-radius:6px;padding:3px 8px;white-space:nowrap">${s.label}</span>
                 </div>
-            </div>`;
+            </article>`;
         }).join('');
         await hydrateEventAccessLinks(container);
     } catch (err) {
+        if (requestId !== todayRegistrationsGeneration || currentUser?.uid !== userId) return;
         container.innerHTML = '<p style="color:#9ca3af;text-align:center;font-size:13px;padding:4px 0">Erro ao carregar inscrições.</p>';
     }
 }
@@ -3797,6 +3866,11 @@ function isOrdersVisible() {
 }
 
 document.addEventListener('visibilitychange', () => {
+    const dashboard = document.getElementById('dashboardContent');
+    if (document.visibilityState === 'visible' && currentUser?.uid
+        && dashboard && !dashboard.classList.contains('hidden')) {
+        void loadTodayRegistrations();
+    }
     if (!isOrdersVisible()) _stopOrdersAutoRefresh();
     else {
         _startOrdersAutoRefresh();
