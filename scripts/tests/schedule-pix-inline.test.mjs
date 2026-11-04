@@ -297,8 +297,9 @@ test('schedule Pix invokes slot confirmation only for a server-confirmed payment
     assert.ok(script.includes("authenticatedPaymentFetch('/.netlify/functions/confirm-purchase'"));
     assert.match(
         script,
-        /if \(data\.status === 'paid' \|\| data\.status === 'already_paid'\) \{\s*clearSchedulePixStatusPolling\(\);\s*if \(typeof onPaid === 'function'\) await onPaid\(\);/
+        /if \(data\.status === 'paid' \|\| data\.status === 'already_paid'\) \{\s*await confirmPaid\(\);/
     );
+    assert.match(script, /const confirmPaid = async \(\) => \{[\s\S]*?if \(typeof onPaid === 'function'\) await onPaid\(\);/);
     assert.match(script, /if \(pixConfirmationHandled\) return;/);
     assert.match(script, /showPaidScheduleConfirmation\(assignedSlotsData, cfg, externalRef\)/);
     const confirmationStart = script.indexOf('_pixConfirmFn = async () => {');
@@ -361,6 +362,8 @@ test('automatic Pix checks continue during review and after tab resume', async (
     vm.runInContext(`
         let _pixPollingInterval = null;
         let _pixVisibilityHandler = null;
+        let _pixFirestoreUnsubscribe = null;
+        let _pixStatusPollingGeneration = 0;
         ${helpers}
         globalThis.paidCalls = 0;
     `, context);
@@ -385,6 +388,80 @@ test('automatic Pix checks continue during review and after tab resume', async (
     assert.equal(context.paidCalls, 1);
     assert.ok(timerCalls.some(call => call.delay === 5000));
     assert.ok(timerCalls.some(call => call.cleared === 1));
+    assert.equal(listeners.has('visibilitychange'), false);
+});
+
+test('a paid Firestore registration wakes the open Pix modal and confirms once', async () => {
+    const helperStart = script.indexOf('function clearSchedulePixStatusPolling(');
+    const helperEnd = script.indexOf('\nfunction setSchedulePixCheckoutState', helperStart);
+    const helpers = script.slice(helperStart, helperEnd);
+    const listeners = new Map();
+    const snapshots = [];
+    const responses = [
+        { status: 'pending', ok: true },
+        { status: 'paid', ok: true },
+    ];
+    const requests = [];
+    const timerCalls = [];
+    let nextTimerId = 1;
+    let unsubscribeCount = 0;
+    const context = vm.createContext({
+        window: { firebaseDb: {} },
+        document: {
+            hidden: false,
+            getElementById: () => null,
+            addEventListener: (name, handler) => listeners.set(name, handler),
+            removeEventListener: (name, handler) => {
+                if (listeners.get(name) === handler) listeners.delete(name);
+            },
+        },
+        setInterval: (fn, delay) => {
+            timerCalls.push({ id: nextTimerId, fn, delay });
+            return nextTimerId++;
+        },
+        clearInterval: id => timerCalls.push({ cleared: id }),
+        loadSchedulePixFirestoreApi: async () => ({
+            collection: (_db, path) => path,
+            where: (...args) => args,
+            query: (collection, constraint) => ({ collection, constraint }),
+            onSnapshot: (_query, onNext) => {
+                snapshots.push(onNext);
+                return () => { unsubscribeCount += 1; };
+            },
+        }),
+        authenticatedPaymentFetch: async (_url, options) => {
+            requests.push(JSON.parse(options.body));
+            const response = responses.shift();
+            return { ok: response.ok, json: async () => ({ status: response.status }) };
+        },
+        forgetSchedulePixCheckout: () => {},
+        setSchedulePixCheckoutState: () => {},
+        console: { warn: () => {} },
+    });
+    vm.runInContext(`
+        let _pixPollingInterval = null;
+        let _pixVisibilityHandler = null;
+        let _pixFirestoreUnsubscribe = null;
+        let _pixStatusPollingGeneration = 0;
+        ${helpers}
+        globalThis.paidCalls = 0;
+    `, context);
+
+    await context.startSchedulePixStatusChecks('ref_firestore_wakeup', async () => {
+        context.paidCalls += 1;
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(snapshots.length, 1);
+    snapshots[0]({ docs: [{ data: () => ({ status: 'paid' }) }] });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(requests.length, 2);
+    assert.deepEqual(requests, [
+        { external_reference: 'ref_firestore_wakeup' },
+        { external_reference: 'ref_firestore_wakeup' },
+    ]);
+    assert.equal(context.paidCalls, 1);
+    assert.equal(unsubscribeCount, 1);
     assert.equal(listeners.has('visibilitychange'), false);
 });
 

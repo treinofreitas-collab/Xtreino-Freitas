@@ -10748,13 +10748,24 @@ let _pixCountdownInterval = null;
 let _pixCancelFn = null;
 let _pixConfirmFn = null;
 let _pixVisibilityHandler = null;
+let _pixFirestoreUnsubscribe = null;
+let _pixStatusPollingGeneration = 0;
+
+function loadSchedulePixFirestoreApi() {
+    return import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+}
 
 function clearSchedulePixStatusPolling() {
+    _pixStatusPollingGeneration += 1;
     clearInterval(_pixPollingInterval);
     _pixPollingInterval = null;
     if (_pixVisibilityHandler) {
         document.removeEventListener?.('visibilitychange', _pixVisibilityHandler);
         _pixVisibilityHandler = null;
+    }
+    if (_pixFirestoreUnsubscribe) {
+        _pixFirestoreUnsubscribe();
+        _pixFirestoreUnsubscribe = null;
     }
 }
 
@@ -10783,9 +10794,64 @@ function startSchedulePixFallbackStatusChecks(externalRef, assignedSlotsData, cf
 
 function startSchedulePixStatusChecks(externalRef, onPaid) {
     clearSchedulePixStatusPolling();
+    const generation = _pixStatusPollingGeneration;
     let requestInFlight = false;
+    let recheckRequested = false;
+    let firestoreWatchStarted = false;
+    let firestoreWatchStarting = false;
+    let paymentHandled = false;
+    const confirmPaid = async () => {
+        if (paymentHandled || generation !== _pixStatusPollingGeneration) return;
+        paymentHandled = true;
+        clearSchedulePixStatusPolling();
+        if (typeof onPaid === 'function') await onPaid();
+    };
+
+    const startRegistrationWatcher = async () => {
+        if (firestoreWatchStarted || firestoreWatchStarting || !window.firebaseDb || !externalRef) return;
+        firestoreWatchStarting = true;
+        try {
+            const { collection, query, where, onSnapshot } = await loadSchedulePixFirestoreApi();
+            if (generation !== _pixStatusPollingGeneration) return;
+            const registrationsQuery = query(
+                collection(window.firebaseDb, 'registrations'),
+                where('external_reference', '==', externalRef)
+            );
+            const unsubscribe = onSnapshot(
+                registrationsQuery,
+                snapshot => {
+                    if (generation !== _pixStatusPollingGeneration) return;
+                    const registrationPaid = snapshot.docs.some(doc => doc.data()?.status === 'paid');
+                    if (registrationPaid) void checkPixStatus();
+                },
+                error => {
+                    if (generation === _pixStatusPollingGeneration) {
+                        firestoreWatchStarted = false;
+                        _pixFirestoreUnsubscribe = null;
+                    }
+                    console.warn('[schedule Pix] Firestore status listener failed:', error?.code || error?.name || 'unknown');
+                }
+            );
+            if (generation !== _pixStatusPollingGeneration) {
+                unsubscribe();
+                return;
+            }
+            _pixFirestoreUnsubscribe = unsubscribe;
+            firestoreWatchStarted = true;
+        } catch (error) {
+            console.warn('[schedule Pix] Firestore status listener unavailable:', error?.code || error?.name || 'unknown');
+        } finally {
+            firestoreWatchStarting = false;
+        }
+    };
+
     const checkPixStatus = async () => {
-        if (requestInFlight) return;
+        if (generation !== _pixStatusPollingGeneration) return;
+        void startRegistrationWatcher();
+        if (requestInFlight) {
+            recheckRequested = true;
+            return;
+        }
         requestInFlight = true;
         try {
             const response = await authenticatedPaymentFetch('/.netlify/functions/confirm-purchase', {
@@ -10794,6 +10860,7 @@ function startSchedulePixStatusChecks(externalRef, onPaid) {
                 body: JSON.stringify({ external_reference: externalRef }),
             });
             const data = await response.json().catch(() => ({}));
+            if (generation !== _pixStatusPollingGeneration) return;
             if (data.status === 'needs_review') {
                 const status = document.getElementById('pixStatusText');
                 if (status) status.textContent = data.message
@@ -10806,8 +10873,7 @@ function startSchedulePixStatusChecks(externalRef, onPaid) {
                 return;
             }
             if (data.status === 'paid' || data.status === 'already_paid') {
-                clearSchedulePixStatusPolling();
-                if (typeof onPaid === 'function') await onPaid();
+                await confirmPaid();
             } else if (data.status === 'rejected' || data.status === 'cancelled') {
                 clearSchedulePixStatusPolling();
                 forgetSchedulePixCheckout(externalRef);
@@ -10824,6 +10890,10 @@ function startSchedulePixStatusChecks(externalRef, onPaid) {
             if (status) status.textContent = 'Falha temporária ao consultar o Pix. Continuaremos verificando automaticamente; não faça outro pagamento.';
         } finally {
             requestInFlight = false;
+            if (recheckRequested && generation === _pixStatusPollingGeneration) {
+                recheckRequested = false;
+                void checkPixStatus();
+            }
         }
     };
 
