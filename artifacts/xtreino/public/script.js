@@ -10883,7 +10883,7 @@ function startSchedulePixStatusChecks(externalRef, onPaid) {
                 setSchedulePixCheckoutState('retry');
             } else if (data.status === 'pending') {
                 const status = document.getElementById('pixStatusText');
-                if (status) status.textContent = 'Aguardando confirmação do Mercado Pago. Atualizaremos automaticamente; não faça outro pagamento.';
+                if (status) status.textContent = 'Aguardando seu pagamento';
             }
         } catch (_) {
             const status = document.getElementById('pixStatusText');

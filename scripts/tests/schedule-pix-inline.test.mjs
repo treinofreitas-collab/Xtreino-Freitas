@@ -382,6 +382,7 @@ test('automatic Pix checks continue during review and after tab resume', async (
 
     timerCalls.find(call => call.delay === 5000).fn();
     await new Promise(resolve => setImmediate(resolve));
+    assert.equal(elements.get('pixStatusText').textContent, 'Aguardando seu pagamento');
     context.document.hidden = false;
     await listeners.get('visibilitychange')();
 
