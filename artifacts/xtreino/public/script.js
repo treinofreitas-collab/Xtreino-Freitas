@@ -8427,6 +8427,7 @@ async function submitSchedule(e, useTokens = false) {
                 try { sessionStorage.setItem('lastExternalRef', externalRef); } catch (_) {}
                 setSchedulePixCheckoutState('pending');
                 renderSchedulePixFallback(data, cfg, finalPrice);
+                startSchedulePixFallbackStatusChecks(externalRef, assignedSlotsData, cfg);
                 document.getElementById('pixPaymentModal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 showToast('warning', 'A cobrança foi criada sem retornar o QR. Não gere outra; fale com o suporte para conferirem o pagamento.', 'Pagamento', 12000);
                 return;
@@ -8465,6 +8466,7 @@ async function submitSchedule(e, useTokens = false) {
             } catch (pixUiError) {
                 console.error('Pix criado; falha ao iniciar o acompanhamento automático:', pixUiError);
                 renderSchedulePixFallback(data, cfg, finalPrice);
+                startSchedulePixFallbackStatusChecks(externalRef, assignedSlotsData, cfg);
             }
 
             const _evtCouponMP = appliedScheduleCoupon ? { ...appliedScheduleCoupon } : null;
@@ -8497,6 +8499,7 @@ async function submitSchedule(e, useTokens = false) {
                 if (_createdPixModalArgs) {
                     try { window.openPixModal(..._createdPixModalArgs); } catch (pixUiError) {
                         console.error('Pix exibido; polling automático indisponível:', pixUiError);
+                        startSchedulePixFallbackStatusChecks(externalRef, assignedSlotsData, cfg);
                     }
                 }
                 document.getElementById('pixPaymentModal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -10727,6 +10730,93 @@ let _pixPollingInterval = null;
 let _pixCountdownInterval = null;
 let _pixCancelFn = null;
 let _pixConfirmFn = null;
+let _pixVisibilityHandler = null;
+
+function clearSchedulePixStatusPolling() {
+    clearInterval(_pixPollingInterval);
+    _pixPollingInterval = null;
+    if (_pixVisibilityHandler) {
+        document.removeEventListener?.('visibilitychange', _pixVisibilityHandler);
+        _pixVisibilityHandler = null;
+    }
+}
+
+function createFallbackSchedulePixConfirmation(assignedSlotsData, cfg, externalRef) {
+    return async () => {
+        clearSchedulePixStatusPolling();
+        clearInterval(_pixCountdownInterval);
+        _pixCountdownInterval = null;
+        setSchedulePixCheckoutState('paid');
+        try {
+            if (showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef)) return;
+        } catch (error) {
+            console.error('Pagamento aprovado; não foi possível abrir a confirmação detalhada:', error);
+        }
+        document.getElementById('pixContent')?.classList.add('hidden');
+        document.getElementById('pixConfirmed')?.classList.remove('hidden');
+        const slotInfo = document.getElementById('pixSlotInfo');
+        if (slotInfo) slotInfo.textContent = 'Pagamento aprovado. Confira sua inscrição em Meus Pedidos.';
+    };
+}
+
+function startSchedulePixFallbackStatusChecks(externalRef, assignedSlotsData, cfg) {
+    _pixConfirmFn = createFallbackSchedulePixConfirmation(assignedSlotsData, cfg, externalRef);
+    return startSchedulePixStatusChecks(externalRef, _pixConfirmFn);
+}
+
+function startSchedulePixStatusChecks(externalRef, onPaid) {
+    clearSchedulePixStatusPolling();
+    let requestInFlight = false;
+    const checkPixStatus = async () => {
+        if (requestInFlight) return;
+        requestInFlight = true;
+        try {
+            const response = await authenticatedPaymentFetch('/.netlify/functions/confirm-purchase', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ external_reference: externalRef }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (data.status === 'needs_review') {
+                const status = document.getElementById('pixStatusText');
+                if (status) status.textContent = data.message
+                    || 'Pagamento em conferência. A confirmação será atualizada automaticamente; não faça outro pagamento.';
+                return;
+            }
+            if (!response.ok) {
+                const status = document.getElementById('pixStatusText');
+                if (status) status.textContent = 'Não foi possível consultar o Pix agora. Continuaremos verificando automaticamente.';
+                return;
+            }
+            if (data.status === 'paid' || data.status === 'already_paid') {
+                clearSchedulePixStatusPolling();
+                if (typeof onPaid === 'function') await onPaid();
+            } else if (data.status === 'rejected' || data.status === 'cancelled') {
+                clearSchedulePixStatusPolling();
+                forgetSchedulePixCheckout(externalRef);
+                window._schedulePixSelectionKey = null;
+                const status = document.getElementById('pixStatusText');
+                if (status) status.textContent = 'Pagamento recusado ou cancelado. Confira o status antes de gerar outra cobrança.';
+                setSchedulePixCheckoutState('retry');
+            } else if (data.status === 'pending') {
+                const status = document.getElementById('pixStatusText');
+                if (status) status.textContent = 'Aguardando confirmação do Mercado Pago. Atualizaremos automaticamente; não faça outro pagamento.';
+            }
+        } catch (_) {
+            const status = document.getElementById('pixStatusText');
+            if (status) status.textContent = 'Falha temporária ao consultar o Pix. Continuaremos verificando automaticamente; não faça outro pagamento.';
+        } finally {
+            requestInFlight = false;
+        }
+    };
+
+    _pixVisibilityHandler = () => {
+        if (!document.hidden) return checkPixStatus();
+    };
+    document.addEventListener?.('visibilitychange', _pixVisibilityHandler);
+    _pixPollingInterval = setInterval(() => { void checkPixStatus(); }, 5000);
+    return checkPixStatus();
+}
 
 function setSchedulePixCheckoutState(state) {
     const pending = state === 'pending';
@@ -10750,7 +10840,7 @@ function setSchedulePixCheckoutState(state) {
 
 function prepareSchedulePixForNewCheckout() {
     const hadPendingPix = Boolean(window._schedulePixPending);
-    clearInterval(_pixPollingInterval);
+    clearSchedulePixStatusPolling();
     clearInterval(_pixCountdownInterval);
     _pixPollingInterval = null;
     _pixCountdownInterval = null;
@@ -10869,7 +10959,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     _pixCountdownInterval = setInterval(() => {
         if (secondsLeft <= 0) {
             clearInterval(_pixCountdownInterval);
-            clearInterval(_pixPollingInterval);
+            clearSchedulePixStatusPolling();
             forgetSchedulePixCheckout(externalRef);
             window._schedulePixSelectionKey = null;
             const cd = document.getElementById('pixCountdown');
@@ -10887,7 +10977,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     }, 1000);
 
     _pixCancelFn = async () => {
-        clearInterval(_pixPollingInterval);
+        clearSchedulePixStatusPolling();
         clearInterval(_pixCountdownInterval);
         // Não apagar as reservas: o cliente ainda pode concluir um pagamento Pix
         // que já iniciou, e o webhook deve conseguir confirmá-lo com segurança.
@@ -10898,7 +10988,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
     _pixConfirmFn = async () => {
         if (pixConfirmationHandled) return;
         pixConfirmationHandled = true;
-        clearInterval(_pixPollingInterval);
+        clearSchedulePixStatusPolling();
         clearInterval(_pixCountdownInterval);
         forgetSchedulePixCheckout(externalRef);
         setSchedulePixCheckoutState('paid');
@@ -10948,42 +11038,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
 
     };
 
-    const checkPixStatus = async function() {
-        try {
-            const r = await authenticatedPaymentFetch('/.netlify/functions/confirm-purchase', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ external_reference: externalRef }),
-            });
-            const d = await r.json();
-            if (!r.ok) {
-                const status = document.getElementById('pixStatusText');
-                if (status) status.textContent = d.message
-                    || 'Não foi possível consultar o Pix agora. Continuaremos verificando; não pague novamente.';
-                return;
-            }
-            if (d.status === 'paid' || d.status === 'already_paid') {
-                if (typeof _pixConfirmFn === 'function') await _pixConfirmFn();
-            } else if (d.status === 'rejected' || d.status === 'cancelled') {
-                clearInterval(_pixPollingInterval);
-                forgetSchedulePixCheckout(externalRef);
-                window._schedulePixSelectionKey = null;
-                const st = document.getElementById('pixStatusText');
-                if (st) st.textContent = 'Pagamento recusado ou cancelado. Confira o status antes de gerar outra cobrança.';
-                setSchedulePixCheckoutState('retry');
-            } else if (d.status === 'needs_review') {
-                const status = document.getElementById('pixStatusText');
-                if (status) status.textContent = d.message
-                    || 'A confirmação deste Pix precisa de verificação. Não faça outro pagamento.';
-            }
-        } catch (_) {
-            const status = document.getElementById('pixStatusText');
-            if (status) status.textContent = 'Falha temporária ao consultar o Pix. Continuaremos verificando; não pague novamente.';
-        }
-    };
-    clearInterval(_pixPollingInterval);
-    checkPixStatus();
-    _pixPollingInterval = setInterval(checkPixStatus, 5000);
+    startSchedulePixStatusChecks(externalRef, _pixConfirmFn);
 };
 
 window.copyPixCode = function() {
@@ -11017,7 +11072,7 @@ window.cancelPixPayment = function() {
 };
 
 window.closePixModal = function() {
-    clearInterval(_pixPollingInterval);
+    clearSchedulePixStatusPolling();
     clearInterval(_pixCountdownInterval);
     setSchedulePixCheckoutState('idle');
     closeScheduleModal();

@@ -297,7 +297,7 @@ test('schedule Pix invokes slot confirmation only for a server-confirmed payment
     assert.ok(script.includes("authenticatedPaymentFetch('/.netlify/functions/confirm-purchase'"));
     assert.match(
         script,
-        /if \(d\.status === 'paid' \|\| d\.status === 'already_paid'\) \{\s*if \(typeof _pixConfirmFn === 'function'\) await _pixConfirmFn\(\);/
+        /if \(data\.status === 'paid' \|\| data\.status === 'already_paid'\) \{\s*clearSchedulePixStatusPolling\(\);\s*if \(typeof onPaid === 'function'\) await onPaid\(\);/
     );
     assert.match(script, /if \(pixConfirmationHandled\) return;/);
     assert.match(script, /showPaidScheduleConfirmation\(assignedSlotsData, cfg, externalRef\)/);
@@ -309,6 +309,83 @@ test('schedule Pix invokes slot confirmation only for a server-confirmed payment
         < confirmationHandler.indexOf('assignedSlotsData.map'),
         'show the confirmation before rendering optional QR details'
     );
+});
+
+test('event Pix is checked automatically and resumes when the tab is visible', () => {
+    assert.doesNotMatch(html, /pixCheckStatusBtn|Já paguei — verificar agora/);
+    assert.doesNotMatch(script, /pixCheckStatusBtn|checkPixPaymentStatusNow|_pixManualCheckFn/);
+    assert.match(script, /document\.addEventListener\?\.\('visibilitychange', _pixVisibilityHandler\)/);
+    assert.match(script, /startSchedulePixFallbackStatusChecks\(externalRef, assignedSlotsData, cfg\)/);
+    assert.match(script, /data\.status === 'needs_review'/);
+});
+
+test('automatic Pix checks continue during review and after tab resume', async () => {
+    const helperStart = script.indexOf('function clearSchedulePixStatusPolling(');
+    const helperEnd = script.indexOf('\nfunction setSchedulePixCheckoutState', helperStart);
+    const helpers = script.slice(helperStart, helperEnd);
+    const elements = new Map([
+        ['pixStatusText', { textContent: 'Aguardando pagamento...' }],
+    ]);
+    const listeners = new Map();
+    const responses = [
+        { status: 'needs_review', ok: false },
+        { status: 'pending', ok: true },
+        { status: 'paid', ok: true },
+    ];
+    const requests = [];
+    const timerCalls = [];
+    let nextTimerId = 1;
+    const context = vm.createContext({
+        window: {},
+        document: {
+            hidden: true,
+            getElementById: id => elements.get(id) || null,
+            addEventListener: (name, handler) => listeners.set(name, handler),
+            removeEventListener: (name, handler) => {
+                if (listeners.get(name) === handler) listeners.delete(name);
+            },
+        },
+        setInterval: (fn, delay) => {
+            timerCalls.push({ id: nextTimerId, fn, delay });
+            return nextTimerId++;
+        },
+        clearInterval: id => timerCalls.push({ cleared: id }),
+        authenticatedPaymentFetch: async (_url, options) => {
+            requests.push(JSON.parse(options.body));
+            const response = responses.shift();
+            return { ok: response.ok, json: async () => ({ status: response.status }) };
+        },
+        forgetSchedulePixCheckout: () => {},
+        setSchedulePixCheckoutState: () => {},
+    });
+    vm.runInContext(`
+        let _pixPollingInterval = null;
+        let _pixVisibilityHandler = null;
+        ${helpers}
+        globalThis.paidCalls = 0;
+    `, context);
+
+    await context.startSchedulePixStatusChecks('ref_automatic_visibility', async () => {
+        context.paidCalls += 1;
+    });
+    assert.match(elements.get('pixStatusText').textContent, /Pagamento em conferência/);
+    assert.ok(!timerCalls.some(call => call.cleared === 1), 'review status should not stop automatic polling');
+
+    timerCalls.find(call => call.delay === 5000).fn();
+    await new Promise(resolve => setImmediate(resolve));
+    context.document.hidden = false;
+    await listeners.get('visibilitychange')();
+
+    assert.equal(requests.length, 3);
+    assert.deepEqual(requests, [
+        { external_reference: 'ref_automatic_visibility' },
+        { external_reference: 'ref_automatic_visibility' },
+        { external_reference: 'ref_automatic_visibility' },
+    ]);
+    assert.equal(context.paidCalls, 1);
+    assert.ok(timerCalls.some(call => call.delay === 5000));
+    assert.ok(timerCalls.some(call => call.cleared === 1));
+    assert.equal(listeners.has('visibilitychange'), false);
 });
 
 test('closing the successful Pix confirmation does not redirect to Minha Conta', () => {
