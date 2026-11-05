@@ -4284,11 +4284,20 @@ const scheduleConfig =
     // 'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
     // 'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
 };
-const CAMP_SEASON_7_START_DATE = '2026-11-16';
+const CAMP_SEASON_7_START_DATE = '2026-11-17';
 
 function isCampSeason7Name(value) {
     const name = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     return name.includes('camp') && /\bseason\s*7\b/.test(name);
+}
+
+function campSeason7ModalLabel(value) {
+    const [, month, day] = CAMP_SEASON_7_START_DATE.match(/^\d{4}-(\d{2})-(\d{2})$/) || [];
+    if (!month || !day) return String(value || 'Evento');
+    return String(value || 'Evento').replace(
+        /(\bin[ií]cio\s*:?\s*)\d{1,2}\/\d{1,2}/i,
+        (_, prefix) => `${prefix}${day}/${month}`,
+    );
 }
 
 function getActiveScheduleConfig(eventType) {
@@ -5692,7 +5701,7 @@ async function renderScheduleTimes() {
         stopScheduleAvailabilityListener();
         let msg = 'Esta data não está disponível para este evento.';
         if (eventType === 'xtreino-tokens') msg = 'Agendamentos não disponíveis em datas passadas.';
-        else if (getActiveScheduleConfig(eventType).dateScopedEventLinks) msg = 'As vagas do Camp Season 7 estão disponíveis a partir de 16/11/2026.';
+        else if (getActiveScheduleConfig(eventType).dateScopedEventLinks) msg = 'As vagas do Camp Season 7 estão disponíveis a partir de 17/11/2026.';
         else if (eventType === 'camp-freitas') msg = 'Camp Freitas (Semifinal) disponível somente em 22/11 e 23/11 às 17h.';
         else if (eventType === 'camp-final') msg = 'Vaga Direto na Final disponível apenas em 28/11 às 18h.';
         timesWrap.innerHTML = `<p class="text-red-500 text-center py-4">${msg}</p>`;
@@ -10282,11 +10291,12 @@ async function loadDynamicEvents() {
 
         const cards = docsSorted.map(d => {
             const ev = d.data();
+            const isSeason7 = isCampSeason7Name(ev.name);
             const _isFreeEv = !ev.preco || ev.entrada === 'GRÁTIS' || Number(ev.preco) === 0;
             // Apenas eventos GRATUITOS do tipo xtreino-tokens usam o modal de time gratuito
             const _isEquipeEvent = ev.eventType === 'xtreino-tokens' && _isFreeEv;
             scheduleConfig[d.id] = {
-                label: ev.name || 'Evento',
+                label: isSeason7 ? campSeason7ModalLabel(ev.name) : (ev.name || 'Evento'),
                 price: Number(ev.preco) || 0,
                 payWithToken: ev.entrada === 'TOKENS',
                 vagas: Number(ev.vagas) || 0,
@@ -10298,8 +10308,8 @@ async function loadDynamicEvents() {
                 eventType: ev.eventType || '',
                 urlSlug: ev.urlSlug || '',
                 adminEventId: d.id,
-                dateScopedEventLinks: isCampSeason7Name(ev.name),
-                ...(isCampSeason7Name(ev.name) ? { startDate: CAMP_SEASON_7_START_DATE } : {}),
+                dateScopedEventLinks: isSeason7,
+                ...(isSeason7 ? { startDate: CAMP_SEASON_7_START_DATE } : {}),
                 slots: ['14h','15h','16h','17h','18h','19h','20h','21h','22h','23h'],
             };
             // Alias pelo tipo canônico para que overrides de schedule_overrides batem corretamente

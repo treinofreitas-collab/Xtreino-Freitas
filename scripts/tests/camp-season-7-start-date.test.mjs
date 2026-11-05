@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-test('Camp Season 7 starts bookings on November 16 and bypasses stale script caches', async () => {
+test('Camp Season 7 starts bookings on November 17 and bypasses stale script caches', async () => {
   const script = await readFile(
     new URL('../../artifacts/xtreino/public/script.js', import.meta.url),
     'utf8',
@@ -12,11 +12,14 @@ test('Camp Season 7 starts bookings on November 16 and bypasses stale script cac
     'utf8',
   );
 
-  assert.match(script, /const CAMP_SEASON_7_START_DATE = '2026-11-16'/);
+  assert.match(script, /const CAMP_SEASON_7_START_DATE = '2026-11-17'/);
   assert.match(script, /dateInput\.min = startDate/);
+  assert.match(script, /dateInput\.value = todayStr > startDate \? todayStr : startDate/);
   assert.match(script, /dateStr >= \(activeConfig\.startDate \|\| CAMP_SEASON_7_START_DATE\)/);
+  assert.match(script, /campSeason7ModalLabel\(ev\.name\)/);
+  assert.ok(script.includes('As vagas do Camp Season 7 estão disponíveis a partir de 17/11/2026.'));
   assert.ok(script.includes(
     "adminEventId: document.getElementById('scheduleModal')?.dataset?.adminEventId || null",
   ));
-  assert.match(homepage, /script\.js\?v=camp-season-7-start-20261116/);
+  assert.match(homepage, /script\.js\?v=camp-season-7-start-20261117/);
 });
