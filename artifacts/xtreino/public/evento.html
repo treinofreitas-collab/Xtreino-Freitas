@@ -204,9 +204,9 @@ const _rawHash = location.hash.replace('#', '').split('?')[0];
 const _pathEventType = URL_SLUG_MAP[location.pathname] || null;
 // ?event=eventType (gerado pelos links novos)
 const _queryEventType = _searchParams.get('event') || null;
-// Slugs exclusivos persistidos no evento, por exemplo /camp-season-7 ou /intensivo
+// Slugs exclusivos persistidos no evento, por exemplo /camp-season-7, /intensivo ou /solo
 const _pathSlug = location.pathname.replace(/\/+$/, '').split('/').pop() || '';
-const _uniquePathSlugs = new Set(['camp-season-7', 'intensivo']);
+const _uniquePathSlugs = new Set(['camp-season-7', 'intensivo', 'solo']);
 const _querySlug = _searchParams.get('slug') || (_uniquePathSlugs.has(_pathSlug) ? _pathSlug : null);
 // Tipo resolvido — path tem prioridade
 const _resolvedEventType = _pathEventType || _queryEventType || null;

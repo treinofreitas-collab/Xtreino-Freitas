@@ -12,8 +12,8 @@ test('Admin offers /intensivo only to Intensivo Freitas in Diário', async () =>
 
   assert.match(adminHtml, /<option value="intensivo-freitas">Intensivo Freitas \(Diário\) → \/intensivo<\/option>/);
   assert.match(adminJs, /urlType === 'intensivo-freitas' && \(category !== 'diario' \|\| !isIntensivoFreitasEventName\(name\)\)/);
-  assert.match(adminJs, /eventType: usesCampSeason7Url \? 'camp-freitas' : usesIntensivoFreitasUrl \? null/);
-  assert.match(adminJs, /urlSlug: usesCampSeason7Url \? 'camp-season-7' : usesIntensivoFreitasUrl \? 'intensivo' : null/);
+  assert.match(adminJs, /eventType: usesCampSeason7Url \? 'camp-freitas' : \(usesIntensivoFreitasUrl \|\| usesDiarioSoloUrl\) \? null/);
+  assert.match(adminJs, /urlSlug: usesCampSeason7Url \? 'camp-season-7' : usesIntensivoFreitasUrl \? 'intensivo' : usesDiarioSoloUrl \? 'solo' : null/);
   assert.match(adminJs, /ev\.urlSlug === 'intensivo' \|\| \(ev\.category === 'diario' && isIntensivoFreitasEventName\(ev\.name\)\)/);
 });
 
@@ -25,9 +25,9 @@ test('Public event page resolves /intensivo by its unique saved URL slug', async
     read('../../artifacts/xtreino/vite.config.ts'),
   ]);
 
-  assert.match(eventoHtml, /new Set\(\['camp-season-7', 'intensivo'\]\)/);
+  assert.match(eventoHtml, /new Set\(\['camp-season-7', 'intensivo', 'solo'\]\)/);
   assert.match(eventoHtml, /where\('urlSlug', '==', _querySlug\)/);
   assert.match(homepageScript, /if \(\/\^\[a-z0-9\]\+\(\?:-\[a-z0-9\]\+\)\*\$\/\.test\(urlSlug\)\) return '\/' \+ encodeURIComponent\(urlSlug\)/);
   assert.match(netlifyConfig, /from = "\/intensivo"\s+to = "\/evento\.html\?slug=intensivo"/);
-  assert.match(viteConfig, /new Set\(\["camp-season-7", "intensivo"\]\)/);
+  assert.match(viteConfig, /new Set\(\["camp-season-7", "intensivo", "solo"\]\)/);
 });

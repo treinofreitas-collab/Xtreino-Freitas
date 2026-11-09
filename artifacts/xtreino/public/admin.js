@@ -12357,10 +12357,10 @@ function switchEventTab(tab) {
     const listTitle = document.getElementById('evtListTitle');
     if (listTitle) listTitle.textContent = titles[tab];
 
-    // SOLO só disponível em CAMP
+    // SOLO disponível em CAMP e Diário.
     const tipoWrapper = document.getElementById('evtTipoWrapper');
     const tipoSelect = document.getElementById('evtTipo');
-    if (tab === 'camp') {
+    if (tab === 'camp' || tab === 'diario') {
         if (tipoWrapper) tipoWrapper.style.display = '';
         if (tipoSelect) {
             tipoSelect.innerHTML = '<option value="SOLO">SOLO</option><option value="DUO">DUO</option><option value="SQUAD">SQUAD</option>';
@@ -12452,6 +12452,7 @@ function validateEventForm(category) {
     const modo = document.getElementById('evtModo').value;
     const vagas = parseInt(document.getElementById('evtVagas').value, 10);
     const urlType = document.getElementById('evtEventType')?.value || '';
+    const tipo = document.getElementById('evtTipo')?.value || '';
 
     if (!name) return 'Informe o nome do evento.';
     if (!vagas || vagas < 1) return 'Informe a quantidade de vagas.';
@@ -12460,6 +12461,9 @@ function validateEventForm(category) {
     }
     if (urlType === 'intensivo-freitas' && (category !== 'diario' || !isIntensivoFreitasEventName(name))) {
         return 'A URL /intensivo só pode ser usada pelo evento Intensivo Freitas na categoria Diário.';
+    }
+    if (urlType === 'diario-solo' && (category !== 'diario' || tipo !== 'SOLO')) {
+        return 'A URL /solo só pode ser usada por um evento SOLO da categoria Diário.';
     }
 
     if (modo === 'NORMAL') {
@@ -12474,6 +12478,16 @@ function validateEventForm(category) {
     }
 
     return null;
+}
+
+function onEvtUrlTypeChange() {
+    const selectedUrlType = document.getElementById('evtEventType')?.value;
+    if (selectedUrlType === 'diario-solo') {
+        const tipoSelect = document.getElementById('evtTipo');
+        if (tipoSelect && Array.from(tipoSelect.options).some(option => option.value === 'SOLO')) {
+            tipoSelect.value = 'SOLO';
+        }
+    }
 }
 
 function isCampSeason7EventName(value) {
@@ -12597,12 +12611,13 @@ async function saveEventForm() {
     const selectedUrlType = (document.getElementById('evtEventType')?.value || '').trim();
     const usesCampSeason7Url = selectedUrlType === 'camp-season-7';
     const usesIntensivoFreitasUrl = selectedUrlType === 'intensivo-freitas';
+    const usesDiarioSoloUrl = selectedUrlType === 'diario-solo';
 
     const data = {
         category,
         name: document.getElementById('evtName').value.trim(),
-        eventType: usesCampSeason7Url ? 'camp-freitas' : usesIntensivoFreitasUrl ? null : (selectedUrlType || null),
-        urlSlug: usesCampSeason7Url ? 'camp-season-7' : usesIntensivoFreitasUrl ? 'intensivo' : null,
+        eventType: usesCampSeason7Url ? 'camp-freitas' : (usesIntensivoFreitasUrl || usesDiarioSoloUrl) ? null : (selectedUrlType || null),
+        urlSlug: usesCampSeason7Url ? 'camp-season-7' : usesIntensivoFreitasUrl ? 'intensivo' : usesDiarioSoloUrl ? 'solo' : null,
         tipo: document.getElementById('evtTipo').value,
         modo: document.getElementById('evtModo').value,
         formato: (document.getElementById('evtFormato')?.value || 'MISTO').toUpperCase(),
@@ -12792,6 +12807,8 @@ async function editEventItem(eventId) {
                 evtEventTypeEl.value = 'camp-season-7';
             } else if (ev.urlSlug === 'intensivo' || (ev.category === 'diario' && isIntensivoFreitasEventName(ev.name))) {
                 evtEventTypeEl.value = 'intensivo-freitas';
+            } else if (ev.urlSlug === 'solo') {
+                evtEventTypeEl.value = 'diario-solo';
             } else {
                 evtEventTypeEl.value = ev.eventType || '';
             }

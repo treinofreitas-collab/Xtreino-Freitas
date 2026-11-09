@@ -25,7 +25,7 @@ export default defineConfig({
       server.middlewares.use((req, _res, next) => {
         const requestUrl = new URL(req.url || "/", "http://localhost");
         const slug = requestUrl.pathname.replace(/\/+$/, "").split("/").pop();
-        if (!new Set(["camp-season-7", "intensivo"]).has(slug || "")) {
+        if (!new Set(["camp-season-7", "intensivo", "solo"]).has(slug || "")) {
           next();
           return;
         }
