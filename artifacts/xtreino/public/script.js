@@ -3231,6 +3231,11 @@ function bookingLockEventTypes(eventType, eventConfig = {}) {
     if (isIntensivoFreitas) {
         types.push(eventConfig.name, eventConfig.label, eventConfig.title, 'intensivo-freitas', 'intensivo');
     }
+    const isSoloLegacyEvent = String(eventConfig.urlSlug || '').trim().toLowerCase() === 'solo'
+        && !eventConfig.eventType;
+    if (isSoloLegacyEvent) {
+        types.push(eventConfig.name, eventConfig.label, eventConfig.title);
+    }
     return [...new Set(types.filter(Boolean))];
 }
 function bookingLockAppliesToEvent(lockData, eventType, eventConfig = {}) {
@@ -5419,9 +5424,12 @@ async function loadLockedDatesForCalendar(eventType) {
     try {
         const { collection, query, where, getDocs, doc, getDoc } =
             await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-        // Checar trava geral
-        const gSnap = await getDoc(doc(window.firebaseDb, 'event_global_locks', eventType));
-        if (gSnap.exists() && gSnap.data().locked === true) {
+        const eventConfig = getActiveScheduleConfig(eventType);
+        const lockTypes = bookingLockEventTypes(eventType, eventConfig);
+        const globalLockSnaps = await Promise.all(lockTypes.map(type =>
+            getDoc(doc(window.firebaseDb, 'event_global_locks', type))
+        ));
+        if (globalLockSnaps.some(snap => snap.exists() && snap.data().locked === true)) {
             state.globalLocked = true;
             renderCustomCalendar(state.year, state.month);
             return;
@@ -5438,7 +5446,7 @@ async function loadLockedDatesForCalendar(eventType) {
         const lockedByDate = {};
         ovSnap.forEach(d => {
             const data = d.data();
-            if (data.eventType !== eventType || !data.locked || !data.date) return;
+            if (!bookingLockAppliesToEvent(data, eventType, eventConfig) || !data.locked || !data.date) return;
             const hh = String(bookingLockHourValue(data)).replace(/\D/g, '');
             if (!hh) return;
             if (!lockedByDate[data.date]) lockedByDate[data.date] = new Set();
@@ -5690,6 +5698,8 @@ async function renderScheduleTimes() {
     const date = dateInput.value;
     const modal = document.getElementById('scheduleModal');
     const eventType = modal?.dataset?.eventType || window._currentScheduleEventType || null;
+    const cfg = getActiveScheduleConfig(eventType);
+    const eventConfig = cfg;
     const cacheKey = `${date}__${eventType || 'all'}`;
     const renderGeneration = (window.__schedRenderGeneration || 0) + 1;
     window.__schedRenderGeneration = renderGeneration;
@@ -5715,9 +5725,12 @@ async function renderScheduleTimes() {
     try {
         if (window.firebaseDb && eventType) {
             const { doc: _doc, getDoc: _getDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            const glSnap = await _getDoc(_doc(window.firebaseDb, 'event_global_locks', eventType));
+            const lockTypes = bookingLockEventTypes(eventType, eventConfig);
+            const globalLockSnaps = await Promise.all(lockTypes.map(type =>
+                _getDoc(_doc(window.firebaseDb, 'event_global_locks', type))
+            ));
             if (renderGeneration !== window.__schedRenderGeneration) return;
-            if (glSnap.exists() && glSnap.data().locked === true) {
+            if (globalLockSnaps.some(snap => snap.exists() && snap.data().locked === true)) {
                 stopScheduleAvailabilityListener();
                 timesWrap.innerHTML = `<div class="text-center py-6">
                     <div class="inline-flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-4 font-bold text-base">
@@ -5730,10 +5743,8 @@ async function renderScheduleTimes() {
         }
     } catch(_) {}
 
-    const cfg = getActiveScheduleConfig(eventType);
     const now = Date.now();
     const isToday = date === window.BrasiliaTime.dateKey(now);
-    const eventConfig = getActiveScheduleConfig(eventType);
     const isModoLiga = [eventType, eventConfig.eventType, eventConfig.label, eventConfig.modo]
         .some(value => normalizeEventType(value) === 'modo-liga');
     const slots = [

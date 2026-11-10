@@ -122,8 +122,21 @@ async function eventPrice(db, registration, forcePay = false, reads = new Map())
   const defaults = { "modo-liga": 3, "camp-freitas": 8, "camp-final": 100, "semanal-freitas": 3.5, "xtreino-tokens": 1 };
   if (!config && !(type in defaults)) fail("Evento não encontrado.", 404);
   if (config?.status && !["Aberto", "Em breve"].includes(config.status)) fail("Evento indisponível.");
-  const override = overrides.docs.map(d => d.data()).find(o =>
-    (!o.eventType || o.eventType === type) && Number.parseInt(o.hour || o.hh, 10) === hour);
+  const lockTypeKey = value => String(value || "").trim().toLowerCase();
+  const legacySoloLockType = config?.urlSlug === "solo" && !config?.eventType
+    ? config?.name
+    : "";
+  const overrideTypes = new Set([
+    registration.eventType,
+    type,
+    config?.eventType,
+    legacySoloLockType,
+  ].filter(Boolean).map(lockTypeKey));
+  const override = overrides.docs.map(d => d.data()).find(o => {
+    const overrideType = o.eventType || o.event_type || "";
+    return (!overrideType || overrideTypes.has(lockTypeKey(overrideType)))
+      && Number.parseInt(o.hour || o.hh, 10) === hour;
+  });
   if (override?.locked === true && !override?.freeUntil) fail("Horário indisponível.");
   const freeUntil = override?.freeUntil?.toMillis?.() || new Date(override?.freeUntil || 0).getTime();
   const free = !forcePay && (freeUntil > Date.now() || override?.free === true || override?.isFree === true);

@@ -307,6 +307,29 @@ test("free override ISO timestamps are honored; optional paid participation uses
   assert.equal((await eventPrice(currentDb, registration, true)).cents, 300);
 });
 
+test("Solo purchase pricing honors existing name-scoped date locks", async () => {
+  currentDb = fakeDatabase({
+    "adminEvents/solo-event-id": {
+      name: "DIÁRIO SOLO FREITAS",
+      urlSlug: "solo",
+      preco: 2,
+      status: "Aberto",
+    },
+    "schedule_overrides/solo-lock": {
+      date: "2026-11-09",
+      hour: "21h",
+      eventType: "DIÁRIO SOLO FREITAS",
+      locked: true,
+    },
+  });
+  await assert.rejects(eventPrice(currentDb, {
+    eventType: "solo-event-id",
+    adminEventId: "solo-event-id",
+    date: "2026-11-09",
+    schedule: "Segunda - 21h",
+  }), /Horário indisponível/);
+});
+
 test("Camp Season 7 uses its exact catalog event and rejects bookings before 15/11/2026", async () => {
   currentDb = fakeDatabase({
     "adminEvents/camp-freitas": { name: "Camp Freitas", eventType: "camp-freitas", preco: 8, status: "Aberto" },

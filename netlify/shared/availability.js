@@ -183,12 +183,14 @@ async function checkAvailability(db, body) {
   if (!isModoLiga && hours.includes(0)) invalid("O horário 00h00 está disponível apenas no Modo Liga.");
   const canonicalType = isModoLiga ? "modo-liga" : (config?.eventType || eventType);
   const isIntensivo = isIntensivoFreitas(config);
+  const isSoloLegacyEvent = config?.urlSlug === "solo" && !config?.eventType;
   const types = [...new Set([
     eventType,
     canonicalType,
     ...(isIntensivo
       ? [config?.name, config?.label, config?.title, "intensivo-freitas", "intensivo"]
       : []),
+    ...(isSoloLegacyEvent ? [config?.name, config?.label, config?.title] : []),
   ].filter(Boolean))];
   const [registrations, overrides, hourLocks, globalLocks] = await Promise.all([
     db.collection("registrations").where("date", "==", date).where("eventType", "==", eventType).get(),

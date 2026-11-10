@@ -226,6 +226,55 @@ test("global, permanent and per-date locks block the reservation; extra occupied
   }
 });
 
+test("Diário Solo recognizes legacy name-scoped locks without affecting another event", async () => {
+  const eventId = "daily-solo-event-id";
+  const eventName = "DIÁRIO SOLO FREITAS";
+  const soloConfig = {
+    [`adminEvents/${eventId}`]: {
+      name: eventName,
+      urlSlug: "solo",
+      status: "Aberto",
+      vagas: 12,
+    },
+  };
+  const soloRequest = {
+    ...request,
+    eventType: eventId,
+    adminEventId: eventId,
+  };
+  const legacyLocks = [
+    { [`event_global_locks/${eventName}`]: { locked: true } },
+    { "event_hour_locks/solo-legacy": { eventType: eventName, hour: "17h", locked: true } },
+    { "schedule_overrides/solo-legacy": {
+      date: request.date, eventType: eventName, hour: "17h", locked: true,
+    } },
+    { "schedule_overrides/solo-legacy-snake": {
+      date: request.date, event_type: eventName, hour: "17h", locked: true,
+    } },
+  ];
+
+  for (const lock of legacyLocks) {
+    const result = await checkAvailability(database({ ...soloConfig, ...lock }), soloRequest);
+    assert.equal(result.available, false, JSON.stringify(lock));
+  }
+
+  const sameNameDifferentEvent = await checkAvailability(database({
+    "adminEvents/other-daily-event": {
+      name: eventName,
+      status: "Aberto",
+      vagas: 12,
+    },
+    "event_hour_locks/solo-legacy": {
+      eventType: eventName, hour: "17h", locked: true,
+    },
+  }), {
+    ...request,
+    eventType: "other-daily-event",
+    adminEventId: "other-daily-event",
+  });
+  assert.equal(sameNameDifferentEvent.available, true);
+});
+
 test("unknown/closed events and malformed selections never return approval", async () => {
   assert.equal((await checkAvailability(database(), request)).available, false);
   assert.equal((await checkAvailability(database({ "adminEvents/custom-event": { vagas: 2, status: "Encerrado" } }), request)).available, false);
