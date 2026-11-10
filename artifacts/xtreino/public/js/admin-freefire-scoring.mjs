@@ -1653,13 +1653,23 @@ export function buildConfirmedPreviousDropReferences(drops, currentDropIndex, te
 }
 function getRosterValidationIssue(teams = state.teams) {
   if (!Array.isArray(teams) || teams.length !== 12 || teams.some(team => !String(team?.teamName || '').trim())) {
-    return 'Preencha os nomes dos 12 slots antes de confirmar a lista.';
+    return 'Preencha os 12 nomes para liberar a lista oficial.';
   }
   const names = teams.map(team => normalizeOfficialTeamName(team.teamName));
   if (new Set(names).size !== 12) {
-    return 'Há nomes de equipe repetidos. Confira a lista oficial antes de continuar.';
+    return 'Há nomes de equipe repetidos. Corrija a lista para continuar.';
   }
   return '';
+}
+export function getAutoConfirmedRosterFingerprint(teams) {
+  return getRosterValidationIssue(teams) ? '' : getOfficialRosterFingerprint(teams);
+}
+function syncRosterConfirmation() {
+  const nextFingerprint = getAutoConfirmedRosterFingerprint(state.teams);
+  if (state.confirmedRosterFingerprint !== nextFingerprint) {
+    state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
+  }
+  state.confirmedRosterFingerprint = nextFingerprint;
 }
 function hasCompleteRoster() {
   return !getRosterValidationIssue();
@@ -1669,18 +1679,14 @@ function isRosterConfirmed() {
   return hasCompleteRoster() && state.confirmedRosterFingerprint === fingerprint;
 }
 function renderRosterConfirmation() {
-  const button = $('ffConfirmRoster');
   const status = $('ffRosterConfirmStatus');
-  if (!button || !status) return;
+  if (!status) return;
+  syncRosterConfirmation();
   const issue = getRosterValidationIssue();
   const confirmed = isRosterConfirmed();
-  button.disabled = readOnly() || state.busy || Boolean(issue) || confirmed;
-  button.textContent = confirmed ? 'Lista confirmada' : 'Confirmar mapa de slots';
   status.textContent = confirmed
-    ? 'Este mapa oficial será usado em todas as quedas.'
-    : issue || (state.confirmedRosterFingerprint
-      ? 'A lista foi alterada. Confirme novamente antes de analisar.'
-      : 'Confira os 12 nomes e slots; a análise só será liberada após confirmar.');
+    ? 'Lista completa confirmada automaticamente; será usada em todas as quedas.'
+    : issue || 'A lista é confirmada automaticamente quando os 12 slots estiverem completos e sem duplicatas.';
   status.classList.toggle('confirmed', confirmed);
 }
 function canAnalyzeDrop(drop) {
@@ -1732,7 +1738,7 @@ export function getImageDropValidationIssue(drop, teams) {
   return '';
 }
 function dropApprovalIssue(drop) {
-  if (!isRosterConfirmed()) return 'Confirme primeiro a lista oficial de slots.';
+   if (!isRosterConfirmed()) return 'A lista oficial precisa ter 12 nomes únicos.';
   if (drop.rosterFingerprint !== getOfficialRosterFingerprint(state.teams)) {
     return 'A lista de slots mudou após a análise. Reanalise esta queda com o mapa confirmado.';
   }
@@ -1746,7 +1752,7 @@ function dropReviewIssue(drop) {
 }
 function dropStatusLabel(drop) {
   if (!drop.analyzed) return 'Pendente';
-  if (!isRosterConfirmed()) return 'Confirme a lista';
+   if (!isRosterConfirmed()) return 'Complete a lista';
   if (drop.rosterFingerprint !== getOfficialRosterFingerprint(state.teams)) return 'Reanalisar';
   if (getImageDropValidationIssue(drop, state.teams)) return 'Corrigir dados';
   return drop.reviewed ? 'Confirmada' : 'Aguardando revisão';
@@ -1765,7 +1771,7 @@ function canExport() {
 function exportIssue() {
   if (!state.template) return 'A tabela oficial deste evento não carregou; atualize o painel e tente novamente.';
   if (!hasCompleteRoster()) return 'Preencha os nomes dos 12 slots antes de exportar.';
-  if (!isRosterConfirmed()) return 'Confirme a lista oficial de slots antes de exportar.';
+   if (!isRosterConfirmed()) return 'Complete a lista oficial com 12 nomes únicos antes de exportar.';
   const issue = state.drops.slice(0, state.dropsCount).map(dropReviewIssue).find(Boolean);
   return issue || 'O JPEG preserva a proporção do modelo e limita o maior lado a 1080 px.';
 }
@@ -2138,11 +2144,11 @@ function build(root) {
           <p class="ff-note">Cada evento tem sua tabela oficial fixa no sistema. O JPEG preserva a proporção e limita o maior lado a 1080 px.</p>
         </section>
         <section class="ff-panel">
-          <div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>Confira os 12 nomes e confirme o mapa antes de analisar as quedas.</p></div></div>
+          <div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>Os 12 nomes únicos são confirmados automaticamente para todas as quedas.</p></div></div>
           <label class="ff-field">Cole lista ou CSV <span class="ff-field-hint">Os slots são preenchidos automaticamente. Aceita TIME A–L, SLOT 01–12, linhas numeradas e fontes decorativas.</span><textarea id="ffRosterText" rows="4" placeholder="TIME A: Nome do time&#10;1, Nome do time&#10;╔💛╗ႽᏞⲞƬ 𝟢𝟣: Nome do time 🍀&#10;..."></textarea></label>
           <div class="ff-roster-actions"><label class="ff-button ff-button-light" for="ffRosterUpload"><i class="fas fa-image"></i> Importar ou arrastar lista</label><input id="ffRosterUpload" type="file" accept="image/png,image/jpeg,image/webp,.csv,.txt" multiple hidden><span id="ffRosterFileLabel" class="ff-file-label">Nenhuma imagem selecionada</span><button type="button" id="ffAnalyzeRoster" class="ff-button ff-button-light" disabled><i class="fas fa-wand-magic-sparkles"></i> Analisar foto da lista</button></div>
           <div id="ffRosterRows" class="ff-roster-grid"></div>
-          <div class="ff-roster-confirm-row"><button type="button" id="ffConfirmRoster" class="ff-button ff-button-primary">Confirmar mapa de slots</button><span id="ffRosterConfirmStatus" role="status"></span></div>
+          <div class="ff-roster-confirm-row"><span id="ffRosterConfirmStatus" role="status"></span></div>
         </section>
         <section class="ff-panel ff-lobby-panel">
           <div class="ff-panel-heading"><div class="ff-step">03</div><div><h2>Slots do lobby</h2><p>Envie as 3 fotos uma vez. Elas serão reutilizadas em todas as quedas deste evento.</p></div></div>
@@ -2254,7 +2260,7 @@ function build(root) {
     state.rosterText = e.target.value;
     const parsed = parseRoster(state.rosterText);
     state.teams = parsed;
-    state.confirmedRosterFingerprint = '';
+    syncRosterConfirmation();
     state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
     $('ffRosterRows').innerHTML = state.teams.map(team => `<label class="ff-roster-row"><span class="ff-slot">${String(team.slot).padStart(2, '0')}</span><input data-team-slot="${team.slot}" aria-label="Equipe do slot ${team.slot}" value="${esc(team.teamName)}" placeholder="Nome da equipe"></label>`).join('');
     renderRosterConfirmation();
@@ -2266,7 +2272,7 @@ function build(root) {
     const slot = Number(e.target.dataset.teamSlot);
     if (!slot) return;
     state.teams[slot - 1].teamName = e.target.value;
-    state.confirmedRosterFingerprint = '';
+    syncRosterConfirmation();
     state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
     state.rosterText = state.teams.filter(team => team.teamName.trim()).map(team => `${team.slot}, ${team.teamName}`).join('\n');
     $('ffRosterText').value = state.rosterText;
@@ -2275,18 +2281,6 @@ function build(root) {
     $('ffAnalyzeDrop').disabled = !canAnalyzeDrop(state.drops[state.activeDrop || 0]);
     renderPlacements(state.drops[state.activeDrop || 0]);
     refreshStandings();
-  });
-  $('ffConfirmRoster').addEventListener('click', () => {
-    const issue = getRosterValidationIssue();
-    if (issue) {
-      setNotice('error', issue);
-      return;
-    }
-    state.confirmedRosterFingerprint = getOfficialRosterFingerprint(state.teams);
-    state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
-    state.message = 'Mapa oficial confirmado. Agora analise as quedas com esta lista.';
-    state.error = '';
-    render();
   });
   $('ffRosterUpload').addEventListener('change', async e => {
     const selected = [...e.target.files || []];
@@ -2302,7 +2296,7 @@ function build(root) {
       try {
       state.rosterText = await textFile.text();
       state.teams = parseRoster(state.rosterText);
-      state.confirmedRosterFingerprint = '';
+      syncRosterConfirmation();
       state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
       } catch {
         setNotice('error', 'Não foi possível ler o arquivo da lista.');
@@ -2762,7 +2756,7 @@ async function analyzeDrop() {
   state.busy = true; state.error = ''; state.message = ''; render();
   try {
     if (!hasCompleteRoster()) throw new Error('Preencha os nomes dos 12 slots antes de analisar a queda.');
-    if (!isRosterConfirmed()) throw new Error('Confirme o mapa oficial dos 12 slots antes de analisar a queda.');
+    if (!isRosterConfirmed()) throw new Error('Preencha os 12 slots com nomes únicos antes de analisar a queda.');
     const analyzedRosterFingerprint = getOfficialRosterFingerprint(state.teams);
     const analyzedRosterSnapshot = state.teams.map(team => ({ slot: team.slot, teamName: team.teamName }));
     if (state.slotImages.length !== 3) throw new Error('Cadastre as 3 fotos na área fixa de slots do lobby.');

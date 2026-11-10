@@ -164,6 +164,47 @@ for (const source of loaded) {
     assert.equal(reconciled.placements[2].readAgreement, '2 de 3 concordam — revisar');
   });
 
+  test(`${source.name}: identifies which player's kill count differs between reads`, async () => {
+    const { reconcilePlacements } = await loadHelpers(source.text, source.typescript);
+    const players = finalKill => [
+      { name: "mary d' mel", kills: 1 },
+      { name: 'honiime', kills: 2 },
+      { name: 'GO LORD', kills: 2 },
+      { name: 'GO KILLUA X', kills: finalKill },
+    ];
+    const first = makeResult({ 3: { kills: 7, players: players(2) } });
+    const second = makeResult({ 3: { kills: 6, players: players(1) } });
+    const third = makeResult({ 3: { kills: 6, players: players(1) } });
+    const reconciled = plain(reconcilePlacements(first, second, third, new Set([3])));
+    const placement = reconciled.placements[2];
+
+    assert.equal(placement.kills, 7);
+    assert.equal(placement.players.reduce((total, player) => total + player.kills, 0), 7);
+    assert.match(placement.notes, /GO KILLUA X \(1ª: 2 · 2ª: 1 · 3ª: 1\)/);
+    assert.ok(placement.reviewFields.includes('kills'));
+  });
+
+  test(`${source.name}: reconciled kills keep only the selected read's sum note`, async () => {
+    const { reconcilePlacements } = await loadHelpers(source.text, source.typescript);
+    const first = makeResult({
+      3: { kills: 7, notes: 'Soma individual (7) usada; total do placar (6) ignorado.' },
+    });
+    const second = makeResult({
+      3: { kills: 6, notes: 'Soma individual (6) usada; total do placar (5) ignorado.' },
+    });
+    const third = makeResult({
+      3: { kills: 6, notes: 'Soma individual (6) usada; total do placar (6) ignorado.' },
+    });
+    const reconciled = plain(reconcilePlacements(first, second, third, new Set([3])));
+    const placement = reconciled.placements[2];
+
+    assert.equal(placement.kills, 7);
+    assert.equal(placement.players[0].kills, 7);
+    assert.doesNotMatch(placement.notes, /Soma individual \(6\) usada; total do placar \(5\) ignorado/);
+    assert.match(placement.notes, /Soma individual \(7\) usada; total do placar \(6\) ignorado/);
+    assert.match(placement.notes, /Abates divergentes \(1ª: 7 · 2ª: 6 · 3ª: 6\)/);
+  });
+
   test(`${source.name}: no majority leaves the conflicting score blank`, async () => {
     const { reconcilePlacements } = await loadHelpers(source.text, source.typescript);
     const first = makeResult({ 3: { kills: 4 } });

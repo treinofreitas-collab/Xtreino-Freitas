@@ -928,6 +928,71 @@ function describeReadValues<T>(
   return vote.values.map(({ label, value }) => `${label}: ${formatter(value)}`).join(" · ");
 }
 
+function splitKillSummaryNotes(value: unknown) {
+  let otherNotes = typeof value === "string" ? value : "";
+  const killSummaries: string[] = [];
+  const patterns = [
+    /Soma individual \(\d+\) usada; total do placar \(\d+\) ignorado\.?/giu,
+    /Soma legível \(\d+\) usada; \d+ abate\(s\) ilegível\(eis\) ignorado\(s\)\.?/giu,
+    /Nenhum abate individual legível; soma não calculada\.?/giu,
+    /Total do placar \(\d+\) ignorado\.?/giu,
+    /\d+ abate\(s\) individual\(is\) ilegível\(eis\)\.?/giu,
+  ];
+  for (const pattern of patterns) {
+    otherNotes = otherNotes.replace(pattern, (match) => {
+      killSummaries.push(match.trim());
+      return " ";
+    });
+  }
+  return {
+    otherNotes: otherNotes.replace(/\s+/g, " ").trim(),
+    killSummaries,
+  };
+}
+
+function getPlayerKillDisagreements(
+  rowReads: Array<{
+    label: string;
+    placement: ReturnType<typeof normalizePlacements>["placements"][number] | null;
+  }>,
+) {
+  const playersByName = new Map<string, {
+    name: string;
+    valuesByRead: Map<string, number | null | "duplicado">;
+  }>();
+  for (const read of rowReads) {
+    for (const player of read.placement?.players || []) {
+      const key = normalizePlayerName(String(player?.name || ""));
+      if (!key) continue;
+      const entry = playersByName.get(key) || {
+        name: String(player.name).trim(),
+        valuesByRead: new Map<string, number | null | "duplicado">(),
+      };
+      if (entry.valuesByRead.has(read.label)) {
+        entry.valuesByRead.set(read.label, "duplicado");
+      } else {
+        entry.valuesByRead.set(read.label, player.kills);
+      }
+      playersByName.set(key, entry);
+    }
+  }
+
+  const disagreements: string[] = [];
+  for (const entry of playersByName.values()) {
+    const values = rowReads.map((read) => {
+      if (!read.placement) return `${read.label}: linha ausente`;
+      if (!entry.valuesByRead.has(read.label)) return `${read.label}: não identificado`;
+      const value = entry.valuesByRead.get(read.label);
+      if (value === undefined) return `${read.label}: não identificado`;
+      return `${read.label}: ${value === "duplicado" ? value : formatKillCount(value)}`;
+    });
+    if (new Set(values.map((value) => value.slice(value.indexOf(": ") + 2))).size > 1) {
+      disagreements.push(`${entry.name} (${values.join(" · ")})`);
+    }
+  }
+  return disagreements.slice(0, 4);
+}
+
 function reconcilePlacements(
   first: ReturnType<typeof normalizePlacements>,
   second: ReturnType<typeof normalizePlacements>,
@@ -964,7 +1029,11 @@ function reconcilePlacements(
     const killsVote = readValueVote(present, (placement) => placement.kills);
     const playersVote = readValueVote(present, playerFingerprint);
     const reviewFields = new Set(present.flatMap((read) => read.placement.reviewFields || []));
-    const notes = new Set(present.map((read) => read.placement.notes).filter(Boolean));
+    const notes = new Set(
+      present
+        .map((read) => splitKillSummaryNotes(read.placement.notes).otherNotes)
+        .filter(Boolean),
+    );
     const duplicateRows = rowReads.some((read) => read.duplicateRows);
     const rowCoverageMismatch = present.length !== rowReads.length;
 
@@ -992,17 +1061,30 @@ function reconcilePlacements(
       reviewFields.add("players");
       notes.add("A lista de jogadores divergiu ou não foi identificada; confira os grupos do placar.");
     }
+    const playerKillDisagreements = getPlayerKillDisagreements(rowReads);
+    if (playerKillDisagreements.length) {
+      reviewFields.add("kills");
+      notes.add(`Abates por jogador divergentes: ${playerKillDisagreements.join("; ")}. Confira cada valor na imagem.`);
+    }
     if (rowReads.some((read) => read.placement?.confidence !== "high")) {
       reviewFields.add("reading");
     }
 
     const slot = slotVote.hasConsensus ? slotVote.value : null;
-    const selectedPlayerRead = playersVote.hasConsensus
-      ? present.find((read) => playerFingerprint(read.placement) === playersVote.value)
-      : killsVote.hasConsensus
-        ? present.find((read) => read.placement.kills === killsVote.value) ||
-          [...present].sort((a, b) => b.placement.players.length - a.placement.players.length)[0]
-        : [...present].sort((a, b) => b.placement.players.length - a.placement.players.length)[0];
+    const highestDisputedKillRead = killsVote.hasConsensus && killsVote.distinctCount > 1
+      ? [...present].sort((a, b) =>
+          (b.placement.kills ?? -1) - (a.placement.kills ?? -1),
+        )[0]
+      : null;
+    const selectedPlayerRead = highestDisputedKillRead ||
+      (playersVote.hasConsensus
+        ? present.find((read) => playerFingerprint(read.placement) === playersVote.value)
+        : killsVote.hasConsensus
+          ? present.find((read) => read.placement.kills === killsVote.value) ||
+            [...present].sort((a, b) => b.placement.players.length - a.placement.players.length)[0]
+          : [...present].sort((a, b) => b.placement.players.length - a.placement.players.length)[0]);
+    const selectedKillSummaries = splitKillSummaryNotes(selectedPlayerRead?.placement.notes);
+    selectedKillSummaries.killSummaries.forEach((note) => notes.add(note));
     const selectedPlayers = selectedPlayerRead?.placement.players || [];
     const readablePlayerKills: number[] = selectedPlayers.flatMap((player): number[] =>
       player.kills !== null && Number.isInteger(player.kills) && player.kills >= 0

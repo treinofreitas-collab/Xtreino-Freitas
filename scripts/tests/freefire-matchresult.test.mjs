@@ -6,8 +6,10 @@ import {
   applyMatchResultStandingsLogos,
   buildModoLigaPurchaseLogoCatalog,
   getCenteredContainRect,
+  getAutoConfirmedRosterFingerprint,
   getImageEventTemplateInfo,
   getImageEventTemplateLayout,
+  getOfficialRosterFingerprint,
   getModoLigaPurchaseLookupRoster,
   getModoLigaLeaderboardLogoCenterY,
   getModoLigaSpecLogoForSlot,
@@ -245,8 +247,8 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-history-player-mapping-v1/);
-  assert.match(adminPage, /admin\.js\?v=freefire-history-player-mapping-v1/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-score-review-roster-autoconfirm-v1/);
+  assert.match(adminPage, /admin\.js\?v=freefire-score-review-roster-autoconfirm-v1/);
   assert.doesNotMatch(source, /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/);
 });
 
@@ -621,6 +623,34 @@ test('parses both decorated Intensivo slot-list formats and ignores announcement
 
   const missingSlotFive = parseRoster(announcement.replace(`${slotLines[4]}\n`, ''));
   assert.equal(missingSlotFive[4].teamName, '');
+});
+
+test('automatically confirms only complete unique pasted slot maps', () => {
+  const teams = Array.from({ length: 12 }, (_, index) => ({
+    slot: index + 1,
+    teamName: `Equipe ${index + 1}`,
+  }));
+  assert.equal(
+    getAutoConfirmedRosterFingerprint(teams),
+    getOfficialRosterFingerprint(teams),
+  );
+
+  const incomplete = teams.map(team => ({ ...team }));
+  incomplete[4].teamName = '';
+  assert.equal(getAutoConfirmedRosterFingerprint(incomplete), '');
+
+  const duplicate = teams.map(team => ({ ...team }));
+  duplicate[11].teamName = duplicate[0].teamName;
+  assert.equal(getAutoConfirmedRosterFingerprint(duplicate), '');
+});
+
+test('removes the separate manual slot-confirmation button', async () => {
+  const source = await readFile(new URL(
+    '../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs',
+    import.meta.url,
+  ), 'utf8');
+  assert.doesNotMatch(source, /ffConfirmRoster/);
+  assert.match(source, /confirmada automaticamente/);
 });
 
 test('parses decorated 15-slot roster text supplied for each scoring run', () => {
