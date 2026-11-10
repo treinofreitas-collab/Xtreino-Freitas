@@ -19,6 +19,23 @@ test('Admin enables SOLO in Diário and binds /solo only to a Diário SOLO event
   assert.match(adminJs, /ev\.urlSlug === 'solo'/);
 });
 
+test('Diário Solo displays its configured capacity and collects player details without a logo', async () => {
+  const [adminJs, publicScript] = await Promise.all([
+    read('../../artifacts/xtreino/public/admin.js'),
+    read('../../artifacts/xtreino/public/script.js'),
+  ]);
+
+  assert.ok(adminJs.includes("if (urlSlug === 'solo') {"));
+  assert.ok(adminJs.includes("opt.dataset.capacity = String(configuredCapacity > 0 ? configuredCapacity : 48);"));
+  assert.ok(adminJs.includes("selectedOpt?.dataset?.urlSlug === 'solo'"));
+  assert.ok(adminJs.includes('const cap = capacityForHour(hour);'));
+
+  assert.ok(publicScript.includes("heading.textContent = isSoloPlayerEvent ? 'Dados do Jogador' : 'Dados do Time';"));
+  assert.ok(publicScript.includes("const nameLabel = isSoloPlayerEvent ? 'NICK DO JOGADOR' : 'NOME DO TIME';"));
+  assert.ok(publicScript.includes("const logoField = isSoloPlayerEvent ? '' : `"));
+  assert.ok(publicScript.includes('teamLogoUrl: isSoloPlayerEvent ? null :'));
+});
+
 test('Public /solo route resolves the event by its saved unique URL slug', async () => {
   const [eventoHtml, netlifyConfig, viteConfig] = await Promise.all([
     read('../../artifacts/xtreino/public/evento.html'),

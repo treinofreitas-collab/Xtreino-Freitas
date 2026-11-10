@@ -214,6 +214,47 @@ test("every selected hour must have enough room for every team", async () => {
   assert.equal((await checkAvailability(db, { ...request, selectedTimes: ["17h", "18h"] })).available, false);
 });
 
+test("Diário Solo uses its configured 48 player slots per hour", async () => {
+  const eventId = "daily-solo-48";
+  const soloConfig = {
+    [`adminEvents/${eventId}`]: {
+      name: "DIÁRIO SOLO FREITAS",
+      urlSlug: "solo",
+      status: "Aberto",
+      vagas: 48,
+    },
+  };
+  const soloRequest = {
+    ...request,
+    eventType: eventId,
+    adminEventId: eventId,
+    numberOfTeams: 1,
+  };
+  const registrationsFor = count => Object.fromEntries(
+    Array.from({ length: count }, (_, index) => [`registrations/solo-${index}`, {
+      date: soloRequest.date,
+      eventType: eventId,
+      adminEventId: eventId,
+      schedule: "Quarta - 17h",
+      status: "paid",
+    }]),
+  );
+
+  const oneSeatLeft = await checkAvailability(database({
+    ...soloConfig,
+    ...registrationsFor(47),
+  }), soloRequest);
+  assert.equal(oneSeatLeft.available, true);
+  assert.equal(oneSeatLeft.allocation.occupiedByHour["17"], 47);
+
+  const full = await checkAvailability(database({
+    ...soloConfig,
+    ...registrationsFor(48),
+  }), soloRequest);
+  assert.equal(full.available, false);
+  assert.match(full.message, /1 jogador\./);
+});
+
 test("global, permanent and per-date locks block the reservation; extra occupied slots count", async () => {
   for (const lock of [
     { "event_global_locks/custom-event": { locked: true } },

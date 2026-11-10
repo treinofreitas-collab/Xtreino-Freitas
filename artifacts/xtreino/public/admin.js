@@ -3610,6 +3610,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
         // rawEventType = valor exato que o MP/tokens usa como chave no slotCounters e em r.eventType
         // CRÍTICO: espelha `rawEventType = ev.eventType || d.id` do script.js
         opt.dataset.rawEventType = ev.eventType || d.id;
+        const urlSlug = String(ev.urlSlug || '').trim().replace(/^\/+/, '').toLowerCase();
+        if (urlSlug === 'solo') {
+          opt.dataset.urlSlug = 'solo';
+          const configuredCapacity = Math.floor(Number(ev.vagas) || 0);
+          opt.dataset.capacity = String(configuredCapacity > 0 ? configuredCapacity : 48);
+        }
         typeEl.appendChild(opt);
       });
     } catch (err) {
@@ -4008,6 +4014,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const evFieldType = selectedOpt?.dataset?.evFieldType || rawEventId;
       const isCampSemifinalDate = CAMP_SEMIFINAL_DATES.includes(date);
       const isCampFinalDate = CAMP_FINAL_DATES.includes(date);
+      const soloCapacity = selectedOpt?.dataset?.urlSlug === 'solo'
+        ? Math.max(1, Math.floor(Number(selectedOpt.dataset.capacity) || 48))
+        : null;
+      const capacityForHour = hour => soloCapacity
+        || getCapacityForHour(ovEventType, hour, isCampFinalDate, isCampSemifinalDate);
 
       // ===== Configuração de UI por role =====
       const btnClearLocks = document.getElementById('btnClearLocks');
@@ -4081,7 +4092,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const mergedMap = {};
       defaultHours.forEach(hour => {
         const occupied = occupancyMap[hour] || 0;
-        const cap = getCapacityForHour(ovEventType, hour, isCampFinalDate, isCampSemifinalDate);
+        const cap = capacityForHour(hour);
         let final = occupied;
         
         const ovData = overridesMap[hour];
@@ -4114,7 +4125,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       }
 
       entries.forEach(hour => {
-        const cap = getCapacityForHour(ovEventType, hour, isCampFinalDate, isCampSemifinalDate);
+        const cap = capacityForHour(hour);
         const occupied = mergedMap[hour] || 0;
         const tr = createBoardTableRow(hour, cap, occupied, overridesMap, ovEventType, permLockedHours);
         tbody.appendChild(tr);

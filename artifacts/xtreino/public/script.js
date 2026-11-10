@@ -4317,6 +4317,27 @@ function getActiveScheduleConfig(eventType) {
     return scheduleConfig[requestedType] || {};
 }
 
+function isSoloScheduleConfig(config) {
+    return String(config?.urlSlug || '').trim().replace(/^\/+/, '').toLowerCase() === 'solo';
+}
+
+function updateScheduleParticipantLabels(isSoloPlayerEvent) {
+    const section = document.getElementById('teamsSection');
+    if (!section) return;
+    const heading = section.querySelector('h4');
+    const description = section.querySelector('p');
+    const addButton = section.querySelector('button[onclick="addTeam()"]');
+    if (heading) heading.textContent = isSoloPlayerEvent ? 'Dados do Jogador' : 'Dados do Time';
+    if (description) {
+        description.textContent = isSoloPlayerEvent
+            ? 'Nick, e-mail e WhatsApp obrigatórios'
+            : 'Logo opcional · demais campos obrigatórios';
+    }
+    if (addButton) {
+        addButton.innerHTML = `<i class="fas fa-plus text-xs"></i> ${isSoloPlayerEvent ? 'Jogador' : 'Time'}`;
+    }
+}
+
 function getActiveEventRegistrationMetadata() {
     const modal = document.getElementById('scheduleModal');
     const config = getActiveScheduleConfig(modal?.dataset?.eventType);
@@ -4925,6 +4946,9 @@ function openScheduleModal(eventType, options = {}) {
 
     modal.dataset.eventType = eventType;
     modal.dataset.adminEventId = inferredAdminEventId || '';
+    const isSoloPlayerEvent = isSoloScheduleConfig(cfg);
+    modal.dataset.soloPlayer = isSoloPlayerEvent ? '1' : '0';
+    updateScheduleParticipantLabels(isSoloPlayerEvent);
     window._currentScheduleEventType = eventType;
     if (!modal.dataset.schedulePixChangeListeners) {
         const onSchedulePixSelectionEdit = (event) => {
@@ -6264,6 +6288,19 @@ async function updateOccupiedAndRefreshButtons(day, date, eventType, container) 
 function addTeam() {
     teamCounter++;
     const teamId = `team_${teamCounter}`;
+    const isSoloPlayerEvent = document.getElementById('scheduleModal')?.dataset?.soloPlayer === '1';
+    const participantLabel = isSoloPlayerEvent ? 'Jogador' : 'Time';
+    const nameLabel = isSoloPlayerEvent ? 'NICK DO JOGADOR' : 'NOME DO TIME';
+    const namePlaceholder = isSoloPlayerEvent ? 'Ex: seu nick no jogo' : 'Ex: Team Freitas, xGamer123…';
+    const logoField = isSoloPlayerEvent ? '' : `
+        <label for="teamLogoInput_${teamId}" class="cursor-pointer flex-shrink-0 group" title="Clique para enviar a logo do time">
+            <div id="teamLogoPreview_${teamId}" class="w-16 h-16 rounded-2xl bg-white border-2 border-dashed border-purple-300 flex flex-col items-center justify-center overflow-hidden hover:border-purple-500 transition-colors group-hover:bg-purple-50">
+                <i class="fas fa-camera text-purple-300 text-lg group-hover:text-purple-500 transition-colors"></i>
+                <span class="text-xs text-purple-300 group-hover:text-purple-500 mt-0.5 font-medium transition-colors">Logo</span>
+            </div>
+            <input type="file" id="teamLogoInput_${teamId}" accept="image/*" class="hidden" onchange="previewTeamLogo('${teamId}', this)">
+            <p class="text-center text-xs text-gray-400 mt-1">Opcional</p>
+        </label>`;
     const teamData = { id: teamId, name: '', email: '', phone: '', logoBase64: null };
     teams.push(teamData);
 
@@ -6274,26 +6311,18 @@ function addTeam() {
     teamDiv.innerHTML = `
         ${teamCounter > 1 ? `
         <div class="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-200">
-            <span class="text-xs font-bold text-gray-600">Time ${teamCounter}</span>
+            <span class="text-xs font-bold text-gray-600">${participantLabel} ${teamCounter}</span>
             <button type="button" onclick="removeTeam('${teamId}')" class="text-red-500 hover:text-red-700 text-xs font-semibold flex items-center gap-1 transition-colors">
                 <i class="fas fa-times"></i> Remover
             </button>
         </div>` : ''}
         <div class="p-4">
-            <!-- Logo + Nome lado a lado -->
             <div class="flex items-start gap-3 mb-3">
-                <label for="teamLogoInput_${teamId}" class="cursor-pointer flex-shrink-0 group" title="Clique para enviar a logo do time">
-                    <div id="teamLogoPreview_${teamId}" class="w-16 h-16 rounded-2xl bg-white border-2 border-dashed border-purple-300 flex flex-col items-center justify-center overflow-hidden hover:border-purple-500 transition-colors group-hover:bg-purple-50">
-                        <i class="fas fa-camera text-purple-300 text-lg group-hover:text-purple-500 transition-colors"></i>
-                        <span class="text-xs text-purple-300 group-hover:text-purple-500 mt-0.5 font-medium transition-colors">Logo</span>
-                    </div>
-                    <input type="file" id="teamLogoInput_${teamId}" accept="image/*" class="hidden" onchange="previewTeamLogo('${teamId}', this)">
-                    <p class="text-center text-xs text-gray-400 mt-1">Opcional</p>
-                </label>
-                <div class="flex-1 space-y-2">
+                ${logoField}
+                <div class="${isSoloPlayerEvent ? 'w-full' : 'flex-1'} space-y-2">
                     <div>
-                        <label class="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wide">NOME DO TIME <span class="text-red-500">*</span></label>
-                        <input type="text" data-field="name" placeholder="Ex: Team Freitas, xGamer123…"
+                        <label class="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wide">${nameLabel} <span class="text-red-500">*</span></label>
+                        <input type="text" data-field="name" placeholder="${namePlaceholder}"
                                class="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold focus:border-purple-400 focus:outline-none transition-colors"
                                oninput="updateTeam('${teamId}', 'name', this.value)">
                     </div>
@@ -6472,6 +6501,7 @@ async function updateReservationsSummary() {
     const modal = document.getElementById('scheduleModal');
     const eventType = modal?.dataset?.eventType || 'modo-liga';
     const cfg = getActiveScheduleConfig(eventType);
+    const isSoloPlayerEvent = isSoloScheduleConfig(cfg);
 
     // Agrupa horários por data
     const timesByDate = {};
@@ -6510,7 +6540,7 @@ async function updateReservationsSummary() {
                                 </svg>
                                 <span class="text-red-700 font-medium">⚠️ Vagas insuficientes em ${d}!</span>
                             </div>
-                            <p class="text-red-600 text-sm mt-1">Reduza o número de times ou escolha outros horários.</p>
+                            <p class="text-red-600 text-sm mt-1">${isSoloPlayerEvent ? 'Reduza o número de jogadores' : 'Reduza o número de times'} ou escolha outros horários.</p>
                         </div>
                     `;
                     break;
@@ -6532,7 +6562,7 @@ async function updateReservationsSummary() {
             const formattedDate = new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
             const displaySchedule = schedule.replace(/ - 0h$/, ' - 00h00');
             summaryHTML += `<div class="flex justify-between items-center py-1">
-                <span class="text-gray-700">${displaySchedule} (${formattedDate}) × ${teams.length} time(s)</span>
+                <span class="text-gray-700">${displaySchedule} (${formattedDate}) × ${teams.length} ${isSoloPlayerEvent ? (teams.length === 1 ? 'jogador' : 'jogadores') : (teams.length === 1 ? 'time' : 'times')}</span>
                 <span class="font-semibold">R$ ${(pricePerReservation * teams.length).toFixed(2)}</span>
             </div>`;
         }
@@ -7752,6 +7782,7 @@ async function submitSchedule(e, useTokens = false) {
         const normalizeHour = (h) => { if (!h) return null; const s = String(h).toLowerCase().trim(); const m = s.match(/(\d{1,2})/); return m ? `${parseInt(m[1], 10)}h` : s; };
         const eventType = normalizeType(rawEventType);
         const cfg = getActiveScheduleConfig(rawEventType);
+        const isSoloPlayerEvent = isSoloScheduleConfig(cfg);
         const isFreeEvent = (cfg.price === 0 || cfg.isFree === true) && !cfg.isProduct;
 
         // Se for produto da loja, usar lógica de compra
@@ -7826,14 +7857,16 @@ async function submitSchedule(e, useTokens = false) {
         }
 
         if (teamsData.length === 0) {
-            alert('Adicione pelo menos um time.');
+            alert(isSoloPlayerEvent ? 'Adicione pelo menos um jogador.' : 'Adicione pelo menos um time.');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
 
         for (let team of teamsData) {
             if (!team.name || !team.email || !team.phone) {
-                alert('Preencha todos os dados dos times.');
+                alert(isSoloPlayerEvent
+                    ? 'Preencha o nick, e-mail e WhatsApp do jogador.'
+                    : 'Preencha todos os dados dos times.');
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
             }
@@ -8106,7 +8139,7 @@ async function submitSchedule(e, useTokens = false) {
             const _teamLogoDataMap = await (async () => {
                 const _map = {};
                 await Promise.all(teamsData.map(async team => {
-                    if (team.logoBase64) {
+                    if (!isSoloPlayerEvent && team.logoBase64) {
                         const url = await uploadTeamLogo(team.logoBase64, team.name, rawEventType);
                         if (!url) throw new Error('Não foi possível salvar a logo original. Tente reenviar a imagem.');
                         const thumb = await _resizeLogoBase64(team.logoBase64);
@@ -8136,8 +8169,8 @@ async function submitSchedule(e, useTokens = false) {
                         _meta: { team: team.name, slotNum, slotDisplay, schedule: p.schedule, date: p.d, whatsappLink: p.whatsappLink },
                         userId: window.firebaseAuth.currentUser.uid,
                         teamName: team.name,
-                        teamLogoUrl: _teamLogoDataMap[team.name]?.url || _equipeAtual?.logoOriginalUrl || null,
-                        teamLogoThumb: _teamLogoDataMap[team.name]?.thumb || _equipeAtual?.logoUrl || null,
+                        teamLogoUrl: isSoloPlayerEvent ? null : (_teamLogoDataMap[team.name]?.url || _equipeAtual?.logoOriginalUrl || null),
+                        teamLogoThumb: isSoloPlayerEvent ? null : (_teamLogoDataMap[team.name]?.thumb || _equipeAtual?.logoUrl || null),
                         teamId: _equipeAtual?.id || null,
                         membrosUids: _equipeAtual?.membrosUids || null,
                         email: team.email,
@@ -9421,6 +9454,7 @@ window.getWhatsAppLink = getWhatsAppLink;
 
 async function createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, status = 'pending', couponInfo = null, allocationByDate = null) {
     const cfg = getActiveScheduleConfig(eventType);
+    const isSoloPlayerEvent = isSoloScheduleConfig(cfg);
     const isLiga = (cfg.modo || '').toUpperCase().includes('LIGA');
     const vagas = cfg.vagas || 0;
     const grupos = Math.max(1, cfg.grupos || 1);
@@ -9499,7 +9533,7 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
     const _logoMap = await (async () => {
         const _map = {};
         await Promise.all(teamsData.map(async team => {
-            if (team.logoBase64) {
+            if (!isSoloPlayerEvent && team.logoBase64) {
                 const url = await uploadTeamLogo(team.logoBase64, team.name, eventType);
                 if (!url) throw new Error('Não foi possível salvar a logo original. Tente reenviar a imagem.');
                 const thumb = await _resizeLogoBase64(team.logoBase64);
@@ -9541,8 +9575,8 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                 _dupBatchCount[_dupKey] = (_dupBatchCount[_dupKey] || 0) + 1;
 
                 const _logoData = _logoMap[team.name];
-                const teamLogoUrl = _logoData?.url || _equipeAtual?.logoOriginalUrl || null;
-                const teamLogoThumb = _logoData?.thumb || _equipeAtual?.logoUrl || null;
+                const teamLogoUrl = isSoloPlayerEvent ? null : (_logoData?.url || _equipeAtual?.logoOriginalUrl || null);
+                const teamLogoThumb = isSoloPlayerEvent ? null : (_logoData?.thumb || _equipeAtual?.logoUrl || null);
 
                 const payload = {
                     userId: window.firebaseAuth.currentUser.uid,

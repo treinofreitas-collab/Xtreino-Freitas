@@ -182,8 +182,9 @@ async function checkAvailability(db, body) {
   }
   if (!isModoLiga && hours.includes(0)) invalid("O horário 00h00 está disponível apenas no Modo Liga.");
   const canonicalType = isModoLiga ? "modo-liga" : (config?.eventType || eventType);
+  const isSoloEvent = String(config?.urlSlug || "").trim().replace(/^\/+/, "").toLowerCase() === "solo";
   const isIntensivo = isIntensivoFreitas(config);
-  const isSoloLegacyEvent = config?.urlSlug === "solo" && !config?.eventType;
+  const isSoloLegacyEvent = isSoloEvent && !config?.eventType;
   const types = [...new Set([
     eventType,
     canonicalType,
@@ -280,7 +281,12 @@ async function checkAvailability(db, body) {
     const extra = relevantOverrides.reduce((total, record) => total + Math.max(0, Number(record.extraOccupied) || 0), 0);
     const available = (counts[hour] || 0) + extra + numberOfTeams <= capacity;
     availabilityByHour[hourKey] = available;
-    if (!available) unavailableMessage ||= `Não há vagas suficientes às ${hour}h para ${numberOfTeams} time(s). Escolha outro horário ou reduza os times.`;
+    if (!available) {
+      const participantLabel = isSoloEvent
+        ? (numberOfTeams === 1 ? "jogador" : "jogadores")
+        : (numberOfTeams === 1 ? "time" : "times");
+      unavailableMessage ||= `Não há vagas suficientes às ${hour}h para ${numberOfTeams} ${participantLabel}. Escolha outro horário ou reduza o número de ${isSoloEvent ? "jogadores" : "times"}.`;
+    }
   }
 
   const available = Object.values(availabilityByHour).every(Boolean);
