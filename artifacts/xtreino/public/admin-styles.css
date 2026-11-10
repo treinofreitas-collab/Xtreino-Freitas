@@ -851,6 +851,9 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 .ff-workspace .ff-roster-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.55rem; margin:.75rem 0; }
 .ff-workspace .ff-file-label { max-width:100%; overflow-wrap:anywhere; color:#85928b; font-size:.62rem; }
 .ff-workspace .ff-roster-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.45rem; }
+.ff-workspace .ff-roster-confirm-row { display:flex; align-items:center; flex-wrap:wrap; gap:.55rem; margin-top:.75rem; }
+.ff-workspace #ffRosterConfirmStatus { color:#8b672d; font-size:.65rem; line-height:1.4; }
+.ff-workspace #ffRosterConfirmStatus.confirmed { color:#36734e; }
 .ff-workspace .ff-roster-row { display:flex; align-items:center; gap:.42rem; min-width:0; }
 .ff-workspace .ff-slot { display:grid; place-items:center; flex:0 0 29px; height:29px; border-radius:7px; background:#eef1e9; color:#64736a; font:500 .65rem 'DM Mono',monospace; }
 .ff-workspace .ff-roster-row input { padding:.45rem .55rem; font-size:.72rem; }
@@ -905,10 +908,15 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 .ff-workspace .ff-edit-table td:first-child { width:75px; }
 .ff-workspace .ff-edit-table td:nth-child(2) { min-width:145px; }
 .ff-workspace .ff-edit-table td:nth-child(3), .ff-workspace .ff-edit-table td:nth-child(4) { width:90px; }
-.ff-workspace .ff-confidence { display:inline-flex; padding:.2rem .38rem; border-radius:5px; background:#eaf2eb; color:#497759; font:500 .63rem 'DM Mono',monospace; }
-.ff-workspace .ff-confidence.low { background:#fff0df; color:#a15f20; }
-.ff-workspace .ff-row-note { display:block; margin-top:.2rem; max-width:110px; color:#8e9991; font-size:.57rem; }
-.ff-workspace .ff-player-list { display:block; max-width:200px; margin-top:.2rem; color:#8e9991; font-size:.57rem; line-height:1.35; white-space:normal; overflow-wrap:anywhere; }
+.ff-workspace .ff-reading-status { display:inline-flex; padding:.2rem .38rem; border-radius:5px; background:#eaf2eb; color:#497759; font:600 .59rem 'DM Sans',sans-serif; white-space:nowrap; }
+.ff-workspace .ff-reading-status.needs-review { background:#fff0df; color:#a15f20; }
+.ff-workspace .ff-reading-status.confirmed { background:#eaf2eb; color:#497759; }
+.ff-workspace .ff-row-note { display:block; margin-top:.2rem; max-width:220px; color:#8e9991; font-size:.57rem; line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
+.ff-workspace .ff-player-list { display:grid; gap:.18rem; max-width:200px; margin-top:.28rem; color:#8e9991; font-size:.57rem; line-height:1.35; white-space:normal; overflow-wrap:anywhere; }
+.ff-workspace .ff-player-kill { display:flex; align-items:center; justify-content:space-between; gap:.35rem; }
+.ff-workspace .ff-player-kill span { min-width:0; overflow-wrap:anywhere; }
+.ff-workspace .ff-edit-table .ff-player-kill input { flex:0 0 48px; width:48px; min-width:48px; padding:.22rem .3rem; text-align:center; }
+.ff-workspace .ff-edit-table input[readonly] { background:#f2f5ef; color:#33443b; font-weight:700; }
 .ff-workspace .ff-standings-panel { position:sticky; top:calc(var(--header-h) + 1rem); padding:1.15rem 1rem; }
 .ff-workspace .ff-standings-head { display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
 .ff-workspace .ff-standings-head h2 { margin:.2rem 0 0; font-size:1.25rem; letter-spacing:-.035em; }
@@ -2173,8 +2181,27 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 
 .ff-workspace .ff-review-confirm input {
     flex: 0 0 auto;
+    width: 1.15rem;
+    height: 1.15rem;
     margin-top: .12rem;
     accent-color: #d66537;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.ff-workspace .ff-review-confirm input:disabled {
+    cursor: not-allowed;
+}
+
+.ff-workspace .ff-review-blocker {
+    margin-top: .4rem;
+    padding: .65rem .8rem;
+    border: 1px solid #efc3b2;
+    border-radius: 8px;
+    background: #fff3ed;
+    color: #963f25;
+    font-size: .76rem;
+    line-height: 1.45;
 }
 
 .ff-workspace .ff-scoring-mode-switch {

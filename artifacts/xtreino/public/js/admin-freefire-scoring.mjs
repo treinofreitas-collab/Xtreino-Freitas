@@ -14,7 +14,7 @@ import {
   SPEC_LOGO_HOURS,
   loadModoLigaSpecLogoCatalog,
   specLogoCodeForLetter,
-} from './admin-spec-logos.mjs';
+} from './admin-spec-logos.mjs?v=spec-logo-zip-chunks-1';
 import {
   getVisibleAlphaBounds,
   hasTransparentEdgeBackground,
@@ -335,6 +335,7 @@ function createSession(event) {
     dropsCount: 3,
     teams: Array.from({ length: 12 }, (_, i) => ({ slot: i + 1, teamName: '' })),
     rosterText: '',
+    confirmedRosterFingerprint: '',
     rosterImages: [],
     slotImages: [],
     drops: Array.from({ length: 5 }, blankDrop),
@@ -392,7 +393,17 @@ let matchResultView = null;
 let activeScoringMode = 'images';
 let bundledMatchResultTemplate = null;
 let previewUrl = '';
-function blankDrop() { return { resultImages: [], placements: [], unmatchedPlayers: [], analyzed: false, reviewed: false }; }
+function blankDrop() {
+  return {
+    resultImages: [],
+    placements: [],
+    unmatchedPlayers: [],
+    analyzed: false,
+    reviewed: false,
+    rosterFingerprint: '',
+    rosterSnapshot: [],
+  };
+}
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const allowed = ['ceo', 'socio', 'sócio', 'gerente', 'admin'];
@@ -1574,8 +1585,17 @@ async function loadTemplate() {
 export function parseRoster(text) {
   const parsed = new Map();
   String(text || '').split(/\r?\n/).forEach(line => {
-    const normalizedLine = line.normalize('NFKC').trim().replace(
-      /^[\s\u200b\ufeff\p{M}\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0e\ufe0f]+(?=(?:slot\b|time\b|team\b|\d{1,2}\s*(?:[,;:.\-]|\s)|[a-l]\s*(?:[,;:.\-]|\s)))/iu,
+    const normalizedLine = line.normalize('NFKC')
+      .replace(/[ႽᏞⲞƬⲟƭ]/gu, character => ({
+        'Ⴝ': 'S',
+        'Ꮮ': 'L',
+        'Ⲟ': 'O',
+        'Ƭ': 'T',
+        'ⲟ': 'o',
+        'ƭ': 't',
+      })[character] || character)
+      .trim().replace(
+      /^[\s\u200b\ufeff\p{M}\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0e\ufe0f]+(?=(?:slot\b|time\b|team\b|\d{1,2}\s*[,;:.\-]|[a-l]\s*[,;:.\-]))/iu,
       '',
     );
     if (/^(?:slot|time|team|position|posi[cç][aã]o|rank)\s*[,;|]\s*(?:equipe|team|nome(?:\s+da\s+equipe)?|name)\b/iu.test(normalizedLine)) return;
@@ -1597,12 +1617,75 @@ export function parseRoster(text) {
   });
   return Array.from({ length: 12 }, (_, i) => ({ slot: i + 1, teamName: parsed.get(i + 1) || '' }));
 }
+function normalizeOfficialTeamName(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLocaleLowerCase('pt-BR')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+export function getOfficialRosterFingerprint(teams) {
+  return JSON.stringify((Array.isArray(teams) ? teams : [])
+    .map(team => [Number(team.slot), normalizeOfficialTeamName(team.teamName)])
+    .sort((a, b) => a[0] - b[0]));
+}
+export function buildConfirmedPreviousDropReferences(drops, currentDropIndex, teams) {
+  const currentIndex = Number.isInteger(currentDropIndex) ? Math.max(0, currentDropIndex) : 0;
+  const fingerprint = getOfficialRosterFingerprint(teams);
+  return (Array.isArray(drops) ? drops : [])
+    .slice(0, currentIndex)
+    .flatMap((drop, index) => {
+      if (!drop?.analyzed || !drop.reviewed || drop.rosterFingerprint !== fingerprint
+          || !Array.isArray(drop.placements)) return [];
+      const placements = drop.placements.flatMap(placement => {
+        const slot = Number(placement?.slot);
+        if (!Number.isInteger(slot) || slot < 1 || slot > 12) return [];
+        const players = [...new Set((Array.isArray(placement.players) ? placement.players : [])
+          .map(player => String(player?.name || '').replace(/[\r\n\t]/g, ' ').trim().slice(0, 80))
+          .filter(Boolean))].slice(0, 6).map(name => ({ name }));
+        return players.length ? [{ slot, players }] : [];
+      });
+      return placements.length
+        ? [{ dropNumber: index + 1, confirmed: true, placements }]
+        : [];
+    });
+}
+function getRosterValidationIssue(teams = state.teams) {
+  if (!Array.isArray(teams) || teams.length !== 12 || teams.some(team => !String(team?.teamName || '').trim())) {
+    return 'Preencha os nomes dos 12 slots antes de confirmar a lista.';
+  }
+  const names = teams.map(team => normalizeOfficialTeamName(team.teamName));
+  if (new Set(names).size !== 12) {
+    return 'Há nomes de equipe repetidos. Confira a lista oficial antes de continuar.';
+  }
+  return '';
+}
 function hasCompleteRoster() {
-  return state.teams.length === 12 && state.teams.every(team => team.teamName.trim());
+  return !getRosterValidationIssue();
+}
+function isRosterConfirmed() {
+  const fingerprint = getOfficialRosterFingerprint(state.teams);
+  return hasCompleteRoster() && state.confirmedRosterFingerprint === fingerprint;
+}
+function renderRosterConfirmation() {
+  const button = $('ffConfirmRoster');
+  const status = $('ffRosterConfirmStatus');
+  if (!button || !status) return;
+  const issue = getRosterValidationIssue();
+  const confirmed = isRosterConfirmed();
+  button.disabled = readOnly() || state.busy || Boolean(issue) || confirmed;
+  button.textContent = confirmed ? 'Lista confirmada' : 'Confirmar mapa de slots';
+  status.textContent = confirmed
+    ? 'Este mapa oficial será usado em todas as quedas.'
+    : issue || (state.confirmedRosterFingerprint
+      ? 'A lista foi alterada. Confirme novamente antes de analisar.'
+      : 'Confira os 12 nomes e slots; a análise só será liberada após confirmar.');
+  status.classList.toggle('confirmed', confirmed);
 }
 function canAnalyzeDrop(drop) {
   return !state.busy && state.slotImages.length === 3 && !!drop.resultImages.length &&
-    hasCompleteRoster();
+    hasCompleteRoster() && isRosterConfirmed();
 }
 function validateImageFiles(files, maxCount) {
   if (!files.length || files.length > maxCount) throw new Error(`Selecione de 1 a ${maxCount} imagens para esta etapa.`);
@@ -1614,38 +1697,75 @@ function saveActiveSession() {
     dropsCount: state.dropsCount,
     teams: state.teams,
     rosterText: state.rosterText,
+    confirmedRosterFingerprint: state.confirmedRosterFingerprint,
     rosterImages: state.rosterImages,
     slotImages: state.slotImages,
     drops: state.drops,
     activeDrop: state.activeDrop,
   });
 }
-function dropReviewIssue(drop) {
-  if (!drop.analyzed || !drop.placements.length) return 'Analise todas as quedas selecionadas antes de exportar.';
-  if (!drop.reviewed) return 'Confirme que revisou todos os dados desta queda.';
+export function getImageDropValidationIssue(drop, teams) {
+  if (!drop?.analyzed || !Array.isArray(drop.placements)) return 'Analise esta queda antes de pontuar.';
+  const rosterIssue = getRosterValidationIssue(teams);
+  if (rosterIssue) return rosterIssue;
   const positions = new Set();
   const slots = new Set();
+  let identifiedTeams = 0;
   for (const placement of drop.placements) {
+    const rawSlot = placement.slot;
+    if (rawSlot === null || rawSlot === undefined || rawSlot === '') continue;
     const position = Number(placement.position);
-    const slot = Number(placement.slot);
+    const slot = Number(rawSlot);
     if (!Number.isInteger(position) || position < 1 || position > 12) return 'Corrija as colocações para valores entre 1 e 12.';
-    if (!Number.isInteger(slot) || slot < 1 || slot > 12 || !state.teams[slot - 1]?.teamName.trim()) return 'Associe cada colocação a um slot com equipe.';
+    if (!Number.isInteger(slot) || slot < 1 || slot > 12 || !String(teams[slot - 1]?.teamName || '').trim()) return 'Associe cada colocação a um slot com equipe.';
     if (positions.has(position)) return 'Há colocações repetidas nesta queda.';
     if (slots.has(slot)) return 'Há equipes repetidas nesta queda.';
-    if (!Number.isInteger(placement.kills) || placement.kills < 0) return 'Informe os abates legíveis desta queda; valor em branco não conta como zero.';
+    const individualKills = sumReadablePlayerKills(placement.players);
+    if (individualKills === null) return 'Nenhum abate individual legível; não use o total impresso do placar.';
+    if (!Number.isInteger(placement.kills) || placement.kills < 0 || placement.kills > 99) return 'Confira a soma dos abates individuais legíveis.';
+    if (placement.kills !== individualKills) return 'O total da equipe precisa corresponder à soma dos abates individuais legíveis.';
     positions.add(position);
     slots.add(slot);
+    identifiedTeams += 1;
   }
+  if (identifiedTeams === 0) return 'Identifique pelo menos uma equipe nesta queda; as equipes ausentes ou sem identificação ficam zeradas.';
   return '';
 }
+function dropApprovalIssue(drop) {
+  if (!isRosterConfirmed()) return 'Confirme primeiro a lista oficial de slots.';
+  if (drop.rosterFingerprint !== getOfficialRosterFingerprint(state.teams)) {
+    return 'A lista de slots mudou após a análise. Reanalise esta queda com o mapa confirmado.';
+  }
+  return getImageDropValidationIssue(drop, state.teams);
+}
+function dropReviewIssue(drop) {
+  const approvalIssue = dropApprovalIssue(drop);
+  if (approvalIssue) return approvalIssue;
+  if (!drop.reviewed) return 'Confira os dados identificados e confirme esta queda.';
+  return '';
+}
+function dropStatusLabel(drop) {
+  if (!drop.analyzed) return 'Pendente';
+  if (!isRosterConfirmed()) return 'Confirme a lista';
+  if (drop.rosterFingerprint !== getOfficialRosterFingerprint(state.teams)) return 'Reanalisar';
+  if (getImageDropValidationIssue(drop, state.teams)) return 'Corrigir dados';
+  return drop.reviewed ? 'Confirmada' : 'Aguardando revisão';
+}
+function refreshDropTabs() {
+  const tabs = $('ffDropTabs');
+  if (!tabs) return;
+  tabs.innerHTML = Array.from({ length: state.dropsCount }, (_, i) =>
+    `<button type="button" class="ff-drop-tab ${i === state.activeDrop ? 'active' : ''}" data-drop="${i}" ${state.busy ? 'disabled' : ''}>QUEDA ${String(i + 1).padStart(2, '0')}<small>${esc(dropStatusLabel(state.drops[i]))}</small></button>`).join('');
+}
 function canExport() {
-  return !!state.template && hasCompleteRoster() &&
+  return !!state.template && isRosterConfirmed() &&
     state.drops.slice(0, state.dropsCount).every(drop => !dropReviewIssue(drop)) &&
     standings().some(row => row.teamName) && !state.busy;
 }
 function exportIssue() {
   if (!state.template) return 'A tabela oficial deste evento não carregou; atualize o painel e tente novamente.';
   if (!hasCompleteRoster()) return 'Preencha os nomes dos 12 slots antes de exportar.';
+  if (!isRosterConfirmed()) return 'Confirme a lista oficial de slots antes de exportar.';
   const issue = state.drops.slice(0, state.dropsCount).map(dropReviewIssue).find(Boolean);
   return issue || 'O JPEG preserva a proporção do modelo e limita o maior lado a 1080 px.';
 }
@@ -1664,7 +1784,9 @@ function render() {
     build(root);
   }
   $('ffEvent').value = state.event;
+  $('ffEvent').disabled = readOnly() || state.busy;
   $('ffDrops').value = String(state.dropsCount);
+  $('ffDrops').disabled = readOnly() || state.busy;
   $('ffImageQualityMode').value = state.imageQualityMode;
   $('ffImageQualityHint').textContent = state.imageQualityMode === 'original'
     ? 'Envia as imagens sem recompressão ou redimensionamento. Limite total: 4 MB por análise.'
@@ -1673,11 +1795,9 @@ function render() {
     ? state.rosterImages.map(file => `${file.name} · ${file.size.toLocaleString('pt-BR')} bytes`).join(' | ')
     : 'Nenhuma imagem selecionada';
   const viewer = readOnly();
-  $('ffEvent').disabled = viewer;
-  $('ffDrops').disabled = viewer;
   $('ffImageQualityMode').disabled = viewer || state.busy;
-  $('ffRosterText').disabled = viewer;
-  $('ffRosterUpload').disabled = viewer;
+  $('ffRosterText').disabled = viewer || state.busy;
+  $('ffRosterUpload').disabled = viewer || state.busy;
   $('ffAnalyzeRoster').disabled = viewer || state.busy || !state.rosterImages.length;
   $('ffTemplateName').textContent = state.templateName || 'Nenhum modelo configurado para este evento';
   $('ffTemplateHint').textContent = state.template
@@ -1691,9 +1811,9 @@ function render() {
   $('ffRosterText').value = state.rosterText;
   $('ffRosterRows').innerHTML = state.teams.map(team => `
     <label class="ff-roster-row"><span class="ff-slot">${String(team.slot).padStart(2, '0')}</span>
-      <input data-team-slot="${team.slot}" aria-label="Equipe do slot ${team.slot}" value="${esc(team.teamName)}" placeholder="Nome da equipe" ${viewer ? 'disabled' : ''}></label>`).join('');
-  $('ffDropTabs').innerHTML = Array.from({ length: state.dropsCount }, (_, i) =>
-    `<button type="button" class="ff-drop-tab ${i === state.activeDrop ? 'active' : ''}" data-drop="${i}">QUEDA ${String(i + 1).padStart(2, '0')}<small>${state.drops[i].reviewed ? 'Revisado' : state.drops[i].analyzed ? 'Aguardando revisão' : 'Pendente'}</small></button>`).join('');
+      <input data-team-slot="${team.slot}" aria-label="Equipe do slot ${team.slot}" value="${esc(team.teamName)}" placeholder="Nome da equipe" ${viewer || state.busy ? 'disabled' : ''}></label>`).join('');
+  renderRosterConfirmation();
+  refreshDropTabs();
   const dropIndex = Math.min(state.activeDrop || 0, state.dropsCount - 1);
   state.activeDrop = dropIndex;
   const drop = state.drops[dropIndex];
@@ -1710,15 +1830,15 @@ function render() {
   uploadHelp.textContent = totalImageBytes
     ? `Imagens selecionadas: ${(totalImageBytes / 1024 / 1024).toFixed(1)} MB. Arraste imagens diretamente para as áreas ou use os botões; elas serão enviadas ao analisar.`
     : 'Arraste imagens diretamente para as áreas ou use os botões. Até 3 fotos do lobby e 2 do placar; algumas páginas bloqueiam a importação direta.';
-  $('ffSlotUpload').disabled = viewer;
-  $('ffResultUpload').disabled = viewer;
+  $('ffSlotUpload').disabled = viewer || state.busy;
+  $('ffResultUpload').disabled = viewer || state.busy;
   $('ffExtraction').classList.toggle('ff-readonly', viewer);
   $('ffBusy').classList.toggle('hidden', !state.busy);
   $('ffBusyLabel').textContent = state.imageQualityMode === 'original'
-    ? 'Enviando imagens originais e analisando'
-    : 'Otimizando imagens e analisando';
+    ? 'Enviando imagens originais e comparando leituras'
+    : 'Otimizando imagens e comparando leituras';
   const ranked = standings();
-  $('ffStandingsCount').textContent = ranked.filter(row => row.teamName).length ? `${ranked.filter(row => row.teamName).length} equipes` : 'Aguardando resultados';
+  $('ffStandingsCount').textContent = `${confirmedDropCount()}/${state.dropsCount} quedas confirmadas`;
   $('ffStandings').innerHTML = ranked.filter(row => row.teamName).map((row, index) => `
     <tr><td class="ff-rank">${String(index + 1).padStart(2, '0')}</td><td><strong>${esc(row.teamName)}</strong><small>Slot ${String(row.slot).padStart(2, '0')}</small></td>
     <td>${row.wins}</td><td>${row.kills}</td><td class="ff-total">${row.points}</td></tr>`).join('') ||
@@ -1801,6 +1921,8 @@ function resetDropAnalysis(drop) {
   drop.reviewed = false;
   drop.placements = [];
   drop.unmatchedPlayers = [];
+  drop.rosterFingerprint = '';
+  drop.rosterSnapshot = [];
 }
 function removeUploadedImage(scope, index) {
   if (readOnly() || state.busy || !Number.isInteger(index) || index < 0) return;
@@ -1824,17 +1946,6 @@ function removeUploadedImage(scope, index) {
   affectedDrops.forEach(resetDropAnalysis);
   render();
 }
-function confidenceValue(value) {
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'high') return 0.9;
-    if (normalized === 'medium') return 0.6;
-    if (normalized === 'low') return 0.3;
-  }
-  const number = Number(value);
-  if (!Number.isFinite(number)) return 0;
-  return Math.max(0, Math.min(1, number > 1 ? number / 100 : number));
-}
 export function normalizeExtractedKillCount(value) {
   if (typeof value === 'number') {
     return Number.isInteger(value) && value >= 0 && value <= 99 ? value : null;
@@ -1843,10 +1954,22 @@ export function normalizeExtractedKillCount(value) {
   const parsed = Number(value.trim());
   return parsed <= 99 ? parsed : null;
 }
-function formatExtractedKillCount(value) {
-  return normalizeExtractedKillCount(value) === null
-    ? 'ilegível'
-    : String(normalizeExtractedKillCount(value));
+export function sumReadablePlayerKills(players) {
+  if (!Array.isArray(players)) return null;
+  let total = 0;
+  let readableCount = 0;
+  for (const player of players) {
+    const kills = normalizeExtractedKillCount(player?.kills);
+    if (kills === null) continue;
+    total += kills;
+    readableCount += 1;
+  }
+  return readableCount ? total : null;
+}
+function readingStatusLabel(placement) {
+  if (String(placement.readAgreement || '').startsWith('2 de 3')) return '2 de 3 concordam';
+  if ((placement.reviewFields || []).length || placement.confidence === 'low') return 'Revisar manualmente';
+  return placement.readAgreement || '2 leituras concordam';
 }
 function renderPlacements(drop) {
   const wrap = $('ffExtraction');
@@ -1854,23 +1977,47 @@ function renderPlacements(drop) {
     wrap.innerHTML = '<div class="ff-empty-extraction"><span class="ff-empty-mark">01</span><div><b>A extração aparece aqui para conferência</b><p>Envie as imagens do lobby e do placar. A análise só começa quando você clicar em analisar.</p></div></div>';
     return;
   }
-  const low = drop.placements.filter(p => confidenceValue(p.confidence) < 0.75);
+  const low = drop.placements.filter(p => (p.reviewFields || []).length || p.confidence === 'low');
   const unmatched = drop.unmatchedPlayers || [];
+  const identifiedSlots = new Set(drop.placements
+    .map(placement => Number(placement.slot))
+    .filter(slot => Number.isInteger(slot) && slot >= 1 && slot <= 12));
+  const configuredTeamCount = state.teams.filter(team => String(team.teamName || '').trim()).length;
+  const absentTeamCount = Math.max(0, configuredTeamCount - identifiedSlots.size);
+  const dataIssue = getImageDropValidationIssue(drop, state.teams);
+  const rosterChanged = !isRosterConfirmed() ||
+    drop.rosterFingerprint !== getOfficialRosterFingerprint(state.teams);
+  const reviewDetails = [];
+  if (low.length) reviewDetails.push(`${low.length} linha(s) precisam de conferência. Valores sem consenso ficam em branco.`);
+  if (absentTeamCount === 1) reviewDetails.push('1 equipe ausente ou não identificada ficará zerada nesta queda.');
+  else if (absentTeamCount > 1) reviewDetails.push(`${absentTeamCount} equipes ausentes ou não identificadas ficarão zeradas nesta queda.`);
+  const reviewSummary = drop.reviewed
+    ? 'Queda confirmada. Os dados conferidos já entram na classificação.'
+    : dataIssue
+      ? dataIssue
+      : rosterChanged
+        ? 'Confirme o mapa oficial. Se ele mudou, reanalise esta queda.'
+        : reviewDetails.length
+          ? reviewDetails.join(' ')
+          : 'As leituras automáticas concordam. Confira os dados identificados antes de confirmar.';
+  const reviewAttemptIssue = drop.reviewAttemptIssue || '';
   wrap.innerHTML = `
-      ${(low.length || unmatched.length) ? `<div class="ff-review-alert"><b>Revisão necessária</b><span>${low.length ? `${low.length} leitura(s) com baixa confiança. ` : ''}${unmatched.length ? `${unmatched.length} jogador(es) sem equipe vinculada.` : ''}</span>
-      ${unmatched.length ? `<small>Sem vínculo: ${unmatched.map(esc).join(' · ')}</small>` : ''}</div>` : '<div class="ff-clean-alert"><b>Extração pronta para revisão</b><span>Confira os dados antes de considerar esta queda final.</span></div>'}
-    <div class="ff-table-scroll"><table class="ff-edit-table"><thead><tr><th>Slot</th><th>Equipe</th><th>Colocação</th><th>Abates</th><th>Leitura</th></tr></thead><tbody>
+      ${(!drop.reviewed && (low.length || unmatched.length || dataIssue || rosterChanged)) ? `<div class="ff-review-alert"><b>Conferência necessária</b><span>${esc(reviewSummary)}</span>
+      ${unmatched.length ? `<small>Jogadores sem associação segura: ${unmatched.map(esc).join(' · ')}</small>` : ''}</div>` : `<div class="${drop.reviewed ? 'ff-clean-alert' : 'ff-review-alert'}"><b>${drop.reviewed ? 'Queda confirmada' : 'Revisão final'}</b><span>${esc(reviewSummary)}</span>
+      ${unmatched.length ? `<small>Confira também os jogadores sem associação segura: ${unmatched.map(esc).join(' · ')}</small>` : ''}</div>`}
+     <div class="ff-table-scroll"><table class="ff-edit-table"><thead><tr><th>Slot</th><th>Equipe</th><th>Colocação</th><th>Soma individual</th><th>Conferência</th></tr></thead><tbody>
     ${drop.placements.map((p, i) => `<tr>
-      <td><select data-edit="slot" data-index="${i}" aria-label="Slot da equipe" ${readOnly() ? 'disabled' : ''}><option value="" ${p.slot == null ? 'selected' : ''}>—</option>${Array.from({ length: 12 }, (_, x) => `<option value="${x + 1}" ${Number(p.slot) === x + 1 ? 'selected' : ''}>${String(x + 1).padStart(2, '0')}</option>`).join('')}</select></td>
-      <td><strong class="ff-reviewed-team">${esc(state.teams[Number(p.slot) - 1]?.teamName || p.teamName || 'Não identificada')}</strong>
-        ${p.players?.length ? `<small class="ff-player-list">Jogadores: ${p.players.map(player => `${esc(player.name)} (${esc(formatExtractedKillCount(player.kills))})`).join(' · ')}</small>` : ''}</td>
-      <td><input data-edit="position" data-index="${i}" aria-label="Colocação" type="number" min="1" max="12" value="${esc(p.position)}" ${readOnly() ? 'disabled' : ''}></td>
-      <td><input data-edit="kills" data-index="${i}" aria-label="Abates" type="number" min="0" placeholder="Abates ilegíveis" value="${Number.isInteger(p.kills) ? esc(p.kills) : ''}" ${readOnly() ? 'disabled' : ''}></td>
-      <td><span class="ff-confidence ${confidenceValue(p.confidence) < .75 ? 'low' : ''}">${Math.round(confidenceValue(p.confidence) * 100)}%</span>${p.notes ? `<small class="ff-row-note">${esc(p.notes)}</small>` : ''}</td>
+      <td><select data-edit="slot" data-index="${i}" aria-label="Slot da equipe" ${readOnly() || state.busy ? 'disabled' : ''}><option value="" ${p.slot == null ? 'selected' : ''}>—</option>${Array.from({ length: 12 }, (_, x) => `<option value="${x + 1}" ${Number(p.slot) === x + 1 ? 'selected' : ''}>${String(x + 1).padStart(2, '0')}</option>`).join('')}</select></td>
+      <td><strong class="ff-reviewed-team">${esc(drop.rosterSnapshot?.[Number(p.slot) - 1]?.teamName || state.teams[Number(p.slot) - 1]?.teamName || p.teamName || 'Não identificada')}</strong>
+         ${p.players?.length ? `<div class="ff-player-list">${p.players.map((player, playerIndex) => `<label class="ff-player-kill"><span>${esc(player.name)}</span><input data-edit-player-kills data-index="${i}" data-player-index="${playerIndex}" type="number" min="0" max="99" aria-label="Abates de ${esc(player.name)}" placeholder="?" value="${Number.isInteger(player.kills) ? esc(player.kills) : ''}" ${readOnly() || state.busy ? 'disabled' : ''}></label>`).join('')}</div>` : '<small class="ff-player-list">Jogadores não identificados</small>'}</td>
+      <td><input data-edit="position" data-index="${i}" aria-label="Colocação" type="number" min="1" max="12" value="${esc(p.position)}" ${readOnly() || state.busy ? 'disabled' : ''}></td>
+       <td><input data-kill-total="${i}" aria-label="Soma individual de abates" type="number" min="0" max="99" readonly placeholder="Sem leitura" value="${Number.isInteger(sumReadablePlayerKills(p.players)) ? esc(sumReadablePlayerKills(p.players)) : ''}"></td>
+      <td><span class="ff-reading-status ${(p.reviewFields || []).length || p.confidence === 'low' ? 'needs-review' : 'confirmed'}">${esc(readingStatusLabel(p))}</span>${p.notes ? `<small class="ff-row-note">${esc(p.notes)}</small>` : ''}</td>
     </tr>`).join('') || '<tr><td colspan="5" class="ff-empty-row">Nenhuma equipe identificada nesta queda.</td></tr>'}</tbody></table></div>
-    ${drop.placements.length ? `<label class="ff-review-confirm"><input type="checkbox" data-review-drop ${drop.reviewed ? 'checked' : ''} ${readOnly() ? 'disabled' : ''}><span>Revisei as colocações, os slots e os abates desta queda, incluindo os avisos de jogadores sem vínculo.</span></label>` : ''}`;
+      ${drop.placements.length ? `<label class="ff-review-confirm"><input type="checkbox" data-review-drop ${drop.reviewed ? 'checked' : ''} ${readOnly() || state.busy ? 'disabled' : ''}><span>Conferi os dados identificados desta queda nas imagens originais. Equipes ausentes ou não identificadas ficam zeradas; somente quedas confirmadas entram na classificação.</span></label>
+     ${reviewAttemptIssue ? `<div class="ff-review-blocker" role="alert">${esc(reviewAttemptIssue)}</div>` : ''}` : ''}`;
 }
-export function calculateStandings(teams, drops, dropsCount) {
+export function calculateStandings(teams, drops, dropsCount, { rosterConfirmed = true } = {}) {
   const totals = new Map();
   teams.forEach(team => {
     if (!team.teamName.trim()) return;
@@ -1884,13 +2031,23 @@ export function calculateStandings(teams, drops, dropsCount) {
     });
   });
   const selectedDrops = drops.slice(0, dropsCount);
+  const rosterFingerprint = getOfficialRosterFingerprint(teams);
+  const countedDropIndexes = [];
   selectedDrops.forEach((drop, dropIndex) => {
-    if (!drop.analyzed) return;
+    if (
+      !rosterConfirmed ||
+      !drop.analyzed ||
+      !drop.reviewed ||
+      drop.rosterFingerprint !== rosterFingerprint ||
+      getImageDropValidationIssue(drop, teams)
+    ) return;
+    countedDropIndexes.push(dropIndex);
     drop.placements.forEach(p => {
       const slot = Number(p.slot), total = totals.get(slot);
       if (!total) return;
-      const pos = Number(p.position), kills = p.kills;
+       const pos = Number(p.position), kills = sumReadablePlayerKills(p.players);
       if (!Number.isInteger(pos) || pos < 1 || pos > 12 || !Number.isInteger(kills) || kills < 0) return;
+       if (p.kills !== kills) return;
       total.placementsByDrop[dropIndex] = pos;
       total.wins += pos === 1 ? 1 : 0;
       total.kills += kills;
@@ -1909,7 +2066,7 @@ export function calculateStandings(teams, drops, dropsCount) {
     const tiedTeams = standings.slice(start, end);
 
     if (tiedTeams.length > 1) {
-      const lastDropIndex = selectedDrops.length - 1;
+      const lastDropIndex = countedDropIndexes.at(-1) ?? -1;
       const allPlayedLastDrop = lastDropIndex >= 0 &&
         tiedTeams.every(team => team.placementsByDrop[lastDropIndex] !== null);
 
@@ -1920,7 +2077,7 @@ export function calculateStandings(teams, drops, dropsCount) {
         );
       } else {
         const headToHeadWins = new Map(tiedTeams.map(team => [team.slot, 0]));
-        for (let dropIndex = 0; dropIndex < selectedDrops.length; dropIndex += 1) {
+        for (const dropIndex of countedDropIndexes) {
           for (let left = 0; left < tiedTeams.length; left += 1) {
             for (let right = left + 1; right < tiedTeams.length; right += 1) {
               const teamA = tiedTeams[left], teamB = tiedTeams[right];
@@ -1944,7 +2101,15 @@ export function calculateStandings(teams, drops, dropsCount) {
   return standings;
 }
 function standings() {
-  return calculateStandings(state.teams, state.drops, state.dropsCount);
+  return calculateStandings(state.teams, state.drops, state.dropsCount, {
+    rosterConfirmed: isRosterConfirmed(),
+  });
+}
+function confirmedDropCount() {
+  return state.drops
+    .slice(0, state.dropsCount)
+    .filter(drop => !dropReviewIssue(drop))
+    .length;
 }
 function build(root) {
   root.innerHTML = `
@@ -1973,10 +2138,11 @@ function build(root) {
           <p class="ff-note">Cada evento tem sua tabela oficial fixa no sistema. O JPEG preserva a proporção e limita o maior lado a 1080 px.</p>
         </section>
         <section class="ff-panel">
-          <div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>Doze posições fixas. Um slot sem equipe não participa do placar.</p></div></div>
-          <label class="ff-field">Cole lista ou CSV <span class="ff-field-hint">Os slots são preenchidos automaticamente. Aceita TIME A–L, SLOT 01–12 e linhas numeradas.</span><textarea id="ffRosterText" rows="4" placeholder="TIME A: Nome do time&#10;1, Nome do time&#10;⃟🩵 𝑺𝑳𝑶𝑻 𝟎𝟏: KЯ E-SPORT🍀&#10;..."></textarea></label>
+          <div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>Confira os 12 nomes e confirme o mapa antes de analisar as quedas.</p></div></div>
+          <label class="ff-field">Cole lista ou CSV <span class="ff-field-hint">Os slots são preenchidos automaticamente. Aceita TIME A–L, SLOT 01–12, linhas numeradas e fontes decorativas.</span><textarea id="ffRosterText" rows="4" placeholder="TIME A: Nome do time&#10;1, Nome do time&#10;╔💛╗ႽᏞⲞƬ 𝟢𝟣: Nome do time 🍀&#10;..."></textarea></label>
           <div class="ff-roster-actions"><label class="ff-button ff-button-light" for="ffRosterUpload"><i class="fas fa-image"></i> Importar ou arrastar lista</label><input id="ffRosterUpload" type="file" accept="image/png,image/jpeg,image/webp,.csv,.txt" multiple hidden><span id="ffRosterFileLabel" class="ff-file-label">Nenhuma imagem selecionada</span><button type="button" id="ffAnalyzeRoster" class="ff-button ff-button-light" disabled><i class="fas fa-wand-magic-sparkles"></i> Analisar foto da lista</button></div>
           <div id="ffRosterRows" class="ff-roster-grid"></div>
+          <div class="ff-roster-confirm-row"><button type="button" id="ffConfirmRoster" class="ff-button ff-button-primary">Confirmar mapa de slots</button><span id="ffRosterConfirmStatus" role="status"></span></div>
         </section>
         <section class="ff-panel ff-lobby-panel">
           <div class="ff-panel-heading"><div class="ff-step">03</div><div><h2>Slots do lobby</h2><p>Envie as 3 fotos uma vez. Elas serão reutilizadas em todas as quedas deste evento.</p></div></div>
@@ -2088,8 +2254,11 @@ function build(root) {
     state.rosterText = e.target.value;
     const parsed = parseRoster(state.rosterText);
     state.teams = parsed;
+    state.confirmedRosterFingerprint = '';
     state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
     $('ffRosterRows').innerHTML = state.teams.map(team => `<label class="ff-roster-row"><span class="ff-slot">${String(team.slot).padStart(2, '0')}</span><input data-team-slot="${team.slot}" aria-label="Equipe do slot ${team.slot}" value="${esc(team.teamName)}" placeholder="Nome da equipe"></label>`).join('');
+    renderRosterConfirmation();
+    refreshDropTabs();
     $('ffAnalyzeDrop').disabled = !canAnalyzeDrop(state.drops[state.activeDrop || 0]);
     refreshStandings();
   });
@@ -2097,12 +2266,27 @@ function build(root) {
     const slot = Number(e.target.dataset.teamSlot);
     if (!slot) return;
     state.teams[slot - 1].teamName = e.target.value;
+    state.confirmedRosterFingerprint = '';
     state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
     state.rosterText = state.teams.filter(team => team.teamName.trim()).map(team => `${team.slot}, ${team.teamName}`).join('\n');
     $('ffRosterText').value = state.rosterText;
+    renderRosterConfirmation();
+    refreshDropTabs();
     $('ffAnalyzeDrop').disabled = !canAnalyzeDrop(state.drops[state.activeDrop || 0]);
     renderPlacements(state.drops[state.activeDrop || 0]);
     refreshStandings();
+  });
+  $('ffConfirmRoster').addEventListener('click', () => {
+    const issue = getRosterValidationIssue();
+    if (issue) {
+      setNotice('error', issue);
+      return;
+    }
+    state.confirmedRosterFingerprint = getOfficialRosterFingerprint(state.teams);
+    state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
+    state.message = 'Mapa oficial confirmado. Agora analise as quedas com esta lista.';
+    state.error = '';
+    render();
   });
   $('ffRosterUpload').addEventListener('change', async e => {
     const selected = [...e.target.files || []];
@@ -2118,6 +2302,7 @@ function build(root) {
       try {
       state.rosterText = await textFile.text();
       state.teams = parseRoster(state.rosterText);
+      state.confirmedRosterFingerprint = '';
       state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
       } catch {
         setNotice('error', 'Não foi possível ler o arquivo da lista.');
@@ -2129,6 +2314,7 @@ function build(root) {
   });
   $('ffAnalyzeRoster').addEventListener('click', analyzeRoster);
   $('ffDropTabs').addEventListener('click', e => {
+    if (state.busy) return;
     const tab = e.target.closest('[data-drop]');
     if (tab) { state.activeDrop = Number(tab.dataset.drop); render(); }
   });
@@ -2138,10 +2324,7 @@ function build(root) {
       const next = appendImages(state.slotImages, selected, 3, 'do lobby');
       if (next.length !== state.slotImages.length) {
         state.slotImages = next;
-        state.drops.forEach(drop => {
-          if (!drop.analyzed) return;
-          drop.analyzed = false; drop.reviewed = false; drop.placements = []; drop.unmatchedPlayers = [];
-        });
+        state.drops.forEach(resetDropAnalysis);
       }
     } catch (error) {
       setNotice('error', error.message);
@@ -2156,7 +2339,7 @@ function build(root) {
       const next = appendImages(drop.resultImages, selected, 2, 'do placar');
       if (next.length !== drop.resultImages.length) {
         drop.resultImages = next;
-        drop.analyzed = false; drop.reviewed = false; drop.placements = []; drop.unmatchedPlayers = [];
+        resetDropAnalysis(drop);
       }
     } catch (error) {
       setNotice('error', error.message);
@@ -2175,16 +2358,48 @@ function build(root) {
   $('ffResultPreviews').addEventListener('click', handleRemoveImage);
   $('ffAnalyzeDrop').addEventListener('click', analyzeDrop);
   $('ffExtraction').addEventListener('input', e => {
-    if (e.target.matches('[data-review-drop]')) {
-      state.drops[state.activeDrop].reviewed = e.target.checked;
+    if (state.busy) return;
+    if (e.target.matches('[data-edit-player-kills]')) {
+      const drop = state.drops[state.activeDrop];
+      const placementIndex = Number(e.target.dataset.index);
+      const placement = drop.placements[placementIndex];
+      const player = placement?.players?.[Number(e.target.dataset.playerIndex)];
+      if (!placement || !player) return;
+      drop.reviewAttemptIssue = '';
+      drop.reviewed = false;
+      player.kills = normalizeExtractedKillCount(e.target.value);
+      placement.kills = sumReadablePlayerKills(placement.players);
+      const totalInput = $('ffExtraction').querySelector(`[data-kill-total="${placementIndex}"]`);
+      if (totalInput) totalInput.value = Number.isInteger(placement.kills) ? String(placement.kills) : '';
+      const reviewCheckbox = $('ffExtraction').querySelector('[data-review-drop]');
+      if (reviewCheckbox) reviewCheckbox.checked = false;
+      const row = e.target.closest('tr');
+      const rowStatus = row?.querySelector('.ff-reading-status');
+      if (rowStatus) {
+        rowStatus.textContent = 'Conferir após edição';
+        rowStatus.classList.add('needs-review');
+        rowStatus.classList.remove('confirmed');
+      }
+      const alert = $('ffExtraction').querySelector('.ff-clean-alert, .ff-review-alert');
+      if (alert) {
+        alert.classList.remove('ff-clean-alert');
+        alert.classList.add('ff-review-alert');
+        const title = alert.querySelector('b');
+        const detail = alert.querySelector('span');
+        if (title) title.textContent = 'Revisão final';
+        if (detail) detail.textContent = 'Abates individuais alterados. Confira a soma e confirme novamente.';
+      }
+      $('ffExtraction').querySelector('.ff-review-blocker')?.remove();
       refreshStandings();
       return;
     }
     const field = e.target.dataset.edit;
     if (!field) return;
-    const placement = state.drops[state.activeDrop].placements[Number(e.target.dataset.index)];
+    const drop = state.drops[state.activeDrop];
+    drop.reviewAttemptIssue = '';
+    const placement = drop.placements[Number(e.target.dataset.index)];
     if (!placement) return;
-    state.drops[state.activeDrop].reviewed = false;
+    drop.reviewed = false;
     placement[field] = field === 'slot'
       ? (e.target.value ? Number(e.target.value) : null)
       : field === 'teamName' ? e.target.value : field === 'kills' ? normalizeExtractedKillCount(e.target.value) : Number(e.target.value);
@@ -2192,16 +2407,32 @@ function build(root) {
     refreshStandings();
   });
   $('ffExtraction').addEventListener('change', e => {
+    if (state.busy) return;
     if (e.target.matches('[data-review-drop]')) {
-      state.drops[state.activeDrop].reviewed = e.target.checked;
+      const drop = state.drops[state.activeDrop];
+      if (e.target.checked) {
+        const issue = dropApprovalIssue(drop);
+        if (issue) {
+          e.target.checked = false;
+          drop.reviewed = false;
+          drop.reviewAttemptIssue = issue;
+          setNotice('error', issue);
+          render();
+          return;
+        }
+      }
+      drop.reviewAttemptIssue = '';
+      drop.reviewed = e.target.checked;
       render();
       return;
     }
     const field = e.target.dataset.edit;
     if (!field) return;
-    const placement = state.drops[state.activeDrop].placements[Number(e.target.dataset.index)];
+    const drop = state.drops[state.activeDrop];
+    drop.reviewAttemptIssue = '';
+    const placement = drop.placements[Number(e.target.dataset.index)];
     if (placement) {
-      state.drops[state.activeDrop].reviewed = false;
+      drop.reviewed = false;
       placement[field] = field === 'slot'
         ? (e.target.value ? Number(e.target.value) : null)
         : field === 'teamName' ? e.target.value : field === 'kills' ? normalizeExtractedKillCount(e.target.value) : Number(e.target.value);
@@ -2218,7 +2449,8 @@ function build(root) {
 }
 function refreshStandings() {
   const sorted = standings();
-  $('ffStandingsCount').textContent = sorted.filter(row => row.teamName).length ? `${sorted.filter(row => row.teamName).length} equipes` : 'Aguardando resultados';
+  $('ffStandingsCount').textContent = `${confirmedDropCount()}/${state.dropsCount} quedas confirmadas`;
+  refreshDropTabs();
   $('ffStandings').innerHTML = sorted.filter(row => row.teamName).map((row, index) =>
     `<tr><td class="ff-rank">${String(index + 1).padStart(2, '0')}</td><td><strong>${esc(row.teamName)}</strong><small>Slot ${String(row.slot).padStart(2, '0')}</small></td><td>${row.wins}</td><td>${row.kills}</td><td class="ff-total">${row.points}</td></tr>`).join('') ||
     '<tr><td colspan="5" class="ff-empty-row">Cadastre as equipes e analise os resultados para montar o placar.</td></tr>';
@@ -2517,6 +2749,7 @@ async function analyzeRoster() {
       if (Number.isInteger(slot) && slot > 0 && slot <= 12) next[slot - 1] = { slot, teamName: String(team.teamName || '') };
     });
     state.teams = next;
+    state.confirmedRosterFingerprint = '';
     state.drops.forEach(drop => { if (drop.analyzed) drop.reviewed = false; });
     state.rosterText = next.filter(team => team.teamName).map(team => `${team.slot}, ${team.teamName}`).join('\n');
     state.message = 'Lista extraída. Revise e corrija os nomes e slots antes de continuar.';
@@ -2529,6 +2762,9 @@ async function analyzeDrop() {
   state.busy = true; state.error = ''; state.message = ''; render();
   try {
     if (!hasCompleteRoster()) throw new Error('Preencha os nomes dos 12 slots antes de analisar a queda.');
+    if (!isRosterConfirmed()) throw new Error('Confirme o mapa oficial dos 12 slots antes de analisar a queda.');
+    const analyzedRosterFingerprint = getOfficialRosterFingerprint(state.teams);
+    const analyzedRosterSnapshot = state.teams.map(team => ({ slot: team.slot, teamName: team.teamName }));
     if (state.slotImages.length !== 3) throw new Error('Cadastre as 3 fotos na área fixa de slots do lobby.');
     validateImageFiles(state.slotImages, 3);
     validateImageFiles(drop.resultImages, 2);
@@ -2539,6 +2775,7 @@ async function analyzeDrop() {
     ]);
     const result = await requestAnalyze({
       mode: 'drop', dropNumber: dropIndex + 1, teams: state.teams,
+      previousDropReferences: buildConfirmedPreviousDropReferences(state.drops, dropIndex, state.teams),
       slotImages, resultImages,
     });
     if (!Array.isArray(result.placements)) throw new Error('Resposta inválida do serviço: resultados da queda ausentes.');
@@ -2550,14 +2787,18 @@ async function analyzeDrop() {
         teamName: slot ? state.teams[slot - 1]?.teamName || '' : '',
         kills: normalizeExtractedKillCount(item.kills),
         players: Array.isArray(item.players) ? item.players : [],
-        confidence: confidenceValue(item.confidence),
+        confidence: String(item.confidence || 'low'),
+        reviewFields: Array.isArray(item.reviewFields) ? item.reviewFields.map(String) : [],
+        readAgreement: String(item.readAgreement || ''),
         notes: String(item.notes || ''),
       };
     });
     drop.unmatchedPlayers = Array.isArray(result.unmatchedPlayers) ? result.unmatchedPlayers.map(String) : [];
+    drop.rosterFingerprint = analyzedRosterFingerprint;
+    drop.rosterSnapshot = analyzedRosterSnapshot;
     drop.analyzed = true;
     drop.reviewed = false;
-    state.message = `Queda ${dropIndex + 1} extraída. Revise colocação, equipe e abates antes de fechar a pontuação.`;
+    state.message = `Queda ${dropIndex + 1}: duas leituras feitas${drop.placements.some(placement => placement.readAgreement.includes('3')) ? ' e divergências conferidas em uma terceira leitura' : ''}. Revise os dados identificados; equipes ausentes ou sem identificação ficam zeradas.`;
   } catch (error) { state.error = error.message; state.message = ''; }
   finally { state.busy = false; render(); }
 }

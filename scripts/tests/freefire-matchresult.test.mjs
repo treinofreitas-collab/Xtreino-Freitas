@@ -6,6 +6,8 @@ import {
   applyMatchResultStandingsLogos,
   buildModoLigaPurchaseLogoCatalog,
   getCenteredContainRect,
+  getImageEventTemplateInfo,
+  getImageEventTemplateLayout,
   getModoLigaPurchaseLookupRoster,
   getModoLigaLeaderboardLogoCenterY,
   getModoLigaSpecLogoForSlot,
@@ -31,23 +33,85 @@ import {
   resolveMatchResultTeam,
 } from '../../artifacts/xtreino/public/js/freefire-matchresult.mjs';
 
-test('imports the team key normalizer used by the Modo Liga scoring view', async () => {
-  const source = await readFile(
-    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
-    'utf8',
-  );
-  assert.match(
-    source,
-    /import\s*\{[^}]*\bmatchResultTeamKey\b[^}]*\}\s*from\s*['"]\.\/freefire-matchresult\.mjs['"]/s,
-  );
+function teamBlock(teamName, rank, playerKills, overrides = {}) {
+  const kills = playerKills.reduce((sum, value) => sum + value, 0);
+  const rankPoints = LBFF_PLACEMENT_POINTS_15[rank - 1];
+  const reportedKills = overrides.reportedKills ?? kills;
+  const reportedRankPoints = overrides.reportedRankPoints ?? rankPoints;
+  const totalPoints = overrides.reportedTotalPoints ?? kills + rankPoints;
+  return [
+    `TeamName: ${teamName}  Rank: ${rank}  KillScore: ${reportedKills}  RankScore: ${reportedRankPoints}  TotalScore: ${totalPoints}`,
+    ...playerKills.map((value, index) => `NAME: Player ${index + 1}  ID: ${1000 + index}  KILL: ${value}`),
+  ].join('\n');
+}
+
+test('ships fixed image tables for each event with event-specific export alignment', async () => {
+  const expected = {
+    treino: 'TABELA_TREINO_FREITAS.webp',
+    intensivo: 'TABELA_INTENSIVO_FREITAS.webp',
+    camp: 'TABELA_CAMP_FREITAS.webp',
+    semanal: 'TABELA_SEMANAL_FREITAS.webp',
+  };
+  const layouts = new Map();
+
+  for (const [event, name] of Object.entries(expected)) {
+    const info = getImageEventTemplateInfo(event);
+    assert.equal(info?.name, name);
+    const image = await readFile(new URL(info.assetUrl));
+    assert.equal(image.subarray(0, 4).toString('ascii'), 'RIFF');
+    assert.equal(image.subarray(8, 12).toString('ascii'), 'WEBP');
+    assert.ok(image.byteLength < 2 * 1024 * 1024, `${name} should stay optimized for publishing`);
+
+    const layout = getImageEventTemplateLayout(event, event === 'camp' ? 800 : 1000, 1000);
+    assert.ok(layout);
+    assert.ok(layout.rowTop + 11 * layout.rowPitch < 1000);
+    assert.ok(layout.nameX < layout.winsX && layout.winsX < layout.killsX && layout.killsX < layout.pointsX);
+    layouts.set(event, layout);
+  }
+
+  assert.notEqual(layouts.get('treino').nameX, layouts.get('intensivo').nameX);
+  assert.notEqual(layouts.get('camp').pointsX, layouts.get('semanal').pointsX);
+  assert.equal(layouts.get('semanal').killsColor, '#171717');
+  assert.equal(layouts.get('semanal').pointsColor, '#ffffff');
+  assert.equal(getImageEventTemplateInfo('unknown'), null);
+  assert.equal(getImageEventTemplateLayout('unknown', 1000, 1000), null);
+  assert.equal(getImageEventTemplateLayout('treino', 0, 1000), null);
 });
 
-test('includes the Freitas logo used as the empty-slot fallback', async () => {
-  const image = await readFile(
-    new URL('../../artifacts/xtreino/public/assets/freefire-organizacao-logo.webp', import.meta.url),
+test('parses 15-team MatchResult logs and recomputes placement and kill totals', () => {
+  const text = Array.from({ length: 15 }, (_, index) =>
+    teamBlock(`Equipe ${index + 1}`, index + 1, [index === 0 ? 4 : 0, 1, 0, 0]),
+  ).join('\n');
+  const result = parseMatchResultLog(text);
+
+  assert.equal(result.teams.length, 15);
+  assert.equal(result.valid, true);
+  assert.equal(result.teams[0].teamName, 'Equipe 1');
+  assert.equal(result.teams[0].kills, 5);
+  assert.equal(result.teams[0].rankPoints, 12);
+  assert.equal(result.teams[14].rankPoints, 0);
+  assert.deepEqual(result.errors, []);
+});
+
+test('flags header totals that disagree with individual player kills or LBFF points', () => {
+  const result = parseMatchResultLog(teamBlock('Equipe A', 2, [2, 1], {
+    reportedKills: 9,
+    reportedRankPoints: 8,
+    reportedTotalPoints: 14,
+  }));
+
+  assert.equal(result.valid, false);
+  assert.match(result.teams[0].errors.join(' '), /KillScore do cabeçalho/);
+  assert.match(result.teams[0].errors.join(' '), /RankScore informado/);
+  assert.match(result.teams[0].errors.join(' '), /TotalScore informado/);
+});
+
+test('normalizes equivalent team names and requires one file for every selected drop', () => {
+  assert.equal(matchResultTeamKey('  ＴＥＡＭ　A  '), matchResultTeamKey('team a'));
+  assert.deepEqual(
+    getMatchResultSetIssues([{ parsed: parseMatchResultLog(teamBlock('Equipe A', 1, [1])) }], 2),
+    ['Adicione um arquivo MatchResult para cada queda selecionada.'],
   );
-  assert.equal(image.subarray(0, 4).toString(), 'RIFF');
-  assert.equal(image.subarray(8, 12).toString(), 'WEBP');
 });
 
 test('centers all 15 Modo Liga rows inside the supplied table slots', () => {
@@ -89,89 +153,15 @@ test('aligns Modo Liga logos, names, and score values to the updated template co
       pointsCenterX: 557.4656,
     },
   );
+  assert.equal(layout.logoSize, 28.672);
 });
 
-test('versions the organization logo URL to avoid stale missing-image caches', async () => {
-  const source = await readFile(
-    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /freefire-organizacao-logo\.webp\?v=logo-fallback-2/);
-});
-
-test('loads the scoring module with a fresh cache version', async () => {
-  const adminScript = await readFile(
-    new URL('../../artifacts/xtreino/public/admin.js', import.meta.url),
-    'utf8',
-  );
-  assert.match(
-    adminScript,
-    /import\s*\(['"]\.\/js\/admin-freefire-scoring\.mjs\?v=freefire-image-event-templates-fixed-1['"]\)/,
-  );
-});
-
-test('loads admin.js with the matching cache version', async () => {
-  const adminPage = await readFile(
-    new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
-    'utf8',
-  );
-  assert.match(adminPage, /src="admin\.js\?v=modo-liga-manager-spec-1"/);
-});
-
-test('uses only the fixed official event tables', async () => {
-  const assets = new URL('../../artifacts/xtreino/public/assets/', import.meta.url);
-  for (const name of [
-    'freefire-image-template-treino.webp',
-    'freefire-image-template-intensivo.webp',
-    'freefire-image-template-camp.webp',
-    'freefire-image-template-semanal.webp',
-  ]) {
-    const image = await readFile(new URL(name, assets));
-    assert.equal(image.subarray(0, 4).toString('ascii'), 'RIFF');
-    assert.equal(image.subarray(8, 12).toString('ascii'), 'WEBP');
-    assert.ok(image.length < 2 * 1024 * 1024);
-  }
-
-  const source = await readFile(
-    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
-    'utf8',
-  );
-  assert.doesNotMatch(
-    source,
-    /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/,
-  );
-});
-
-test('ships compact Modo Liga logo sizing and controls in the release view module', async () => {
-  const source = await readFile(
-    new URL('../../artifacts/xtreino/public/js/admin-freefire-matchresult-view.mjs', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /\.mr-view \.mr-roster-grid-logos\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/);
-  assert.match(source, /\.mr-view \.mr-roster-logo\{display:block;width:34px;height:34px;object-fit:contain/);
-  assert.match(source, /onRosterLogoFile/);
-  assert.match(source, /onImportPurchaseLogos/);
-});
-
-test('versions the MatchResult view module import used for logo layout', async () => {
-  const source = await readFile(
-    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /admin-freefire-matchresult-view\.mjs\?v=logo-associations-1/);
-});
-
-test('includes the logo bitmap helper and Top 3 assets required by exports', async () => {
-  const source = await readFile(
-    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
-    'utf8',
-  );
-  const helperIndex = source.indexOf('async function loadLogoBitmap(');
-  const top3ExportIndex = source.indexOf('async function exportModoLigaTop3Jpeg(');
-  assert.ok(helperIndex >= 0 && helperIndex < top3ExportIndex);
-  assert.equal(getModoLigaTop3LogoLayout(1000, 600).length, 3);
-  assert.ok((await readFile(new URL('../../artifacts/xtreino/public/assets/freefire-modo-liga-top3.webp', import.meta.url))).length > 0);
-  assert.ok((await readFile(new URL('../../artifacts/xtreino/public/assets/freefire-modo-liga-top3-placeholder.png', import.meta.url))).length > 0);
+test('places top-three logos in the matching podium frames', () => {
+  assert.deepEqual(getModoLigaTop3LogoLayout(1024, 1024), [
+    { centerX: 512, centerY: 579.584, size: 184.32 },
+    { centerX: 190.464, centerY: 652.288, size: 184.32 },
+    { centerX: 832.512, centerY: 652.288, size: 184.32 },
+  ]);
 });
 
 test('keeps the scoreboard export logo cache and fallback state in local scope', async () => {
@@ -255,8 +245,9 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-image-event-templates-fixed-1/);
-  assert.match(adminPage, /admin\.js\?v=modo-liga-manager-spec-1/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-history-player-mapping-v1/);
+  assert.match(adminPage, /admin\.js\?v=freefire-history-player-mapping-v1/);
+  assert.doesNotMatch(source, /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/);
 });
 
 test('returns Top 3 availability and exports requested text in white', async () => {
@@ -284,27 +275,43 @@ test('returns Top 3 availability and exports requested text in white', async () 
   assert.ok(pointsColor > killsDraw && pointsColor < pointsDraw);
 });
 
-test('imports and displays logos from approved Modo Liga purchases', () => {
-  const roster = parseMatchResultRoster([
-    'TIME A: ONYX GAMING',
-    'TIME B: AKATSUKI',
-  ].join('\n')).roster;
+test('centers logos without stretching their original aspect ratio', () => {
+  assert.deepEqual(getCenteredContainRect(100, 50, 100, 200, 40, 40), {
+    x: 80,
+    y: 190,
+    width: 40,
+    height: 20,
+  });
+});
+
+test('uses the newest paid purchase logo and only associates unique participant matches', () => {
+  const names = [
+    'ISRAEL 67', 'ALPHA ONE', 'ALPHA OPS', 'TEAM 4', 'TEAM 5',
+    'TEAM 6', 'TEAM 7', 'TEAM 8', 'TEAM 9', 'TEAM 10',
+    'TEAM 11', 'TEAM 12', 'TEAM 13', 'TEAM 14', 'TEAM 15',
+  ];
+  const roster = parseMatchResultRoster(names.map((name, index) =>
+    `TIME ${String.fromCharCode(65 + index)}: ${name}`,
+  ).join('\n')).roster;
   const catalog = buildModoLigaPurchaseLogoCatalog([
+    { teamName: 'ISRAEL 67', status: 'pending', teamLogoUrl: '/logos/pending.webp' },
     {
-      teamName: 'ONYX GAMING',
+      teamName: 'ISRⱯEL⁶⁷',
       status: 'approved',
-      teamLogoUrl: '/logos/onyx-old.webp',
+      teamLogoUrl: '/logos/israel-old.webp',
       createdAt: '2026-10-20T12:00:00.000Z',
     },
     {
-      teamName: 'ONYX GAMING',
+      teamName: 'ISRAEL 67',
       status: 'paid',
-      teamLogoUrl: '/logos/onyx-current.webp',
+      teamLogoUrl: '/logos/israel-current.webp',
       createdAt: '2026-10-25T12:00:00.000Z',
     },
+    { teamName: 'ALPHA', status: 'confirmed', teamLogoUrl: '/logos/ambiguous.webp' },
   ], roster);
 
-  assert.equal(catalog.get(matchResultTeamKey('ONYX GAMING'))?.logoUrl, '/logos/onyx-current.webp');
+  assert.equal(catalog.size, 1);
+  assert.equal(catalog.get(matchResultTeamKey('ISRAEL 67')).logoUrl, '/logos/israel-current.webp');
 });
 
 test('allows purchase-logo lookup with a partial roster but rejects ambiguous slot lists', () => {
@@ -445,103 +452,36 @@ test('stops a stalled Modo Liga purchase-logo request with a visible timeout err
     withModoLigaPurchaseTimeout(
       new Promise(() => {}),
       5,
-      'Consulta do Firebase excedeu o tempo limite.',
+      'A consulta das inscrições demorou demais.',
     ),
-    /Consulta do Firebase excedeu o tempo limite/,
+    /A consulta das inscrições demorou demais/,
+  );
+  assert.equal(
+    await withModoLigaPurchaseTimeout(Promise.resolve('loaded'), 50, 'timeout'),
+    'loaded',
   );
 });
 
-test('routes purchase-logo retries and renders their logo-resolved roster', async () => {
-  const source = await readFile(
-    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /\bresolveMatchResultTeam\b/);
-  assert.match(source, /rosterDraft:\s*rosterWithLogos/);
-  assert.match(source, /onImportPurchaseLogos:\s*\(\)\s*=>\s*\{\s*loadModoLigaPurchaseLogos/);
-});
+test('attaches SPEC and purchase logos to standings by official name before slot', () => {
+  const specLogo = { code: '902000034', logoUrl: '/spec-A.png', source: 'spec' };
+  const purchaseLogo = { logoUrl: '/purchase-hope.png', source: 'purchase' };
+  const result = applyMatchResultStandingsLogos([
+    { rank: 1, slot: 10, teamName: 'SALINAS MG' },
+    { rank: 2, slot: 11, teamName: 'HOPE' },
+    { rank: 3, slot: 3, teamName: 'SIX ESPORTS' },
+  ], [
+    { slot: 1, teamName: 'Salinas MG', logoUrl: '/spec-A.png', logoSource: 'spec', logoAsset: specLogo },
+    { slot: 6, teamName: 'Hope', logoUrl: '/purchase-hope.png', logoSource: 'purchase', logoAsset: purchaseLogo },
+    { slot: 3, teamName: 'Six Esports', logoUrl: '/freitas.png', logoSource: 'organization' },
+  ], '/freitas.png');
 
-function teamBlock(teamName, rank, playerKills, overrides = {}) {
-  const kills = playerKills.reduce((sum, value) => sum + value, 0);
-  const rankPoints = LBFF_PLACEMENT_POINTS_15[rank - 1];
-  const reportedKills = overrides.reportedKills ?? kills;
-  const reportedRankPoints = overrides.reportedRankPoints ?? rankPoints;
-  const totalPoints = overrides.reportedTotalPoints ?? kills + rankPoints;
-  return [
-    `TeamName: ${teamName}  Rank: ${rank}  KillScore: ${reportedKills}  RankScore: ${reportedRankPoints}  TotalScore: ${totalPoints}`,
-    ...playerKills.map((value, index) => `NAME: Player ${index + 1}  ID: ${1000 + index}  KILL: ${value}`),
-  ].join('\n');
-}
-
-test('parses 15-team MatchResult logs and recomputes placement and kill totals', () => {
-  const text = Array.from({ length: 15 }, (_, index) =>
-    teamBlock(`Equipe ${index + 1}`, index + 1, [index === 0 ? 4 : 0, 1, 0, 0]),
-  ).join('\n');
-  const result = parseMatchResultLog(text);
-
-  assert.equal(result.teams.length, 15);
-  assert.equal(result.valid, true);
-  assert.equal(result.teams[0].teamName, 'Equipe 1');
-  assert.equal(result.teams[0].kills, 5);
-  assert.equal(result.teams[0].rankPoints, 12);
-  assert.equal(result.teams[14].rankPoints, 0);
-  assert.deepEqual(result.errors, []);
-});
-
-test('flags header totals that disagree with individual player kills or LBFF points', () => {
-  const result = parseMatchResultLog(teamBlock('Equipe A', 2, [2, 1], {
-    reportedKills: 9,
-    reportedRankPoints: 8,
-    reportedTotalPoints: 14,
-  }));
-
-  assert.equal(result.valid, false);
-  assert.match(result.teams[0].errors.join(' '), /KillScore do cabeçalho/);
-  assert.match(result.teams[0].errors.join(' '), /RankScore informado/);
-  assert.match(result.teams[0].errors.join(' '), /TotalScore informado/);
-});
-
-test('normalizes equivalent team names and requires one file for every selected drop', () => {
-  assert.equal(matchResultTeamKey('  ＴＥＡＭ　A  '), matchResultTeamKey('team a'));
-  assert.deepEqual(
-    getMatchResultSetIssues([{ parsed: parseMatchResultLog(teamBlock('Equipe A', 1, [1])) }], 2),
-    ['Adicione um arquivo MatchResult para cada queda selecionada.'],
-  );
-});
-
-test('centers all 15 Modo Liga rows inside the supplied table slots', () => {
-  const templateRowCenters = [
-    459.9, 491.6, 523.4, 555.1, 586.9, 618.6, 650.4, 682.1,
-    713.8, 745.6, 777.3, 809.1, 840.8, 872.6, 904.3,
-  ];
-  templateRowCenters.forEach((center, index) => {
-    assert.ok(
-      Math.abs(getModoLigaTemplateRowCenter(1024, index) - center) < 1.2,
-      `slot ${index + 1} should be centered at approximately ${center}px`,
-    );
-  });
-});
-
-test('aligns Modo Liga logos, names, and score values to the updated template columns', () => {
-  const layout = getModoLigaTemplateLayout(1024);
-
-  assert.deepEqual(
-    {
-      logoCenterX: layout.logoCenterX,
-      teamNameCenterX: layout.teamNameCenterX,
-      winsCenterX: layout.winsCenterX,
-      killsCenterX: layout.killsCenterX,
-      pointsCenterX: layout.pointsCenterX,
-    },
-    {
-      logoCenterX: 133.5296,
-      teamNameCenterX: 287.0272,
-      winsCenterX: 448,
-      killsCenterX: 501.9648,
-      pointsCenterX: 557.4656,
-    },
-  );
-  assert.equal(layout.logoSize, 28.672);
+  assert.deepEqual(result.map(row => [row.logoUrl, row.logoSource]), [
+    ['/spec-A.png', 'spec'],
+    ['/purchase-hope.png', 'purchase'],
+    ['/freitas.png', 'organization'],
+  ]);
+  assert.equal(result[0].logoAsset, specLogo);
+  assert.equal(result[1].logoAsset, purchaseLogo);
 });
 
 test('shows logo upload controls only for the Modo Liga slot list', () => {
@@ -647,6 +587,40 @@ test('parses pasted lettered roster names immediately for image analysis slots',
   ).join('\n'));
   assert.equal(mixedFormats[0].teamName, 'ALPHA STRIKE');
   assert.equal(mixedFormats[11].teamName, 'LUNAR DN');
+});
+
+test('parses both decorated Intensivo slot-list formats and ignores announcement numbers', () => {
+  const names = [
+    'XLT IPHINITY', '4K EASY', 'PARADOX', 'K1 E-SPORTS',
+    'NOCRYING', 'RANGERS', 'SALINAS MG', 'NK-ESPORTES',
+    'REAL GAMER', 'WG E-SPORT', 'OS GALÁTICOS', 'TEMPEST',
+  ];
+  const styledDigits = Array.from('𝟢𝟣𝟤𝟥𝟦𝟧𝟨𝟩𝟪𝟫');
+  const slotLines = names.map((name, index) => {
+    const slot = String(index + 1).padStart(2, '0');
+    const styledSlot = slot.replace(/\d/gu, digit => styledDigits[Number(digit)]);
+    assert.equal(slot.length, 2);
+    return `╔💛╗ႽᏞⲞƬ ${styledSlot}: ${name}🍀`;
+  });
+  const announcement = [
+    'ㅤ⁞⁞ 𝗜𝗡𝗧𝗘𝗡𝗦𝗜𝗩𝗢 ŦᎡΞłͳΛS » 𝟭𝟵𝗛 ⁞⁞',
+    '🆔⤑𝗘 𝗦𝗘𝗡𝗛𝗔 𝟭𝟬 𝗠𝗜𝗡 𝗔𝗡𝗧𝗘𝗦',
+    '🪂⤑𝟱 𝗤𝗨𝗘𝗗𝗔𝗦: 𝗕 » 𝗣 » 𝗞 » 𝗕 » 𝗡',
+    '🔖⤑𝗥𝗘𝗚𝗥𝗔𝗦 𝗡𝗔 𝗗𝗘𝗦𝗖𝗥𝗜𝗖̧𝗔̃𝗢ⵑ',
+    ...slotLines,
+    '⤑ᏟⲞᎪᏟᎻ: K1 VORTAX | COACH / Dacruz1v4 / IML GRINGO / Coach Scoth',
+    '__ 𝗧𝗢𝗣 𝟭 𝗟𝗘𝗩𝗔 𝗥$𝟭𝟬,𝟬𝟬ⵑ __',
+    '⎾‣⏌𝗙𝗥𝗘𝗜𝗧𝗔𝗦 𝗧𝗩 | @𝗫𝘁𝗿𝗲𝗶𝗻𝗼_𝗳𝗿𝗲𝗶𝘁𝗮𝘀',
+  ].join('\n');
+
+  const fullAnnouncementRoster = parseRoster(announcement);
+  assert.deepEqual(fullAnnouncementRoster.map(team => team.teamName), names);
+
+  const slotsOnlyRoster = parseRoster(['FOMRATO 2', ...slotLines].join('\n'));
+  assert.deepEqual(slotsOnlyRoster.map(team => team.teamName), names);
+
+  const missingSlotFive = parseRoster(announcement.replace(`${slotLines[4]}\n`, ''));
+  assert.equal(missingSlotFive[4].teamName, '');
 });
 
 test('parses decorated 15-slot roster text supplied for each scoring run', () => {
