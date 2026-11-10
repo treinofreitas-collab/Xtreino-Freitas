@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { sumReadablePlayerKills } from '../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs';
 
 const sources = [
   {
@@ -205,14 +206,15 @@ for (const source of loaded) {
     assert.match(placement.notes, /Abates divergentes \(1ª: 7 · 2ª: 6 · 3ª: 6\)/);
   });
 
-  test(`${source.name}: no majority leaves the conflicting score blank`, async () => {
+  test(`${source.name}: no majority keeps the highest individual sum provisional for review`, async () => {
     const { reconcilePlacements } = await loadHelpers(source.text, source.typescript);
     const first = makeResult({ 3: { kills: 4 } });
     const second = makeResult({ 3: { kills: 5 } });
     const third = makeResult({ 3: { kills: 6 } });
     const reconciled = plain(reconcilePlacements(first, second, third, new Set([3])));
 
-    assert.equal(reconciled.placements[2].kills, null);
+    assert.equal(reconciled.placements[2].kills, 6);
+    assert.equal(reconciled.placements[2].players[0].kills, 6);
     assert.ok(reconciled.placements[2].reviewFields.includes('kills'));
     assert.equal(reconciled.placements[2].readAgreement, 'Revisão manual');
   });
@@ -233,7 +235,7 @@ for (const source of loaded) {
     assert.ok(unresolved.every(placement => /associe manualmente/.test(placement.notes)));
   });
 
-  test(`${source.name}: duplicate players are reread and removed from team assignments`, async () => {
+  test(`${source.name}: ambiguous duplicate names are removed but readable row kills are retained`, async () => {
     const {
       duplicatePlayerGroups,
       resolveDuplicatePlayersUsingLobby,
@@ -243,13 +245,18 @@ for (const source of loaded) {
       getThirdReviewPositions,
     } = await loadHelpers(source.text, source.typescript);
     const repeatedPlayer = { name: 'Nick Repetido', kills: 2, lobbySlot: null };
+    const rowPlayers = [
+      repeatedPlayer,
+      { name: 'Jogador A', kills: 3, lobbySlot: 2 },
+      { name: 'Jogador B', kills: 4, lobbySlot: 2 },
+    ];
     const first = makeResult({
-      2: { players: [repeatedPlayer] },
-      7: { players: [{ ...repeatedPlayer, name: 'nick-repetido' }] },
+      2: { kills: 9, players: rowPlayers },
+      7: { kills: 2, players: [{ ...repeatedPlayer, name: 'nick-repetido' }] },
     });
     const second = makeResult({
-      2: { players: [repeatedPlayer] },
-      7: { players: [{ ...repeatedPlayer, name: 'nick-repetido' }] },
+      2: { kills: 9, players: rowPlayers },
+      7: { kills: 2, players: [{ ...repeatedPlayer, name: 'nick-repetido' }] },
     });
 
     const preliminary = reconcilePlacements(first, second);
@@ -264,13 +271,19 @@ for (const source of loaded) {
     const resolution = resolveDuplicatePlayersUsingLobby(preliminary.placements, groups);
     assert.equal(resolution.unresolvedGroups.length, 1);
     const cleaned = plain(clearDuplicatePlayers(preliminary.placements, resolution.unresolvedGroups));
-    assert.deepEqual(cleaned[1].players, []);
-    assert.deepEqual(cleaned[6].players, []);
-    assert.equal(cleaned[1].kills, null);
-    assert.equal(cleaned[6].kills, null);
+    assert.deepEqual(cleaned[1].players.map(player => player.name), ['', 'Jogador A', 'Jogador B']);
+    assert.deepEqual(cleaned[1].players.map(player => player.kills), [2, 3, 4]);
+    assert.equal(cleaned[1].kills, 9);
+    assert.equal(sumReadablePlayerKills(cleaned[1].players), 9);
+    assert.equal(cleaned[1].players[0].lobbySlot, null);
+    assert.equal(cleaned[1].players[0].lobbyRosterMatched, false);
+    assert.equal(cleaned[6].players[0].name, '');
+    assert.equal(cleaned[6].kills, 2);
+    assert.equal(sumReadablePlayerKills(cleaned[6].players), 2);
     assert.ok(cleaned[1].reviewFields.includes('players'));
     assert.ok(cleaned[6].reviewFields.includes('players'));
     assert.ok(cleaned[1].notes.includes('Nick Repetido'));
+    assert.match(cleaned[1].notes, /soma da linha: 9/);
     assert.deepEqual(
       plain(addDuplicatePlayersToUnmatched(preliminary.unmatchedPlayers, groups)),
       ['Nick Repetido'],

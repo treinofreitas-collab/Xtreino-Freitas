@@ -9,6 +9,7 @@ import {
   calculateStandings,
   getImageDropValidationIssue,
   getOfficialRosterFingerprint,
+  normalizeAnalyzedPlacement,
   normalizeExtractedKillCount,
   sumReadablePlayerKills,
 } from '../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs';
@@ -125,10 +126,10 @@ for (const [service, loadNormalizer] of [
     const mismatchedDrop = completeDrop({
       placements: [{ ...placement, kills: 4 }],
     });
-    assert.match(getImageDropValidationIssue(mismatchedDrop, teams), /corresponder à soma dos abates individuais/);
+    assert.equal(getImageDropValidationIssue(mismatchedDrop, teams), '');
     assert.equal(
       calculateStandings(teams, [mismatchedDrop], 1).find(team => team.slot === 1).kills,
-      0,
+      3,
     );
   });
 
@@ -156,6 +157,32 @@ for (const [service, loadNormalizer] of [
     assert.match(placement.notes, /Soma legível \(7\) usada; 1 abate\(s\) ilegível\(eis\) ignorado\(s\)/);
     assert.match(placement.notes, /total do placar \(19\) ignorado/);
     assert.equal(sumReadablePlayerKills(placement.players), 7);
+  });
+
+  test(`${service} keeps readable kills for players with unreadable nicknames`, () => {
+    const normalizePlacements = loadNormalizer();
+    const result = asPlainObject(normalizePlacements({
+      lobbyRoster: lobbyRosterFor(1, ['Jogador A']),
+      placements: [{
+        position: 1,
+        slot: 1,
+        kills: null,
+        players: [
+          { name: '', kills: 5 },
+          { name: 'Jogador A', kills: 4, lobbySlot: 1 },
+        ],
+        confidence: 'high',
+      }],
+    }, teams));
+    const placement = result.placements[0];
+
+    assert.deepEqual(
+      placement.players.map(player => [player.name, player.kills]),
+      [['', 5], ['Jogador A', 4]],
+    );
+    assert.equal(placement.kills, 9);
+    assert.ok(placement.reviewFields.includes('players'));
+    assert.match(placement.notes, /sem nick legível/);
   });
 }
 
@@ -306,10 +333,31 @@ test('the preview preserves explicit zero and leaves unknown counts blank', () =
   assert.equal(standings[0].wins, 0);
   assert.equal(standings[0].kills, 0);
   assert.equal(standings[0].points, 0);
-  assert.match(scoringSource, /!Number\.isInteger\(placement\.kills\) \|\| placement\.kills < 0/);
+  assert.match(scoringSource, /individualKills === null/);
+  assert.doesNotMatch(scoringSource, /p\.kills !== kills/);
   assert.equal(sumReadablePlayerKills([{ kills: 0 }, { kills: null }]), 0);
   assert.equal(sumReadablePlayerKills([{ kills: null }, { kills: '' }]), null);
   assert.match(scoringSource, /Nenhum abate individual legível/);
+});
+
+test('anonymous duplicate-player entries stay visible and contribute to the row sum', () => {
+  const players = [{ name: '', kills: 5 }, { name: '', kills: 4 }];
+  assert.equal(sumReadablePlayerKills(players), 9);
+  assert.match(scoringSource, /Jogador sem associação/);
+});
+
+test('a missing or stale aggregate does not block confirmation when individual kills are readable', () => {
+  const placement = normalizeAnalyzedPlacement({
+    position: 1,
+    slot: 1,
+    kills: null,
+    players: [{ name: '', kills: '5' }, { name: 'Jogador B', kills: 4 }],
+  }, teams);
+  const drop = completeDrop({ placements: [placement] });
+
+  assert.equal(placement.kills, 9);
+  assert.equal(getImageDropValidationIssue(drop, teams), '');
+  assert.equal(calculateStandings(teams, [drop], 1).find(team => team.slot === 1).kills, 9);
 });
 
 test('reviewed partial drops contribute and leave absent or unidentified teams at zero', () => {
@@ -369,6 +417,7 @@ test('both image-analysis backends tell Gemini not to invent absent teams', () =
     assert.match(source, /retorne slot:null/);
     assert.match(source, /referências históricas abaixo vêm somente de quedas anteriores confirmadas/);
     assert.match(source, /mantenha confidence no máximo como medium/);
+    assert.match(source, /Inclua jogadores visíveis mesmo se o nick estiver ilegível/);
     assert.match(source, /Nunca copie posições ou abates antigos/);
     assert.match(source, /uma evidência única sem conflito pode determinar o slot/);
     assert.match(source, /mesmo que o agrupamento\/etiqueta do placar sugira outro/);
@@ -378,7 +427,13 @@ test('both image-analysis backends tell Gemini not to invent absent teams', () =
 test('only earlier reviewed drops with the same roster contribute player-to-slot references', () => {
   const confirmed = completeDrop({
     placements: [
-      { slot: 2, players: [{ name: 'Reserva da Equipe 2', kills: 8, lobbySlot: 2 }] },
+      {
+        slot: 2,
+        players: [
+          { name: 'Reserva da Equipe 2', kills: 8, lobbySlot: 2 },
+          { name: '', kills: 2 },
+        ],
+      },
       { slot: null, players: [{ name: 'Sem slot', kills: 4, lobbySlot: null }] },
     ],
   });

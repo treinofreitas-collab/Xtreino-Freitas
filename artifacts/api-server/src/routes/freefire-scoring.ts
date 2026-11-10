@@ -408,14 +408,13 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
           const lobbyRosterMatched = rosterSlot !== undefined;
           const lobbyRosterAmbiguous = lobbyRoster.ambiguousPlayers.has(nameKey);
           const lobbySlot = lobbyRosterMatched ? rosterSlot : null;
-          return name
-            ? [{ name, kills: playerKills, lobbySlot, lobbyRosterMatched, lobbyRosterAmbiguous }]
-            : [];
+          return [{ name, kills: playerKills, lobbySlot, lobbyRosterMatched, lobbyRosterAmbiguous }];
         }).slice(0, 6)
       : [];
     const ambiguousLobbyNames = [...new Set(
       players.filter((player) => player.lobbyRosterAmbiguous).map((player) => player.name),
     )];
+    const unnamedPlayers = players.filter((player) => !player.name.trim()).length;
     const playerSlotCounts = new Map<number, number>();
     const slotEvidencePlayers = players.filter((player) => player.lobbyRosterMatched);
     for (const player of slotEvidencePlayers) {
@@ -466,6 +465,7 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
     const confidence = !hasReadablePlayerKills ||
       playerSlotConflict ||
       !lobbyRoster.hasRoster ||
+      unnamedPlayers > 0 ||
       players.some((player) => player.lobbyRosterAmbiguous)
       ? "low"
       : modelConfidence;
@@ -490,6 +490,10 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
       validationNotes.push(
         `Nick(s) ${ambiguousLobbyNames.join(", ")} aparecem em mais de um slot do lobby; associe manualmente.`,
       );
+    }
+    if (unnamedPlayers > 0) {
+      reviewFields.push("players");
+      validationNotes.push(`${unnamedPlayers} jogador(es) sem nick legível; mantenha os abates legíveis na soma da linha.`);
     }
     if (!hasReadablePlayerKills) {
       reviewFields.push("kills");
@@ -659,6 +663,19 @@ function playerFingerprint(
     .map((player) => `${normalizePlayerName(player.name)}:${player.kills}:${player.lobbySlot ?? ""}`)
     .sort()
     .join("|");
+}
+
+function sumReadablePlayerKills(
+  players: Array<{ kills: number | null }> | null | undefined,
+) {
+  const readableKills = (Array.isArray(players) ? players : []).flatMap((player): number[] =>
+    player.kills !== null && Number.isInteger(player.kills) && player.kills >= 0
+      ? [player.kills]
+      : [],
+  );
+  return readableKills.length
+    ? readableKills.reduce((total, playerKills) => total + playerKills, 0)
+    : null;
 }
 
 function markPlacementForReview(
@@ -858,11 +875,17 @@ function clearDuplicatePlayers(
   return placements.map((placement) => {
     const names = [...new Set(namesByPosition.get(placement.position) || [])];
     if (!names.length) return placement;
-    const note = `Nick(s) ${names.join(", ")} removido(s) das associações automáticas duplicadas; confira o lobby e associe cada um a uma única equipe.`;
-    const remainingPlayers = placement.players.filter(
-      (player) => !duplicateKeys.has(normalizePlayerName(String(player?.name || ""))),
-    );
-    const readablePlayerKills: number[] = remainingPlayers.flatMap((player): number[] =>
+    const playersWithoutNameAssociations = placement.players.map((player) => {
+      if (!duplicateKeys.has(normalizePlayerName(String(player?.name || "")))) return player;
+      return {
+        ...player,
+        name: "",
+        lobbySlot: null,
+        lobbyRosterMatched: false,
+        lobbyRosterAmbiguous: true,
+      };
+    });
+    const readablePlayerKills: number[] = playersWithoutNameAssociations.flatMap((player): number[] =>
       player.kills !== null && Number.isInteger(player.kills) && player.kills >= 0
         ? [player.kills]
         : [],
@@ -870,9 +893,10 @@ function clearDuplicatePlayers(
     const kills = readablePlayerKills.length
       ? readablePlayerKills.reduce((total, playerKills) => total + playerKills, 0)
       : null;
+    const note = `Nick(s) ${names.join(", ")} sem associação automática; abates legíveis mantidos sem o nick (soma da linha: ${kills === null ? "sem leitura" : kills}). Confira possível duplicidade antes de confirmar.`;
     const reviewed = markPlacementForReview({
       ...placement,
-      players: remainingPlayers,
+      players: playersWithoutNameAssociations,
       kills,
     }, note);
     return {
@@ -1071,9 +1095,11 @@ function reconcilePlacements(
     }
 
     const slot = slotVote.hasConsensus ? slotVote.value : null;
-    const highestDisputedKillRead = killsVote.hasConsensus && killsVote.distinctCount > 1
+    const highestDisputedKillRead =
+      !killsVote.hasConsensus || killsVote.value === null || killsVote.distinctCount > 1
       ? [...present].sort((a, b) =>
-          (b.placement.kills ?? -1) - (a.placement.kills ?? -1),
+          (sumReadablePlayerKills(b.placement.players) ?? -1) -
+          (sumReadablePlayerKills(a.placement.players) ?? -1),
         )[0]
       : null;
     const selectedPlayerRead = highestDisputedKillRead ||
@@ -1091,12 +1117,13 @@ function reconcilePlacements(
         ? [player.kills]
         : [],
     );
-    const kills = killsVote.hasConsensus && readablePlayerKills.length
+    const kills = readablePlayerKills.length
       ? readablePlayerKills.reduce((total, playerKills) => total + playerKills, 0)
       : null;
     const teamSource = present.find((read) => read.placement.slot === slot) || present[0];
     const hasManualReview = reviewFields.size > 0;
-    const criticalConsensus = slot !== null && kills !== null && present.length >= 2;
+    const criticalConsensus = slot !== null && slotVote.hasConsensus &&
+      killsVote.hasConsensus && kills !== null && present.length >= 2;
     const thirdReadPresent = rowReads.some((read) => read.label === "3ª" && read.placement);
     const readAgreement = !hasManualReview
       ? (thirdReadPresent ? "3 leituras concordam" : "2 leituras concordam")
@@ -1313,6 +1340,7 @@ router.post("/freefire/analyze", async (req, res) => {
       "Não invente posições, slots, nomes, abates ou dados fora das imagens. Se não conseguir ligar um time ao resultado, use slot:null, teamName:null e explique em notes.",
       "Retorne somente JSON no formato: {\"lobbyRoster\":[{\"slot\":1,\"players\":[{\"name\":\"jogador\"}]}],\"placements\":[{\"position\":1,\"slot\":1,\"teamName\":\"nome oficial ou null\",\"kills\":5,\"players\":[{\"name\":\"jogador\",\"kills\":2,\"lobbySlot\":1}],\"confidence\":\"high|medium|low\",\"notes\":\"\"}],\"unmatchedPlayers\":[\"jogador não associado\"]}. Em kills da equipe, retorne a soma de players legíveis e use null somente se nenhum abate individual for legível. Em kills do jogador, use null quando ilegível.",
       "Inclua no máximo 12 posições; cada jogador deve aparecer em players com o número de abates lido.",
+      "Inclua jogadores visíveis mesmo se o nick estiver ilegível: use name:\"\" e preserve o kills individual legível. Nunca descarte um abate legível por falta de associação do jogador.",
       "A pontuação é calculada pelo sistema depois; não calcule pontos de colocação.",
     ].join("\n");
     const firstResult = normalizePlacements(await generateJsonWithRetry(prompt, images), officialTeams);

@@ -1728,8 +1728,6 @@ export function getImageDropValidationIssue(drop, teams) {
     if (slots.has(slot)) return 'Há equipes repetidas nesta queda.';
     const individualKills = sumReadablePlayerKills(placement.players);
     if (individualKills === null) return 'Nenhum abate individual legível; não use o total impresso do placar.';
-    if (!Number.isInteger(placement.kills) || placement.kills < 0 || placement.kills > 99) return 'Confira a soma dos abates individuais legíveis.';
-    if (placement.kills !== individualKills) return 'O total da equipe precisa corresponder à soma dos abates individuais legíveis.';
     positions.add(position);
     slots.add(slot);
     identifiedTeams += 1;
@@ -1972,6 +1970,31 @@ export function sumReadablePlayerKills(players) {
   }
   return readableCount ? total : null;
 }
+export function normalizeAnalyzedPlacement(item, teams) {
+  const slot = item.slot === null || item.slot === undefined || item.slot === ''
+    ? null
+    : Number(item.slot);
+  const players = Array.isArray(item.players)
+    ? item.players
+        .filter(player => player && typeof player === 'object' && !Array.isArray(player))
+        .map(player => ({
+          ...player,
+          name: typeof player.name === 'string' ? player.name.trim() : '',
+          kills: normalizeExtractedKillCount(player.kills),
+        }))
+    : [];
+  return {
+    position: Number(item.position) || 0,
+    slot,
+    teamName: slot ? teams[slot - 1]?.teamName || '' : '',
+    kills: sumReadablePlayerKills(players),
+    players,
+    confidence: String(item.confidence || 'low'),
+    reviewFields: Array.isArray(item.reviewFields) ? item.reviewFields.map(String) : [],
+    readAgreement: String(item.readAgreement || ''),
+    notes: String(item.notes || ''),
+  };
+}
 function readingStatusLabel(placement) {
   if (String(placement.readAgreement || '').startsWith('2 de 3')) return '2 de 3 concordam';
   if ((placement.reviewFields || []).length || placement.confidence === 'low') return 'Revisar manualmente';
@@ -2015,7 +2038,10 @@ function renderPlacements(drop) {
     ${drop.placements.map((p, i) => `<tr>
       <td><select data-edit="slot" data-index="${i}" aria-label="Slot da equipe" ${readOnly() || state.busy ? 'disabled' : ''}><option value="" ${p.slot == null ? 'selected' : ''}>—</option>${Array.from({ length: 12 }, (_, x) => `<option value="${x + 1}" ${Number(p.slot) === x + 1 ? 'selected' : ''}>${String(x + 1).padStart(2, '0')}</option>`).join('')}</select></td>
       <td><strong class="ff-reviewed-team">${esc(drop.rosterSnapshot?.[Number(p.slot) - 1]?.teamName || state.teams[Number(p.slot) - 1]?.teamName || p.teamName || 'Não identificada')}</strong>
-         ${p.players?.length ? `<div class="ff-player-list">${p.players.map((player, playerIndex) => `<label class="ff-player-kill"><span>${esc(player.name)}</span><input data-edit-player-kills data-index="${i}" data-player-index="${playerIndex}" type="number" min="0" max="99" aria-label="Abates de ${esc(player.name)}" placeholder="?" value="${Number.isInteger(player.kills) ? esc(player.kills) : ''}" ${readOnly() || state.busy ? 'disabled' : ''}></label>`).join('')}</div>` : '<small class="ff-player-list">Jogadores não identificados</small>'}</td>
+          ${p.players?.length ? `<div class="ff-player-list">${p.players.map((player, playerIndex) => {
+            const playerName = String(player.name || '').trim() || 'Jogador sem associação';
+            return `<label class="ff-player-kill"><span>${esc(playerName)}</span><input data-edit-player-kills data-index="${i}" data-player-index="${playerIndex}" type="number" min="0" max="99" aria-label="Abates de ${esc(playerName)}" placeholder="?" value="${Number.isInteger(player.kills) ? esc(player.kills) : ''}" ${readOnly() || state.busy ? 'disabled' : ''}></label>`;
+          }).join('')}</div>` : '<small class="ff-player-list">Jogadores não identificados</small>'}</td>
       <td><input data-edit="position" data-index="${i}" aria-label="Colocação" type="number" min="1" max="12" value="${esc(p.position)}" ${readOnly() || state.busy ? 'disabled' : ''}></td>
        <td><input data-kill-total="${i}" aria-label="Soma individual de abates" type="number" min="0" max="99" readonly placeholder="Sem leitura" value="${Number.isInteger(sumReadablePlayerKills(p.players)) ? esc(sumReadablePlayerKills(p.players)) : ''}"></td>
       <td><span class="ff-reading-status ${(p.reviewFields || []).length || p.confidence === 'low' ? 'needs-review' : 'confirmed'}">${esc(readingStatusLabel(p))}</span>${p.notes ? `<small class="ff-row-note">${esc(p.notes)}</small>` : ''}</td>
@@ -2053,7 +2079,6 @@ export function calculateStandings(teams, drops, dropsCount, { rosterConfirmed =
       if (!total) return;
        const pos = Number(p.position), kills = sumReadablePlayerKills(p.players);
       if (!Number.isInteger(pos) || pos < 1 || pos > 12 || !Number.isInteger(kills) || kills < 0) return;
-       if (p.kills !== kills) return;
       total.placementsByDrop[dropIndex] = pos;
       total.wins += pos === 1 ? 1 : 0;
       total.kills += kills;
@@ -2773,20 +2798,7 @@ async function analyzeDrop() {
       slotImages, resultImages,
     });
     if (!Array.isArray(result.placements)) throw new Error('Resposta inválida do serviço: resultados da queda ausentes.');
-    drop.placements = result.placements.map(item => {
-      const slot = item.slot === null || item.slot === undefined || item.slot === '' ? null : Number(item.slot);
-      return {
-        position: Number(item.position) || 0,
-        slot,
-        teamName: slot ? state.teams[slot - 1]?.teamName || '' : '',
-        kills: normalizeExtractedKillCount(item.kills),
-        players: Array.isArray(item.players) ? item.players : [],
-        confidence: String(item.confidence || 'low'),
-        reviewFields: Array.isArray(item.reviewFields) ? item.reviewFields.map(String) : [],
-        readAgreement: String(item.readAgreement || ''),
-        notes: String(item.notes || ''),
-      };
-    });
+    drop.placements = result.placements.map(item => normalizeAnalyzedPlacement(item, state.teams));
     drop.unmatchedPlayers = Array.isArray(result.unmatchedPlayers) ? result.unmatchedPlayers.map(String) : [];
     drop.rosterFingerprint = analyzedRosterFingerprint;
     drop.rosterSnapshot = analyzedRosterSnapshot;

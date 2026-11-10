@@ -247,8 +247,8 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-score-review-roster-autoconfirm-v1/);
-  assert.match(adminPage, /admin\.js\?v=freefire-score-review-roster-autoconfirm-v1/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-individual-sum-v2/);
+  assert.match(adminPage, /admin\.js\?v=freefire-individual-sum-v2/);
   assert.doesNotMatch(source, /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/);
 });
 
