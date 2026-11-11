@@ -10337,11 +10337,12 @@ async function loadDynamicEvents() {
         const cards = docsSorted.map(d => {
             const ev = d.data();
             const isSeason7 = isCampSeason7Name(ev.name);
+            const displayName = isSeason7 ? campSeason7ModalLabel(ev.name) : (ev.name || 'Evento');
             const _isFreeEv = !ev.preco || ev.entrada === 'GRÁTIS' || Number(ev.preco) === 0;
             // Apenas eventos GRATUITOS do tipo xtreino-tokens usam o modal de time gratuito
             const _isEquipeEvent = ev.eventType === 'xtreino-tokens' && _isFreeEv;
             scheduleConfig[d.id] = {
-                label: isSeason7 ? campSeason7ModalLabel(ev.name) : (ev.name || 'Evento'),
+                label: displayName,
                 price: Number(ev.preco) || 0,
                 payWithToken: ev.entrada === 'TOKENS',
                 vagas: Number(ev.vagas) || 0,
@@ -10411,10 +10412,10 @@ async function loadDynamicEvents() {
                     ${quedasStr ? `<span class="inline-block bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded">${quedasStr} QUEDAS</span>` : ''}
                 </div>
                 <div class="product-media" style="position:relative;">
-                    <img src="${imgSrc}" alt="${ev.name || 'Evento'}" loading="lazy" referrerpolicy="no-referrer" onerror="this.src='${placeholderImg}'">
+                    <img src="${imgSrc}" alt="${displayName}" loading="lazy" referrerpolicy="no-referrer" onerror="this.src='${placeholderImg}'">
                     ${emBreveOverlay}
                 </div>
-                <div class="product-title">${ev.name || 'Evento'}</div>
+                <div class="product-title">${displayName}</div>
                 <div class="product-desc">
                     <div class="space-y-1">
                         <div><strong>Entrada:</strong> ${preco}</div>
