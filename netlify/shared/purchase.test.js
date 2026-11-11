@@ -330,21 +330,21 @@ test("Solo purchase pricing honors existing name-scoped date locks", async () =>
   }), /Horário indisponível/);
 });
 
-test("Camp Season 7 uses its exact catalog event and rejects bookings before 15/11/2026", async () => {
+test("Camp Season 7 uses its exact catalog event and rejects bookings before 18/11/2026", async () => {
   currentDb = fakeDatabase({
     "adminEvents/camp-freitas": { name: "Camp Freitas", eventType: "camp-freitas", preco: 8, status: "Aberto" },
     "adminEvents/Season7Event": {
-      name: "CAMPEONATO SEASON 7 - INÍCIO: 15/11",
+      name: "CAMPEONATO SEASON 7 - INÍCIO: 18/11",
       eventType: "camp-freitas", preco: 3, status: "Aberto",
     },
   });
   const registration = {
     eventType: "camp-freitas", adminEventId: "Season7Event", eventLinkDateScoped: true,
-    title: "CAMPEONATO SEASON 7 - INÍCIO: 15/11 - Slot 1",
-    date: "2026-11-14", schedule: "Sábado - 19h",
+    title: "CAMPEONATO SEASON 7 - INÍCIO: 18/11 - Slot 1",
+    date: "2026-11-17", schedule: "Quarta - 19h",
   };
-  await assert.rejects(eventPrice(currentDb, registration), /começam em 15\/11\/2026/);
-  registration.date = "2026-11-15";
+  await assert.rejects(eventPrice(currentDb, registration), /começam em 18\/11\/2026/);
+  registration.date = "2026-11-18";
   assert.equal((await eventPrice(currentDb, registration)).cents, 300);
 });
 

@@ -2,7 +2,7 @@ const { getAdmin } = require("./firebase-admin");
 const { toCents, validateApprovedPayment } = require("./token-purchase");
 const { findAffiliateRef } = require("./credit-token-order");
 const { isDeepStrictEqual } = require("node:util");
-const CAMP_SEASON_7_START_DATE = "2026-11-15";
+const CAMP_SEASON_7_START_DATE = "2026-11-18";
 
 function fail(message, statusCode = 409) {
   const error = new Error(message);
@@ -114,7 +114,7 @@ async function eventPrice(db, registration, forcePay = false, reads = new Map())
   }
   const isSeason7 = isCampSeason7(config?.name || registration.title);
   if (isSeason7 && date < CAMP_SEASON_7_START_DATE) {
-    fail("As inscrições para o Camp Season 7 começam em 15/11/2026.", 400);
+    fail("As inscrições para o Camp Season 7 começam em 18/11/2026.", 400);
   }
   if (registration.eventLinkDateScoped === true && (!adminEventId || !isSeason7)) {
     fail("Não foi possível validar o evento do Camp Season 7.", 400);

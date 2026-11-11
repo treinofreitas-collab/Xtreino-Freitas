@@ -1,5 +1,5 @@
 const UNAVAILABLE_MESSAGE = "Não foi possível confirmar as vagas agora. Nenhuma cobrança foi iniciada. Tente novamente.";
-const CAMP_SEASON_7_START_DATE = "2026-11-16";
+const CAMP_SEASON_7_START_DATE = "2026-11-18";
 const ACTIVE_STATUSES = new Set(["paid", "confirmed", "approved", "lisagem_gratis"]);
 const DEFAULT_CAPACITIES = {
   "modo-liga": 15, acesso: 15, "camp-final": 2, "camp-freitas": 12,
@@ -171,7 +171,7 @@ async function checkAvailability(db, body) {
     return { available: false, message: "Este evento não está disponível para reservas." };
   }
   if (isCampSeason7(config) && date < CAMP_SEASON_7_START_DATE) {
-    return { available: false, message: "As vagas do Camp Season 7 estão disponíveis a partir de 16/11/2026." };
+    return { available: false, message: "As vagas do Camp Season 7 estão disponíveis a partir de 18/11/2026." };
   }
 
   const isModoLiga = [

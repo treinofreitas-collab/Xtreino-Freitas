@@ -4289,7 +4289,7 @@ const scheduleConfig =
     // 'passe-booyah': { label: 'Passe de Elite', price: 11.00, isProduct: true },
     // 'camisa': { label: 'Camisa Oficial Org Freitas', price: 89.90, isProduct: true }
 };
-const CAMP_SEASON_7_START_DATE = '2026-11-17';
+const CAMP_SEASON_7_START_DATE = '2026-11-18';
 
 function isCampSeason7Name(value) {
     const name = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -5735,7 +5735,7 @@ async function renderScheduleTimes() {
         stopScheduleAvailabilityListener();
         let msg = 'Esta data não está disponível para este evento.';
         if (eventType === 'xtreino-tokens') msg = 'Agendamentos não disponíveis em datas passadas.';
-        else if (getActiveScheduleConfig(eventType).dateScopedEventLinks) msg = 'As vagas do Camp Season 7 estão disponíveis a partir de 17/11/2026.';
+        else if (getActiveScheduleConfig(eventType).dateScopedEventLinks) msg = 'As vagas do Camp Season 7 estão disponíveis a partir de 18/11/2026.';
         else if (eventType === 'camp-freitas') msg = 'Camp Freitas (Semifinal) disponível somente em 22/11 e 23/11 às 17h.';
         else if (eventType === 'camp-final') msg = 'Vaga Direto na Final disponível apenas em 28/11 às 18h.';
         timesWrap.innerHTML = `<p class="text-red-500 text-center py-4">${msg}</p>`;
@@ -7814,7 +7814,7 @@ async function submitSchedule(e, useTokens = false) {
         const date = document.getElementById('schedDate').value;
         const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [date];
         if (datesToUse.some(bookingDate => !isValidScheduleDate(bookingDate, rawEventType))) {
-            alert('A data selecionada não está disponível para este evento. O Camp Season 7 começa em 15/11/2026.');
+            alert('A data selecionada não está disponível para este evento. O Camp Season 7 começa em 18/11/2026.');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }

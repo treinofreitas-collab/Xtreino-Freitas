@@ -121,11 +121,11 @@ test("availability rejects malformed team candidates", () => {
   }), /Lista de times inválida/);
 });
 
-test("Camp Season 7 keeps 15 November closed and opens bookings on 16 November", async () => {
+test("Camp Season 7 keeps 17 November closed and opens bookings on 18 November", async () => {
   const eventId = "season-7-event";
   const eventConfig = {
     [`adminEvents/${eventId}`]: {
-      name: "CAMPEONATO SEASON 7 - INÍCIO: 15/11",
+      name: "CAMPEONATO SEASON 7 - INÍCIO: 18/11",
       eventType: "camp-freitas",
       status: "Aberto",
       vagas: 15,
@@ -135,19 +135,19 @@ test("Camp Season 7 keeps 15 November closed and opens bookings on 16 November",
     ...request,
     eventType: "camp-freitas",
     adminEventId: eventId,
-    selectedTimes: ["Domingo - 19h"],
+    selectedTimes: ["Quarta - 19h"],
   };
   const beforeStart = await checkAvailability(database(eventConfig), {
     ...campRequest,
-    date: "2026-11-15",
+    date: "2026-11-17",
   });
   assert.equal(beforeStart.available, false);
-  assert.match(beforeStart.message, /16\/11\/2026/);
+  assert.match(beforeStart.message, /18\/11\/2026/);
 
   const onStartDateDb = database(eventConfig);
   const onStartDate = await checkAvailability(onStartDateDb, {
     ...campRequest,
-    date: "2026-11-16",
+    date: "2026-11-18",
   });
   assert.equal(onStartDate.available, true);
   assert.ok(onStartDateDb.reads.some(read => read.name === "adminEvents" && read.id === eventId));
@@ -155,7 +155,7 @@ test("Camp Season 7 keeps 15 November closed and opens bookings on 16 November",
 
 test("availability does not count Modo Liga registrations against Camp Season 7 when they share eventType", async () => {
   const campId = "camp-season-7-event";
-  const campName = "CAMPEONATO SEASON 7 - INÍCIO: 15/11";
+  const campName = "CAMPEONATO SEASON 7 - INÍCIO: 18/11";
   const eventConfig = {
     [`adminEvents/${campId}`]: {
       name: campName,
@@ -166,10 +166,10 @@ test("availability does not count Modo Liga registrations against Camp Season 7 
   };
   const campRequest = {
     ...request,
-    date: "2026-11-16",
+    date: "2026-11-18",
     eventType: "modo-liga",
     adminEventId: campId,
-    selectedTimes: ["Segunda - 20h"],
+    selectedTimes: ["Quarta - 20h"],
     numberOfTeams: 15,
   };
   const modeLigaRegistration = {
@@ -177,7 +177,7 @@ test("availability does not count Modo Liga registrations against Camp Season 7 
     eventType: "modo-liga",
     adminEventId: "treino-modo-liga-event",
     title: "TREINO MODO LIGA - 20h",
-    schedule: "Segunda - 20h",
+    schedule: "Quarta - 20h",
     status: "paid",
   };
 
