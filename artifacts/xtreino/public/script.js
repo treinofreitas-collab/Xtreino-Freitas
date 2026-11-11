@@ -4945,6 +4945,7 @@ function openScheduleModal(eventType, options = {}) {
 
     // Reset global variables
     selectedTimes = [];
+    updateSelectedTimeDisplay();
     teams = [];
     teamCounter = 0;
 
@@ -5326,6 +5327,7 @@ function closeScheduleModal() {
         teams = [];
         teamCounter = 0;
         selectedTimes = [];
+        updateSelectedTimeDisplay();
         selectedDates = [];
         appliedScheduleCoupon = null;
         scheduleOriginalTotal = 0;
@@ -5395,6 +5397,7 @@ function addSelectedDate() {
 function removeSelectedDate(dateStr) {
     selectedDates = selectedDates.filter(d => d !== dateStr);
     selectedTimes = selectedTimes.filter(item => item.date !== dateStr);
+    updateSelectedTimeDisplay();
     handleSchedulePixSelectionChange();
     renderSelectedDatesList();
     updateReservationsSummary();
@@ -5407,6 +5410,7 @@ function removeSelectedDate(dateStr) {
 function clearSelectedDates() {
     selectedDates = [];
     selectedTimes = [];
+    updateSelectedTimeDisplay();
     handleSchedulePixSelectionChange();
     renderSelectedDatesList();
     updateReservationsSummary();
@@ -5574,6 +5578,17 @@ function updateSelectedDate() {
             })
             : '--';
     }
+}
+
+function updateSelectedTimeDisplay() {
+    const hiddenField = document.getElementById('schedSelectedTime');
+    const displayField = document.getElementById('schedSelectedTimeDisplay');
+    const selectedSchedules = selectedTimes.map(item => {
+        const hour = item.schedule.split(' - ')[1] || item.schedule;
+        return parseInt(hour, 10) === 0 ? '00h00' : hour;
+    });
+    if (hiddenField) hiddenField.value = selectedTimes.at(-1)?.schedule || '';
+    if (displayField) displayField.textContent = selectedSchedules.length ? selectedSchedules.join(', ') : '—';
 }
 const scheduleCache = {};
 
@@ -6492,6 +6507,7 @@ function updateTeam(teamId, field, value) {
 }
 
 async function updateReservationsSummary() {
+    updateSelectedTimeDisplay();
     const summaryContainer = document.getElementById('reservationsSummary');
     const totalPriceElement = document.getElementById('totalPrice');
 
@@ -6604,24 +6620,7 @@ function selectTime(schedule, element) {
     }
     handleSchedulePixSelectionChange();
 
-    // Atualiza campos ocultos (opcional)
-    const hiddenField = document.getElementById('schedSelectedTime');
-    const displayField = document.getElementById('schedSelectedTimeDisplay');
-    if (hiddenField) hiddenField.value = schedule;
-    if (displayField) {
-        // Mostrar TODOS os horários selecionados, não apenas o último
-        if (selectedTimes.length === 0) {
-            displayField.textContent = '—';
-        } else {
-            const horasExibidas = selectedTimes
-                .map(item => {
-                    const hour = item.schedule.split(' - ')[1] || item.schedule;
-                    return parseInt(hour, 10) === 0 ? '00h00' : hour;
-                })
-                .join(', ');
-            displayField.textContent = horasExibidas;
-        }
-    }
+    updateSelectedTimeDisplay();
 
     updateReservationsSummary();
 
