@@ -33,9 +33,9 @@ const IMAGE_EVENT_TEMPLATES = Object.freeze({
     name: 'TABELA_TREINO_FREITAS.webp',
     assetUrl: new URL('../assets/freefire-image-template-treino.webp', import.meta.url),
     layout: Object.freeze({
-      rowTop: 0.444, rowPitch: 0.0387, nameX: 0.278, nameMaxWidth: 0.30,
-      winsX: 0.468, killsX: 0.527, pointsX: 0.587,
-      nameColor: '#171717', winsColor: '#10201e', killsColor: '#10201e', pointsColor: '#10201e',
+      rowTop: 0.444, rowPitch: 0.0378, nameX: 0.295, nameMaxWidth: 0.28,
+      winsX: 0.468, killsX: 0.525, pointsX: 0.582,
+      nameColor: '#000000', winsColor: '#ffffff', killsColor: '#ffffff', pointsColor: '#ffffff',
     }),
   }),
   intensivo: Object.freeze({
@@ -44,7 +44,7 @@ const IMAGE_EVENT_TEMPLATES = Object.freeze({
     layout: Object.freeze({
       rowTop: 0.445, rowPitch: 0.03915, nameX: 0.413, nameMaxWidth: 0.40,
       winsX: 0.663, killsX: 0.737, pointsX: 0.810,
-      nameColor: '#171717', winsColor: '#171717', killsColor: '#171717', pointsColor: '#171717',
+      nameColor: '#000000', winsColor: '#ffffff', killsColor: '#ffffff', pointsColor: '#000000',
     }),
   }),
   camp: Object.freeze({
@@ -53,16 +53,16 @@ const IMAGE_EVENT_TEMPLATES = Object.freeze({
     layout: Object.freeze({
       rowTop: 0.424, rowPitch: 0.0388, nameX: 0.413, nameMaxWidth: 0.43,
       winsX: 0.676, killsX: 0.755, pointsX: 0.838,
-      nameColor: '#171717', winsColor: '#ffffff', killsColor: '#ffffff', pointsColor: '#ffffff',
+      nameColor: '#000000', winsColor: '#ffffff', killsColor: '#ffffff', pointsColor: '#ffffff',
     }),
   }),
   semanal: Object.freeze({
     name: 'TABELA_SEMANAL_FREITAS.webp',
     assetUrl: new URL('../assets/freefire-image-template-semanal.webp', import.meta.url),
     layout: Object.freeze({
-      rowTop: 0.441, rowPitch: 0.039, nameX: 0.416, nameMaxWidth: 0.38,
+      rowTop: 0.439, rowPitch: 0.04575, nameX: 0.416, nameMaxWidth: 0.38,
       winsX: 0.664, killsX: 0.748, pointsX: 0.835,
-      nameColor: '#171717', winsColor: '#171717', killsColor: '#171717', pointsColor: '#ffffff',
+      nameColor: '#000000', winsColor: '#000000', killsColor: '#000000', pointsColor: '#ffffff',
     }),
   }),
 });

@@ -73,8 +73,62 @@ test('ships fixed image tables for each event with event-specific export alignme
 
   assert.notEqual(layouts.get('treino').nameX, layouts.get('intensivo').nameX);
   assert.notEqual(layouts.get('camp').pointsX, layouts.get('semanal').pointsX);
-  assert.equal(layouts.get('semanal').killsColor, '#171717');
-  assert.equal(layouts.get('semanal').pointsColor, '#ffffff');
+  assert.deepEqual(layouts.get('treino'), {
+    rowTop: 444,
+    rowPitch: 37.8,
+    nameX: 295,
+    nameMaxWidth: 280,
+    winsX: 468,
+    killsX: 525,
+    pointsX: 582,
+    nameColor: '#000000',
+    winsColor: '#ffffff',
+    killsColor: '#ffffff',
+    pointsColor: '#ffffff',
+  });
+  assert.deepEqual(layouts.get('intensivo'), {
+    rowTop: 445,
+    rowPitch: 39.15,
+    nameX: 413,
+    nameMaxWidth: 400,
+    winsX: 663,
+    killsX: 737,
+    pointsX: 810,
+    nameColor: '#000000',
+    winsColor: '#ffffff',
+    killsColor: '#ffffff',
+    pointsColor: '#000000',
+  });
+  assert.deepEqual(layouts.get('semanal'), {
+    rowTop: 439,
+    rowPitch: 45.75,
+    nameX: 416,
+    nameMaxWidth: 380,
+    winsX: 664,
+    killsX: 748,
+    pointsX: 835,
+    nameColor: '#000000',
+    winsColor: '#000000',
+    killsColor: '#000000',
+    pointsColor: '#ffffff',
+  });
+  const campLayout = layouts.get('camp');
+  assert.deepEqual(
+    [
+      campLayout.rowTop,
+      campLayout.rowPitch,
+      campLayout.nameX,
+      campLayout.nameMaxWidth,
+      campLayout.winsX,
+      campLayout.killsX,
+      campLayout.pointsX,
+    ].map(value => Number(value.toFixed(2))),
+    [424, 38.8, 330.4, 344, 540.8, 604, 670.4],
+  );
+  assert.deepEqual(
+    [campLayout.nameColor, campLayout.winsColor, campLayout.killsColor, campLayout.pointsColor],
+    ['#000000', '#ffffff', '#ffffff', '#ffffff'],
+  );
   assert.equal(getImageEventTemplateInfo('unknown'), null);
   assert.equal(getImageEventTemplateLayout('unknown', 1000, 1000), null);
   assert.equal(getImageEventTemplateLayout('treino', 0, 1000), null);
@@ -247,8 +301,8 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-individual-sum-v2/);
-  assert.match(adminPage, /admin\.js\?v=freefire-individual-sum-v2/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-camp-colors-v1/);
+  assert.match(adminPage, /admin\.js\?v=freefire-camp-colors-v1/);
   assert.doesNotMatch(source, /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/);
 });
 
