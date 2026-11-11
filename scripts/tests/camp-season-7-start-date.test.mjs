@@ -23,10 +23,10 @@ test('Camp Season 7 starts bookings on November 18 and bypasses stale script cac
   assert.match(script, /isCampSeason7ScheduleConfig\(activeDateConfig\)/);
   assert.ok(script.includes('A data selecionada não está disponível para este evento.'));
   assert.match(script, /const displayName = isSeason7 \? campSeason7ModalLabel\(ev\.name\)/);
-  assert.match(script, /Para outros eventos, permitir de hoje em diante[\s\S]*?dateInput\.min = todayStr;\s*dateInput\.value = todayStr;/);
+  assert.match(script, /Para outros eventos, permitir de hoje em diante[\s\S]*?dateInput\.min = todayStr;\s*dateInput\.value = todayStr;\s*dateInput\.removeAttribute\('max'\);\s*updateSelectedDate\(\);/);
   assert.match(script, /<div class="product-title">\$\{displayName\}<\/div>/);
   assert.ok(script.includes(
     "adminEventId: document.getElementById('scheduleModal')?.dataset?.adminEventId || null",
   ));
-  assert.match(homepage, /script\.js\?v=camp-season-7-start-20261118-v3/);
+  assert.match(homepage, /script\.js\?v=camp-season-7-start-20261118-v4/);
 });

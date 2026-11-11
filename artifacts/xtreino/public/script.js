@@ -5230,6 +5230,7 @@ function openScheduleModal(eventType, options = {}) {
             dateInput.min = todayStr;
             dateInput.value = todayStr;
             dateInput.removeAttribute('max');
+            updateSelectedDate();
         }
     })();
     // re-render quando a data mudar
