@@ -153,6 +153,25 @@ test("Camp Season 7 keeps 17 November closed and opens bookings on 18 November",
   assert.ok(onStartDateDb.reads.some(read => read.name === "adminEvents" && read.id === eventId));
 });
 
+test("Camp Season 7 cutoff does not block other events on November 17", async () => {
+  const db = database({
+    "adminEvents/regular-event": {
+      name: "TREINO FREITAS",
+      eventType: "treino-freitas",
+      status: "Aberto",
+      vagas: 12,
+    },
+  });
+  const result = await checkAvailability(db, {
+    ...request,
+    date: "2026-11-17",
+    eventType: "treino-freitas",
+    adminEventId: "regular-event",
+    selectedTimes: ["Terça - 19h"],
+  });
+  assert.equal(result.available, true);
+});
+
 test("availability does not count Modo Liga registrations against Camp Season 7 when they share eventType", async () => {
   const campId = "camp-season-7-event";
   const campName = "CAMPEONATO SEASON 7 - INÍCIO: 18/11";

@@ -348,6 +348,21 @@ test("Camp Season 7 uses its exact catalog event and rejects bookings before 18/
   assert.equal((await eventPrice(currentDb, registration)).cents, 300);
 });
 
+test("Camp Season 7 purchase cutoff does not reject other events on November 17", async () => {
+  currentDb = fakeDatabase({
+    "adminEvents/regular-event": {
+      name: "TREINO FREITAS", eventType: "treino-freitas", preco: 3, status: "Aberto",
+    },
+  });
+  const price = await eventPrice(currentDb, {
+    eventType: "treino-freitas",
+    adminEventId: "regular-event",
+    date: "2026-11-17",
+    schedule: "Terça - 19h",
+  });
+  assert.equal(price.cents, 300);
+});
+
 test("a different approved payment for an already-paid purchase is flagged for review", async () => {
   currentDb = fakeDatabase(productSeed());
   await preparePurchase("buyer", { external_reference: "digital_one" }, "mercadopago");

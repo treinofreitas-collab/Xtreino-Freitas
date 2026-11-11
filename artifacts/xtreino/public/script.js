@@ -4296,6 +4296,10 @@ function isCampSeason7Name(value) {
     return name.includes('camp') && /\bseason\s*7\b/.test(name);
 }
 
+function isCampSeason7ScheduleConfig(config) {
+    return config?.dateScopedEventLinks === true && isCampSeason7Name(config.label);
+}
+
 function campSeason7ModalLabel(value) {
     const [, month, day] = CAMP_SEASON_7_START_DATE.match(/^\d{4}-(\d{2})-(\d{2})$/) || [];
     if (!month || !day) return String(value || 'Evento');
@@ -5182,7 +5186,7 @@ function openScheduleModal(eventType, options = {}) {
         const todayStr = window.BrasiliaTime.dateKey();
         const activeConfig = getActiveScheduleConfig(eventType);
         dateInput.removeAttribute('max');
-        if (activeConfig.dateScopedEventLinks) {
+        if (isCampSeason7ScheduleConfig(activeConfig)) {
             const startDate = activeConfig.startDate || CAMP_SEASON_7_START_DATE;
             dateInput.min = startDate;
             dateInput.value = todayStr > startDate ? todayStr : startDate;
@@ -5224,6 +5228,7 @@ function openScheduleModal(eventType, options = {}) {
         } else {
             // Para outros eventos, permitir de hoje em diante
             dateInput.min = todayStr;
+            dateInput.value = todayStr;
             dateInput.removeAttribute('max');
         }
     })();
@@ -5677,7 +5682,7 @@ function isValidScheduleDate(dateStr, eventType) {
 
     // Regras específicas por evento
     const activeConfig = getActiveScheduleConfig(eventType);
-    if (activeConfig.dateScopedEventLinks) {
+    if (isCampSeason7ScheduleConfig(activeConfig)) {
         return dateStr >= (activeConfig.startDate || CAMP_SEASON_7_START_DATE);
     }
     if (eventType === 'camp-freitas') {
@@ -5735,7 +5740,7 @@ async function renderScheduleTimes() {
         stopScheduleAvailabilityListener();
         let msg = 'Esta data não está disponível para este evento.';
         if (eventType === 'xtreino-tokens') msg = 'Agendamentos não disponíveis em datas passadas.';
-        else if (getActiveScheduleConfig(eventType).dateScopedEventLinks) msg = 'As vagas do Camp Season 7 estão disponíveis a partir de 18/11/2026.';
+        else if (isCampSeason7ScheduleConfig(getActiveScheduleConfig(eventType))) msg = 'As vagas do Camp Season 7 estão disponíveis a partir de 18/11/2026.';
         else if (eventType === 'camp-freitas') msg = 'Camp Freitas (Semifinal) disponível somente em 22/11 e 23/11 às 17h.';
         else if (eventType === 'camp-final') msg = 'Vaga Direto na Final disponível apenas em 28/11 às 18h.';
         timesWrap.innerHTML = `<p class="text-red-500 text-center py-4">${msg}</p>`;
@@ -7814,7 +7819,11 @@ async function submitSchedule(e, useTokens = false) {
         const date = document.getElementById('schedDate').value;
         const datesToUse = (selectedDates && selectedDates.length > 0) ? [...selectedDates] : [date];
         if (datesToUse.some(bookingDate => !isValidScheduleDate(bookingDate, rawEventType))) {
-            alert('A data selecionada não está disponível para este evento. O Camp Season 7 começa em 18/11/2026.');
+            const activeDateConfig = getActiveScheduleConfig(rawEventType);
+            const isSeason7Date = isCampSeason7ScheduleConfig(activeDateConfig);
+            alert(isSeason7Date
+                ? 'A data selecionada não está disponível para este evento. O Camp Season 7 começa em 18/11/2026.'
+                : 'A data selecionada não está disponível para este evento.');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
             return;
         }
