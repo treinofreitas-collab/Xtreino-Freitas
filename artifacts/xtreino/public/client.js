@@ -135,12 +135,24 @@ import { getFirestore, doc, getDoc, setDoc, collection, query, where, or, getDoc
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js';
 import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-docs-store.mjs?v=customer-orders-query-isolation-2';
 import { isDisplayableEventRegistration } from './js/customer-event-orders.mjs?v=customer-order-recovery-1';
+import {
+    getGeneralRankingPage,
+    getGeneralRankingTeamPositionsByNames,
+    getGeneralRankingTop
+} from './js/freefire-general-ranking-store.mjs?v=general-ranking-dashboard-4';
+import { generalRankingTeamKey } from './js/freefire-general-ranking.mjs?v=general-ranking-baseline-3';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
 let app = null;
 let auth = null;
 let db = null;
 let storage = null;
+let generalRankingCursor = null;
+let generalRankingRows = [];
+let generalRankingHasMore = false;
+let generalRankingLoading = false;
+let generalRankingLastPoints = null;
+let generalRankingLastRank = 0;
 
 // Inicializar Firebase imediatamente
 function initializeFirebase() {
@@ -302,12 +314,20 @@ async function checkAuthState() {
             }, 500);
             // Hide login prompt if user is logged in
             hideLoginPrompt();
+            scrollToRequestedTeamRanking();
         } else {
             
             // Show login prompt instead of redirecting
             showLoginPrompt();
         }
     });
+}
+
+function scrollToRequestedTeamRanking() {
+    if (window.location.hash !== '#teamPerformanceCard') return;
+    const target = document.getElementById('teamPerformanceCard');
+    if (!target) return;
+    window.setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
 }
 
 // Setup event listeners
@@ -554,6 +574,195 @@ function scheduleTodayRegistrationsExpiryReload(registrations, userId) {
     }, delay);
 }
 
+function rankingLogoMarkup(team, size = 34) {
+    const logo = String(team?.logoUrl || '').trim();
+    let safeUrl = '';
+    if (logo) {
+        try {
+            const parsed = new URL(logo, document.baseURI);
+            if (parsed.protocol === 'https:' || parsed.origin === window.location.origin) safeUrl = parsed.href;
+        } catch { /* Use the initials avatar when a saved logo URL is invalid. */ }
+    }
+    if (safeUrl) {
+        return `<img src="${escapeHtml(safeUrl)}" alt="" loading="lazy" style="width:${size}px;height:${size}px;flex:0 0 ${size}px;object-fit:contain;border-radius:8px;background:rgba(255,255,255,.08);padding:3px">`;
+    }
+    const initials = String(team?.teamName || '?').trim().slice(0, 1).toLocaleUpperCase('pt-BR') || '?';
+    return `<span aria-hidden="true" style="width:${size}px;height:${size}px;flex:0 0 ${size}px;display:grid;place-items:center;border-radius:8px;background:rgba(7,183,180,.12);color:#42d4cc;font-size:12px;font-weight:900">${escapeHtml(initials)}</span>`;
+}
+
+function generalRankingRowMarkup(team, rank, compact = false) {
+    const teamName = escapeHtml(team?.teamName || 'Equipe');
+    const points = Number(team?.totalPoints || 0).toLocaleString('pt-BR');
+    const rankColor = rank === 1 ? '#ecd414' : rank === 2 ? '#cbd5e1' : rank === 3 ? '#d29a63' : '#94a3b8';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:${compact ? '8px 9px' : '10px 8px'};border-bottom:1px solid rgba(255,255,255,.055)">
+        <span style="min-width:34px;color:${rankColor};font-size:13px;font-weight:900">#${Number(rank) || '—'}</span>
+        ${rankingLogoMarkup(team, compact ? 30 : 34)}
+        <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f8fafc;font-size:${compact ? '11px' : '12px'};font-weight:750">${teamName}</span>
+        <span style="white-space:nowrap;color:#42d4cc;font-size:12px;font-weight:900">${points} pts</span>
+    </div>`;
+}
+
+async function loadGeneralRankingTopCard() {
+    const container = document.getElementById('generalRankingTop');
+    if (!container) return;
+    if (!db || !currentUser) {
+        container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">Entre na sua conta para ver o ranking.</p>';
+        return;
+    }
+    try {
+        const rows = await getGeneralRankingTop(db, 3);
+        if (!rows.length) {
+            container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">A base inicial do ranking ainda não foi importada.</p>';
+            return;
+        }
+        container.innerHTML = rows.map(row => generalRankingRowMarkup(row, row.rank, true)).join('');
+    } catch (error) {
+        container.innerHTML = `<p style="color:#fca5a5;text-align:center;font-size:12px">Não foi possível carregar o ranking (${escapeHtml(error?.code || 'erro')}).</p>`;
+    }
+}
+
+async function loadTeamRankingDashboard() {
+    const container = document.getElementById('teamPerformanceRanking');
+    if (!container) return;
+    if (!currentUser?.uid || !db) {
+        container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">Entre na sua conta para ver suas equipes no ranking.</p>';
+        return;
+    }
+    const uid = currentUser.uid;
+    container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">Carregando posição das suas equipes...</p>';
+    try {
+        const registrations = await fetchUserDocs('registrations', 200, true);
+        if (uid !== currentUser?.uid) return;
+        const byKey = new Map();
+        for (const row of registrations) {
+            const data = row?.data || {};
+            if (!isDisplayableEventRegistration(data)) continue;
+            const eventType = String(data.eventType || '').toLowerCase();
+            const title = String(data.title || '').toLowerCase();
+            if (eventType.includes('solo') || title.includes('solo')) continue;
+            const teamName = String(data.teamName || data.team || data.squadName || '').trim();
+            const key = generalRankingTeamKey(teamName);
+            if (key && !byKey.has(key)) byKey.set(key, teamName);
+        }
+        if (!byKey.size) {
+            container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">Não encontramos nomes de equipes nas suas compras elegíveis.</p>';
+            return;
+        }
+        const positions = await getGeneralRankingTeamPositionsByNames(db, [...byKey.values()]);
+        if (uid !== currentUser?.uid) return;
+        container.innerHTML = [...byKey].map(([key, teamName]) => {
+            const team = positions.get(key);
+            const rank = team?.rank ? `#${Number(team.rank).toLocaleString('pt-BR')}` : '—';
+            const points = team ? Number(team.totalPoints || 0).toLocaleString('pt-BR') : 'Aguardando base';
+            const details = team
+                ? `${Number(team.wins || 0).toLocaleString('pt-BR')} Booyahs · ${Number(team.kills || 0).toLocaleString('pt-BR')} abates`
+                : 'A equipe ainda não aparece na base importada.';
+            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+                ${rankingLogoMarkup({ ...team, teamName }, 36)}
+                <div style="min-width:0;flex:1"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:12px;font-weight:800">${escapeHtml(teamName)}</div><div style="margin-top:4px;color:rgba(255,255,255,.48);font-size:10px">${details}</div></div>
+                <div style="text-align:right;flex:0 0 auto"><div style="color:#42d4cc;font-size:15px;font-weight:900">${rank}</div><div style="margin-top:3px;color:rgba(255,255,255,.58);font-size:10px">${points === 'Aguardando base' ? points : `${points} pts`}</div></div>
+            </div>`;
+        }).join('');
+    } catch (error) {
+        container.innerHTML = `<p style="color:#fca5a5;text-align:center;font-size:12px">Não foi possível carregar a posição das equipes (${escapeHtml(error?.code || 'erro')}).</p>`;
+    }
+}
+
+function renderGeneralRankingModalRows() {
+    const container = document.getElementById('generalRankingRows');
+    if (!container) return;
+    if (!generalRankingRows.length) {
+        container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">Nenhuma equipe carregada.</p>';
+        return;
+    }
+    container.innerHTML = generalRankingRows
+        .map(row => generalRankingRowMarkup(row, row.rank, false))
+        .join('');
+}
+
+async function loadGeneralRankingModalPage(reset = false) {
+    const status = document.getElementById('generalRankingStatus');
+    const button = document.getElementById('loadMoreGeneralRanking');
+    if (!db || !currentUser || generalRankingLoading) return;
+    if (reset) {
+        generalRankingRows = [];
+        generalRankingCursor = null;
+        generalRankingHasMore = false;
+        generalRankingLastPoints = null;
+        generalRankingLastRank = 0;
+        renderGeneralRankingModalRows();
+    }
+    generalRankingLoading = true;
+    if (status) status.textContent = 'Carregando equipes...';
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Carregando...';
+    }
+    try {
+        const page = await getGeneralRankingPage(db, {
+            cursor: generalRankingCursor,
+            pageSize: 50,
+        });
+        for (const team of page.rows) {
+            const points = Number(team.totalPoints || 0);
+            const indexRank = generalRankingRows.length + 1;
+            const rank = generalRankingLastPoints === points
+                ? generalRankingLastRank
+                : indexRank;
+            generalRankingRows.push({ ...team, rank });
+            generalRankingLastPoints = points;
+            generalRankingLastRank = rank;
+        }
+        generalRankingCursor = page.cursor;
+        generalRankingHasMore = page.hasMore;
+        renderGeneralRankingModalRows();
+        if (status) status.textContent = generalRankingRows.length
+            ? `${generalRankingRows.length.toLocaleString('pt-BR')} equipes carregadas.`
+            : 'A base inicial do ranking ainda não foi importada.';
+    } catch (error) {
+        if (status) status.textContent = `Não foi possível carregar o ranking (${error?.code || error?.message || 'erro'}).`;
+    } finally {
+        generalRankingLoading = false;
+        if (button) {
+            button.hidden = !generalRankingHasMore;
+            button.disabled = false;
+            button.textContent = 'Carregar mais equipes';
+        }
+    }
+}
+
+function closeGeneralRankingModal() {
+    const modal = document.getElementById('generalRankingModal');
+    if (!modal) return;
+    modal.hidden = true;
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('openGeneralRanking')?.focus();
+}
+
+function setupGeneralRankingModal() {
+    const modal = document.getElementById('generalRankingModal');
+    const openButton = document.getElementById('openGeneralRanking');
+    const closeButton = document.getElementById('closeGeneralRanking');
+    const moreButton = document.getElementById('loadMoreGeneralRanking');
+    if (!modal || !openButton || !closeButton || !moreButton) return;
+    openButton.addEventListener('click', async () => {
+        modal.hidden = false;
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        closeButton.focus();
+        await loadGeneralRankingModalPage(true);
+    });
+    closeButton.addEventListener('click', closeGeneralRankingModal);
+    modal.addEventListener('click', event => {
+        if (event.target === modal) closeGeneralRankingModal();
+    });
+    moreButton.addEventListener('click', () => loadGeneralRankingModalPage(false));
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !modal.hidden) closeGeneralRankingModal();
+    });
+}
+
 async function loadDashboard() {
     try {
         // Garantir que o userProfile seja carregado primeiro
@@ -571,6 +780,10 @@ async function loadDashboard() {
         
         // Load recent orders
         await loadRecentOrders();
+        await Promise.all([
+            loadTeamRankingDashboard(),
+            loadGeneralRankingTopCard(),
+        ]);
         
         // Load stats
         await loadStats();
@@ -3294,6 +3507,7 @@ async function getUserRole(uid) {
 
 // Adicionar listener para filtro de período das vendas
 document.addEventListener('DOMContentLoaded', () => {
+    setupGeneralRankingModal();
     const salesFilter = document.getElementById('affiliateSalesFilter');
     if (salesFilter) {
         salesFilter.addEventListener('change', () => {

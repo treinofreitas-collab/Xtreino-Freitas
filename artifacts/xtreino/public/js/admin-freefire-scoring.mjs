@@ -1,4 +1,4 @@
-import { createMatchResultView } from './admin-freefire-matchresult-view.mjs?v=logo-associations-1';
+import { createMatchResultView } from './admin-freefire-matchresult-view.mjs?v=ranking-session-date-2';
 import {
   MATCHRESULT_EVENT_TYPES,
   MAX_MATCHRESULT_FILE_BYTES,
@@ -21,6 +21,16 @@ import {
   hasUniformEdgeBackground,
   removeConnectedEdgeBackground,
 } from './spec-logo-image-tools.mjs?v=leaderboard-logo-cleanup-1';
+import {
+  aggregateGeneralRankingImport,
+  MIN_GENERAL_RANKING_SEED_ROWS,
+  parseGeneralRankingImport,
+} from './freefire-general-ranking.mjs?v=general-ranking-baseline-3';
+import {
+  getGeneralRankingMeta,
+  importGeneralRankingSeed,
+  upsertGeneralRankingSession,
+} from './freefire-general-ranking-store.mjs?v=general-ranking-initial-import-4';
 
 const EVENTS = [
   ['TREINO FREITAS', 'treino'],
@@ -329,6 +339,22 @@ export function getModoLigaPurchaseLookupRoster(parsedRoster) {
   return parsedRoster.roster.filter(team => Boolean(String(team?.teamName || '').trim()));
 }
 
+function brasiliaDateKey() {
+  try {
+    if (window.BrasiliaTime?.dateKey) return window.BrasiliaTime.dateKey();
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 function createSession(event) {
   return {
     event,
@@ -348,7 +374,24 @@ const state = {
   ...createSession('treino'),
   busy: false, error: '', message: '', built: false, template: null, templateName: '',
   imageQualityMode: 'auto',
+  rankingDate: brasiliaDateKey(),
+  rankingHour: '',
+  rankingStatus: '',
+  rankingImportText: '',
+  rankingImportName: '',
+  rankingImportPreview: null,
+  rankingImportBusy: false,
+  rankingImportMessage: '',
+  rankingImportMeta: null,
 };
+let imageRankingSaveTimer = null;
+let imageRankingSavePromise = null;
+let imageRankingSavedSignature = '';
+let imageRankingAttemptedSignature = '';
+let matchResultRankingSaveTimer = null;
+let matchResultRankingSavePromise = null;
+let matchResultRankingSavedSignature = '';
+let matchResultRankingAttemptedSignature = '';
 function blankMatchResultDrop(index) {
   return { index, fileName: '', parsed: null, reviewed: false };
 }
@@ -356,6 +399,7 @@ function createMatchResultSession(eventType) {
   return {
     eventType,
     eventHour: '',
+    eventDate: brasiliaDateKey(),
     dropCount: 1,
     drops: Array.from({ length: 5 }, (_, index) => blankMatchResultDrop(index)),
     roster: [],
@@ -536,13 +580,18 @@ function matchResultViewState() {
       !matchResultState.specLogoLoading &&
       matchResultState.specLogoLoadedHour === matchResultState.eventHour);
   const canExport = !rosterIssue && !matchResultState.rosterDirty &&
-    issues.length === 0 && allReviewed && templateAvailable && specLogosReady && standings.length === 15;
+    issues.length === 0 && allReviewed && templateAvailable && specLogosReady && standings.length === 15 &&
+    (matchResultState.eventType !== 'modo-liga' || Boolean(matchResultState.eventDate));
   const canExportTop3 = matchResultState.eventType === 'modo-liga' &&
     !rosterIssue && !matchResultState.rosterDirty &&
-    issues.length === 0 && allReviewed && specLogosReady && standings.length === 15;
+    issues.length === 0 && allReviewed && specLogosReady && standings.length === 15 &&
+    Boolean(matchResultState.eventDate);
   let summary = matchResultState.exportMessage || '';
   if (!summary) {
     if (rosterIssue) summary = rosterIssue;
+    else if (matchResultState.eventType === 'modo-liga' && !matchResultState.eventDate) {
+      summary = 'Selecione a data do TREINO MODO LIGA para registrar no Ranking Geral.';
+    }
     else if (matchResultState.eventType === 'modo-liga' && !matchResultState.eventHour) {
       summary = 'Selecione o horário do Modo Liga para vincular as logos SPEC aos slots corretos.';
     }
@@ -567,6 +616,7 @@ function matchResultViewState() {
     eventType: matchResultState.eventType,
     eventLabel,
     eventHour: matchResultState.eventHour,
+    eventDate: matchResultState.eventDate,
     eventHours: SPEC_LOGO_HOURS,
     dropCount: matchResultState.dropCount,
     drops: drops.map(matchResultDropView),
@@ -1185,6 +1235,11 @@ async function changeMatchResultHour(hour) {
   render();
   if (selectedHour) await loadModoLigaSpecLogos(selectedHour);
 }
+function changeMatchResultDate(date) {
+  matchResultState.eventDate = String(date || '');
+  matchResultState.exportMessage = '';
+  render();
+}
 
 async function changeMatchResultEvent(eventType) {
   if (!MATCHRESULT_EVENT_TYPES.some(event => event.value === eventType)) return;
@@ -1346,6 +1401,44 @@ function triggerBlobDownload(blob, filename) {
   }
 }
 
+async function persistMatchResultGeneralRanking(data) {
+  if (matchResultState.eventType !== 'modo-liga' || readOnly()) return null;
+  if (!window.firebaseDb || !window.firebaseAuth?.currentUser) {
+    throw new Error('Entre no painel com uma conta autorizada para atualizar o Ranking Geral.');
+  }
+  const date = matchResultState.eventDate;
+  const hour = matchResultState.eventHour;
+  let logoWarning = '';
+  let rows = data.standings.map(row => ({
+    teamName: row.teamName,
+    wins: Number(row.wins || 0),
+    kills: Number(row.kills || 0),
+    points: Number(row.points || 0),
+    logoUrl: row.logoUrl || '',
+    logoSource: row.logoSource || '',
+    storagePath: row.logoAsset?.storagePath || '',
+  }));
+  try {
+    rows = await attachGeneralRankingLogos(rows);
+  } catch (error) {
+    logoWarning = ` Logos indisponíveis nesta gravação (${error.message || 'erro de leitura'}).`;
+  }
+  const result = await upsertGeneralRankingSession(window.firebaseDb, {
+    eventType: 'modo-liga',
+    date,
+    hour,
+    standings: rows,
+    updatedBy: window.firebaseAuth.currentUser.uid,
+  });
+  matchResultRankingSavedSignature = generalRankingContributionSignature(
+    'modo-liga',
+    date,
+    hour,
+    rows,
+  );
+  return { ...result, logoWarning, date, hour };
+}
+
 async function exportMatchResultJpeg() {
   const data = matchResultViewState();
   if (!data.canExport) return;
@@ -1467,10 +1560,24 @@ async function exportMatchResultJpeg() {
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
     if (!blob) throw new Error('O navegador não conseguiu gerar o JPEG.');
     triggerBlobDownload(blob, `freitas-${matchResultState.eventType}-leaderboard.jpg`);
+    let rankingWarning = '';
+    if (matchResultState.eventType === 'modo-liga' && !readOnly()) {
+      try {
+        const result = await persistMatchResultGeneralRanking(data);
+        matchResultState.exportMessage =
+          `Ranking Geral atualizado: ${result.teamCount} equipes em ${result.date}, ${result.hour}h.${result.logoWarning}`;
+      } catch (error) {
+        rankingWarning = `Imagem exportada, mas o Ranking Geral não foi atualizado: ${error.message || 'erro de gravação'}`;
+      }
+    }
     const fallbackNote = missingCustomLogos.length
       ? ` ${missingCustomLogos.length} logo(s) personalizada(s) não carregaram (${[...new Set(missingCustomLogos)].join(', ')}) e foram substituídas pela Freitas.`
       : '';
-    matchResultState.exportMessage = `Imagem exportada com ${data.standings.length} equipes e ${matchResultState.dropCount} ${matchResultState.dropCount === 1 ? 'queda' : 'quedas'}.${fallbackNote}`;
+    if (rankingWarning) {
+      matchResultState.exportMessage = `${rankingWarning}${fallbackNote}`;
+    } else if (!matchResultState.exportMessage.startsWith('Ranking Geral atualizado:')) {
+      matchResultState.exportMessage = `Imagem exportada com ${data.standings.length} equipes e ${matchResultState.dropCount} ${matchResultState.dropCount === 1 ? 'queda' : 'quedas'}.${fallbackNote}`;
+    }
   } finally {
     const organizationLogo = logoBitmaps.get('organization');
     for (const logoBitmap of new Set(logoBitmaps.values())) {
@@ -1551,10 +1658,22 @@ async function exportModoLigaTop3Jpeg() {
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
     if (!blob) throw new Error('O navegador não conseguiu gerar o banner Top 3.');
     triggerBlobDownload(blob, 'freitas-modo-liga-top-3.jpg');
+    let rankingWarning = '';
+    try {
+      const result = await persistMatchResultGeneralRanking(data);
+      matchResultState.exportMessage =
+        `Ranking Geral atualizado: ${result.teamCount} equipes em ${result.date}, ${result.hour}h.${result.logoWarning}`;
+    } catch (error) {
+      rankingWarning = `Banner exportado, mas o Ranking Geral não foi atualizado: ${error.message || 'erro de gravação'}`;
+    }
     const missingNote = missingCustomLogos.length
       ? ` Logo(s) sem carregamento: ${missingCustomLogos.join(', ')}.`
       : '';
-    matchResultState.exportMessage = `Banner Top 3 exportado. ${questionMarkCount} time(s) aparecem com ponto de interrogação por não terem uma logo disponível.${missingNote}`;
+    if (rankingWarning) {
+      matchResultState.exportMessage = `${rankingWarning}${missingNote}`;
+    } else if (!matchResultState.exportMessage.startsWith('Ranking Geral atualizado:')) {
+      matchResultState.exportMessage = `Banner Top 3 exportado. ${questionMarkCount} time(s) aparecem com ponto de interrogação por não terem uma logo disponível.${missingNote}`;
+    }
   } finally {
     for (const logoBitmap of new Set(logoBitmaps.values())) logoBitmap.close?.();
     bitmap.close?.();
@@ -1764,14 +1883,347 @@ function refreshDropTabs() {
 function canExport() {
   return !!state.template && isRosterConfirmed() &&
     state.drops.slice(0, state.dropsCount).every(drop => !dropReviewIssue(drop)) &&
-    standings().some(row => row.teamName) && !state.busy;
+    standings().some(row => row.teamName) && !state.busy &&
+    (state.event !== 'treino' || (state.rankingDate && state.rankingHour));
 }
 function exportIssue() {
   if (!state.template) return 'A tabela oficial deste evento não carregou; atualize o painel e tente novamente.';
   if (!hasCompleteRoster()) return 'Preencha os nomes dos 12 slots antes de exportar.';
+  if (state.event === 'treino' && (!state.rankingDate || !state.rankingHour)) {
+    return 'Selecione a data e o horário do TREINO FREITAS para registrar no Ranking Geral.';
+  }
    if (!isRosterConfirmed()) return 'Complete a lista oficial com 12 nomes únicos antes de exportar.';
   const issue = state.drops.slice(0, state.dropsCount).map(dropReviewIssue).find(Boolean);
   return issue || 'O JPEG preserva a proporção do modelo e limita o maior lado a 1080 px.';
+}
+let rankingPurchaseLogoRows = null;
+let rankingPurchaseLogoRowsLoadedAt = 0;
+async function loadRankingPurchaseLogoRows() {
+  if (Array.isArray(rankingPurchaseLogoRows) && Date.now() - rankingPurchaseLogoRowsLoadedAt < 5 * 60 * 1000) {
+    return rankingPurchaseLogoRows;
+  }
+  const role = String(window.lastAppliedRole || window.adminRoleLower || '').toLowerCase().trim();
+  const { collection, getDocs, query, where } =
+    await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+  let registrationsQuery;
+  if (role === 'admin') {
+    registrationsQuery = query(
+      collection(window.firebaseDb, 'registrations'),
+      where('eventType', '==', 'modo-liga'),
+    );
+  } else if (['ceo', 'gerente'].includes(role)) {
+    registrationsQuery = query(
+      collection(window.firebaseDb, 'registrations'),
+      where('teamLogoUrl', '>', ''),
+    );
+  } else {
+    return [];
+  }
+  const snapshot = await getDocs(registrationsQuery);
+  rankingPurchaseLogoRows = snapshot.docs.map(item => item.data());
+  rankingPurchaseLogoRowsLoadedAt = Date.now();
+  return rankingPurchaseLogoRows;
+}
+async function attachGeneralRankingLogos(rows) {
+  const roster = (Array.isArray(rows) ? rows : []).map((row, index) => ({
+    slot: Number(row.slot) || index + 1,
+    teamName: String(row.teamName || '').trim(),
+  })).filter(team => team.teamName);
+  if (!roster.length) return rows;
+  await loadModoLigaLogoCatalog();
+  const registrations = matchResultState.purchaseLogoRows?.length
+    ? matchResultState.purchaseLogoRows
+    : await loadRankingPurchaseLogoRows();
+  const purchaseCatalog = buildModoLigaPurchaseLogoCatalog(registrations, roster);
+  return rows.map(row => {
+    const key = matchResultTeamKey(row.teamName);
+    const carriedLogo = row.logoUrl
+      ? { logoUrl: row.logoUrl, storagePath: row.storagePath || '', source: row.logoSource || '' }
+      : null;
+    const bestLogo = resolveModoLigaTeamLogo({
+      manualLogo: modoLigaLogoCatalog.get(key) || (carriedLogo?.source === 'custom' ? carriedLogo : null),
+      purchaseLogo: purchaseCatalog.get(key) || (carriedLogo?.source === 'purchase' ? carriedLogo : null),
+      specLogo: carriedLogo?.source === 'spec' ? carriedLogo : null,
+      associationLogo: modoLigaLogoAssociationCatalog.get(key) ||
+        (carriedLogo?.source === 'association' ? carriedLogo : null),
+    });
+    return bestLogo?.logoUrl
+      ? { ...row, logoUrl: bestLogo.logoUrl, logoSource: bestLogo.source }
+      : row;
+  });
+}
+async function buildGeneralRankingLogoCatalog(teams) {
+  await loadModoLigaLogoCatalog();
+  const registrations = await loadRankingPurchaseLogoRows();
+  const eligibleStatuses = new Set(['paid', 'approved', 'confirmed']);
+  const purchaseCatalog = new Map();
+  for (const registration of registrations) {
+    if (!eligibleStatuses.has(String(registration?.status || '').toLowerCase().trim())) continue;
+    const teamName = String(registration.teamName || registration.team || registration.squadName || '').trim();
+    const logoUrl = String(registration.teamLogoUrl || registration.teamLogoThumb || registration.logoUrl || '').trim();
+    const key = matchResultTeamKey(teamName);
+    if (!key || !logoUrl) continue;
+    const timestamp = purchaseTimestampMs(
+      registration.paidAt ?? registration.updatedAt ?? registration.createdAt,
+    );
+    const current = purchaseCatalog.get(key);
+    if (!current || timestamp > current.timestamp) {
+      purchaseCatalog.set(key, {
+        teamName,
+        logoUrl,
+        storagePath: String(registration.teamLogoStoragePath || ''),
+        timestamp,
+      });
+    }
+  }
+  return Object.fromEntries((Array.isArray(teams) ? teams : []).flatMap(team => {
+    const key = String(team?.key || matchResultTeamKey(team?.teamName) || '');
+    if (!key) return [];
+    const bestLogo = resolveModoLigaTeamLogo({
+      manualLogo: modoLigaLogoCatalog.get(key),
+      purchaseLogo: purchaseCatalog.get(key),
+      associationLogo: modoLigaLogoAssociationCatalog.get(key),
+    });
+    return bestLogo?.logoUrl
+      ? [[key, { logoUrl: bestLogo.logoUrl, logoSource: bestLogo.source }]]
+      : [];
+  }));
+}
+async function persistImageModeGeneralRanking() {
+  if (state.event !== 'treino' || readOnly()) return null;
+  if (!window.firebaseDb || !window.firebaseAuth?.currentUser) {
+    throw new Error('Entre no painel com uma conta autorizada para atualizar o Ranking Geral.');
+  }
+  const date = state.rankingDate;
+  const hour = state.rankingHour;
+  let logoWarning = '';
+  let rows = standings().map(row => ({
+    teamName: row.teamName,
+    wins: Number(row.wins || 0),
+    kills: Number(row.kills || 0),
+    points: Number(row.points || 0),
+  }));
+  try {
+    rows = await attachGeneralRankingLogos(rows);
+  } catch (error) {
+    logoWarning = ` Logos indisponíveis nesta gravação (${error.message || 'erro de leitura'}).`;
+  }
+  const result = await upsertGeneralRankingSession(window.firebaseDb, {
+    eventType: 'treino-freitas',
+    date,
+    hour,
+    standings: rows,
+    updatedBy: window.firebaseAuth.currentUser.uid,
+  });
+  imageRankingSavedSignature = generalRankingContributionSignature(
+    'treino-freitas',
+    date,
+    hour,
+    rows,
+  );
+  state.rankingStatus =
+    `Ranking Geral atualizado: ${result.teamCount} equipes em ${date}, ${hour}h.${logoWarning}`;
+  return result;
+}
+function generalRankingContributionSignature(eventType, date, hour, rows) {
+  const teams = (Array.isArray(rows) ? rows : []).map(row => [
+    matchResultTeamKey(row?.teamName),
+    Number(row?.points || 0),
+    Number(row?.wins || 0),
+    Number(row?.kills || 0),
+  ]).filter(row => row[0]).sort((left, right) => left[0].localeCompare(right[0]));
+  return JSON.stringify({ eventType, date, hour: String(hour || '').replace(/[^\d]/g, '').padStart(2, '0'), teams });
+}
+function scheduleImageRankingSave() {
+  if (state.event !== 'treino' || readOnly() || !canExport()) return;
+  const signature = generalRankingContributionSignature(
+    'treino-freitas',
+    state.rankingDate,
+    state.rankingHour,
+    standings(),
+  );
+  if (signature === imageRankingSavedSignature || signature === imageRankingAttemptedSignature ||
+      imageRankingSavePromise) return;
+  clearTimeout(imageRankingSaveTimer);
+  imageRankingSaveTimer = setTimeout(() => {
+    imageRankingAttemptedSignature = signature;
+    imageRankingSavePromise = persistImageModeGeneralRanking()
+      .catch(error => {
+        state.rankingStatus = `Ranking Geral não atualizado: ${error.message || 'erro de gravação'}`;
+      })
+      .finally(() => {
+        imageRankingSavePromise = null;
+        render();
+        const currentSignature = generalRankingContributionSignature(
+          'treino-freitas',
+          state.rankingDate,
+          state.rankingHour,
+          standings(),
+        );
+        if (currentSignature !== imageRankingSavedSignature &&
+            currentSignature !== imageRankingAttemptedSignature) scheduleImageRankingSave();
+      });
+  }, 350);
+}
+function scheduleMatchResultRankingSave(data) {
+  if (matchResultState.eventType !== 'modo-liga' || readOnly() || !data?.canExport) return;
+  const signature = generalRankingContributionSignature(
+    'modo-liga',
+    matchResultState.eventDate,
+    matchResultState.eventHour,
+    data.standings,
+  );
+  if (signature === matchResultRankingSavedSignature ||
+      signature === matchResultRankingAttemptedSignature || matchResultRankingSavePromise) return;
+  clearTimeout(matchResultRankingSaveTimer);
+  matchResultRankingSaveTimer = setTimeout(() => {
+    matchResultRankingAttemptedSignature = signature;
+    matchResultRankingSavePromise = persistMatchResultGeneralRanking(data)
+      .then(result => {
+        matchResultRankingSavedSignature = signature;
+        matchResultState.exportMessage =
+          `Ranking Geral atualizado: ${result.teamCount} equipes em ${result.date}, ${result.hour}h.${result.logoWarning}`;
+      })
+      .catch(error => {
+        matchResultState.exportMessage =
+          `Ranking Geral não atualizado: ${error.message || 'erro de gravação'}`;
+      })
+      .finally(() => {
+        matchResultRankingSavePromise = null;
+        render();
+        const currentData = matchResultViewState();
+        const currentSignature = generalRankingContributionSignature(
+          'modo-liga',
+          matchResultState.eventDate,
+          matchResultState.eventHour,
+          currentData.standings,
+        );
+        if (currentData.canExport && currentSignature !== matchResultRankingSavedSignature &&
+            currentSignature !== matchResultRankingAttemptedSignature) scheduleMatchResultRankingSave(currentData);
+      });
+  }, 350);
+}
+function updateRankingImportUI() {
+  const preview = $('ffRankingImportPreview');
+  const status = $('ffRankingImportStatus');
+  const button = $('ffImportRanking');
+  if (!preview || !status || !button) return;
+  const meta = state.rankingImportMeta;
+  if (meta?.initialImportStatus === 'complete') {
+    preview.textContent = `Base importada: ${Number(meta.uniqueTeams || 0).toLocaleString('pt-BR')} equipes de ${Number(meta.sourceRows || 0).toLocaleString('pt-BR')} linhas.`;
+  } else if (state.rankingImportPreview) {
+    const { sourceRows, teams, duplicateNames } = state.rankingImportPreview;
+    const sample = teams.slice(0, 3).map(team =>
+      `${team.teamName} (${team.baselinePoints.toLocaleString('pt-BR')} pts)`,
+    ).join(' · ');
+    preview.textContent = `${sourceRows.toLocaleString('pt-BR')} linhas; ${teams.length.toLocaleString('pt-BR')} equipes únicas; ${duplicateNames} nome(s) repetido(s) somado(s). ${sample}`;
+  } else if (!state.rankingImportBusy) {
+    preview.textContent = 'Selecione o arquivo completo baixado do Challenge.place. Aceita CSV, TSV, TXT, JSON ou HTML até 40 MB.';
+  }
+  status.textContent = state.rankingImportMessage || (meta?.initialImportStatus === 'in_progress'
+    ? 'Importação anterior incompleta. Reenvie o mesmo arquivo para continuar.'
+    : '');
+  button.disabled = readOnly() || state.rankingImportBusy || !state.rankingImportPreview ||
+    meta?.initialImportStatus === 'complete';
+  button.textContent = state.rankingImportBusy ? 'Importando…' :
+    meta?.initialImportStatus === 'complete' ? 'Base importada' : 'Importar base inicial';
+}
+async function readRankingImportFile(file) {
+  state.rankingImportText = '';
+  state.rankingImportName = '';
+  state.rankingImportPreview = null;
+  state.rankingImportMessage = '';
+  if (!file) {
+    updateRankingImportUI();
+    return;
+  }
+  try {
+    if (file.size > 40 * 1024 * 1024) {
+      throw new Error('O arquivo precisa ter no máximo 40 MB.');
+    }
+    const text = await file.text();
+    const parsed = parseGeneralRankingImport(text);
+    if (parsed.errors.length) throw new Error(parsed.errors.join(' '));
+    if (parsed.rows.length < MIN_GENERAL_RANKING_SEED_ROWS) {
+      throw new Error(
+        `Só encontrei ${parsed.rows.length} linhas válidas. O ranking tem milhares de equipes; selecione o arquivo completo (mínimo ${MIN_GENERAL_RANKING_SEED_ROWS}).`,
+      );
+    }
+    const teams = aggregateGeneralRankingImport(parsed.rows);
+    state.rankingImportText = text;
+    state.rankingImportName = file.name;
+    state.rankingImportPreview = {
+      sourceRows: parsed.rows.length,
+      teams,
+      duplicateNames: parsed.rows.length - teams.length,
+    };
+  } catch (error) {
+    state.rankingImportMessage = error.message || 'Não foi possível ler esse arquivo.';
+  }
+  updateRankingImportUI();
+}
+async function importRankingBase() {
+  if (!state.rankingImportPreview || !state.rankingImportText || state.rankingImportBusy) return;
+  if (!window.firebaseDb || !window.firebaseAuth?.currentUser) {
+    state.rankingImportMessage = 'Entre no painel com uma conta autorizada para importar a base.';
+    updateRankingImportUI();
+    return;
+  }
+  if (!window.confirm(
+    `Importar ${state.rankingImportPreview.teams.length.toLocaleString('pt-BR')} equipes de "${state.rankingImportName}"? Duplicados serão unidos e os pontos somados. Esta importação inicial só pode ser feita uma vez.`,
+  )) return;
+  state.rankingImportBusy = true;
+  state.rankingImportMessage = 'Preparando importação…';
+  updateRankingImportUI();
+  try {
+    state.rankingImportMessage = 'Buscando logos de compras e SPEC…';
+    updateRankingImportUI();
+    let logoCatalog = {};
+    let logoWarning = '';
+    try {
+      logoCatalog = await buildGeneralRankingLogoCatalog(state.rankingImportPreview.teams);
+    } catch (error) {
+      logoWarning = ` A importação continuará sem algumas logos (${error.message || 'erro de leitura'}).`;
+    }
+    const result = await importGeneralRankingSeed(
+      window.firebaseDb,
+      state.rankingImportText,
+      progress => {
+        state.rankingImportMessage =
+          `Importando equipes: ${progress.completed.toLocaleString('pt-BR')} de ${progress.total.toLocaleString('pt-BR')}.`;
+        updateRankingImportUI();
+      },
+      logoCatalog,
+    );
+    state.rankingImportMeta = {
+      initialImportStatus: 'complete',
+      sourceRows: result.sourceRows,
+      uniqueTeams: result.uniqueTeams,
+    };
+    state.rankingImportPreview = null;
+    state.rankingImportText = '';
+    state.rankingImportMessage =
+      `Importação concluída: ${result.uniqueTeams.toLocaleString('pt-BR')} equipes, com nomes repetidos unificados.${logoWarning}`;
+    imageRankingAttemptedSignature = '';
+    matchResultRankingAttemptedSignature = '';
+    setNotice('success', state.rankingImportMessage);
+    render();
+  } catch (error) {
+    state.rankingImportMessage = error.message || 'Não foi possível importar a base.';
+  } finally {
+    state.rankingImportBusy = false;
+    updateRankingImportUI();
+  }
+}
+async function loadRankingImportStatus() {
+  if (!window.firebaseDb || !canOpen()) return;
+  try {
+    state.rankingImportMeta = await getGeneralRankingMeta(window.firebaseDb);
+  } catch (error) {
+    state.rankingImportMessage =
+      `Não foi possível consultar o status da base do ranking: ${error.message || 'erro de acesso'}`;
+  }
+  updateRankingImportUI();
 }
 function setNotice(type, message) {
   state.error = type === 'error' ? message : '';
@@ -1789,6 +2241,11 @@ function render() {
   }
   $('ffEvent').value = state.event;
   $('ffEvent').disabled = readOnly() || state.busy;
+  $('ffRankingSessionFields').hidden = state.event !== 'treino';
+  $('ffRankingDate').value = state.rankingDate;
+  $('ffRankingDate').disabled = readOnly() || state.busy;
+  $('ffRankingHour').value = state.rankingHour;
+  $('ffRankingHour').disabled = readOnly() || state.busy;
   $('ffDrops').value = String(state.dropsCount);
   $('ffDrops').disabled = readOnly() || state.busy;
   $('ffImageQualityMode').value = state.imageQualityMode;
@@ -1848,7 +2305,8 @@ function render() {
     <td>${row.wins}</td><td>${row.kills}</td><td class="ff-total">${row.points}</td></tr>`).join('') ||
     '<tr><td colspan="5" class="ff-empty-row">Cadastre as equipes e analise os resultados para montar o placar.</td></tr>';
   $('ffExport').disabled = !canExport();
-  $('ffExportNote').textContent = exportIssue();
+  $('ffExportNote').textContent = state.rankingStatus || exportIssue();
+  updateRankingImportUI();
   renderPlacements(drop);
   if (state.error) setNotice('error', state.error);
   else if (state.message) setNotice('success', state.message);
@@ -1859,7 +2317,10 @@ function render() {
   $('ffMatchResultView').hidden = !showMatchResult;
   $('ffModeImages').setAttribute('aria-pressed', String(!showMatchResult));
   $('ffModeMatchResult').setAttribute('aria-pressed', String(showMatchResult));
-  matchResultView?.render(matchResultViewState());
+  const matchResultData = matchResultViewState();
+  matchResultView?.render(matchResultData);
+  if (showMatchResult) scheduleMatchResultRankingSave(matchResultData);
+  else if (state.event === 'treino') scheduleImageRankingSave();
 }
 function filesLabel(files) {
   return files.length ? files.map(file => file.name).join(' · ') : 'Nenhuma imagem selecionada';
@@ -2154,6 +2615,15 @@ function build(root) {
         <p>Da leitura do lobby à tabela oficial. Revise cada extração antes de fechar a pontuação.</p></div>
       <div class="ff-session"><span class="ff-session-dot"></span><div><b>Sessão em andamento</b><small>Dados não salvos após sair desta tela</small></div></div>
     </header>
+    <section class="ff-panel ff-ranking-import-panel" aria-labelledby="ffRankingImportTitle">
+      <div class="ff-panel-heading"><div class="ff-step">🏆</div><div><h2 id="ffRankingImportTitle">Ranking Geral</h2><p>Importe uma vez a tabela baixada. Nomes duplicados serão unidos e os pontos somados.</p></div></div>
+      <div class="ff-ranking-import-controls">
+        <label class="ff-field">Arquivo inicial do ranking<input id="ffRankingImportFile" type="file" accept=".csv,.tsv,.txt,.json,.html,.htm,text/csv,text/plain,application/json,text/html" ${readOnly() ? 'disabled' : ''}></label>
+        <div id="ffRankingImportPreview" class="ff-ranking-import-preview" aria-live="polite">Selecione o arquivo completo baixado do Challenge.place. Aceita CSV, TSV, TXT, JSON ou HTML.</div>
+        <button type="button" id="ffImportRanking" class="ff-button ff-button-primary" disabled>Importar base inicial</button>
+        <p id="ffRankingImportStatus" class="ff-export-note" role="status" aria-live="polite"></p>
+      </div>
+    </section>
     <div id="ffNotice" class="ff-notice hidden" role="status"></div>
     <div id="ffBusy" class="ff-busy hidden"><span class="ff-skeleton"></span><div><b id="ffBusyLabel">Analisando imagens</b><small>Isso pode levar alguns instantes. Não feche esta seção.</small></div></div>
     <div class="ff-layout">
@@ -2163,6 +2633,11 @@ function build(root) {
           <div class="ff-config-grid">
             <label class="ff-field">Evento<select id="ffEvent">${EVENTS.map(([label, key]) => `<option value="${key}">${label}</option>`).join('')}</select></label>
             <label class="ff-field">Quantidade de quedas<select id="ffDrops">${[1, 2, 3, 4, 5].map(n => `<option value="${n}">${n} ${n === 1 ? 'queda' : 'quedas'}</option>`).join('')}</select></label>
+          </div>
+          <div id="ffRankingSessionFields" class="ff-ranking-session-fields">
+            <label class="ff-field">Data do TREINO FREITAS<input id="ffRankingDate" type="date" value="${esc(state.rankingDate)}"></label>
+            <label class="ff-field">Horário do treino<select id="ffRankingHour"><option value="">Selecione</option>${Array.from({ length: 10 }, (_, index) => index + 14).map(hour => `<option value="${hour}">${hour}h</option>`).join('')}</select></label>
+            <small>Data e horário identificam esta apuração para que correções não dupliquem pontos.</small>
           </div>
           <div class="ff-quality-setting"><label for="ffImageQualityMode">Qualidade das imagens para análise</label><select id="ffImageQualityMode"><option value="auto">Otimizar automaticamente (recomendado)</option><option value="original">Enviar original sem recompressão</option></select><small id="ffImageQualityHint"></small></div>
           <div class="ff-template-config"><div class="ff-template-preview" id="ffTemplatePreview"></div><div class="ff-template-meta"><span class="ff-mini-label">TABELA EM BRANCO</span><b id="ffTemplateName"></b><small id="ffTemplateHint"></small></div></div>
@@ -2213,6 +2688,7 @@ function build(root) {
   matchResultView = createMatchResultView($('ffMatchResultView'), {
     onEventChange: eventType => { changeMatchResultEvent(eventType); },
     onEventHourChange: hour => { changeMatchResultHour(hour); },
+    onEventDateChange: date => { changeMatchResultDate(date); },
     onDropCountChange: count => {
       matchResultState.dropCount = Math.max(1, Math.min(5, Number(count) || 1));
       matchResultState.exportMessage = '';
@@ -2269,6 +2745,7 @@ function build(root) {
   });
   $('ffEvent').addEventListener('change', async e => {
     saveActiveSession();
+    state.rankingStatus = '';
     const nextEvent = e.target.value;
     const session = sessions.get(nextEvent) || createSession(nextEvent);
     sessions.set(nextEvent, session);
@@ -2276,6 +2753,20 @@ function build(root) {
     await loadTemplate();
     render();
   });
+  $('ffRankingDate').addEventListener('change', e => {
+    state.rankingDate = String(e.target.value || '');
+    state.rankingStatus = '';
+    render();
+  });
+  $('ffRankingHour').addEventListener('change', e => {
+    state.rankingHour = String(e.target.value || '');
+    state.rankingStatus = '';
+    render();
+  });
+  $('ffRankingImportFile').addEventListener('change', e => {
+    readRankingImportFile(e.target.files?.[0]);
+  });
+  $('ffImportRanking').addEventListener('click', importRankingBase);
   $('ffDrops').addEventListener('change', e => { state.dropsCount = Number(e.target.value); render(); });
   $('ffImageQualityMode').addEventListener('change', e => {
     state.imageQualityMode = e.target.value === 'original' ? 'original' : 'auto';
@@ -2851,13 +3342,27 @@ async function exportJpeg() {
     });
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
     if (!blob) throw new Error('O navegador não conseguiu gerar o arquivo JPEG.');
+    let rankingWarning = '';
+    if (state.event === 'treino' && !readOnly()) {
+      try {
+        await persistImageModeGeneralRanking();
+      } catch (error) {
+        rankingWarning = `A tabela foi exportada, mas o Ranking Geral não foi atualizado: ${error.message || 'erro de gravação'}`;
+        state.rankingStatus = rankingWarning;
+      }
+    }
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `freitas-${state.event}-leaderboard.jpg`;
     link.click();
     URL.revokeObjectURL(url);
-    setNotice('success', `JPEG exportado em ${canvas.width} × ${canvas.height} px (${Math.round(blob.size / 1024)} KB).`);
+    if (rankingWarning) {
+      setNotice('error', rankingWarning);
+    } else {
+      setNotice('success', state.rankingStatus ||
+        `JPEG exportado em ${canvas.width} × ${canvas.height} px (${Math.round(blob.size / 1024)} KB).`);
+    }
   } catch (error) { setNotice('error', error.message || 'Falha ao exportar a tabela.'); }
   render();
 }
@@ -2874,6 +3379,7 @@ export async function openFreefireScoringAdmin() {
       loadTemplate(),
       loadMatchResultTemplate(),
       matchResultState.eventType === 'modo-liga' ? loadModoLigaLogoCatalog(true) : Promise.resolve(),
+      loadRankingImportStatus(),
     ]);
     stage = 'atualização final da tela';
     render();

@@ -571,6 +571,25 @@ service cloud.firestore {
         (isAdminRole() && isModoLigaScoringLogoType(resource.data.type));
     }
 
+    // Ranking Geral: classificação pública; sessões e controles ficam restritos.
+    match /freefire_general_ranking/{teamId} {
+      allow get, list: if true;
+      allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow delete: if false;
+    }
+
+    match /freefire_general_ranking_sessions/{sessionId} {
+      allow get, list: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow delete: if false;
+    }
+
+    match /freefire_general_ranking_meta/{metaId} {
+      allow get, list: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow delete: if false;
+    }
+
     // Mercado da Bala: perfis públicos contêm apenas dados escolhidos pelo jogador.
     match /market_profiles/{profileId} {
       allow get, list: if resource.data.status == 'published' ||

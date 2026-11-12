@@ -2241,10 +2241,25 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
     outline-offset: 2px;
 }
 
+.ff-workspace .ff-ranking-import-panel { margin-bottom: 1rem; }
+.ff-workspace .ff-ranking-import-controls { display:grid; grid-template-columns:minmax(220px,1fr) minmax(260px,1.4fr) auto; gap:.7rem; align-items:end; }
+.ff-workspace .ff-ranking-import-controls input[type="file"] { display:block; width:100%; color:#52635b; font:500 .68rem 'DM Sans',sans-serif; }
+.ff-workspace .ff-ranking-import-preview { min-height:38px; padding:.65rem .75rem; border:1px solid #dce3dc; border-radius:8px; background:#f8faf6; color:#586a61; font-size:.68rem; line-height:1.45; }
+.ff-workspace .ff-ranking-import-controls .ff-export-note { grid-column:1/-1; margin:.1rem 0 0; }
+.ff-workspace .ff-ranking-session-fields { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; margin-top:.8rem; padding:.75rem; border:1px solid #cfe4d9; border-radius:9px; background:#f3faf5; }
+.ff-workspace .ff-ranking-session-fields[hidden] { display:none; }
+.ff-workspace .ff-ranking-session-fields input[type="date"],
+.ff-workspace .ff-ranking-session-fields select { min-width:0; width:100%; border:1px solid #dce3dd; border-radius:8px; background:#fff; color:#253235; padding:.65rem .72rem; font:500 .79rem 'DM Sans',sans-serif; }
+.ff-workspace .ff-ranking-session-fields small { grid-column:1/-1; color:#728078; font-size:.65rem; line-height:1.4; }
+
 @media (max-width: 540px) {
     .ff-workspace .ff-scoring-mode-switch {
         display: grid;
         grid-template-columns: 1fr 1fr;
         width: 100%;
     }
+    .ff-workspace .ff-ranking-import-controls,
+    .ff-workspace .ff-ranking-session-fields { grid-template-columns:1fr; }
+    .ff-workspace .ff-ranking-import-controls .ff-export-note,
+    .ff-workspace .ff-ranking-session-fields small { grid-column:auto; }
 }

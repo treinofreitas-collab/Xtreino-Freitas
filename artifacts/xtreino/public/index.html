@@ -132,6 +132,7 @@
                     <a href="javascript:void(0)" onclick="switchMainTab('sobre')" class="tab-main-link text-black hover:text-blue-matte transition-colors" data-tab="sobre">SOBRE NÓS</a>
                     <a href="javascript:void(0)" onclick="switchMainTab('contato')" class="tab-main-link text-black hover:text-blue-matte transition-colors" data-tab="contato">CONTATO</a>
                     <a href="mercado-da-bala/" class="tab-main-link text-black hover:text-blue-matte transition-colors">MERCADO DA BALA</a>
+                    <a href="ranking.html" class="tab-main-link text-black hover:text-blue-matte transition-colors">RANKING GERAL</a>
                     <a href="javascript:void(0)" onclick="requestAdminAccess()" id="adminLink" class="text-black hover:text-blue-matte transition-colors hidden">ADMIN</a>
                     <button id="loginBtnDesktop" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
                         LOGIN
@@ -572,18 +573,7 @@
             <!-- Patrocinadores Section -->
             <div>
                 <h3 class="text-4xl font-bold text-center mb-12 text-blue-matte">Nossos Patrocinadores</h3>
-                <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-                    <!-- KOOYI -->
-                    <div class="bg-white bg-opacity-5 rounded-xl p-6 text-center card-hover">
-                        <div class="w-32 h-32 bg-white rounded-xl mx-auto mb-4 flex items-center justify-center shadow-lg overflow-hidden">
-                            <img src="assets/images/logos/kooyi-hd.jpg" alt="KOOYI" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                            <div class="w-full h-full bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center text-white font-bold text-xs" style="display: none;">
-                                KOOYI
-                            </div>
-                        </div>
-                        <h4 class="text-lg font-bold mb-2 text-gray-600">KOOYI</h4>
-                        <p class="text-gray-600 text-sm">App de Torneios E-sports</p>
-                    </div>
+                <div class="grid gap-8 max-w-sm mx-auto">
                     <!-- Estudante Divulgações -->
                     <div class="bg-white bg-opacity-5 rounded-xl p-6 text-center card-hover">
                         <div class="w-32 h-32 bg-black rounded-xl mx-auto mb-4 flex items-center justify-center shadow-lg overflow-hidden">
@@ -594,17 +584,6 @@
                         </div>
                         <h4 class="text-lg font-bold mb-2 text-gray-600">Estudante Divulgações</h4>
                         <p class="text-gray-600 text-sm">Marketing Digital e Publicidade E-sports</p>
-                    </div>
-                    <!-- BONOXS -->
-                    <div class="bg-white bg-opacity-5 rounded-xl p-6 text-center card-hover">
-                        <div class="w-32 h-32 bg-yellow-400 rounded-xl mx-auto mb-4 flex items-center justify-center shadow-lg overflow-hidden">
-                            <img src="assets/images/logos/bonoxs.png" alt="BONOXS" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                            <div class="w-full h-full bg-yellow-400 rounded-xl flex items-center justify-center text-black font-bold text-xs" style="display: none;">
-                                BONOXS
-                            </div>
-                        </div>
-                        <h4 class="text-lg font-bold mb-2 text-gray-600">BONOXS</h4>
-                        <p class="text-gray-600 text-sm">Diamantes Seguros</p>
                     </div>
                 </div>
             </div>
@@ -1602,22 +1581,22 @@
 
     <!-- ===== BARRA DE NAVEGAÇÃO INFERIOR MOBILE ===== -->
     <nav class="mobile-bottom-nav md:hidden">
-        <button class="mobile-nav-btn active" data-tab="home" onclick="switchMainTab('home')">
-            <i class="fas fa-khanda"></i>
-            <span>EVENTOS</span>
+        <button class="mobile-nav-btn" data-tab="contato" onclick="switchMainTab('contato')">
+            <i class="fas fa-envelope"></i>
+            <span>CONTATO</span>
         </button>
         <button class="mobile-nav-btn" data-tab="loja" onclick="switchMainTab('loja')">
             <i class="fas fa-store"></i>
             <span>LOJA</span>
         </button>
-        <button class="mobile-nav-btn" data-tab="sobre" onclick="switchMainTab('sobre')">
-            <i class="fas fa-users"></i>
-            <span>SOBRE</span>
+        <button class="mobile-nav-btn active" data-tab="home" onclick="switchMainTab('home')">
+            <i class="fas fa-khanda"></i>
+            <span>EVENTOS</span>
         </button>
-        <button class="mobile-nav-btn" data-tab="contato" onclick="switchMainTab('contato')">
-            <i class="fas fa-envelope"></i>
-            <span>CONTATO</span>
-        </button>
+        <a class="mobile-nav-btn" href="ranking.html" aria-label="Abrir Ranking Geral">
+            <i class="fas fa-trophy"></i>
+            <span>RANKING</span>
+        </a>
         <a class="mobile-nav-btn" href="mercado-da-bala/" aria-label="Abrir Mercado da Bala">
             <i class="fas fa-crosshairs"></i>
             <span>MERCADO</span>

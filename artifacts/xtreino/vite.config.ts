@@ -44,6 +44,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(import.meta.dirname, "public/index.html"),
+        ranking: path.resolve(import.meta.dirname, "public/ranking.html"),
         admin: path.resolve(import.meta.dirname, "public/admin.html"),
         client: path.resolve(import.meta.dirname, "public/client.html"),
         evento: path.resolve(import.meta.dirname, "public/evento.html"),

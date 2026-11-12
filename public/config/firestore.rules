@@ -435,5 +435,24 @@ service cloud.firestore {
       allow update: if isSignedIn();
       allow delete: if isSignedIn() && request.auth.uid == resource.data.capitaoId;
     }
+
+    // Ranking Geral: classificação pública; sessões e controles ficam restritos.
+    match /freefire_general_ranking/{teamId} {
+      allow get, list: if true;
+      allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow delete: if false;
+    }
+
+    match /freefire_general_ranking_sessions/{sessionId} {
+      allow get, list: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow delete: if false;
+    }
+
+    match /freefire_general_ranking_meta/{metaId} {
+      allow get, list: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow delete: if false;
+    }
   }
 }

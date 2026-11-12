@@ -301,8 +301,8 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=freefire-camp-colors-v1/);
-  assert.match(adminPage, /admin\.js\?v=freefire-camp-colors-v1/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=general-ranking-v3/);
+  assert.match(adminPage, /admin\.js\?v=general-ranking-v3/);
   assert.doesNotMatch(source, /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/);
 });
 

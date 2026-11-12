@@ -29,7 +29,7 @@ const STYLES = `
 .mr-view .mr-head{display:flex;align-items:flex-start;gap:.75rem;margin-bottom:1rem}.mr-view .mr-step{flex:0 0 2rem;height:2rem;display:grid;place-items:center;background:#f9e9df;color:#c65b30;border-radius:8px;font:500 .68rem 'DM Mono',monospace}
 .mr-view .mr-head h2,.mr-view .mr-stand-head h2{margin:0;color:#1e2a2c;font-size:.98rem;font-weight:800;letter-spacing:-.02em}.mr-view .mr-head p{margin:.2rem 0 0;color:#7c8984;font-size:.73rem;line-height:1.45}
 .mr-view .mr-config{display:grid;grid-template-columns:minmax(220px,1fr) minmax(190px,.7fr);gap:.8rem}
-.mr-view .mr-config-mode-liga{grid-template-columns:minmax(220px,1fr) minmax(140px,.65fr) minmax(140px,.65fr)}
+.mr-view .mr-config-mode-liga{grid-template-columns:minmax(180px,1.2fr) repeat(3,minmax(120px,.7fr));gap:.65rem}
 .mr-view .mr-field{display:flex;flex-direction:column;gap:.38rem;color:#65756e;font-size:.68rem;font-weight:700}
 .mr-view .mr-roster-dropzone.ff-drop-target-active [data-roster-text]{border-color:#dc8052!important;background:#fffaf7!important;box-shadow:0 0 0 3px rgba(242,106,50,.14)!important}
 .mr-view .mr-roster-controls{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-top:.65rem}
@@ -55,7 +55,7 @@ const STYLES = `
 .mr-view .mr-standing-team{display:flex;align-items:center;gap:.42rem;min-width:0}
 .mr-view .mr-standing-logo{width:24px;height:24px;flex:0 0 24px;object-fit:contain;border:1px solid #e2e9e2;border-radius:5px;background:#f7f8f5}
 .mr-view .mr-standing-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mr-view select{min-width:0;width:100%;border:1px solid #dce3dd;border-radius:8px;background:#fff;color:#253235;padding:.62rem .7rem;font-size:.78rem}
+.mr-view select,.mr-view input[type="date"]{min-width:0;width:100%;border:1px solid #dce3dd;border-radius:8px;background:#fff;color:#253235;padding:.62rem .7rem;font-size:.78rem}
 .mr-view select:focus,.mr-view input:focus-visible,.mr-view button:focus-visible,.mr-view label.mr-upload:focus-within{outline:3px solid rgba(8,127,120,.22);outline-offset:2px;border-color:#087f78}
 .mr-view .mr-drops{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
 .mr-view .mr-drop{border:1px solid #dfe6df;border-radius:11px;background:#fff;overflow:hidden}
@@ -110,6 +110,7 @@ export function createMatchResultView(container, handlers = {}) {
     if (!(target instanceof Element)) return;
     if (target.matches("[data-event]")) call(handlers, "onEventChange", target.value);
     else if (target.matches("[data-event-hour]")) call(handlers, "onEventHourChange", target.value);
+    else if (target.matches("[data-event-date]")) call(handlers, "onEventDateChange", target.value);
     else if (target.matches("[data-drop-count]")) call(handlers, "onDropCountChange", Number(target.value));
     else if (target.matches("[data-review]")) call(handlers, "onDropReview", Number(target.dataset.review), target.checked);
     else if (target.matches("[data-roster-slot]")) {
@@ -196,6 +197,7 @@ export function createMatchResultView(container, handlers = {}) {
     const selectionEnd = activeElement && "selectionEnd" in activeElement ? activeElement.selectionEnd : null;
     const eventType = EVENTS.some(([, key]) => key === state.eventType) ? state.eventType : "modo-liga";
     const eventHour = String(state.eventHour || "");
+    const eventDate = String(state.eventDate || "");
     const eventHours = Array.isArray(state.eventHours) ? state.eventHours : ["19", "20", "21", "22", "23", "00"];
     const dropCount = Math.max(1, Math.min(5, Math.trunc(Number(state.dropCount) || 1)));
     const drops = Array.isArray(state.drops) ? state.drops : [];
@@ -273,7 +275,7 @@ export function createMatchResultView(container, handlers = {}) {
       <div class="mr-layout"><div class="mr-work">
         <section class="mr-panel"><div class="mr-head"><div class="mr-step">01</div><div><h2>Configurar apuração</h2><p>Defina o evento e quantas quedas entram no placar.</p></div></div>
           <div class="mr-config ${eventType === "modo-liga" ? "mr-config-mode-liga" : ""}"><label class="mr-field">Evento<select data-event aria-label="Evento">${EVENTS.map(([label, key]) => `<option value="${key}" ${eventType === key ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-          ${eventType === "modo-liga" ? `<label class="mr-field">Horário do Modo Liga<select data-event-hour aria-label="Horário do Modo Liga"><option value="">Selecione o horário</option>${eventHours.map(hour => `<option value="${esc(hour)}" ${eventHour === hour ? "selected" : ""}>${esc(hour)}H</option>`).join("")}</select></label>` : ""}
+          ${eventType === "modo-liga" ? `<label class="mr-field">Data do treino<input type="date" data-event-date aria-label="Data do TREINO MODO LIGA" value="${esc(eventDate)}"></label><label class="mr-field">Horário do Modo Liga<select data-event-hour aria-label="Horário do Modo Liga"><option value="">Selecione o horário</option>${eventHours.map(hour => `<option value="${esc(hour)}" ${eventHour === hour ? "selected" : ""}>${esc(hour)}H</option>`).join("")}</select></label>` : ""}
           <label class="mr-field">Quantidade de quedas<select data-drop-count aria-label="Quantidade de quedas">${[1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${dropCount === count ? "selected" : ""}>${count} ${count === 1 ? "queda" : "quedas"}</option>`).join("")}</select></label></div>
         </section>
         <section class="mr-panel"><div class="ff-panel-heading"><div class="ff-step">02</div><div><h2>Lista oficial de slots</h2><p>${eventType === "modo-liga" ? "Prioridade das logos: envio manual, compra, SPEC do horário e associação salva pelo nome do time." : "Cole a lista com os 15 times desta apuração."}</p></div></div>
