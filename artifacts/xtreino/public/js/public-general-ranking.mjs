@@ -41,7 +41,7 @@ function renderRankingRow(team, rank) {
   const logoUrl = safeLogoUrl(team.logoUrl);
   const initials = escapeHtml(name.trim().slice(0, 1).toLocaleUpperCase('pt-BR') || '?');
   const logo = logoUrl
-    ? `<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" class="h-10 w-10 shrink-0 rounded-lg bg-slate-100 object-contain p-1">`
+    ? `<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false" class="h-10 w-10 shrink-0 rounded-lg bg-slate-100 object-contain p-1"><span hidden aria-hidden="true" class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-teal-50 text-sm font-black text-teal-700">${initials}</span>`
     : `<span aria-hidden="true" class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-teal-50 text-sm font-black text-teal-700">${initials}</span>`;
   const rankColor = rank === 1
     ? 'text-amber-600'

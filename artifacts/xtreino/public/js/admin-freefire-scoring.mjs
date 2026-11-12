@@ -373,7 +373,7 @@ const imagePreviewUrls = new Map();
 const state = {
   ...createSession('treino'),
   busy: false, error: '', message: '', built: false, template: null, templateName: '',
-  imageQualityMode: 'auto',
+  imageQualityMode: 'original',
   rankingDate: brasiliaDateKey(),
   rankingHour: '',
   rankingStatus: '',
@@ -2639,7 +2639,7 @@ function build(root) {
             <label class="ff-field">Horário do treino<select id="ffRankingHour"><option value="">Selecione</option>${Array.from({ length: 10 }, (_, index) => index + 14).map(hour => `<option value="${hour}">${hour}h</option>`).join('')}</select></label>
             <small>Data e horário identificam esta apuração para que correções não dupliquem pontos.</small>
           </div>
-          <div class="ff-quality-setting"><label for="ffImageQualityMode">Qualidade das imagens para análise</label><select id="ffImageQualityMode"><option value="auto">Otimizar automaticamente (recomendado)</option><option value="original">Enviar original sem recompressão</option></select><small id="ffImageQualityHint"></small></div>
+          <div class="ff-quality-setting"><label for="ffImageQualityMode">Qualidade das imagens para análise</label><select id="ffImageQualityMode"><option value="auto">Otimizar automaticamente (recomendado)</option><option value="original" selected>Enviar original sem recompressão</option></select><small id="ffImageQualityHint"></small></div>
           <div class="ff-template-config"><div class="ff-template-preview" id="ffTemplatePreview"></div><div class="ff-template-meta"><span class="ff-mini-label">TABELA EM BRANCO</span><b id="ffTemplateName"></b><small id="ffTemplateHint"></small></div></div>
           <p class="ff-note">Cada evento tem sua tabela oficial fixa no sistema. O JPEG preserva a proporção e limita o maior lado a 1080 px.</p>
         </section>

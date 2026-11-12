@@ -584,7 +584,7 @@ function rankingLogoMarkup(team, size = 34) {
         } catch { /* Use the initials avatar when a saved logo URL is invalid. */ }
     }
     if (safeUrl) {
-        return `<img src="${escapeHtml(safeUrl)}" alt="" loading="lazy" style="width:${size}px;height:${size}px;flex:0 0 ${size}px;object-fit:contain;border-radius:8px;background:rgba(255,255,255,.08);padding:3px">`;
+        return `<img src="${escapeHtml(safeUrl)}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false" style="width:${size}px;height:${size}px;flex:0 0 ${size}px;object-fit:contain;border-radius:8px;background:rgba(255,255,255,.08);padding:3px"><span hidden aria-hidden="true" style="width:${size}px;height:${size}px;flex:0 0 ${size}px;display:grid;place-items:center;border-radius:8px;background:rgba(7,183,180,.12);color:#42d4cc;font-size:12px;font-weight:900">${escapeHtml(initials)}</span>`;
     }
     const initials = String(team?.teamName || '?').trim().slice(0, 1).toLocaleUpperCase('pt-BR') || '?';
     return `<span aria-hidden="true" style="width:${size}px;height:${size}px;flex:0 0 ${size}px;display:grid;place-items:center;border-radius:8px;background:rgba(7,183,180,.12);color:#42d4cc;font-size:12px;font-weight:900">${escapeHtml(initials)}</span>`;

@@ -77,3 +77,11 @@ test("General Ranking reads are public while writes and private records stay res
     }
   }
 });
+
+test("Ranking logos fall back to team initials when their saved URL is missing", () => {
+  const fallback = /onerror="this\.hidden=true;this\.nextElementSibling\.hidden=false"/;
+  assert.match(publicModule, fallback);
+  assert.match(clientJs, fallback);
+  assert.match(rankingHtml, /public-general-ranking-3/);
+  assert.match(clientHtml, /general-ranking-dashboard-5/);
+});

@@ -301,9 +301,18 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=general-ranking-v3/);
-  assert.match(adminPage, /admin\.js\?v=general-ranking-v3/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=general-ranking-v4/);
+  assert.match(adminPage, /admin\.js\?v=general-ranking-v4/);
   assert.doesNotMatch(source, /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/);
+});
+
+test('image analysis defaults to sending originals without recompression', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /imageQualityMode: 'original'/);
+  assert.match(source, /<option value="original" selected>Enviar original sem recompressão<\/option>/);
 });
 
 test('returns Top 3 availability and exports requested text in white', async () => {
