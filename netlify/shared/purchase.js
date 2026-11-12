@@ -1,6 +1,7 @@
 const { getAdmin } = require("./firebase-admin");
 const { toCents, validateApprovedPayment } = require("./token-purchase");
 const { findAffiliateRef } = require("./credit-token-order");
+const { syncPaidPurchaseRegistrationLogos } = require("./ranking-logo-sync");
 const { isDeepStrictEqual } = require("node:util");
 const CAMP_SEASON_7_START_DATE = "2026-11-18";
 
@@ -294,9 +295,13 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
   const affiliateRef = existingCheckout.exists && existingCheckout.data().affiliateId
     ? db.collection("users").doc(existingCheckout.data().affiliateId)
     : null;
-  return db.runTransaction(transaction => settlePurchase(transaction, reference, {
+  const result = await db.runTransaction(transaction => settlePurchase(transaction, reference, {
     payment, uid, admin, db, checkoutRef, affiliateRef,
   }));
+  if (["paid", "already_paid"].includes(result.status) && existingCheckout.exists) {
+    await syncPaidPurchaseLogosSafely(db, existingCheckout.data());
+  }
+  return result;
 }
 
 // Tokens create the checkout, debit, receipt and delivery in one atomic commit.
@@ -305,10 +310,27 @@ async function payPurchaseWithTokens(uid, body) {
   const { db, checkoutRef, checkout, sources } = prepared;
   const admin = getAdmin();
   const affiliateRef = checkout.affiliateId ? db.collection("users").doc(checkout.affiliateId) : null;
-  return db.runTransaction(transaction => settlePurchase(transaction, checkout.externalReference, {
+  const result = await db.runTransaction(transaction => settlePurchase(transaction, checkout.externalReference, {
     uid, admin, db, checkoutRef, preparedCheckout: checkout,
     preparedSources: sources, expectedTotal: body.unit_price, affiliateRef,
   }));
+  if (["paid", "already_paid"].includes(result.status)) {
+    await syncPaidPurchaseLogosSafely(db, checkout);
+  }
+  return result;
+}
+
+async function syncPaidPurchaseLogosSafely(db, checkout) {
+  try {
+    return await syncPaidPurchaseRegistrationLogos(
+      db,
+      checkout,
+      getAdmin().firestore.FieldValue,
+    );
+  } catch (error) {
+    console.warn("[Ranking Geral] Falha ao sincronizar logo da compra:", error?.code || error?.name || "unknown");
+    return null;
+  }
 }
 
 function sourcePricingFields(source) {
@@ -537,7 +559,17 @@ async function settlePurchase(transaction, reference, {
     return { status: "paid", balance: payment ? balance : Number((balance - debit).toFixed(2)) };
 }
 
-module.exports = { preparePurchase, completePurchase, payPurchaseWithTokens, safeBackUrl, siteBaseUrl, productPrice, eventPrice, discountedPrice };
+module.exports = {
+  preparePurchase,
+  completePurchase,
+  payPurchaseWithTokens,
+  syncPaidPurchaseLogosSafely,
+  safeBackUrl,
+  siteBaseUrl,
+  productPrice,
+  eventPrice,
+  discountedPrice,
+};
 
 module.exports.assertCanConfirm = async (uid, ownerUid) => {
   if (uid === ownerUid) return;

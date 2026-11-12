@@ -1,4 +1,4 @@
-import { getGeneralRankingPage } from './freefire-general-ranking-store.mjs?v=general-ranking-public-1';
+import { getGeneralRankingPage } from './freefire-general-ranking-store.mjs?v=ranking-logo-auto-3';
 
 const PAGE_SIZE = 40;
 const rowsRoot = document.getElementById('publicGeneralRankingRows');

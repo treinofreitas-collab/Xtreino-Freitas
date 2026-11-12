@@ -19,7 +19,7 @@
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="admin-styles.css?v=general-ranking-dashboard-1">
+    <link rel="stylesheet" href="admin-styles.css?v=month-sales-details-7">
 </head>
 <body class="bg-white text-black">
     <header class="w-full border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white sticky top-0 z-40 shadow-sm">
@@ -77,8 +77,7 @@
         <p class="sidebar-section-label">Principal</p>
         <ul class="sidebar-menu">
             <li><button class="sidebar-link" data-page="principal" onclick="adminNav('principal','sectionKPIs',this)"><i class="fas fa-chart-line"></i><span>Visão Geral</span></button></li>
-            <li><button class="sidebar-link" data-page="principal" onclick="adminNav('principal','sectionFilters',this)"><i class="fas fa-sliders-h"></i><span>Filtros & Ações</span></button></li>
-            <li><button class="sidebar-link" data-page="principal" onclick="adminNav('principal','sectionCharts',this)"><i class="fas fa-chart-bar"></i><span>Gráficos</span></button></li>
+            <li><button class="sidebar-link" data-page="principal" onclick="adminNav('principal','sectionCharts',this)"><i class="fas fa-chart-bar"></i><span>Faturamento diário e mensal</span></button></li>
             <li><button class="sidebar-link" data-page="principal" onclick="adminNav('principal','sectionTokenStats',this)"><i class="fas fa-shopping-cart"></i><span>Pedidos</span></button></li>
         </ul>
 
@@ -180,7 +179,7 @@
 
             <div id="sectionKPIs" class="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8" style="display:none">
                 <!-- Vendas Hoje (MP/PIX) -->
-                <div class="bg-gradient-to-br from-green-50 to-emerald-100 border-l-4 border-green-500 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-200">
+                <div onclick="openTodaySalesDetail()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openTodaySalesDetail()}" role="button" tabindex="0" aria-label="Ver detalhes das vendas de hoje" class="cursor-pointer select-none focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 bg-gradient-to-br from-green-50 to-emerald-100 border-l-4 border-green-500 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-200">
                     <div class="flex items-center justify-between mb-2">
                         <div class="text-xs font-semibold text-green-700 uppercase tracking-wide">Vendas Hoje</div>
                         <div class="w-9 h-9 bg-green-500 rounded-lg flex items-center justify-center shadow-sm">
@@ -188,7 +187,7 @@
                         </div>
                     </div>
                     <div id="kpiToday" class="text-xl md:text-2xl font-bold text-green-800 mb-1">R$ 0,00</div>
-                    <div class="text-xs text-green-600">via MP / PIX</div>
+                    <div class="text-xs text-green-600">via MP / PIX · clique para detalhar</div>
                 </div>
                 <!-- Vendas Mês -->
                 <div onclick="openMonthSalesModal()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openMonthSalesModal()}" role="button" tabindex="0" aria-label="Ver faturamento do mês atual e meses anteriores" class="cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-100 border-l-4 border-blue-500 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-200 select-none">
@@ -226,74 +225,15 @@
                 </div>
             </div>
 
-            <div id="sectionFilters" class="bg-white border border-gray-200 rounded-xl p-4 md:p-5 mb-6 shadow-sm" style="display:none">
-                <!-- Filtros de Período (pills) -->
-                <div class="flex flex-wrap items-center gap-2 mb-3">
-                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Período</span>
-                    <button data-period="today" class="period-btn active-period px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-600 text-white shadow-sm transition-all">Hoje</button>
-                    <button data-period="7d" class="period-btn px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">7 dias</button>
-                    <button data-period="30d" class="period-btn px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">30 dias</button>
-                    <button data-period="mes" class="period-btn px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">Este mês</button>
-                    <button data-period="custom" class="period-btn px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">Personalizado</button>
-                </div>
-                <!-- Date range (shown only when custom) -->
-                <div id="customDateRange" class="hidden flex-wrap items-center gap-2 mb-3">
-                    <input id="dateFrom" type="date" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs" />
-                    <span class="text-gray-400 text-xs">até</span>
-                    <input id="dateTo" type="date" class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs" />
-                    <button id="btnApplyFilter" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700">Aplicar</button>
-                </div>
-                <!-- Filtro por tipo -->
-                <div class="flex flex-wrap items-center gap-2 mb-4">
-                    <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Tipo</span>
-                    <button data-type="all" class="type-btn active-type px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-800 text-white shadow-sm transition-all">Todos</button>
-                    <button data-type="events" class="type-btn px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">🎮 Eventos</button>
-                    <button data-type="products" class="type-btn px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all">📦 Produtos</button>
-                </div>
-                <!-- Ações -->
-                <div class="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
-                    <button id="btnExportOrdersCsv" class="px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-50 whitespace-nowrap flex items-center gap-1.5"><i class="fas fa-download text-gray-400"></i>Exportar Vendas</button>
-                    <button id="btnExportSchedulesCsv" class="px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium hover:bg-gray-50 whitespace-nowrap flex items-center gap-1.5"><i class="fas fa-download text-gray-400"></i>Exportar Inscrições</button>
-                    <button id="btnReconcile" class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 hover:bg-emerald-700"><i class="fas fa-sync-alt"></i>Reconciliar (24h)</button>
-                    <button onclick="openProductsModal()" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 hover:bg-blue-700"><i class="fas fa-box"></i>Produtos</button>
-                    <button onclick="openEventsModal()" class="px-3 py-2 bg-orange-600 text-white rounded-lg text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 hover:bg-orange-700"><i class="fas fa-trophy"></i>Eventos</button>
-                </div>
-            </div>
-
-            <div id="sectionCharts" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8" style="display:none">
-                <div class="bg-white border border-gray-200 rounded-xl p-5 lg:col-span-2 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="flex flex-wrap items-start justify-between mb-4 gap-2">
-                        <div>
-                            <h3 class="font-bold text-sm text-gray-800" id="salesChartTitle">📈 Vendas</h3>
-                            <p class="text-xs text-gray-400 mt-0.5">Faturamento MP/PIX + uso de tokens no período</p>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <span class="inline-flex items-center gap-1.5 text-xs text-gray-500"><span class="w-3 h-2 rounded bg-blue-500 inline-block"></span>MP/PIX</span>
-                            <span class="inline-flex items-center gap-1.5 text-xs text-gray-500"><span class="w-3 h-2 rounded bg-orange-400 inline-block"></span>Tokens</span>
-                        </div>
+            <div id="sectionCharts" class="mb-8" style="display:none">
+                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h3 class="font-bold text-sm text-gray-800">Vendas por dia e mês</h3>
+                        <p class="text-xs text-gray-500 mt-1">Acesse o faturamento, vendas por PIX e tokens e o ranking de produtos em cada período.</p>
                     </div>
-                    <div class="relative w-full h-72">
-                        <canvas id="salesChart" class="w-full h-full"></canvas>
-                    </div>
-                </div>
-                <div id="sectionUsers" class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow" style="display:none">
-                    <div class="mb-4">
-                        <h3 class="font-bold text-sm text-gray-800">Top produtos</h3>
-                        <p class="text-xs text-gray-400 mt-0.5">Vendas pagas por MP/PIX ou tokens · vagas gratuitas não entram</p>
-                    </div>
-                    <div id="topProductsChart" class="top-products-chart"></div>
-                </div>
-            </div>
-
-            <div id="sectionOrders" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8" style="display:none">
-                <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                    <div class="mb-4">
-                        <h3 class="font-bold text-sm text-gray-800">💳 Formas de Pagamento</h3>
-                        <p class="text-xs text-gray-400 mt-0.5">Distribuição de transações no período</p>
-                    </div>
-                    <div class="relative w-full h-72">
-                        <canvas id="paymentMethodsChart" class="w-full h-full"></canvas>
-                    </div>
+                    <button type="button" onclick="openMonthSalesModal()" class="shrink-0 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700">
+                        <i class="fas fa-chart-column mr-1.5" aria-hidden="true"></i> Abrir análise de vendas
+                    </button>
                 </div>
             </div>
 
@@ -1771,7 +1711,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="js/admin-read-control.js"></script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-<script src="admin.js?v=general-ranking-v4"></script>
+    <script src="admin.js?v=ranking-logo-auto-3"></script>
     <script type="module" src="js/admin-market-reports.mjs"></script>
 
     <!-- Sidebar / Page Router -->
@@ -2685,20 +2625,24 @@
         <div class="month-sales-header">
             <div>
                 <h3 id="monthSalesHeading">Faturamento por dia</h3>
-                <p>Vendas confirmadas no período selecionado</p>
+                <p id="monthSalesSubtitle">Vendas confirmadas no período selecionado</p>
             </div>
             <button type="button" onclick="closeMonthSalesModal()" aria-label="Fechar faturamento mensal" class="month-sales-close">&times;</button>
         </div>
-        <div class="month-sales-navigation">
+        <div id="monthSalesNavigation" class="month-sales-navigation">
             <button type="button" id="monthSalesPreviousBtn" onclick="changeMonthSales(-1)" aria-label="Ver mês anterior">‹ Anterior</button>
             <span id="monthSalesTitle">Mês atual</span>
             <button type="button" id="monthSalesNextBtn" onclick="changeMonthSales(1)" aria-label="Ver próximo mês">Próximo ›</button>
             <button type="button" id="monthSalesCurrentBtn" class="month-sales-current" onclick="showCurrentMonthSales()">Mês atual</button>
         </div>
-        <div class="month-sales-total">
+        <div id="monthSalesTotalCard" class="month-sales-total month-sales-total-action"
+             onclick="openMonthSalesPeriodDetail()"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openMonthSalesPeriodDetail()}"
+             role="button" tabindex="0" aria-label="Abrir os detalhes de vendas do mês inteiro">
             <div>
                 <div class="month-sales-total-label">Total confirmado</div>
                 <div id="monthSalesTotal" class="month-sales-total-value">R$ 0,00</div>
+                <div class="month-sales-total-hint">Ver análise do mês <i class="fas fa-arrow-right" aria-hidden="true"></i></div>
             </div>
             <i class="fas fa-calendar-alt" aria-hidden="true"></i>
         </div>

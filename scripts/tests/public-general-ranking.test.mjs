@@ -18,6 +18,26 @@ const clientJs = readFileSync(
   new URL("../../artifacts/xtreino/public/client.js", import.meta.url),
   "utf8",
 );
+const adminHtml = readFileSync(
+  new URL("../../artifacts/xtreino/public/admin.html", import.meta.url),
+  "utf8",
+);
+const adminJs = readFileSync(
+  new URL("../../artifacts/xtreino/public/admin.js", import.meta.url),
+  "utf8",
+);
+const purchaseFlow = readFileSync(
+  new URL("../../netlify/shared/purchase.js", import.meta.url),
+  "utf8",
+);
+const logoSync = readFileSync(
+  new URL("../../netlify/shared/ranking-logo-sync.js", import.meta.url),
+  "utf8",
+);
+const scoringModule = readFileSync(
+  new URL("../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs", import.meta.url),
+  "utf8",
+);
 const publicModule = readFileSync(
   new URL("../../artifacts/xtreino/public/js/public-general-ranking.mjs", import.meta.url),
   "utf8",
@@ -82,6 +102,19 @@ test("Ranking logos fall back to team initials when their saved URL is missing",
   const fallback = /onerror="this\.hidden=true;this\.nextElementSibling\.hidden=false"/;
   assert.match(publicModule, fallback);
   assert.match(clientJs, fallback);
-  assert.match(rankingHtml, /public-general-ranking-3/);
+  assert.match(rankingHtml, /ranking-logo-auto-3/);
   assert.match(clientHtml, /general-ranking-dashboard-5/);
+});
+
+test("purchase logos sync automatically after payment without exposing registrations publicly", () => {
+  assert.doesNotMatch(adminHtml, /syncManageHourRankingLogos|manageHourRankingLogoStatus/);
+  assert.doesNotMatch(adminJs, /syncGeneralRankingLogosFromRegistrations/);
+  assert.match(purchaseFlow, /syncPaidPurchaseLogosSafely\(db,\s*existingCheckout\.data\(\)\)/);
+  assert.match(purchaseFlow, /syncPaidPurchaseLogosSafely\(db,\s*checkout\)/);
+  assert.match(logoSync, /freefire_general_ranking/);
+  assert.match(logoSync, /transaction\.update\(rankingRef/);
+  assert.doesNotMatch(logoSync, /transaction\.(?:set|create)\(rankingRef/);
+  assert.match(scoringModule, /syncGeneralRankingLogoToTeam/);
+  assert.match(scoringModule, /Logo .*salva e atualizada no Ranking Geral/);
+  assert.doesNotMatch(publicModule, /registrations/);
 });

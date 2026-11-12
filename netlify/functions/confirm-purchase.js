@@ -1,6 +1,10 @@
 const { getAdmin, verifyFirebaseUser } = require("../shared/firebase-admin");
 const { fetchPaymentById, findPaymentsByExternalReference } = require("../shared/credit-token-order");
-const { completePurchase, assertCanConfirm } = require("../shared/purchase");
+const {
+  completePurchase,
+  assertCanConfirm,
+  syncPaidPurchaseLogosSafely,
+} = require("../shared/purchase");
 const { jsonResponse, parseJsonBody } = require("../shared/token-purchase");
 
 exports.handler = async event => {
@@ -18,7 +22,10 @@ exports.handler = async event => {
     });
     const checkoutData = checkout.data();
     await assertCanConfirm(user.uid, checkoutData.userId);
-    if (checkoutData.status === "paid") return jsonResponse(200, { status: "paid" });
+    if (checkoutData.status === "paid") {
+      await syncPaidPurchaseLogosSafely(getAdmin().firestore(), checkoutData);
+      return jsonResponse(200, { status: "paid" });
+    }
 
     // Direct Pix checkouts persist the exact Mercado Pago payment ID before
     // returning the QR. Querying that ID avoids payment-search indexing delays.

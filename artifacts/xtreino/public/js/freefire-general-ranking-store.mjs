@@ -6,7 +6,7 @@ import {
   MIN_GENERAL_RANKING_SEED_ROWS,
   parseGeneralRankingImport,
   rankGeneralRankingRows,
-} from './freefire-general-ranking.mjs?v=general-ranking-baseline-3';
+} from './freefire-general-ranking.mjs?v=general-ranking-logo-time-1';
 
 const TEAM_COLLECTION = 'freefire_general_ranking';
 const SESSION_COLLECTION = 'freefire_general_ranking_sessions';
@@ -21,6 +21,71 @@ function databaseOrThrow(db = window.firebaseDb) {
 
 function teamDocumentId(key) {
   return `team_${String(key || '').replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/gu, '').slice(0, 110)}`;
+}
+
+function timestampMs(value) {
+  if (typeof value?.toMillis === 'function') return value.toMillis();
+  if (Number.isFinite(Number(value?.seconds))) return Number(value.seconds) * 1000;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function chooseLatestGeneralRankingLogo(candidates, current = null) {
+  const validCandidates = candidates
+    .filter(candidate => candidate?.logoUrl)
+    .sort((first, second) =>
+      (second.updatedAtMs || 0) - (first.updatedAtMs || 0) ||
+      ({ purchase: 3, custom: 2, association: 1 }[second.source] || 0) -
+      ({ purchase: 3, custom: 2, association: 1 }[first.source] || 0));
+  const newest = validCandidates[0];
+  if (!newest) return null;
+
+  const currentLogoUrl = String(current?.logoUrl || '');
+  const currentLogoTimestamp = timestampMs(current?.logoUpdatedAt);
+  if (currentLogoUrl === newest.logoUrl &&
+      String(current?.logoSource || '') === newest.source &&
+      currentLogoTimestamp >= (newest.updatedAtMs || 0)) return null;
+  if (currentLogoUrl && currentLogoTimestamp > (newest.updatedAtMs || 0)) return null;
+  return newest;
+}
+
+export async function syncGeneralRankingLogoToTeam(db, {
+  teamName,
+  logoUrl,
+  source = 'association',
+  updatedAtMs = Date.now(),
+} = {}) {
+  const targetDb = databaseOrThrow(db);
+  const key = generalRankingTeamKey(teamName);
+  const candidateUrl = String(logoUrl || '').trim();
+  if (
+    !key ||
+    (!/^https:\/\//i.test(candidateUrl) &&
+      (!candidateUrl.startsWith('/') || candidateUrl.startsWith('//')))
+  ) return false;
+
+  await getFirestoreFunctions();
+  const { runTransaction, serverTimestamp } = window.__freefireRankingFirestore;
+  const rankingRef = rankingCollections(targetDb).teamRef(key);
+  return runTransaction(targetDb, async transaction => {
+    const snapshot = await transaction.get(rankingRef);
+    if (!snapshot.exists()) return false;
+    const latest = chooseLatestGeneralRankingLogo([{
+      logoUrl: candidateUrl,
+      source,
+      updatedAtMs: Number(updatedAtMs || 0),
+    }], snapshot.data());
+    if (!latest) return false;
+    transaction.update(rankingRef, {
+      logoUrl: latest.logoUrl,
+      logoSource: latest.source,
+      logoUpdatedAt: latest.updatedAtMs || Date.now(),
+      updatedAt: serverTimestamp(),
+    });
+    return true;
+  });
 }
 
 function rankingCollections(db) {
@@ -107,6 +172,7 @@ export async function importGeneralRankingSeed(db, sourceText, onProgress = () =
         ...(logoCatalog[team.key]?.logoUrl ? {
           logoUrl: logoCatalog[team.key].logoUrl,
           logoSource: logoCatalog[team.key].logoSource || '',
+          logoUpdatedAt: Number(logoCatalog[team.key].logoUpdatedAt || 0),
         } : {}),
         importedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -129,10 +195,6 @@ export async function importGeneralRankingSeed(db, sourceText, onProgress = () =
     updatedAt: serverTimestamp(),
   }, { merge: true });
   return { sourceRows: parsed.rows.length, uniqueTeams: teams.length };
-}
-
-function logoPriority(source) {
-  return ({ custom: 5, manual: 5, purchase: 4, spec: 3, association: 2, organization: 1 })[source] || 0;
 }
 
 export async function upsertGeneralRankingSession(db, {
@@ -189,10 +251,13 @@ export async function upsertGeneralRankingSession(db, {
       const wins = Math.max(0, currentWins - Number(previous.wins || 0) + Number(next.wins || 0));
       const kills = Math.max(0, currentKills - Number(previous.kills || 0) + Number(next.kills || 0));
       const incoming = nextByKey.get(key);
-      const existingLogoSource = String(current.logoSource || '');
-      const incomingLogoSource = String(incoming?.logoSource || '');
-      const useIncomingLogo = Boolean(incoming?.logoUrl) &&
-        logoPriority(incomingLogoSource) >= logoPriority(existingLogoSource);
+      const latestLogo = incoming?.logoUrl
+        ? chooseLatestGeneralRankingLogo([{
+            logoUrl: incoming.logoUrl,
+            source: String(incoming.logoSource || ''),
+            updatedAtMs: Number(incoming.logoUpdatedAt || 0),
+          }], current)
+        : null;
       transaction.set(teamRefs.get(key), {
         teamKey: key,
         teamName: current.teamName || incoming?.teamName || previous.teamName || key,
@@ -201,9 +266,10 @@ export async function upsertGeneralRankingSession(db, {
         wins,
         kills,
         totalPoints: Number(current.baselinePoints || 0) + sessionPoints,
-        ...(useIncomingLogo ? {
-          logoUrl: incoming.logoUrl,
-          logoSource: incomingLogoSource,
+        ...(latestLogo ? {
+          logoUrl: latestLogo.logoUrl,
+          logoSource: latestLogo.source,
+          logoUpdatedAt: latestLogo.updatedAtMs || 0,
         } : {}),
         updatedAt: serverTimestamp(),
       }, { merge: true });

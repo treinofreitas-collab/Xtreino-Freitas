@@ -25,12 +25,13 @@ import {
   aggregateGeneralRankingImport,
   MIN_GENERAL_RANKING_SEED_ROWS,
   parseGeneralRankingImport,
-} from './freefire-general-ranking.mjs?v=general-ranking-baseline-3';
+} from './freefire-general-ranking.mjs?v=general-ranking-logo-time-1';
 import {
   getGeneralRankingMeta,
   importGeneralRankingSeed,
+  syncGeneralRankingLogoToTeam,
   upsertGeneralRankingSession,
-} from './freefire-general-ranking-store.mjs?v=general-ranking-initial-import-4';
+} from './freefire-general-ranking-store.mjs?v=ranking-logo-auto-3';
 
 const EVENTS = [
   ['TREINO FREITAS', 'treino'],
@@ -129,6 +130,14 @@ function purchaseTimestampMs(value) {
   if (typeof value === 'number') return value < 100_000_000_000 ? value * 1000 : value;
   const parsed = Date.parse(String(value || ''));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function registrationLogoTimestampMs(registration) {
+  return purchaseTimestampMs(registration?.teamLogoUpdatedAt)
+    || purchaseTimestampMs(registration?.logoUpdatedAt)
+    || purchaseTimestampMs(registration?.createdAt)
+    || purchaseTimestampMs(registration?.updatedAt)
+    || purchaseTimestampMs(registration?.paidAt);
 }
 
 export function getModoLigaTemplateLayout(imageWidth) {
@@ -246,9 +255,7 @@ export function buildModoLigaPurchaseLogoCatalog(registrations, roster) {
 
     const key = matchResultTeamKey(match.team.teamName);
     if (!key) continue;
-    const timestamp = purchaseTimestampMs(
-      registration.paidAt ?? registration.updatedAt ?? registration.createdAt,
-    );
+    const timestamp = registrationLogoTimestampMs(registration);
     const hasOriginalLogo = Boolean(registration.teamLogoUrl);
     const current = catalog.get(key);
     if (
@@ -261,6 +268,7 @@ export function buildModoLigaPurchaseLogoCatalog(registrations, roster) {
         logoUrl,
         storagePath: String(registration.teamLogoStoragePath || ''),
         purchaseTimestamp: timestamp,
+        updatedAtMs: timestamp,
         hasOriginalLogo,
       });
     }
@@ -280,11 +288,18 @@ export function resolveModoLigaTeamLogo({
     [purchaseLogo, 'purchase'],
     [specLogo, 'spec'],
     [associationLogo, 'association'],
-  ];
-  for (const [logo, source] of candidates) {
-    if (logo?.logoUrl) return { ...logo, source };
-  }
-  return null;
+  ].filter(([logo]) => logo?.logoUrl);
+  const sourcePriority = { custom: 4, purchase: 3, spec: 2, association: 1 };
+  candidates.sort(([first, firstSource], [second, secondSource]) =>
+    Number(second.updatedAtMs || second.purchaseTimestamp || 0) -
+      Number(first.updatedAtMs || first.purchaseTimestamp || 0) ||
+    sourcePriority[secondSource] - sourcePriority[firstSource]);
+  const [logo, source] = candidates[0] || [];
+  return logo ? {
+    ...logo,
+    source,
+    updatedAtMs: Number(logo.updatedAtMs || logo.purchaseTimestamp || 0),
+  } : null;
 }
 
 export function formatModoLigaRecoveredLogoStatus(roster) {
@@ -718,6 +733,7 @@ async function loadModoLigaLogoCatalog(force = false) {
           logoUrl: String(data.logoUrl),
           storagePath: String(data.storagePath || ''),
           source: 'custom',
+          updatedAtMs: purchaseTimestampMs(data.updatedAt),
         });
       }
     });
@@ -735,6 +751,7 @@ async function loadModoLigaLogoCatalog(force = false) {
           specCode: String(data.specCode || ''),
           specHour: String(data.specHour || ''),
           specLetter: String(data.specLetter || ''),
+          updatedAtMs: purchaseTimestampMs(data.updatedAtMs || data.updatedAt),
         });
       }
     });
@@ -861,6 +878,7 @@ async function persistModoLigaLogoAssociations(session, requestId) {
         specCode,
         specHour,
         specLetter,
+        updatedAtMs: Date.now(),
         updatedAt: serverTimestamp(),
       };
       batch.set(doc(window.firebaseDb, MODO_LIGA_LOGO_COLLECTION, modoLigaLogoAssociationDocumentId(candidate.teamName)), association);
@@ -875,9 +893,28 @@ async function persistModoLigaLogoAssociations(session, requestId) {
         source: 'association',
       });
     }
-    session.logoAssociationStatus = changedAssociations.length === 1
-      ? `Logo de ${changedAssociations[0].association.teamName} guardada para listas futuras.`
-      : `Logos de ${changedAssociations.length} times guardadas para listas futuras.`;
+    const rankingSyncResults = await Promise.allSettled(changedAssociations.map(({ association }) =>
+      syncGeneralRankingLogoToTeam(window.firebaseDb, {
+        teamName: association.teamName,
+        logoUrl: association.logoUrl,
+        source: association.associatedFrom === 'spec' ? 'association' : association.associatedFrom,
+        updatedAtMs: association.updatedAtMs,
+      })));
+    const updatedRankingCount = rankingSyncResults.filter(result =>
+      result.status === 'fulfilled' && result.value === true,
+    ).length;
+    const failedRankingCount = rankingSyncResults.filter(result => result.status === 'rejected').length;
+    if (failedRankingCount) {
+      session.logoAssociationStatus = 'Logo SPEC salva; não foi possível atualizar o Ranking Geral agora.';
+    } else if (updatedRankingCount) {
+      session.logoAssociationStatus = updatedRankingCount === 1
+        ? `Logo de ${changedAssociations[0].association.teamName} salva e atualizada no Ranking Geral.`
+        : `${updatedRankingCount} logos salvas e atualizadas no Ranking Geral.`;
+    } else {
+      session.logoAssociationStatus = changedAssociations.length === 1
+        ? `Logo de ${changedAssociations[0].association.teamName} salva; o time ainda não está no Ranking ou já tem uma logo mais recente.`
+        : `${changedAssociations.length} logos salvas; as equipes ainda não estão no Ranking ou já têm logos mais recentes.`;
+    }
     if (matchResultState === session) render();
   } catch (error) {
     session.logoAssociationStatus = `Não foi possível guardar as associações de logos. ${error.message || 'Verifique o acesso ao Firebase.'}`;
@@ -1104,7 +1141,23 @@ async function saveModoLigaTeamLogo(slot, file) {
       logoUrl,
       storagePath,
       blob,
+      source: 'custom',
+      updatedAtMs: Date.now(),
     });
+    const logoUpdatedAtMs = modoLigaLogoCatalog.get(key).updatedAtMs;
+    try {
+      const rankingUpdated = await syncGeneralRankingLogoToTeam(window.firebaseDb, {
+        teamName: team.teamName.trim(),
+        logoUrl,
+        source: 'custom',
+        updatedAtMs: logoUpdatedAtMs,
+      });
+      session.logoAssociationStatus = rankingUpdated
+        ? `Logo de ${team.teamName.trim()} salva e atualizada no Ranking Geral.`
+        : `Logo de ${team.teamName.trim()} salva; o time ainda não está no Ranking ou já tem uma logo mais recente.`;
+    } catch (error) {
+      session.logoAssociationStatus = `Logo salva; não foi possível atualizar o Ranking Geral agora. ${error.message || ''}`.trim();
+    }
     if (oldLogo?.storagePath && oldLogo.storagePath !== storagePath) {
       deleteObject(ref(window.firebaseStorage, oldLogo.storagePath)).catch(() => {});
     }
@@ -1938,7 +1991,12 @@ async function attachGeneralRankingLogos(rows) {
   return rows.map(row => {
     const key = matchResultTeamKey(row.teamName);
     const carriedLogo = row.logoUrl
-      ? { logoUrl: row.logoUrl, storagePath: row.storagePath || '', source: row.logoSource || '' }
+      ? {
+          logoUrl: row.logoUrl,
+          storagePath: row.storagePath || '',
+          source: row.logoSource || '',
+          updatedAtMs: Number(row.logoUpdatedAt || 0),
+        }
       : null;
     const bestLogo = resolveModoLigaTeamLogo({
       manualLogo: modoLigaLogoCatalog.get(key) || (carriedLogo?.source === 'custom' ? carriedLogo : null),
@@ -1948,7 +2006,12 @@ async function attachGeneralRankingLogos(rows) {
         (carriedLogo?.source === 'association' ? carriedLogo : null),
     });
     return bestLogo?.logoUrl
-      ? { ...row, logoUrl: bestLogo.logoUrl, logoSource: bestLogo.source }
+      ? {
+          ...row,
+          logoUrl: bestLogo.logoUrl,
+          logoSource: bestLogo.source,
+          logoUpdatedAt: Number(bestLogo.updatedAtMs || 0),
+        }
       : row;
   });
 }
@@ -1963,9 +2026,7 @@ async function buildGeneralRankingLogoCatalog(teams) {
     const logoUrl = String(registration.teamLogoUrl || registration.teamLogoThumb || registration.logoUrl || '').trim();
     const key = matchResultTeamKey(teamName);
     if (!key || !logoUrl) continue;
-    const timestamp = purchaseTimestampMs(
-      registration.paidAt ?? registration.updatedAt ?? registration.createdAt,
-    );
+    const timestamp = registrationLogoTimestampMs(registration);
     const current = purchaseCatalog.get(key);
     if (!current || timestamp > current.timestamp) {
       purchaseCatalog.set(key, {
@@ -1973,6 +2034,7 @@ async function buildGeneralRankingLogoCatalog(teams) {
         logoUrl,
         storagePath: String(registration.teamLogoStoragePath || ''),
         timestamp,
+        updatedAtMs: timestamp,
       });
     }
   }
@@ -1985,7 +2047,11 @@ async function buildGeneralRankingLogoCatalog(teams) {
       associationLogo: modoLigaLogoAssociationCatalog.get(key),
     });
     return bestLogo?.logoUrl
-      ? [[key, { logoUrl: bestLogo.logoUrl, logoSource: bestLogo.source }]]
+      ? [[key, {
+          logoUrl: bestLogo.logoUrl,
+          logoSource: bestLogo.source,
+          logoUpdatedAt: Number(bestLogo.updatedAtMs || 0),
+        }]]
       : [];
   }));
 }

@@ -297,6 +297,71 @@ test("events are all confirmed together, with one debit and one order", async ()
   assert.equal(currentDb.read("orders/event_tokens_event").total, 6);
 });
 
+test("approved event purchases sync the newest logo to an existing ranking row without changing points", async () => {
+  const logoTimestamp = Date.parse("2026-10-14T12:30:00.000Z");
+  currentDb = fakeDatabase({
+    "users/buyer": { tokens: 10 },
+    "adminEvents/event": { name: "TREINO FREITAS", eventType: "treino-freitas", preco: 3, status: "Aberto" },
+    "registrations/r": {
+      userId: "buyer", status: "pending", eventType: "treino-freitas",
+      date: "2026-10-14", schedule: "Quarta - 21h", external_reference: "event_logo_auto",
+      teamName: "FOLTEST PRO", teamLogoUrl: "https://storage.example/foltest.webp",
+      teamLogoUpdatedAt: logoTimestamp, createdAt: logoTimestamp - 60_000,
+    },
+    "registrations/new-team": {
+      userId: "buyer", status: "pending", eventType: "treino-freitas",
+      date: "2026-10-14", schedule: "Quarta - 21h", external_reference: "event_logo_auto",
+      teamName: "EQUIPE NOVA", teamLogoUrl: "https://storage.example/new-team.webp", createdAt: 300,
+    },
+    "freefire_general_ranking/team_foltest_pro": {
+      teamKey: "foltest pro", teamName: "FOLTEST PRO",
+      baselinePoints: 40, sessionPoints: 1218, totalPoints: 1258,
+      logoUrl: "https://storage.example/old.webp", logoSource: "purchase", logoUpdatedAt: logoTimestamp - 120_000,
+    },
+    "championship_config/freefire_modo_liga_logo_association_foltest_pro": {
+      associatedFrom: "spec", logoUrl: "https://storage.example/spec.webp", updatedAtMs: logoTimestamp - 30_000,
+    },
+  });
+
+  await preparePurchase("buyer", { external_reference: "event_logo_auto", unit_price: 6 }, "mercadopago");
+  const result = await completePurchase("event_logo_auto", {
+    payment: { ...payment("event_logo_auto"), transaction_amount: 6 },
+  });
+
+  assert.equal(result.status, "paid");
+  assert.equal(currentDb.read("registrations/r").status, "paid");
+  assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").logoUrl, "https://storage.example/foltest.webp");
+  assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").logoSource, "purchase");
+  assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").logoUpdatedAt, logoTimestamp);
+  assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").totalPoints, 1258);
+  assert.equal(currentDb.read("freefire_general_ranking/team_equipe_nova"), undefined);
+});
+
+test("event purchases paid with tokens automatically sync the team logo", async () => {
+  currentDb = fakeDatabase({
+    "users/buyer": { tokens: 10 },
+    "adminEvents/event": { name: "MODO LIGA", eventType: "modo-liga", preco: 3, status: "Aberto" },
+    "registrations/r": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-10-14", schedule: "Quarta - 21h", external_reference: "token_event_logo_auto",
+      teamName: "TEAM ALFA", teamLogoThumb: "https://storage.example/alfa-thumb.webp", createdAt: 200,
+    },
+    "freefire_general_ranking/team_team_alfa": {
+      teamKey: "team alfa", teamName: "TEAM ALFA",
+      baselinePoints: 0, sessionPoints: 8, totalPoints: 8,
+    },
+  });
+
+  const result = await payPurchaseWithTokens("buyer", {
+    external_reference: "token_event_logo_auto", unit_price: 3,
+  });
+
+  assert.equal(result.status, "paid");
+  assert.equal(currentDb.read("registrations/r").status, "paid");
+  assert.equal(currentDb.read("freefire_general_ranking/team_team_alfa").logoUrl, "https://storage.example/alfa-thumb.webp");
+  assert.equal(currentDb.read("freefire_general_ranking/team_team_alfa").totalPoints, 8);
+});
+
 test("free override ISO timestamps are honored; optional paid participation uses catalog price", async () => {
   currentDb = fakeDatabase({
     "adminEvents/event": { name: "Modo Liga", eventType: "modo-liga", preco: 3, status: "Aberto" },

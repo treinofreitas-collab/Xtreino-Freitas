@@ -301,8 +301,8 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=general-ranking-v4/);
-  assert.match(adminPage, /admin\.js\?v=general-ranking-v4/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=ranking-logo-auto-3/);
+  assert.match(adminPage, /admin\.js\?v=ranking-logo-auto-3/);
   assert.doesNotMatch(source, /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/);
 });
 
@@ -365,6 +365,7 @@ test('uses the newest paid purchase logo and only associates unique participant 
       status: 'approved',
       teamLogoUrl: '/logos/israel-old.webp',
       createdAt: '2026-10-20T12:00:00.000Z',
+      paidAt: '2026-11-11T12:00:00.000Z',
     },
     {
       teamName: 'ISRAEL 67',

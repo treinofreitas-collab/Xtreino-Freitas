@@ -1045,6 +1045,11 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
     display: none !important;
 }
 
+#monthSalesNavigation[hidden],
+#monthSalesTotalCard[hidden] {
+    display: none !important;
+}
+
 #monthSalesModal:not([hidden]) {
     position: fixed !important;
     inset: 0 !important;
@@ -1061,7 +1066,7 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 #monthSalesDialog {
     display: flex;
     flex-direction: column;
-    width: min(100%, 36rem);
+    width: min(100%, 54rem);
     max-height: min(86vh, 48rem);
     overflow: hidden;
     border-radius: 1.25rem;
@@ -1160,6 +1165,19 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
     background: #eff6ff;
 }
 
+.month-sales-total-action {
+    cursor: pointer;
+    transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.month-sales-total-action:hover,
+.month-sales-total-action:focus-visible {
+    border-color: #93c5fd;
+    background: #e5f1ff;
+    box-shadow: 0 4px 14px rgb(59 130 246 / 10%);
+    outline: none;
+}
+
 .month-sales-total-label {
     color: #5278b6;
     font-size: 0.68rem;
@@ -1176,6 +1194,16 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
     line-height: 1.15;
 }
 
+.month-sales-total-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.25rem;
+    color: #3b82f6;
+    font-size: 0.68rem;
+    font-weight: 750;
+}
+
 .month-sales-total > i {
     color: #93c5fd;
     font-size: 1.8rem;
@@ -1190,14 +1218,29 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 
 .month-sales-row {
     display: flex;
+    width: 100%;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+    text-align: left;
     margin-top: 0.5rem;
     padding: 0.75rem 0.85rem;
     border: 1px solid #edf1f6;
     border-radius: 0.8rem;
     background: #f8fafc;
+    cursor: pointer;
+    transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.month-sales-row:hover,
+.month-sales-row:focus-visible {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    outline: none;
+}
+
+.month-sales-row:hover {
+    transform: translateY(-1px);
 }
 
 .month-sales-row > span {
@@ -1214,9 +1257,25 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 }
 
 .month-sales-row strong {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
     color: #1e3a8a;
     font-size: 0.95rem;
     white-space: nowrap;
+}
+
+.month-sales-row-count {
+    display: block;
+    margin: 0.18rem 0 0 1.35rem;
+    color: #64748b;
+    font-size: 0.67rem;
+    font-weight: 500;
+}
+
+.month-sales-row-arrow {
+    color: #94a3b8;
+    font-size: 0.7rem;
 }
 
 .month-sales-empty {
@@ -1239,6 +1298,549 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 
 .month-sales-error {
     color: #b91c1c;
+}
+
+#monthSalesDayDetails[hidden] {
+    display: none !important;
+}
+
+.month-sales-day-details {
+    min-height: 0;
+}
+
+.month-sales-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0 0 0.7rem;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid #dbe5f1;
+    border-radius: 0.65rem;
+    background: #fff;
+    color: #315b9d;
+    font-size: 0.78rem;
+    font-weight: 750;
+}
+
+.month-sales-day-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 0.8rem;
+}
+
+.month-sales-day-kpi {
+    min-width: 0;
+    padding: 0.75rem;
+    border: 1px solid #e5edf8;
+    border-radius: 0.8rem;
+    background: #f8fafc;
+}
+
+.month-sales-day-kpi-label {
+    color: #64748b;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+}
+
+.month-sales-day-kpi-value {
+    margin-top: 0.22rem;
+    color: #183b78;
+    font-size: clamp(0.95rem, 2.8vw, 1.2rem);
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.month-sales-detail-section {
+    margin-top: 0.75rem;
+    padding: 0.85rem;
+    border: 1px solid #e8edf5;
+    border-radius: 0.85rem;
+    background: #fff;
+}
+
+.month-sales-detail-section h4 {
+    margin: 0 0 0.65rem;
+    color: #172033;
+    font-size: 0.82rem;
+    font-weight: 850;
+}
+
+.month-sales-detail-note {
+    margin: -0.35rem 0 0.7rem;
+    color: #64748b;
+    font-size: 0.7rem;
+}
+
+.month-sales-hour-scroll {
+    overflow-x: auto;
+    padding: 0.2rem 0 0.35rem;
+}
+
+.month-sales-chart-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin: 0 0 0.2rem;
+    color: #64748b;
+    font-size: 0.68rem;
+}
+
+.month-sales-chart-peak {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.28rem 0.5rem;
+    border: 1px solid #bae6fd;
+    border-radius: 999px;
+    background: #f0f9ff;
+    color: #0369a1;
+    white-space: nowrap;
+}
+
+.month-sales-chart-peak strong {
+    color: #075985;
+}
+
+.month-sales-chart-peak b {
+    margin-left: 0.1rem;
+    color: #0c4a6e;
+}
+
+.month-sales-hour-svg {
+    display: block;
+    width: 100%;
+    min-width: 40rem;
+    height: auto;
+    overflow: visible;
+}
+
+.month-sales-chart-tick line {
+    stroke: #e7edf5;
+    stroke-dasharray: 3 5;
+    stroke-width: 1;
+}
+
+.month-sales-chart-tick text {
+    fill: #8492a6;
+    font-family: inherit;
+    font-size: 11px;
+}
+
+.month-sales-chart-baseline {
+    stroke: #cbd5e1;
+    stroke-width: 1.2;
+}
+
+.month-sales-hour-mark {
+    cursor: pointer;
+    outline: none;
+}
+
+.month-sales-hour-mark rect {
+    fill: url(#monthSalesBarGradient);
+    transition: filter 140ms ease, opacity 140ms ease;
+}
+
+.month-sales-hour-mark:hover rect,
+.month-sales-hour-mark:focus-visible rect {
+    filter: brightness(1.12) drop-shadow(0 2px 3px rgb(37 99 235 / 25%));
+}
+
+.month-sales-hour-mark.is-peak rect {
+    fill: #0ea5a4;
+}
+
+.month-sales-hour-mark.is-peak:hover rect,
+.month-sales-hour-mark.is-peak:focus-visible rect {
+    filter: brightness(1.08) drop-shadow(0 2px 3px rgb(14 165 164 / 30%));
+}
+
+.month-sales-chart-hour-label {
+    fill: #64748b;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.month-sales-payment-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.85rem;
+}
+
+.month-sales-payment-card {
+    min-width: 0;
+    padding: 0.7rem;
+    border: 1px solid #e8edf5;
+    border-radius: 0.75rem;
+    background: #fbfdff;
+}
+
+.month-sales-payment-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.55rem;
+    margin-bottom: 0.35rem;
+}
+
+.month-sales-payment-header > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.month-sales-payment-header strong {
+    color: #334155;
+    font-size: 0.72rem;
+}
+
+.month-sales-payment-header span {
+    color: #94a3b8;
+    font-size: 0.62rem;
+}
+
+.month-sales-payment-header > b {
+    color: #1e3a8a;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.month-sales-payment-chart-scroll {
+    overflow-x: auto;
+    padding-bottom: 0.2rem;
+}
+
+.month-sales-payment-svg {
+    display: block;
+    width: 100%;
+    min-width: 42rem;
+    height: auto;
+    overflow: visible;
+}
+
+.month-sales-payment-tick text,
+.month-sales-payment-axis-zero {
+    fill: #64748b;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.month-sales-payment-gridline {
+    stroke: #e7edf5;
+    stroke-dasharray: 3 5;
+    stroke-width: 1;
+}
+
+.month-sales-payment-mark {
+    cursor: help;
+    outline: none;
+}
+
+.month-sales-payment-mark rect {
+    fill: #3b82f6;
+    opacity: 0.85;
+    transition: filter 140ms ease, opacity 140ms ease;
+}
+
+.month-sales-payment-mark.is-tokens rect {
+    fill: #f59e0b;
+}
+
+.month-sales-payment-mark.is-peak rect {
+    filter: drop-shadow(0 2px 3px rgb(15 23 42 / 20%));
+    opacity: 1;
+}
+
+.month-sales-payment-mark.is-tokens.is-peak rect {
+    fill: #d97706;
+}
+
+.month-sales-payment-peak-label {
+    fill: #1e3a8a;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.month-sales-payment-empty {
+    fill: #64748b;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.month-sales-payment-mark:hover rect,
+.month-sales-payment-mark:focus-visible rect {
+    filter: brightness(1.08) drop-shadow(0 2px 3px rgb(15 23 42 / 16%));
+    opacity: 1;
+}
+
+.month-sales-methods {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1rem;
+    border: 1px solid #e8edf5;
+    border-radius: 0.85rem;
+    background: #fbfdff;
+}
+
+.month-sales-method-donut {
+    display: grid;
+    width: 8.5rem;
+    aspect-ratio: 1;
+    place-items: center;
+    border-radius: 50%;
+    background: conic-gradient(#3b82f6 0 var(--pix-share), #f59e0b var(--pix-share) 100%);
+    position: relative;
+}
+
+.month-sales-method-donut::before {
+    position: absolute;
+    width: 67%;
+    aspect-ratio: 1;
+    border-radius: inherit;
+    background: #fff;
+    content: "";
+}
+
+.month-sales-method-donut.is-empty {
+    background: conic-gradient(#dbe3ee 0 100%);
+}
+
+.month-sales-method-donut > div {
+    display: flex;
+    z-index: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+}
+
+.month-sales-method-donut strong {
+    color: #1e293b;
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.month-sales-method-donut span {
+    color: #64748b;
+    font-size: 0.68rem;
+}
+
+.month-sales-method-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.month-sales-method-row {
+    display: grid;
+    grid-template-columns: 0.65rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.65rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid #e8edf5;
+}
+
+.month-sales-method-row:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.month-sales-method-swatch {
+    width: 0.62rem;
+    height: 0.62rem;
+    border-radius: 50%;
+}
+
+.month-sales-method-swatch.is-pix {
+    background: #3b82f6;
+}
+
+.month-sales-method-swatch.is-tokens {
+    background: #f59e0b;
+}
+
+.month-sales-method-row > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.month-sales-method-row strong {
+    color: #334155;
+    font-size: 0.75rem;
+}
+
+.month-sales-method-row small {
+    color: #94a3b8;
+    font-size: 0.66rem;
+}
+
+.month-sales-method-row > b {
+    color: #1e3a8a;
+    font-size: 0.76rem;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.month-sales-top-products {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.month-sales-top-product {
+    display: grid;
+    grid-template-columns: 1.55rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.6rem 0;
+    border-top: 1px solid #edf1f6;
+}
+
+.month-sales-top-product:first-child {
+    border-top: 0;
+}
+
+.month-sales-top-product-rank {
+    display: grid;
+    width: 1.45rem;
+    height: 1.45rem;
+    place-items: center;
+    border-radius: 0.45rem;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 0.68rem;
+    font-weight: 850;
+}
+
+.month-sales-top-product-content {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.month-sales-top-product-name {
+    min-width: 0;
+    color: #334155;
+    font-size: 0.74rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.month-sales-top-product-name small {
+    display: block;
+    margin-top: 0.15rem;
+    color: #64748b;
+    font-size: 0.63rem;
+    font-weight: 550;
+    line-height: 1.4;
+}
+
+.month-sales-top-product-track {
+    display: block;
+    width: min(100%, 25rem);
+    height: 0.28rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e8eef8;
+}
+
+.month-sales-top-product-track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #60a5fa, #2563eb);
+}
+
+.month-sales-top-product-count {
+    color: #1e3a8a;
+    font-size: 0.65rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.month-sales-category-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
+}
+
+.month-sales-category-empty {
+    color: #94a3b8;
+    font-size: 0.75rem;
+}
+
+.month-sales-category-row,
+.month-sales-transaction {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0;
+    border-top: 1px solid #edf1f6;
+}
+
+.month-sales-category-row:first-of-type,
+.month-sales-transaction:first-of-type {
+    border-top: 0;
+}
+
+.month-sales-category-name,
+.month-sales-transaction-name {
+    min-width: 0;
+    color: #334155;
+    font-size: 0.75rem;
+    font-weight: 750;
+    overflow-wrap: anywhere;
+}
+
+.month-sales-category-meta,
+.month-sales-transaction-meta {
+    margin-top: 0.2rem;
+    color: #64748b;
+    font-size: 0.66rem;
+    line-height: 1.45;
+}
+
+.month-sales-category-amount,
+.month-sales-transaction-amount {
+    flex: 0 0 auto;
+    color: #1e3a8a;
+    font-size: 0.77rem;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.month-sales-transaction-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.month-sales-kind {
+    display: inline-flex;
+    margin-right: 0.35rem;
+    padding: 0.13rem 0.38rem;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.58rem;
+    font-weight: 850;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
 }
 
 @media (max-width: 640px) {
@@ -1269,6 +1871,40 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 
     .month-sales-list {
         padding-inline: 0.75rem;
+    }
+
+    .month-sales-day-kpis {
+        gap: 0.4rem;
+    }
+
+    .month-sales-day-kpi {
+        padding: 0.6rem 0.5rem;
+    }
+
+    .month-sales-category-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .month-sales-payment-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .month-sales-methods {
+        grid-template-columns: 1fr;
+        justify-items: center;
+    }
+
+    .month-sales-method-legend {
+        width: 100%;
+    }
+
+    .month-sales-chart-summary {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .month-sales-hour-svg {
+        min-width: 36rem;
     }
 }
 

@@ -26,7 +26,7 @@ function setup(status = 'needs_review') {
         }),
         loadBoard: async () => calls.push(['board']),
         openManageHourModal: (...args) => calls.push(['modal', ...args]),
-        date: '2026-10-14', eventType: 'liga', hour: '14h',
+        date: '2026-10-14', eventType: 'liga', hour: '14h', eventName: 'Liga',
         rawEventId: 'raw-event-id', evFieldType: 'eventType',
     });
     vm.runInContext(`${binding}\n${handler}\nglobalThis.handle = handleListClick;`, context);
@@ -77,7 +77,7 @@ test('confirmed payment refreshes the same event/hour without duplicate requests
     finish();
     await first;
     assert.deepEqual(calls.filter(call => call[0] === 'modal'),
-        [['modal', '2026-10-14', 'liga', '14h', 'raw-event-id', 'eventType']]);
+        [['modal', '2026-10-14', 'liga', '14h', 'raw-event-id', 'eventType', 'Liga']]);
     assert.equal(calls.filter(call => call[0] === 'board').length, 1);
     assert.equal(calls.filter(call => call[0] === 'verify').length, 1);
 });

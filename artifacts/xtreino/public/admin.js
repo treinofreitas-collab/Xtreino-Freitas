@@ -446,6 +446,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
         if (li) li.style.display = hasAccess ? '' : 'none';
       }
     });
+    const refreshRoleButton = document.getElementById('btnRefreshRole');
+    if (refreshRoleButton) refreshRoleButton.style.display = resolvedRole === 'admin' ? 'none' : '';
 
     // sectionKPIs: controla via classe no <html> (CSS !important — imune a qualquer override)
     if (['ceo','socio'].includes(resolvedRole)) {
@@ -752,7 +754,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
             <option value="Ceo" ${(user.role||'').toLowerCase() === 'ceo' ? 'selected' : ''}>CEO – Acesso Total</option>
             <option value="Socio" ${(user.role||'').toLowerCase() === 'socio' ? 'selected' : ''}>SOCIO – Visualização Total</option>
             <option value="Gerente" ${(user.role||'').toLowerCase() === 'gerente' ? 'selected' : ''}>Gerente – Sem Dashboard/Pagamentos</option>
-            <option value="streamer" ${(user.role||'').toLowerCase() === 'streamer' ? 'selected' : ''}>Streamer – Logos SPEC</option>
             <option value="Vendedor" ${(user.role||'').toLowerCase() === 'vendedor' ? 'selected' : ''}>Vendedor – Pedidos/Tokens/Passes</option>
             <option value="Designer" ${['designer','design','desgin'].includes((user.role||'').toLowerCase()) ? 'selected' : ''}>Designer – Produtos/Eventos/Conteúdo</option>
             <option value="Staff" ${['staff','admin'].includes((user.role||'').toLowerCase()) ? 'selected' : ''}>Staff – Eventos</option>
@@ -1537,7 +1538,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
     if (roleGeneration !== currentAdminRoleGeneration) return;
     const roleLower = String(role || '').toLowerCase().trim();
-    const authorizedRoles = ['admin','ceo','gerente','vendedor','design','designer','desgin','socio','sócio','afiliado','staff','streamer'];
+    const authorizedRoles = ['admin','ceo','gerente','vendedor','design','designer','desgin','socio','sócio','afiliado','staff','streamer','moderador','operador','suporte'];
     if (!authorizedRoles.includes(roleLower)){
       window.adminRoleLower = '';
       authGate.classList.remove('hidden');
@@ -1548,7 +1549,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
     authGate.classList.add('hidden');
     // Aplicar permissões ANTES de exibir o dashboard — evita flash de conteúdo não autorizado
     window.visibilityApplied = false;
-    window.lastAppliedRole = null;
     controlSectionVisibility(roleLower);
     dashboard.classList.remove('hidden');
     if (roleLower === 'admin') {
@@ -1580,7 +1580,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       }));
     } catch(_) {}
 
-    // Apply role changes immediately while this account remains signed in.
+    // Keep the active session in sync if a CEO or Gerente changes this user's role.
     if (roleRef && onSnapshotRole) {
       currentAdminRoleUnsubscribe = onSnapshotRole(roleRef, snapshot => {
         if (roleGeneration !== currentAdminRoleGeneration || !snapshot.exists()) return;
@@ -1611,22 +1611,18 @@ window.showWarningToast = function(message, title = 'Atenção') {
         controlSectionVisibility(nextRole);
         setView(nextRole);
         if (nextRole === 'admin') {
-          if (typeof window.adminNav === 'function') {
-            window.adminNav(
-              'operacoes',
-              'sectionFreefireScoring',
-              document.querySelector('.sidebar-link[onclick*="sectionFreefireScoring"]')
-            );
-          }
+          window.adminNav(
+            'operacoes',
+            'sectionFreefireScoring',
+            document.querySelector('.sidebar-link[onclick*="sectionFreefireScoring"]')
+          );
           showToast('info', 'Seu acesso agora está limitado ao Placar Free Fire.', 'Permissão atualizada');
         } else if (window._activeAdminPage && window._activeAdminSection) {
           const targetLink = Array.from(document.querySelectorAll('.sidebar-link[data-page]')).find(link =>
             link.dataset.page === window._activeAdminPage
             && link.getAttribute('onclick')?.includes(window._activeAdminSection)
           );
-          if (typeof window.adminNav === 'function') {
-            window.adminNav(window._activeAdminPage, window._activeAdminSection, targetLink || null);
-          }
+          window.adminNav(window._activeAdminPage, window._activeAdminSection, targetLink || null);
           showToast('info', 'Seu cargo foi atualizado.', 'Permissão atualizada');
         }
       }, error => {
@@ -1685,15 +1681,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (sectionId === 'sectionKPIs') {
         await loadKpis();
       } else if (sectionId === 'sectionCharts') {
-        await renderSalesChart();
-        await renderTopProducts();
-        await renderPaymentMethodsChart();
-        await window.renderPopularHours();
-        if (!window._popularHoursFiltersBound) {
-          window._popularHoursFiltersBound = true;
-          await loadEventOptions();
-          setupPopularHoursFilters();
-        }
+        // Os gráficos de vendas vivem no detalhamento diário/mensal e são
+        // carregados somente quando o administrador abre a análise.
       } else if (sectionId === 'sectionUsers') {
         await renderActiveUsers();
       } else if (sectionId === 'sectionOrders') {
@@ -2370,12 +2359,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
     return shifted > current ? current : shifted;
   }
 
-  function buildMonthSalesSummary(registrationsSnap, ordersSnap, period) {
-    const byDay = new Map();
+  function collectMonthSalesRows(registrationsSnap, ordersSnap, period) {
     const paidStatuses = new Set(['paid', 'approved', 'confirmed']);
+    const rows = [];
 
-    function addSale(data, amountValue) {
+    function addSale(data, amountValue, source, docId) {
       if (data.paidWithTokens) return;
+      const status = String(data.status || '').toLowerCase();
+      if (!paidStatuses.has(status) || data.isFreeEvent === true) return;
       const rawDate = data.createdAt ?? data.timestamp;
       let date;
       try {
@@ -2386,35 +2377,324 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (!(date instanceof Date) || !Number.isFinite(date.getTime()) ||
           date < period.start || date >= period.end) return;
       const amount = Number(amountValue);
-      if (!Number.isFinite(amount)) return;
-
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      const existing = byDay.get(key);
-      byDay.set(key, {
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const externalRef = String(data.external_reference || data.externalRef || '').trim();
+      const isEvent = source === 'registrations';
+      const item = isEvent
+        ? formatAdminEventPurchaseLabel(data)
+        : String(data.itemName || data.item || data.title || data.productName || data.description || 'Produto').trim();
+      const categoryName = isEvent
+        ? resolveAdminEventName(data)
+        : String(data.itemName || data.item || data.title || data.productName || data.description || 'Produto').trim();
+      const paymentMethod = String(
+        data.paymentMethod || data.payment_method || data.paymentType || data.payment_type || 'Pagamento online',
+      ).trim();
+      rows.push({
         date,
-        amount: (existing?.amount || 0) + amount
+        dateKey,
+        amount,
+        source,
+        transactionKey: externalRef || `${source}:${docId}`,
+        kind: isEvent ? 'event' : 'product',
+        item: item || (isEvent ? 'Evento' : 'Produto'),
+        categoryName: categoryName || (isEvent ? 'Evento' : 'Produto'),
+        eventType: String(data.eventType || data.event_type || '').trim(),
+        eventDate: data.eventDate || data.date || '',
+        quantity: Math.max(1, Math.floor(Number(data.quantity) || 1)),
+        teamName: String(data.teamName || data.team || data.squadName || '').trim(),
+        paymentMethod,
+        schedule: String(data.schedule || data.hour || '').trim(),
       });
     }
 
     registrationsSnap?.forEach(doc => {
-      const registration = doc.data();
-      if (!paidStatuses.has(String(registration.status || '').toLowerCase())) return;
-      addSale(registration, registration.price);
+      const registration = doc.data() || {};
+      addSale(registration, registration.price, 'registrations', doc.id);
     });
     ordersSnap?.forEach(doc => {
-      const order = doc.data();
+      const order = doc.data() || {};
       if (String(order.type || '').toLowerCase() === 'event') return;
-      if (!paidStatuses.has(String(order.status || '').toLowerCase())) return;
-      addSale(order, order.amount ?? order.total);
+      addSale(order, order.amount ?? order.total, 'orders', doc.id);
+    });
+    return rows;
+  }
+
+  function buildMonthSalesSummary(registrationsSnap, ordersSnap, period) {
+    const byDay = new Map();
+    collectMonthSalesRows(registrationsSnap, ordersSnap, period).forEach(row => {
+      const existing = byDay.get(row.dateKey) || { date: row.date, amount: 0, transactionKeys: new Set() };
+      existing.amount += row.amount;
+      existing.transactionKeys.add(row.transactionKey);
+      byDay.set(row.dateKey, existing);
     });
 
     const entries = [...byDay.values()]
       .sort((a, b) => b.date - a.date)
       .map(entry => ({
         label: entry.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        amount: entry.amount
+        dateKey: `${entry.date.getFullYear()}-${String(entry.date.getMonth() + 1).padStart(2, '0')}-${String(entry.date.getDate()).padStart(2, '0')}`,
+        amount: entry.amount,
+        saleCount: entry.transactionKeys.size,
       }));
     return { entries, total: entries.reduce((sum, entry) => sum + entry.amount, 0) };
+  }
+
+  function buildMonthSalesDetailFromRows(rows, eventNameMap = null) {
+    const transactions = new Map();
+    const categories = new Map();
+    const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, amount: 0, sales: new Set() }));
+
+    rows.forEach(row => {
+      const transaction = transactions.get(row.transactionKey) || {
+        key: row.transactionKey,
+        date: row.date,
+        amount: 0,
+        paymentMethods: new Set(),
+        lines: [],
+      };
+      transaction.amount += row.amount;
+      if (row.date < transaction.date) transaction.date = row.date;
+      transaction.paymentMethods.add(row.paymentMethod);
+      transaction.lines.push(row);
+      transactions.set(row.transactionKey, transaction);
+
+      const hour = row.date.getHours();
+      hourly[hour].amount += row.amount;
+      hourly[hour].sales.add(row.transactionKey);
+
+      const resolvedItem = row.kind === 'event'
+        ? resolveAdminEventName({ eventType: row.eventType, eventName: row.categoryName, title: row.categoryName }, eventNameMap)
+        : row.categoryName;
+      const categoryKey = `${row.kind}:${resolvedItem}`;
+      const category = categories.get(categoryKey) || {
+        kind: row.kind,
+        name: resolvedItem,
+        amount: 0,
+        quantity: 0,
+        transactionKeys: new Set(),
+      };
+      category.amount += row.amount;
+      category.quantity += row.quantity;
+      category.transactionKeys.add(row.transactionKey);
+      categories.set(categoryKey, category);
+    });
+
+    const transactionRows = [...transactions.values()].sort((a, b) => b.date - a.date);
+    const total = rows.reduce((sum, row) => sum + row.amount, 0);
+    const transactionsCount = transactionRows.length;
+    const categoriesList = [...categories.values()]
+      .map(category => ({ ...category, saleCount: category.transactionKeys.size }))
+      .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, 'pt-BR'));
+    return {
+      rows,
+      transactions: transactionRows,
+      categories: categoriesList,
+      hourly,
+      total,
+      transactionsCount,
+      averageTicket: transactionsCount ? total / transactionsCount : 0,
+    };
+  }
+
+  function buildMonthSalesSupplementaryData(registrationsSnap, ordersSnap, period, eventNameMap = null) {
+    const paidStatuses = new Set(['paid', 'approved', 'confirmed']);
+    const paymentRows = [];
+    const productRows = [];
+    const verifiedEventRefs = new Set();
+    const registrationRefs = new Set();
+    const seenProductOrderRefs = new Set();
+
+    const getRecord = (data, source, docId, amountValue) => {
+      const status = String(data.status || '').toLowerCase();
+      if (!paidStatuses.has(status) || data.isFreeEvent === true) return null;
+      const rawDate = data.createdAt ?? data.timestamp;
+      let date;
+      try {
+        date = rawDate?.toDate ? rawDate.toDate() : new Date(rawDate);
+      } catch (_) {
+        return null;
+      }
+      if (!(date instanceof Date) || !Number.isFinite(date.getTime()) ||
+          date < period.start || date >= period.end) return null;
+      const isEvent = source !== 'orders';
+      const rawMethod = String(data.paymentMethod || data.payment_method || data.paymentType || data.payment_type || '').toLowerCase();
+      const method = data.paidWithTokens === true || rawMethod.includes('token') ? 'tokens' : 'pix';
+      const verified = data.verifiedOnServer === true;
+      const value = method === 'tokens'
+        ? Number(data.tokensUsed || data.tokenCost || 0)
+        : Number(amountValue);
+      if (!Number.isFinite(value) || value <= 0) return null;
+      const reference = String(data.external_reference || data.externalRef || '').trim();
+      const transactionKey = reference || `${source}:${docId}`;
+      const name = isEvent
+        ? resolveAdminEventName(data, eventNameMap)
+        : normalizeProductName(data.itemName || data.item || data.title || data.productName || data.description || 'Produto');
+      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      return {
+        date,
+        dateKey,
+        hour: date.getHours(),
+        source,
+        method,
+        value,
+        verified,
+        reference,
+        transactionKey,
+        name: name || (isEvent ? 'Evento' : 'Produto'),
+        kind: isEvent ? 'event' : 'product',
+        quantity: Math.max(1, Math.floor(Number(data.quantity) || 1)),
+      };
+    };
+
+    const addPaymentRow = record => {
+      if (!record?.verified) return;
+      paymentRows.push({
+        date: record.date,
+        dateKey: record.dateKey,
+        hour: record.hour,
+        method: record.method,
+        value: record.value,
+        transactionKey: record.transactionKey,
+      });
+    };
+    const addProductRow = (record, { quantity = record?.quantity || 0, revenue = false, unreconciled = 0 } = {}) => {
+      if (!record) return;
+      productRows.push({
+        dateKey: record.dateKey,
+        name: record.name,
+        kind: record.kind,
+        quantity,
+        pixAmount: revenue && record.verified && record.method === 'pix' ? record.value : 0,
+        tokenCount: revenue && record.verified && record.method === 'tokens' ? record.value : 0,
+        unreconciled,
+        transactionKey: record.transactionKey,
+      });
+    };
+
+    // Recibos de evento são a fonte financeira preferencial; a inscrição
+    // correspondente continua fornecendo a quantidade de vagas vendidas.
+    ordersSnap?.forEach(doc => {
+      const data = doc.data() || {};
+      if (String(data.type || '').toLowerCase() !== 'event') return;
+      const record = getRecord(data, 'event-orders', doc.id, data.amount ?? data.total);
+      if (!record?.verified) return;
+      if (record.reference) verifiedEventRefs.add(record.reference);
+      addPaymentRow(record);
+      addProductRow(record, { quantity: 0, revenue: true });
+    });
+
+    registrationsSnap?.forEach(doc => {
+      const data = doc.data() || {};
+      const reference = String(data.external_reference || data.externalRef || '').trim();
+      if (reference) registrationRefs.add(reference);
+      const record = getRecord(data, 'registrations', doc.id, data.price);
+      if (!record) return;
+      const hasVerifiedReceipt = record.reference && verifiedEventRefs.has(record.reference);
+      const fallbackTokenPayment = !hasVerifiedReceipt
+        && record.method === 'tokens'
+        && record.verified
+        && record.value > 0;
+      const fallbackPixPayment = !hasVerifiedReceipt
+        && record.method === 'pix'
+        && record.verified
+        && record.value > 0;
+      if (!hasVerifiedReceipt && (fallbackTokenPayment || fallbackPixPayment)) addPaymentRow(record);
+      addProductRow(record, {
+        quantity: record.quantity,
+        revenue: fallbackTokenPayment || fallbackPixPayment,
+        unreconciled: record.verified && hasVerifiedReceipt ? 0 : (record.verified ? 0 : record.quantity),
+      });
+    });
+
+    ordersSnap?.forEach(doc => {
+      const data = doc.data() || {};
+      if (String(data.type || '').toLowerCase() === 'event') return;
+      const record = getRecord(data, 'orders', doc.id, data.amount ?? data.total);
+      if (!record) return;
+      if ((record.reference && registrationRefs.has(record.reference))
+          || (record.reference && seenProductOrderRefs.has(record.reference))) return;
+      if (record.reference) seenProductOrderRefs.add(record.reference);
+      addPaymentRow(record);
+      addProductRow(record, {
+        quantity: record.quantity,
+        revenue: record.verified,
+        unreconciled: record.verified ? 0 : record.quantity,
+      });
+    });
+
+    return { paymentRows, productRows };
+  }
+
+  function buildMonthSalesTopProducts(productRows, dateKey = null) {
+    const products = new Map();
+    productRows.forEach(row => {
+      if (dateKey && row.dateKey !== dateKey) return;
+      const entry = products.get(row.name) || {
+        name: row.name,
+        kind: row.kind,
+        quantity: 0,
+        pixAmount: 0,
+        tokenCount: 0,
+        unreconciled: 0,
+        transactions: new Set(),
+      };
+      entry.quantity += row.quantity;
+      entry.pixAmount += row.pixAmount;
+      entry.tokenCount += row.tokenCount;
+      entry.unreconciled += row.unreconciled;
+      if (row.quantity || row.pixAmount || row.tokenCount) entry.transactions.add(row.transactionKey);
+      products.set(row.name, entry);
+    });
+    return [...products.values()]
+      .filter(product => product.quantity > 0 || product.pixAmount > 0 || product.tokenCount > 0)
+      .map(product => ({ ...product, transactions: product.transactions.size }))
+      .sort((a, b) => b.quantity - a.quantity || b.pixAmount - a.pixAmount || b.tokenCount - a.tokenCount)
+      .slice(0, 5);
+  }
+
+  function buildMonthSalesDayDetail(registrationsSnap, ordersSnap, period, dateKey, eventNameMap = null) {
+    const rows = collectMonthSalesRows(registrationsSnap, ordersSnap, period)
+      .filter(row => row.dateKey === dateKey)
+      .sort((a, b) => b.date - a.date);
+    return {
+      ...buildMonthSalesDetailFromRows(rows, eventNameMap),
+      ...buildMonthSalesSupplementaryData(registrationsSnap, ordersSnap, period, eventNameMap),
+      dateKey,
+      scope: 'day',
+    };
+  }
+
+  function buildMonthSalesPeriodDetail(registrationsSnap, ordersSnap, period, eventNameMap = null) {
+    const rows = collectMonthSalesRows(registrationsSnap, ordersSnap, period)
+      .sort((a, b) => b.date - a.date);
+    const detail = buildMonthSalesDetailFromRows(rows, eventNameMap);
+    const dailyByKey = new Map();
+    rows.forEach(row => {
+      dailyByKey.set(row.dateKey, (dailyByKey.get(row.dateKey) || 0) + row.amount);
+    });
+    const year = period.start.getFullYear();
+    const month = period.start.getMonth();
+    const dayCount = new Date(year, month + 1, 0).getDate();
+    const daily = Array.from({ length: dayCount }, (_, index) => {
+      const date = new Date(year, month, index + 1, 12);
+      const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
+      return {
+        dateKey,
+        day: index + 1,
+        label: String(index + 1).padStart(2, '0'),
+        amount: dailyByKey.get(dateKey) || 0,
+        date,
+      };
+    });
+    return {
+      ...detail,
+      ...buildMonthSalesSupplementaryData(registrationsSnap, ordersSnap, period, eventNameMap),
+      scope: 'month',
+      periodLabel: period.label,
+      periodMonth: period.start.getMonth() + 1,
+      daily,
+    };
   }
 
   let selectedMonthSalesDate = null;
@@ -2426,7 +2706,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
       loadMonthSalesCollection(period, 'registrations'),
       loadMonthSalesCollection(period, 'orders')
     ]);
-    return buildMonthSalesSummary(registrationsSnap, ordersSnap, period);
+    return {
+      ...buildMonthSalesSummary(registrationsSnap, ordersSnap, period),
+      registrationsSnap,
+      ordersSnap,
+      period,
+    };
   }
 
   function updateMonthSalesNavigation() {
@@ -2447,6 +2732,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (!selectedMonthSalesDate || !listEl) return;
     const requestVersion = ++monthSalesRequestVersion;
     const period = getMonthSalesPeriod(selectedMonthSalesDate);
+    const headingEl = document.getElementById('monthSalesHeading');
+    const subtitleEl = document.getElementById('monthSalesSubtitle');
+    const navigationEl = document.getElementById('monthSalesNavigation');
+    const totalCardEl = document.getElementById('monthSalesTotalCard');
+    if (headingEl) headingEl.textContent = 'Faturamento por dia';
+    if (subtitleEl) subtitleEl.textContent = 'Vendas confirmadas no período selecionado';
+    if (navigationEl) navigationEl.hidden = false;
+    if (totalCardEl) totalCardEl.hidden = false;
     updateMonthSalesNavigation();
     if (totalEl) totalEl.textContent = '—';
     listEl.innerHTML = '<div class="month-sales-empty"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>Carregando vendas...</span></div>';
@@ -2461,16 +2754,407 @@ window.showWarningToast = function(message, title = 'Atenção') {
         return;
       }
       listEl.innerHTML = summary.entries.map(entry => `
-        <div class="month-sales-row">
-          <span><i class="fas fa-calendar-day" aria-hidden="true"></i>${entry.label}</span>
-          <strong>${brl(entry.amount)}</strong>
-        </div>
+        <button type="button" class="month-sales-row" onclick="openMonthSalesDay('${entry.dateKey}')"
+                aria-label="Ver detalhes de ${entry.label}: ${entry.saleCount} vendas, ${brl(entry.amount)}">
+          <span><span><i class="fas fa-calendar-day" aria-hidden="true"></i>${entry.label}<small class="month-sales-row-count">${entry.saleCount} ${entry.saleCount === 1 ? 'venda' : 'vendas'}</small></span></span>
+          <strong>${brl(entry.amount)}<i class="fas fa-chevron-right month-sales-row-arrow" aria-hidden="true"></i></strong>
+        </button>
       `).join('');
     } catch (_) {
       if (requestVersion !== monthSalesRequestVersion) return;
       if (totalEl) totalEl.textContent = '—';
       listEl.innerHTML = '<div class="month-sales-empty month-sales-error">Não foi possível carregar este período. Verifique a conexão e tente novamente.</div>';
     }
+  }
+
+  function renderMonthSalesDayDetail(detail, dayKey, eventNameMap = null) {
+    const isMonth = detail.scope === 'month';
+    const date = new Date(`${dayKey}T12:00:00`);
+    const dateLabel = isMonth
+      ? detail.periodLabel
+      : Number.isNaN(date.getTime())
+        ? dayKey
+        : date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const periodMonthLabel = String(detail.periodMonth || '').padStart(2, '0');
+    const chart = { width: 820, height: 238, left: 78, right: 16, top: 18, bottom: 34 };
+    chart.plotWidth = chart.width - chart.left - chart.right;
+    chart.plotHeight = chart.height - chart.top - chart.bottom;
+    const chartItems = isMonth
+      ? detail.daily.map(day => ({ key: day.day, label: day.label, amount: day.amount, date: day.date }))
+      : detail.hourly.map(hour => ({ key: hour.hour, label: `${String(hour.hour).padStart(2, '0')}h`, amount: hour.amount }));
+    const maxChartAmount = Math.max(0, ...chartItems.map(item => item.amount));
+    const safeMax = Math.max(1, maxChartAmount);
+    const magnitude = 10 ** Math.floor(Math.log10(safeMax));
+    const normalizedMax = safeMax / magnitude;
+    const axisStep = normalizedMax <= 1 ? 1 : normalizedMax <= 2 ? 2 : normalizedMax <= 5 ? 5 : 10;
+    const axisMax = axisStep * magnitude;
+    const axisLabel = value => value >= 1000
+      ? `R$ ${(value / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`
+      : `R$ ${value.toLocaleString('pt-BR', {
+          maximumFractionDigits: Number.isInteger(value) ? (value < 10 ? 2 : 0) : 2,
+        })}`;
+    const gridMarkup = Array.from({ length: 5 }, (_, index) => {
+      const value = axisMax * index / 4;
+      const y = chart.top + chart.plotHeight - (chart.plotHeight * index / 4);
+      return `<g class="month-sales-chart-tick">
+        <line x1="${chart.left}" y1="${y}" x2="${chart.width - chart.right}" y2="${y}"></line>
+        <text x="${chart.left - 10}" y="${y + 4}" text-anchor="end">${escapePendingHtml(axisLabel(value))}</text>
+      </g>`;
+    }).join('');
+    const cellWidth = chart.plotWidth / chartItems.length;
+    const barWidth = Math.min(isMonth ? 16 : 19, cellWidth * 0.66);
+    const barsMarkup = chartItems.map((item, index) => {
+      const barHeight = maxChartAmount ? (item.amount / axisMax) * chart.plotHeight : 0;
+      const x = chart.left + index * cellWidth + (cellWidth - barWidth) / 2;
+      const y = chart.top + chart.plotHeight - barHeight;
+      const itemLabel = isMonth
+        ? `${String(item.key).padStart(2, '0')}/${periodMonthLabel}`
+        : item.label;
+      const isPeak = item.amount > 0 && item.amount === maxChartAmount;
+      return `<g class="month-sales-hour-mark${isPeak ? ' is-peak' : ''}" tabindex="0" aria-label="${itemLabel}: ${brl(item.amount)}">
+        <title>${itemLabel} · ${brl(item.amount)}</title>
+        ${item.amount > 0 ? `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="5"></rect>` : ''}
+      </g>`;
+    }).join('');
+    const chartLabelIndices = chartItems.flatMap((item, index) => {
+      if (!isMonth) return item.key % 3 === 0 ? [index] : [];
+      return item.key === 1 || item.key % 5 === 0 || index === chartItems.length - 1 ? [index] : [];
+    });
+    const hourLabels = chartLabelIndices.map(index => {
+      const item = chartItems[index];
+      const x = chart.left + index * cellWidth + cellWidth / 2;
+      return `<text class="month-sales-chart-hour-label" x="${x}" y="${chart.height - 8}" text-anchor="middle">${item.label}</text>`;
+    }).join('');
+    const peakItem = chartItems.find(item => item.amount === maxChartAmount && item.amount > 0);
+    const peakLabel = peakItem
+      ? isMonth
+        ? `em ${String(peakItem.key).padStart(2, '0')}/${periodMonthLabel}`
+        : `às ${peakItem.label}`
+      : '';
+    const hourlyMarkup = `<div class="month-sales-chart-summary">
+        <span>${isMonth ? 'Faturamento por dia' : 'Faturamento por hora'}</span>
+        ${peakItem ? `<span class="month-sales-chart-peak"><i class="fas fa-arrow-up" aria-hidden="true"></i> ${isMonth ? 'Maior faturamento' : 'Pico'} ${peakLabel}<b>${brl(peakItem.amount)}</b></span>` : `<span class="month-sales-chart-peak">Sem vendas neste ${isMonth ? 'mês' : 'dia'}</span>`}
+      </div>
+      <div class="month-sales-hour-scroll">
+        <svg class="month-sales-hour-svg" viewBox="0 0 ${chart.width} ${chart.height}" role="group" aria-label="${isMonth ? `Faturamento por dia em ${dateLabel}` : 'Faturamento por hora, das 00h às 23h'}">
+          <defs><linearGradient id="monthSalesBarGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#60a5fa"></stop><stop offset="100%" stop-color="#2563eb"></stop></linearGradient></defs>
+          ${gridMarkup}
+          <line class="month-sales-chart-baseline" x1="${chart.left}" y1="${chart.top + chart.plotHeight}" x2="${chart.width - chart.right}" y2="${chart.top + chart.plotHeight}"></line>
+          ${barsMarkup}
+          ${hourLabels}
+        </svg>
+      </div>`;
+    const scopedPaymentRows = (detail.paymentRows || []).filter(row => isMonth || row.dateKey === dayKey);
+    const paymentChartItems = chartItems.map(item => {
+      const itemRows = scopedPaymentRows.filter(row => isMonth
+        ? Number(row.dateKey.slice(-2)) === item.key
+        : row.hour === item.key);
+      return {
+        ...item,
+        pix: itemRows.filter(row => row.method === 'pix').reduce((sum, row) => sum + row.value, 0),
+        tokens: itemRows.filter(row => row.method === 'tokens').reduce((sum, row) => sum + row.value, 0),
+      };
+    });
+    const paymentTotals = {
+      pix: scopedPaymentRows.filter(row => row.method === 'pix').reduce((sum, row) => sum + row.value, 0),
+      tokens: scopedPaymentRows.filter(row => row.method === 'tokens').reduce((sum, row) => sum + row.value, 0),
+      pixSales: new Set(scopedPaymentRows.filter(row => row.method === 'pix').map(row => row.transactionKey)).size,
+      tokenSales: new Set(scopedPaymentRows.filter(row => row.method === 'tokens').map(row => row.transactionKey)).size,
+    };
+    const paymentMethodSales = paymentTotals.pixSales + paymentTotals.tokenSales;
+    const pixShare = paymentMethodSales ? paymentTotals.pixSales / paymentMethodSales * 100 : 0;
+    const paymentMethodsMarkup = isMonth
+      ? `<section class="month-sales-detail-section">
+          <h4>FORMAS DE PAGAMENTO</h4>
+          <p class="month-sales-detail-note">Distribuição das vendas confirmadas no mês por método.</p>
+          <div class="month-sales-methods">
+            <div class="month-sales-method-donut${paymentMethodSales ? '' : ' is-empty'}" style="--pix-share:${pixShare.toFixed(1)}%" role="img" aria-label="PIX: ${paymentTotals.pixSales} vendas; tokens: ${paymentTotals.tokenSales} vendas">
+              <div><strong>${paymentMethodSales}</strong><span>${paymentMethodSales === 1 ? 'venda' : 'vendas'}</span></div>
+            </div>
+            <div class="month-sales-method-legend">
+              <div class="month-sales-method-row">
+                <span class="month-sales-method-swatch is-pix" aria-hidden="true"></span>
+                <div><strong>MP / PIX</strong><small>${paymentTotals.pixSales} ${paymentTotals.pixSales === 1 ? 'venda' : 'vendas'} · ${pixShare.toFixed(1).replace('.', ',')}%</small></div>
+                <b>${brl(paymentTotals.pix)}</b>
+              </div>
+              <div class="month-sales-method-row">
+                <span class="month-sales-method-swatch is-tokens" aria-hidden="true"></span>
+                <div><strong>Tokens</strong><small>${paymentTotals.tokenSales} ${paymentTotals.tokenSales === 1 ? 'venda' : 'vendas'} · ${(100 - pixShare).toFixed(1).replace('.', ',')}%</small></div>
+                <b>${paymentTotals.tokens.toLocaleString('pt-BR')} tokens</b>
+              </div>
+            </div>
+          </div>
+        </section>`
+      : '';
+    const renderPaymentSeries = (method, title, unitLabel, valueFormatter) => {
+      const values = paymentChartItems.map(item => item[method]);
+      const maximum = Math.max(0, ...values);
+      const svg = { width: 820, height: 210, left: 72, right: 18, top: 18, bottom: 34 };
+      const plotWidth = svg.width - svg.left - svg.right;
+      const plotHeight = svg.height - svg.top - svg.bottom;
+      const cell = plotWidth / paymentChartItems.length;
+      const bar = Math.min(24, cell * 0.62);
+      const axisFormatter = method === 'pix'
+        ? value => `R$ ${value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`
+        : value => value.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+      const grid = maximum ? [0.25, 0.5, 0.75, 1].map(fraction => {
+        const y = svg.top + plotHeight - plotHeight * fraction;
+        return `<g class="month-sales-payment-tick">
+          <line class="month-sales-payment-gridline" x1="${svg.left}" y1="${y}" x2="${svg.width - svg.right}" y2="${y}"></line>
+          <text x="${svg.left - 9}" y="${y + 4}" text-anchor="end">${axisFormatter(maximum * fraction)}</text>
+        </g>`;
+      }).join('') : '';
+      const marks = paymentChartItems.map((item, index) => {
+        const value = item[method];
+        const height = maximum ? value / maximum * plotHeight : 0;
+        const x = svg.left + index * cell + (cell - bar) / 2;
+        const y = svg.top + plotHeight - height;
+        const isPeak = maximum > 0 && value === maximum;
+        const label = isMonth
+          ? `${String(item.key).padStart(2, '0')}/${periodMonthLabel}`
+          : item.label;
+        return `<g class="month-sales-payment-mark is-${method}${isPeak ? ' is-peak' : ''}" tabindex="0" aria-label="${label}: ${valueFormatter(value)}">
+          <title>${label} · ${valueFormatter(value)}</title>
+          ${value > 0 ? `<rect x="${x}" y="${y}" width="${bar}" height="${height}" rx="4"></rect>` : ''}
+          ${isPeak ? `<text class="month-sales-payment-peak-label" x="${x + bar / 2}" y="${Math.max(svg.top + 11, y - 6)}" text-anchor="middle">${valueFormatter(value)}</text>` : ''}
+        </g>`;
+      }).join('');
+      const labels = chartLabelIndices.map(index => {
+        const item = paymentChartItems[index];
+        const x = svg.left + index * cell + cell / 2;
+        return `<text class="month-sales-chart-hour-label" x="${x}" y="${svg.height - 7}" text-anchor="middle">${item.label}</text>`;
+      }).join('');
+      const total = paymentTotals[method];
+      const saleCount = paymentTotals[method === 'pix' ? 'pixSales' : 'tokenSales'];
+      const emptyMessage = method === 'pix'
+        ? 'Sem recebimentos MP / PIX neste período'
+        : 'Nenhum token debitado neste período';
+      return `<div class="month-sales-payment-card">
+        <div class="month-sales-payment-header">
+          <div><strong>${title}</strong><span>${saleCount} ${saleCount === 1 ? 'venda' : 'vendas'} · ${unitLabel} · passe o cursor sobre as barras para ver valores</span></div>
+          <b>${valueFormatter(total)}</b>
+        </div>
+        <div class="month-sales-payment-chart-scroll">
+          <svg class="month-sales-payment-svg" viewBox="0 0 ${svg.width} ${svg.height}" role="group" aria-label="${title} por ${isMonth ? 'dia' : 'horário'} em ${escapePendingHtml(dateLabel)}; eixo vertical em ${unitLabel}">
+            ${grid}
+            <line class="month-sales-chart-baseline" x1="${svg.left}" y1="${svg.top + plotHeight}" x2="${svg.width - svg.right}" y2="${svg.top + plotHeight}"></line>
+            <text class="month-sales-payment-axis-zero" x="${svg.left - 9}" y="${svg.top + plotHeight + 4}" text-anchor="end">${method === 'pix' ? 'R$ 0' : '0'}</text>
+            ${marks}
+            ${labels}
+            ${!maximum ? `<text class="month-sales-payment-empty" x="${svg.left + plotWidth / 2}" y="${svg.top + plotHeight / 2}" text-anchor="middle">${emptyMessage}</text>` : ''}
+          </svg>
+        </div>
+      </div>`;
+    };
+    const paymentChartMarkup = `<section class="month-sales-detail-section">
+        <h4>VENDAS PIX E TOKENS</h4>
+        <p class="month-sales-detail-note">Somente pagamentos confirmados e conciliados pelo servidor.</p>
+        <div class="month-sales-payment-grid">
+          ${renderPaymentSeries('pix', 'MP / PIX', 'valor recebido', brl)}
+          ${renderPaymentSeries('tokens', 'Tokens usados', 'tokens debitados', value => `${value.toLocaleString('pt-BR')} tokens`)}
+        </div>
+      </section>`;
+    const monthPaymentMethodsMarkup = paymentMethodsMarkup;
+    const topProducts = buildMonthSalesTopProducts(detail.productRows || [], isMonth ? null : dayKey);
+    const maxTopProductQuantity = Math.max(1, ...topProducts.map(product => product.quantity));
+    const topProductsMarkup = `<section class="month-sales-detail-section">
+        <h4>TOP PRODUTOS</h4>
+        <p class="month-sales-detail-note">Ordenado por vagas e unidades pagas; vendas não conciliadas aparecem identificadas.</p>
+        ${topProducts.length ? `<ol class="month-sales-top-products">${topProducts.map((product, index) => {
+          const quantityLabel = product.kind === 'event'
+            ? `${product.quantity} ${product.quantity === 1 ? 'reserva' : 'reservas'}`
+            : `${product.quantity} ${product.quantity === 1 ? 'unidade' : 'unidades'}`;
+          const barWidth = Math.max(0, Math.min(100, product.quantity / maxTopProductQuantity * 100));
+          const amounts = [
+            product.pixAmount > 0 ? `PIX ${brl(product.pixAmount)}` : '',
+            product.tokenCount > 0 ? `${product.tokenCount.toLocaleString('pt-BR')} tokens` : '',
+            product.unreconciled > 0 ? `${product.unreconciled} sem conciliação` : '',
+          ].filter(Boolean).join(' · ');
+          return `<li class="month-sales-top-product">
+            <span class="month-sales-top-product-rank">${index + 1}</span>
+            <span class="month-sales-top-product-content">
+              <span class="month-sales-top-product-name">${escapePendingHtml(product.name)}<small>${quantityLabel}${amounts ? ` · ${amounts}` : ''}</small></span>
+              <span class="month-sales-top-product-track" aria-hidden="true"><span style="width:${barWidth.toFixed(1)}%"></span></span>
+            </span>
+            <span class="month-sales-top-product-count">${product.transactions} ${product.transactions === 1 ? 'venda' : 'vendas'}</span>
+          </li>`;
+        }).join('')}</ol>` : '<div class="month-sales-category-empty">Nenhuma venda paga encontrada neste período.</div>'}
+      </section>`;
+    const renderCategory = (kind, title) => {
+      const entries = detail.categories.filter(category => category.kind === kind);
+      return `<section class="month-sales-detail-section">
+        <h4>${title}</h4>
+        ${entries.length ? entries.map(entry => `
+          <div class="month-sales-category-row">
+            <div class="min-w-0">
+              <div class="month-sales-category-name">${escapePendingHtml(entry.name)}</div>
+              <div class="month-sales-category-meta">${entry.saleCount} ${entry.saleCount === 1 ? 'venda' : 'vendas'} · ${entry.quantity} ${entry.quantity === 1 ? 'item' : 'itens'}</div>
+            </div>
+            <strong class="month-sales-category-amount">${brl(entry.amount)}</strong>
+          </div>`).join('') : '<div class="month-sales-category-empty">Nenhuma venda nesta categoria.</div>'}
+      </section>`;
+    };
+    const transactionMarkup = detail.transactions.map(transaction => {
+      const lines = transaction.lines.map(line => {
+        const itemLabel = line.kind === 'event'
+          ? formatAdminEventPurchaseLabel({
+              eventType: line.eventType,
+              eventName: line.categoryName,
+              title: line.categoryName,
+              eventDate: line.eventDate,
+              date: line.eventDate,
+              schedule: line.schedule,
+            }, eventNameMap)
+          : line.item;
+        const details = [
+          line.teamName ? `Time: ${line.teamName}` : '',
+          line.quantity > 1 ? `${line.quantity} itens` : '1 item',
+        ].filter(Boolean).join(' · ');
+        return `<div>${escapePendingHtml(itemLabel)}${details ? `<span class="month-sales-transaction-meta"> · ${escapePendingHtml(details)}</span>` : ''}</div>`;
+      }).join('');
+      const paymentLabel = [...transaction.paymentMethods].filter(Boolean).join(', ') || 'Pagamento online';
+      const timeLabel = transaction.date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const transactionDateLabel = isMonth
+        ? `${transaction.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · ${timeLabel}`
+        : timeLabel;
+      return `<article class="month-sales-transaction">
+        <div class="min-w-0">
+          <div class="month-sales-transaction-name"><span class="month-sales-kind">${transaction.lines[0]?.kind === 'event' ? 'Evento' : 'Produto'}</span>${transactionDateLabel}</div>
+          <div class="month-sales-transaction-meta">${lines}<div>Pagamento: ${escapePendingHtml(paymentLabel)}</div></div>
+        </div>
+        <strong class="month-sales-transaction-amount">${brl(transaction.amount)}</strong>
+      </article>`;
+    }).join('');
+
+    return `<div class="month-sales-day-details">
+      <button type="button" class="month-sales-back" onclick="showMonthSalesDays()">
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Voltar aos dias
+      </button>
+      <div class="month-sales-day-kpis">
+        <div class="month-sales-day-kpi"><div class="month-sales-day-kpi-label">Faturamento confirmado</div><div class="month-sales-day-kpi-value">${brl(detail.total)}</div></div>
+        <div class="month-sales-day-kpi"><div class="month-sales-day-kpi-label">Quantidade de vendas</div><div class="month-sales-day-kpi-value">${detail.transactionsCount}</div></div>
+        <div class="month-sales-day-kpi"><div class="month-sales-day-kpi-label">Ticket médio</div><div class="month-sales-day-kpi-value">${brl(detail.averageTicket)}</div></div>
+      </div>
+      <section class="month-sales-detail-section">
+        <h4>${isMonth ? 'Faturamento ao longo do mês' : 'Vendas por horário'}</h4>
+        <p class="month-sales-detail-note">${escapePendingHtml(dateLabel)} · valores confirmados ${isMonth ? 'em cada dia' : 'em cada horário'}</p>
+        ${hourlyMarkup}
+      </section>
+      ${paymentChartMarkup}
+      ${monthPaymentMethodsMarkup}
+      ${topProductsMarkup}
+      <div class="month-sales-category-grid">
+        ${renderCategory('event', 'Eventos')}
+        ${renderCategory('product', 'Produtos')}
+      </div>
+      <section class="month-sales-detail-section">
+        <h4>Vendas detalhadas</h4>
+        <p class="month-sales-detail-note">${detail.transactionsCount} transações confirmadas · pendentes e canceladas não entram neste resumo.</p>
+        <div class="month-sales-transaction-list">${transactionMarkup || `<div class="month-sales-category-empty">Nenhuma venda confirmada neste ${isMonth ? 'mês' : 'dia'}.</div>`}</div>
+      </section>
+    </div>`;
+  }
+
+  async function openMonthSalesDay(dateKey) {
+    const listEl = document.getElementById('monthSalesList');
+    if (!selectedMonthSalesDate || !listEl || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) return;
+    const date = new Date(`${dateKey}T12:00:00`);
+    if (Number.isNaN(date.getTime()) || getMonthSalesPeriod(date).key !== getMonthSalesPeriod(selectedMonthSalesDate).key) return;
+    const requestVersion = ++monthSalesRequestVersion;
+    const headingEl = document.getElementById('monthSalesHeading');
+    const subtitleEl = document.getElementById('monthSalesSubtitle');
+    const navigationEl = document.getElementById('monthSalesNavigation');
+    const totalCardEl = document.getElementById('monthSalesTotalCard');
+    if (headingEl) {
+      headingEl.textContent = `Detalhes de ${date.toLocaleDateString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      })}`;
+    }
+    if (subtitleEl) subtitleEl.textContent = 'Vendas e indicadores do dia selecionado';
+    if (navigationEl) navigationEl.hidden = true;
+    if (totalCardEl) totalCardEl.hidden = true;
+    listEl.innerHTML = '<div class="month-sales-empty"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>Carregando detalhes do dia...</span></div>';
+
+    try {
+      const [monthData, eventNameMap] = await Promise.all([
+        loadMonthSalesData(date),
+        loadAdminEventNameMap(),
+      ]);
+      if (requestVersion !== monthSalesRequestVersion ||
+          document.getElementById('monthSalesModal')?.hidden) return;
+      const detail = buildMonthSalesDayDetail(
+        monthData.registrationsSnap,
+        monthData.ordersSnap,
+        monthData.period,
+        dateKey,
+        eventNameMap,
+      );
+      listEl.innerHTML = renderMonthSalesDayDetail(detail, dateKey, eventNameMap);
+    } catch (_) {
+      if (requestVersion !== monthSalesRequestVersion) return;
+      listEl.innerHTML = `<div class="month-sales-empty month-sales-error">
+        <button type="button" class="month-sales-back" onclick="showMonthSalesDays()"><i class="fas fa-arrow-left" aria-hidden="true"></i> Voltar aos dias</button>
+        Não foi possível carregar as vendas de ${escapePendingHtml(dateKey)}. Tente novamente.
+      </div>`;
+    }
+  }
+
+  function openTodaySalesDetail() {
+    const modal = document.getElementById('monthSalesModal');
+    if (!modal || !window.firebaseDb) return;
+    const now = new Date();
+    const fallbackDateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayKey = window.BrasiliaTime?.dateKey?.() || fallbackDateKey;
+    const today = new Date(`${todayKey}T12:00:00`);
+    if (!Number.isFinite(today.getTime())) return;
+
+    selectedMonthSalesDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    modal.hidden = false;
+    void openMonthSalesDay(todayKey);
+  }
+
+  async function openMonthSalesPeriodDetail() {
+    if (!selectedMonthSalesDate) return;
+    const listEl = document.getElementById('monthSalesList');
+    if (!listEl) return;
+    const requestVersion = ++monthSalesRequestVersion;
+    const period = getMonthSalesPeriod(selectedMonthSalesDate);
+    const headingEl = document.getElementById('monthSalesHeading');
+    const subtitleEl = document.getElementById('monthSalesSubtitle');
+    const navigationEl = document.getElementById('monthSalesNavigation');
+    const totalCardEl = document.getElementById('monthSalesTotalCard');
+    if (headingEl) headingEl.textContent = `Detalhes de ${period.label}`;
+    if (subtitleEl) subtitleEl.textContent = 'Vendas e indicadores do mês inteiro';
+    if (navigationEl) navigationEl.hidden = true;
+    if (totalCardEl) totalCardEl.hidden = true;
+    listEl.innerHTML = '<div class="month-sales-empty"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>Carregando detalhes do mês...</span></div>';
+
+    try {
+      const [monthData, eventNameMap] = await Promise.all([
+        loadMonthSalesData(selectedMonthSalesDate),
+        loadAdminEventNameMap(),
+      ]);
+      if (requestVersion !== monthSalesRequestVersion ||
+          document.getElementById('monthSalesModal')?.hidden) return;
+      const detail = buildMonthSalesPeriodDetail(
+        monthData.registrationsSnap,
+        monthData.ordersSnap,
+        monthData.period,
+        eventNameMap,
+      );
+      const firstDayKey = `${period.start.getFullYear()}-${String(period.start.getMonth() + 1).padStart(2, '0')}-01`;
+      listEl.innerHTML = renderMonthSalesDayDetail(detail, firstDayKey, eventNameMap);
+    } catch (_) {
+      if (requestVersion !== monthSalesRequestVersion) return;
+      listEl.innerHTML = `<div class="month-sales-empty month-sales-error">
+        <button type="button" class="month-sales-back" onclick="showMonthSalesDays()"><i class="fas fa-arrow-left" aria-hidden="true"></i> Voltar aos dias</button>
+        Não foi possível carregar os detalhes de ${escapePendingHtml(period.label)}. Tente novamente.
+      </div>`;
+    }
+  }
+
+  function showMonthSalesDays() {
+    void renderSelectedMonthSales();
   }
 
   function openMonthSalesModal() {
@@ -2507,6 +3191,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
   window.closeMonthSalesModal = closeMonthSalesModal;
   window.changeMonthSales = changeMonthSales;
   window.showCurrentMonthSales = showCurrentMonthSales;
+  window.openTodaySalesDetail = openTodaySalesDetail;
+  window.openMonthSalesDay = openMonthSalesDay;
+  window.openMonthSalesPeriodDetail = openMonthSalesPeriodDetail;
+  window.showMonthSalesDays = showMonthSalesDays;
 
   async function renderSalesChart(){
     const canvas = document.getElementById('salesChart');
@@ -3505,7 +4193,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   function getEventTypeConfig() {
     return {
       canonical: {
-        'modo-liga': (s) => s === 'liga' || s === 'acesso' || s === 'modo-liga' || s.includes('modo liga') || s.includes('modo-liga'),
+        'modo-liga': (s) => s === 'liga' || s === 'modo-liga' || s.includes('modo liga') || s.includes('modo-liga'),
         'camp-final': (s) => s === 'camp-final' || s.includes('camp final') || s.includes('vaga direto') || s.includes('camp-final'),
         'camp-freitas': (s) => s === 'camp' || s === 'camp-freitas' || s.includes('camp freitas') || s.includes('camp-freitas'),
         'semanal-freitas': (s) => s === 'semanal' || s === 'semanal-freitas' || s.includes('semanal freitas') || s.includes('semanal-freitas'),
@@ -3523,21 +4211,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // Normaliza tipo de evento para forma canônica
   function canonicalType(t) {
-    const s = String(t||'').toLowerCase().trim().replace(/[\s_]+/g, '-');
+    const s = String(t||'').toLowerCase();
     const config = getEventTypeConfig();
     for (const [canonical, matcher] of Object.entries(config.canonical)) {
       if (matcher(s)) return canonical;
     }
     return t;
-  }
-
-  function canonicalAdminEventType(event, docId) {
-    const values = [event?.eventType, event?.name, event?.label, event?.title, event?.modo].filter(Boolean);
-    const isModoLiga = values.some(value => {
-      const type = String(value || '').toLowerCase().trim().replace(/[\s_]+/g, '-');
-      return type === 'liga' || type === 'acesso' || type.includes('modo-liga');
-    });
-    return isModoLiga ? 'modo-liga' : canonicalType(event?.eventType || event?.name || docId);
   }
 
   // Resolve aliases para um tipo de evento
@@ -3602,7 +4281,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         opt.textContent = ev.name || d.id;
         // Tipo canônico: preferir campo eventType; se vazio, derivar do nome do evento; fallback: doc ID
         // CRÍTICO: 'XTreino Freitas' → canonicalType → 'xtreino-tokens' (mesmo valor que o booking flow salva em r.eventType)
-        const canon = canonicalAdminEventType(ev, d.id);
+        const canon = canonicalType(ev.eventType || ev.name || d.id);
         opt.dataset.canonicalType = canon;
         opt.dataset.rawEventId = d.id;
         // evFieldType = tipo canônico que o booking flow usa ao salvar em r.eventType
@@ -3677,13 +4356,13 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   // Busca e normaliza horário em string
   function extractHour(hourStr) {
-    const match = String(hourStr ?? '').match(/(\d{1,2})/);
+    const match = String(hourStr || '').match(/(\d{1,2})/);
     if (!match) return null;
     return String(parseInt(match[1], 10)).padStart(2, '0');
   }
 
   // Busca overrides (travas e ocupações extras)
-  async function fetchScheduleOverrides(date, eventType, rawEventId = null, rawEventType = null) {
+  async function fetchScheduleOverrides(date, eventType, rawEventId = null) {
     const overrides = {};
     try {
       const { collection: c, query: q, where: w, getDocsFromServer: g } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
@@ -3696,7 +4375,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const canonEvent = canonicalType(eventType);
       const aliases = new Set(resolveAliases(eventType).filter(Boolean));
       if (rawEventId) aliases.add(rawEventId);
-      if (rawEventType) aliases.add(rawEventType);
 
       allSnap.forEach(d => {
         const raw = d.data() || {};
@@ -3708,7 +4386,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         if (!matchesCanon && !matchesAlias && !matchesRawId && !hasNoType) return;
 
         const hh = extractHour(scheduleOverrideHourValue(raw));
-        if (!hh) return;
+        if (hh === null) return;
         const k = `${hh}:00`;
         const agg = overrides[k] || { lockedAny: false, extraOccupied: 0 };
         agg.lockedAny = agg.lockedAny || (raw.locked === true);
@@ -3819,13 +4497,12 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Busca todos os overrides para um horário (consolidado)
-  async function findAllOverridesForHour(date, eventType, hh, rawEventId = null, rawEventType = null) {
+  async function findAllOverridesForHour(date, eventType, hh, rawEventId = null) {
     const { collection: c, query: q, where: w, getDocsFromServer: g } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
     const ovRef = c(window.firebaseDb, 'schedule_overrides');
     const variants = resolveAliases(eventType);
     const canon = canonicalType(eventType);
     if (rawEventId && rawEventId !== eventType && !variants.includes(rawEventId)) variants.push(rawEventId);
-    if (rawEventType && !variants.includes(rawEventType)) variants.push(rawEventType);
 
     // Uma leitura atual da data encontra também horas numéricas e aliases legados.
     const snap = await g(q(ovRef, w('date', '==', date)));
@@ -4081,7 +4758,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // Inscrições, ajustes e travas permanentes são independentes: buscar em paralelo.
       const [occupancyMap, overridesMap, permLockedHours] = await Promise.all([
         fetchRegistrationsByDate(date, evFieldType, ovEventType, rawEventId, eventName, rawEvType),
-        fetchScheduleOverrides(date, ovEventType, rawEventId, rawEvType),
+        fetchScheduleOverrides(date, ovEventType, rawEventId),
         fetchPermanentLockedHours(ovEventType, rawEvType, rawEventId)
       ]);
       
@@ -4231,7 +4908,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         } 
         else if (btnToggle) {
           const h = btnToggle.getAttribute('data-toggle-lock');
-          await handleToggleLock(h, date, eventType, ovEventType, rawEventId, rawEventType);
+          await handleToggleLock(h, date, eventType, ovEventType, rawEventId);
         }
         const btnPermLock = e.target.closest('[data-toggle-perm-lock]');
         if (btnPermLock) {
@@ -4349,7 +5026,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
 
   // Handler para toggle de travamento de horário
-  async function handleToggleLock(hour, date, eventType, ovEventType, rawEventId = null, rawEventType = null) {
+  async function handleToggleLock(hour, date, eventType, ovEventType, rawEventId = null) {
     
     const isFixedLock = false // (canonicalType(eventType) === 'modo-liga' && (hour === '16:00' || hour === '17:00'));
     
@@ -4377,7 +5054,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         return;
       }      
 
-      const docsArr = await findAllOverridesForHour(date, ovEventType, hh, rawEventId, rawEventType);
+      const docsArr = await findAllOverridesForHour(date, ovEventType, hh, rawEventId);
       if (docsArr.length > 0) {        
         // Verificar estado atual
         const anyLocked = docsArr.some(d => d.data()?.locked === true);
@@ -4731,7 +5408,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const rawIdLower = String(rawEventId||'').toLowerCase();
       const normalizeHour = (s)=>{ const m = String(s||'').match(/(\d{1,2})/); return m? String(parseInt(m[1],10)).padStart(2,'0') : null; };
       const targetHH = normalizeHour(hour);
-      const normalizeModoLigaValue = value =>
+      const normalizedModoLigaValue = value =>
         String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const isModoLigaRegistration = registration => {
         const existingDetection = [
@@ -4739,17 +5416,19 @@ window.showWarningToast = function(message, title = 'Atenção') {
           eventType,
           rawEventId,
           eventName,
-        ].some(value => normalizeModoLigaValue(value).includes('modoliga'));
+        ].some(value => normalizedModoLigaValue(value).includes('modoliga'));
         if (String(window.adminRoleLower || '').toLowerCase().trim() !== 'gerente') {
           return existingDetection;
         }
 
+        // Registros antigos de gerentes podem guardar o nome/ID do evento em
+        // campos alternativos, embora o evento selecionado seja Modo Liga.
         return existingDetection || [
           registration?.eventName,
           registration?.eventId,
           registration?.eventTitle,
           registration?.trainingType,
-        ].some(value => normalizeModoLigaValue(value).includes('modoliga'));
+        ].some(value => normalizedModoLigaValue(value).includes('modoliga'));
       };
 
       let countConfirmed = 0, countPending = 0;
@@ -4923,7 +5602,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             editBtn.disabled = true;
             editBtn.textContent = 'Preparando logo…';
             try {
-              const specLogos = await import('./js/admin-spec-logos.mjs?v=modo-liga-manager-spec-1');
+              const specLogos = await import('./js/admin-spec-logos.mjs?v=spec-logo-zip-chunks-1');
               const letter = specLogos.normalizeModoLigaSpecLetter(typedLetter);
               if (!letter) {
                 window.alert('Letra inválida. Use uma letra de A a Z.');
@@ -4933,31 +5612,25 @@ window.showWarningToast = function(message, title = 'Atenção') {
                 throw new Error('O horário selecionado não é válido para as logos Modo Liga.');
               }
 
-              const logoUrl = await resolveSpecOriginalLogoUrl(registration);
-              if (!logoUrl) {
-                showToast(
-                  'warning',
-                  'Não encontrei o arquivo original desta inscrição. Peça ao cliente para reenviar a logo; não usarei a miniatura.',
-                  'Logo original ausente',
-                );
-                return;
+              const currentUser = window.firebaseAuth?.currentUser;
+              if (!currentUser) throw new Error('Entre novamente no painel para acessar a logo original.');
+              const token = await currentUser.getIdToken();
+              showToast('info', `Buscando a logo original no servidor para ${targetHH}H • ${letter}…`, 'Logo SPEC');
+              const response = await fetch(
+                `/api/spec-logos/registrations/${encodeURIComponent(regId)}/original`,
+                { headers: { Authorization: `Bearer ${token}` } },
+              );
+              if (!response.ok) {
+                let payload = null;
+                try { payload = await response.json(); } catch { payload = null; }
+                throw new Error(payload?.error || `Não foi possível baixar a logo original (HTTP ${response.status}).`);
               }
-
-              showToast('info', `Buscando e preparando a logo original para ${targetHH}H • ${letter}…`, 'Logo SPEC');
-              const response = await fetch(logoUrl, { mode: 'cors' });
-              if (!response.ok) throw new Error('Não foi possível baixar a logo original da inscrição.');
               const sourceBlob = await response.blob();
               const supportedMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
               let mimeType = String(sourceBlob.type || '').split(';')[0].trim().toLowerCase();
               if (mimeType === 'image/jpg') mimeType = 'image/jpeg';
               if (!supportedMimeTypes.has(mimeType)) {
-                const extension = new URL(logoUrl, window.location.href).pathname.match(/\.(png|jpe?g|webp)$/i)?.[1]?.toLowerCase();
-                mimeType = extension === 'png' ? 'image/png'
-                  : ['jpg', 'jpeg'].includes(extension) ? 'image/jpeg'
-                    : extension === 'webp' ? 'image/webp' : '';
-              }
-              if (!supportedMimeTypes.has(mimeType)) {
-                throw new Error('A logo original precisa estar em PNG, JPG ou WebP para remover o fundo.');
+                throw new Error('O servidor não retornou uma logo original PNG, JPG ou WebP.');
               }
               const logoFile = new File(
                 [sourceBlob],
@@ -10664,6 +11337,40 @@ function setupCouponUsageFilters() {
     }
   }, 100);
 }
+function normalizeShirtShipping(order) {
+  const productOptions = order?.productOptions || {};
+  const sources = [
+    order?.shipping,
+    order?.shippingAddress,
+    order?.delivery,
+    productOptions.delivery
+  ].filter(source => source && typeof source === 'object' && !Array.isArray(source));
+  const pick = (...keys) => {
+    for (const source of sources) {
+      for (const key of keys) {
+        const value = source[key];
+        if (value !== undefined && value !== null && String(value).trim() !== '') {
+          return String(value).trim();
+        }
+      }
+    }
+    return '';
+  };
+
+  return {
+    name: pick('name', 'nome', 'fullName', 'recipientName'),
+    cpf: pick('cpf', 'CPF'),
+    cep: pick('cep', 'postalCode', 'zipCode'),
+    address: pick('address', 'rua', 'street', 'logradouro'),
+    number: pick('number', 'numero', 'addressNumber'),
+    complement: pick('complement', 'complemento'),
+    district: pick('district', 'bairro', 'neighborhood'),
+    city: pick('city', 'cidade', 'municipio', 'municipality'),
+    state: pick('state', 'estado', 'uf'),
+    shirtName: pick('shirtName', 'nomeCamisa', 'nameOnShirt') || productOptions.name || ''
+  };
+}
+
 // Listar pedidos de camisa e marcar envio
 async function loadShirtOrders(){
   try{
@@ -10676,21 +11383,33 @@ async function loadShirtOrders(){
       const data = d.data();
       const t = String(data.title||data.item||'').toLowerCase();
       if (t.includes('camisa')){
-        const shipping = data.shipping || (data.productOptions && data.productOptions.delivery) || {};
+        const shipping = normalizeShirtShipping(data);
         const status = data.shippingStatus || (data.shirtShipped?'shipped':'pending') || 'pending';
-        const addr = shipping.address ? `${shipping.address}, ${shipping.number||''} - ${shipping.district||''} - ${shipping.city||''}/${shipping.state||''}` : '';
-        const nameOnShirt = (shipping.shirtName) || (data.productOptions && data.productOptions.name) || '';
-        const extra = nameOnShirt ? ` • Nome na camisa: ${nameOnShirt}` : '';
+        const addressParts = [
+          shipping.address,
+          shipping.number,
+          shipping.district,
+          [shipping.city, shipping.state].filter(Boolean).join('/'),
+          shipping.cep ? `CEP ${shipping.cep}` : ''
+        ].filter(Boolean);
+        const addr = [
+          shipping.name ? `Para: ${shipping.name}` : '',
+          addressParts.join(' - ')
+        ].filter(Boolean).join(' • ');
+        const extra = shipping.shirtName ? ` • Nome na camisa: ${shipping.shirtName}` : '';
+        const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[char]));
         rows.push(`
           <tr class="border-b border-gray-100">
-            <td class="py-2 px-2">${data.customer||data.buyerEmail||data.email||''}</td>
-            <td class="py-2 px-2">${data.title||''}</td>
-            <td class="py-2 px-2">${addr ? addr + extra : '<span class=\'text-gray-400\'>Sem dados</span>'}</td>
+            <td class="py-2 px-2">${escapeHtml(data.customer||data.buyerEmail||data.email||'')}</td>
+            <td class="py-2 px-2">${escapeHtml(data.title||'')}</td>
+            <td class="py-2 px-2">${addr ? escapeHtml(addr + extra) : '<span class=\'text-gray-400\'>Sem dados</span>'}</td>
             <td class="py-2 px-2">${status==='shipped' ? '<span class="text-green-600">Enviado</span>' : '<span class="text-yellow-600">Aguardando</span>'}</td>
             <td class="py-2 px-2">
-              <button class="px-2 py-1 border rounded mr-2" onclick="openShirtOrder('${d.id}')">Abrir</button>
-              ${status==='shipped' ? '' : `<button class=\"px-2 py-1 bg-green-600 text-white rounded mr-2\" onclick=\"markShirtAsShipped('${d.id}')\">Marcar enviado</button>`}
-              <button class="px-2 py-1 bg-red-600 text-white rounded" onclick="deleteShirtOrder('${d.id}')">🗑️ Remover</button>
+              <button class="px-2 py-1 border rounded mr-2" onclick="openShirtOrder('${escapeHtml(d.id)}')">Abrir</button>
+              ${status==='shipped' ? '' : `<button class=\"px-2 py-1 bg-green-600 text-white rounded mr-2\" onclick=\"markShirtAsShipped('${escapeHtml(d.id)}')\">Marcar enviado</button>`}
+              <button class="px-2 py-1 bg-red-600 text-white rounded" onclick="deleteShirtOrder('${escapeHtml(d.id)}')">🗑️ Remover</button>
             </td>
           </tr>
         `);
@@ -10741,28 +11460,27 @@ async function openShirtOrder(orderId){
     const m = document.getElementById('shirtOrderModal');
     if (!m) return;
     const po = o.productOptions || {};
-    const shipping = o.shipping || po.delivery || {};
-    const cityUf = [shipping.city, shipping.state].filter(Boolean).join('/');
+    const shipping = normalizeShirtShipping(o);
     const status = o.shippingStatus === 'shipped' || o.shirtShipped ? 'Enviado' : 'Aguardando';
     // preencher campos
-    const set = (id, html) => { const el = m.querySelector('#'+id); if (el) el.innerHTML = html || ''; };
+    const set = (id, value) => { const el = m.querySelector('#'+id); if (el) el.textContent = value == null ? '' : String(value); };
     set('shirtOrderTitle', o.title || o.item || '-');
     set('shirtOrderCustomer', o.customerName || o.customer || o.buyerEmail || '-');
     set('shirtOrderEmail', o.buyerEmail || o.customer || '-');
     set('shirtOrderStatus', status);
     set('shirtOrderId', orderId);
     set('shirtOrderAmount', (o.amount!=null? Number(o.amount) : 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}));
-    set('shirtOrderSize', po.size || '-');
-    set('shirtOrderNameOnShirt', (shipping.shirtName || po.name || '-') );
-    set('shipNameVal', shipping.name || '');
-    set('shipCpfVal', shipping.cpf || '');
-    set('shipCepVal', shipping.cep || '');
-    set('shipAddressVal', shipping.address || '');
-    set('shipNumberVal', shipping.number || '');
-    set('shipComplementVal', shipping.complement || '');
-    set('shipDistrictVal', shipping.district || '');
-    set('shipCityVal', shipping.city || '');
-    set('shipStateVal', shipping.state || '');
+    set('shirtOrderSize', po.size || shipping.size || shipping.tamanho || '-');
+    set('shirtOrderNameOnShirt', shipping.shirtName || '-');
+    set('shipNameVal', shipping.name);
+    set('shipCpfVal', shipping.cpf);
+    set('shipCepVal', shipping.cep);
+    set('shipAddressVal', shipping.address);
+    set('shipNumberVal', shipping.number);
+    set('shipComplementVal', shipping.complement);
+    set('shipDistrictVal', shipping.district);
+    set('shipCityVal', shipping.city);
+    set('shipStateVal', shipping.state);
     // abrir
     m.classList.remove('hidden'); m.classList.add('flex');
   }catch(_){ }
@@ -13535,7 +14253,7 @@ async function openEventSlotsModal(eventId, eventName) {
             pending: 'bg-orange-100 text-orange-700'
         };
 
-        // Detectar se é Modo Liga para exibir botão SPEC
+        // Detectar se é Modo Liga para exibir o download das logos do horário
         const _isLigaEv = eventId === 'modo-liga' || (_evFieldType || '').includes('liga') || (_evFieldType || '').includes('modo');
 
         let html = '';
@@ -13547,7 +14265,7 @@ async function openEventSlotsModal(eventId, eventName) {
                 ? `<button onclick="baixarPacoteSPECPorGrupo('${escapeAdminHtml(_evFieldType||'')}','${escapeAdminHtml(eventId)}','${escapeAdminHtml(groupDate)}','${escapeAdminHtml(sched)}')"
                           class="ml-auto px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors flex-shrink-0"
                           title="Baixar logos originais deste horário em um ZIP">
-                     <i class="fas fa-download"></i> Logos
+                      <i class="fas fa-download"></i> Logos
                    </button>`
                 : '';
             html += `
@@ -13900,7 +14618,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionFreefireScoring':
-                    await import('./js/admin-freefire-scoring.mjs?v=general-ranking-v4')
+                    await import('./js/admin-freefire-scoring.mjs?v=ranking-logo-auto-3')
                         .then(m => m.openFreefireScoringAdmin())
                         .catch(error => {
                             console.error('[Free Fire] Falha ao carregar o placar:', error);

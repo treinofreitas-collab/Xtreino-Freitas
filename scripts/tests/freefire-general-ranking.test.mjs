@@ -7,6 +7,10 @@ import {
   parseGeneralRankingImport,
   rankGeneralRankingRows,
 } from '../../artifacts/xtreino/public/js/freefire-general-ranking.mjs';
+import {
+  chooseLatestGeneralRankingLogo,
+  syncGeneralRankingLogoToTeam,
+} from '../../artifacts/xtreino/public/js/freefire-general-ranking-store.mjs';
 
 test('imports Challenge.place Markdown standings with position, name, and points', () => {
   const imported = parseGeneralRankingImport([
@@ -117,4 +121,99 @@ test('builds one team contribution from duplicate rows and assigns shared ranks 
     { teamName: 'XLT IPHINITY', points: 23, wins: 1, kills: 11, logoUrl: 'logo.svg', logoSource: 'purchase' },
   ]);
   assert.deepEqual(rankGeneralRankingRows(teams).map(row => row.rank), [1, 1]);
+});
+
+test('chooses the newest purchase or SPEC logo regardless of source priority', () => {
+  const purchase = { logoUrl: 'purchase.webp', source: 'purchase', updatedAtMs: 200 };
+  const spec = { logoUrl: 'spec.webp', source: 'association', updatedAtMs: 300 };
+
+  assert.deepEqual(chooseLatestGeneralRankingLogo([purchase, spec]), spec);
+  assert.deepEqual(
+    chooseLatestGeneralRankingLogo([purchase, spec], {
+      logoUrl: 'older.webp',
+      logoSource: 'purchase',
+      logoUpdatedAt: 100,
+    }),
+    spec,
+  );
+});
+
+test('keeps a newer logo already saved on the public ranking row', () => {
+  assert.equal(
+    chooseLatestGeneralRankingLogo(
+      [{ logoUrl: 'old-purchase.webp', source: 'purchase', updatedAtMs: 100 }],
+      { logoUrl: 'new-spec.webp', logoSource: 'association', logoUpdatedAt: 200 },
+    ),
+    null,
+  );
+});
+
+test('a saved team logo updates only an existing ranking row and preserves points', async () => {
+  const originalWindow = globalThis.window;
+  const writes = [];
+  globalThis.window = {
+    __freefireRankingFirestore: {
+      collection: (_db, name) => ({ name }),
+      doc: (_db, collection, id) => ({ collection, id }),
+      runTransaction: async (_db, callback) => callback({
+        get: async reference => ({
+          exists: () => reference.collection === 'freefire_general_ranking',
+          data: () => ({
+            teamName: 'FOLTEST PRO',
+            logoUrl: 'https://storage.example/old.webp',
+            logoUpdatedAt: 100,
+            totalPoints: 1258,
+          }),
+        }),
+        update: (reference, patch) => writes.push({ reference, patch }),
+      }),
+      serverTimestamp: () => 'server timestamp',
+    },
+  };
+
+  try {
+    const updated = await syncGeneralRankingLogoToTeam({}, {
+      teamName: 'FOLTEST PRO',
+      logoUrl: 'https://storage.example/new.webp',
+      source: 'custom',
+      updatedAtMs: 200,
+    });
+    assert.equal(updated, true);
+    assert.equal(writes[0].reference.collection, 'freefire_general_ranking');
+    assert.equal(writes[0].reference.id, 'team_foltest_pro');
+    assert.equal(writes[0].patch.logoUrl, 'https://storage.example/new.webp');
+    assert.equal(writes[0].patch.totalPoints, undefined);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+test('a saved logo does not create a ranking row for an unranked team', async () => {
+  const originalWindow = globalThis.window;
+  const writes = [];
+  globalThis.window = {
+    __freefireRankingFirestore: {
+      collection: (_db, name) => ({ name }),
+      doc: (_db, collection, id) => ({ collection, id }),
+      runTransaction: async (_db, callback) => callback({
+        get: async () => ({ exists: () => false, data: () => ({}) }),
+        update: (reference, patch) => writes.push({ reference, patch }),
+      }),
+      serverTimestamp: () => 'server timestamp',
+    },
+  };
+
+  try {
+    const updated = await syncGeneralRankingLogoToTeam({}, {
+      teamName: 'EQUIPE NOVA',
+      logoUrl: 'https://storage.example/new-team.webp',
+      source: 'association',
+      updatedAtMs: 200,
+    });
+    assert.equal(updated, false);
+    assert.deepEqual(writes, []);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
 });
