@@ -98,12 +98,16 @@ test("General Ranking reads are public while writes and private records stay res
   }
 });
 
-test("Ranking logos fall back to team initials when their saved URL is missing", () => {
-  const fallback = /onerror="this\.hidden=true;this\.nextElementSibling\.hidden=false"/;
-  assert.match(publicModule, fallback);
-  assert.match(clientJs, fallback);
-  assert.match(rankingHtml, /ranking-logo-auto-3/);
-  assert.match(clientHtml, /general-ranking-dashboard-5/);
+test("Ranking logos render without duplicate initials and safely fall back on image errors", () => {
+  assert.match(publicModule, /function bindRankingLogoEvents/);
+  assert.match(publicModule, /function showRankingLogoFallback/);
+  assert.match(clientJs, /onerror="this\.style\.display='none';this\.nextElementSibling\.style\.display='grid'"/);
+  const logoMarkupStart = clientJs.indexOf("function rankingLogoMarkup");
+  const safeUrlBranch = clientJs.indexOf("if (safeUrl)", logoMarkupStart);
+  const initialsDeclaration = clientJs.indexOf("const initials =", logoMarkupStart);
+  assert.ok(initialsDeclaration >= 0 && initialsDeclaration < safeUrlBranch);
+  assert.match(rankingHtml, /ranking-logo-auto-6/);
+  assert.match(clientHtml, /general-ranking-dashboard-6/);
 });
 
 test("purchase logos sync automatically after payment without exposing registrations publicly", () => {

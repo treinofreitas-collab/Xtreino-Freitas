@@ -1,4 +1,4 @@
-import { getGeneralRankingPage } from './freefire-general-ranking-store.mjs?v=ranking-logo-auto-3';
+import { getGeneralRankingPage } from './freefire-general-ranking-store.mjs?v=ranking-logo-auto-6';
 
 const PAGE_SIZE = 40;
 const rowsRoot = document.getElementById('publicGeneralRankingRows');
@@ -35,13 +35,35 @@ function safeLogoUrl(value) {
   }
 }
 
+function showLoadedRankingLogo(image) {
+  image.style.opacity = '1';
+  if (image.nextElementSibling) image.nextElementSibling.style.display = 'none';
+}
+
+function showRankingLogoFallback(image) {
+  image.style.display = 'none';
+  if (image.nextElementSibling) image.nextElementSibling.style.display = 'grid';
+}
+
+function bindRankingLogoEvents(container) {
+  for (const image of container.querySelectorAll('img[data-ranking-logo="true"]:not([data-ranking-logo-bound])')) {
+    image.dataset.rankingLogoBound = 'true';
+    image.addEventListener('load', () => showLoadedRankingLogo(image), { once: true });
+    image.addEventListener('error', () => showRankingLogoFallback(image), { once: true });
+    if (image.complete) {
+      if (image.naturalWidth > 0) showLoadedRankingLogo(image);
+      else showRankingLogoFallback(image);
+    }
+  }
+}
+
 function renderRankingRow(team, rank) {
   const name = String(team.teamName || 'Equipe');
   const points = Number(team.totalPoints || 0).toLocaleString('pt-BR');
   const logoUrl = safeLogoUrl(team.logoUrl);
   const initials = escapeHtml(name.trim().slice(0, 1).toLocaleUpperCase('pt-BR') || '?');
   const logo = logoUrl
-    ? `<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false" class="h-10 w-10 shrink-0 rounded-lg bg-slate-100 object-contain p-1"><span hidden aria-hidden="true" class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-teal-50 text-sm font-black text-teal-700">${initials}</span>`
+    ? `<img data-ranking-logo="true" src="${escapeHtml(logoUrl)}" alt="" loading="lazy" style="opacity:0" class="h-10 w-10 shrink-0 rounded-lg bg-slate-100 object-contain p-1"><span aria-hidden="true" class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-teal-50 text-sm font-black text-teal-700">${initials}</span>`
     : `<span aria-hidden="true" class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-teal-50 text-sm font-black text-teal-700">${initials}</span>`;
   const rankColor = rank === 1
     ? 'text-amber-600'
@@ -103,6 +125,7 @@ async function loadNextPage() {
         return renderRankingRow(team, rank);
       }).join('');
       rowsRoot.insertAdjacentHTML('beforeend', markup);
+      bindRankingLogoEvents(rowsRoot);
       if (statusRoot) statusRoot.textContent = `${loadedCount.toLocaleString('pt-BR')} equipes carregadas.`;
     }
     cursor = page.cursor;
