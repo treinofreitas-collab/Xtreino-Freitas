@@ -299,6 +299,32 @@ export async function getGeneralRankingMeta(db) {
   return snapshot.exists() ? snapshot.data() : null;
 }
 
+export async function getGeneralRankingSessions(db) {
+  const targetDb = databaseOrThrow(db);
+  await getFirestoreFunctions();
+  const { getDocs } = window.__freefireRankingFirestore;
+  const refs = rankingCollections(targetDb);
+  const snapshot = await getDocs(refs.sessions);
+  return snapshot.docs
+    .map(document => {
+      const data = document.data() || {};
+      return {
+        sessionId: String(data.sessionId || document.id || ''),
+        eventType: String(data.eventType || ''),
+        eventLabel: String(data.eventLabel || ''),
+        date: String(data.date || ''),
+        hour: String(data.hour || ''),
+        teams: Array.isArray(data.teams) ? data.teams : [],
+        updatedAt: data.updatedAt || null,
+      };
+    })
+    .filter(session =>
+      ['treino-freitas', 'modo-liga'].includes(session.eventType) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(session.date) &&
+      session.sessionId,
+    );
+}
+
 export async function getGeneralRankingTop(db, pageSize = 3) {
   const targetDb = databaseOrThrow(db);
   await getFirestoreFunctions();

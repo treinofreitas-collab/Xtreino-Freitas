@@ -27,11 +27,12 @@ import {
   parseGeneralRankingImport,
 } from './freefire-general-ranking.mjs?v=general-ranking-logo-time-1';
 import {
+  getGeneralRankingSessions,
   getGeneralRankingMeta,
   importGeneralRankingSeed,
   syncGeneralRankingLogoToTeam,
   upsertGeneralRankingSession,
-} from './freefire-general-ranking-store.mjs?v=ranking-logo-auto-3';
+} from './freefire-general-ranking-store.mjs?v=ranking-session-history-1';
 
 const EVENTS = [
   ['TREINO FREITAS', 'treino'],
@@ -39,6 +40,7 @@ const EVENTS = [
   ['CAMP FREITAS', 'camp'],
   ['SEMANAL FREITAS', 'semanal'],
 ];
+const RANKING_HISTORY_PAGE_SIZE = 5;
 const IMAGE_EVENT_TEMPLATES = Object.freeze({
   treino: Object.freeze({
     name: 'TABELA_TREINO_FREITAS.webp',
@@ -398,6 +400,12 @@ const state = {
   rankingImportBusy: false,
   rankingImportMessage: '',
   rankingImportMeta: null,
+  rankingHistory: [],
+  rankingHistoryLoading: false,
+  rankingHistoryError: '',
+  rankingHistoryDate: '',
+  rankingHistoryHour: '',
+  rankingHistoryPage: 0,
 };
 let imageRankingSaveTimer = null;
 let imageRankingSavePromise = null;
@@ -1489,6 +1497,7 @@ async function persistMatchResultGeneralRanking(data) {
     hour,
     rows,
   );
+  void loadGeneralRankingSessionHistory();
   return { ...result, logoWarning, date, hour };
 }
 
@@ -2088,7 +2097,8 @@ async function persistImageModeGeneralRanking() {
     rows,
   );
   state.rankingStatus =
-    `Ranking Geral atualizado: ${result.teamCount} equipes em ${date}, ${hour}h.${logoWarning}`;
+    `Ranking Geral salvo para o treino de ${date}, às ${hour}h: ${result.teamCount} equipes.${logoWarning}`;
+  void loadGeneralRankingSessionHistory();
   return result;
 }
 function generalRankingContributionSignature(eventType, date, hour, rows) {
@@ -2290,6 +2300,159 @@ async function loadRankingImportStatus() {
       `Não foi possível consultar o status da base do ranking: ${error.message || 'erro de acesso'}`;
   }
   updateRankingImportUI();
+}
+function formatRankingSessionDate(date) {
+  const match = String(date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(date || 'Data indisponível');
+}
+function normalizeRankingSessionHour(hour) {
+  const digits = String(hour || '').replace(/[^\d]/g, '');
+  return digits ? digits.padStart(2, '0') : '';
+}
+function formatRankingSessionUpdatedAt(value) {
+  const timestamp = typeof value?.toMillis === 'function'
+    ? value.toMillis()
+    : Number.isFinite(Number(value?.seconds))
+      ? Number(value.seconds) * 1000
+      : value instanceof Date
+        ? value.getTime()
+        : Number(value || 0);
+  if (!timestamp) return '';
+  try {
+    return new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: 'America/Sao_Paulo',
+    }).format(new Date(timestamp));
+  } catch {
+    return '';
+  }
+}
+function renderGeneralRankingSessionHistory() {
+  const history = $('ffRankingHistory');
+  const refresh = $('ffRankingHistoryRefresh');
+  const dateFilter = $('ffRankingHistoryDate');
+  const hourFilter = $('ffRankingHistoryHour');
+  const clearDate = $('ffRankingHistoryClearDate');
+  const count = $('ffRankingHistoryCount');
+  const previous = $('ffRankingHistoryPrevious');
+  const next = $('ffRankingHistoryNext');
+  const pageLabel = $('ffRankingHistoryPage');
+  if (!history || !refresh || !dateFilter || !hourFilter || !clearDate || !count || !previous || !next || !pageLabel) return;
+  refresh.disabled = state.rankingHistoryLoading;
+  refresh.textContent = state.rankingHistoryLoading ? 'Carregando…' : 'Atualizar lista';
+  dateFilter.value = state.rankingHistoryDate;
+  clearDate.disabled = !state.rankingHistoryDate;
+  const dateSessions = state.rankingHistory.filter(session =>
+    !state.rankingHistoryDate || session.date === state.rankingHistoryDate);
+  const hours = [...new Set(dateSessions.map(session => normalizeRankingSessionHour(session.hour)).filter(Boolean))]
+    .sort((a, b) => Number(b) - Number(a));
+  if (state.rankingHistoryHour && !hours.includes(state.rankingHistoryHour)) {
+    state.rankingHistoryHour = '';
+  }
+  hourFilter.innerHTML = '<option value="">Todos os horários</option>' +
+    hours.map(hour => `<option value="${esc(hour)}">${esc(hour)}h</option>`).join('');
+  hourFilter.value = state.rankingHistoryHour;
+  dateFilter.disabled = state.rankingHistoryLoading && !state.rankingHistory.length;
+  hourFilter.disabled = state.rankingHistoryLoading && !state.rankingHistory.length;
+  if (state.rankingHistoryLoading && !state.rankingHistory.length) {
+    history.innerHTML = '<p class="ff-ranking-history-empty">Carregando sessões gravadas…</p>';
+    count.textContent = 'Carregando sessões…';
+    previous.disabled = true;
+    next.disabled = true;
+    pageLabel.textContent = '';
+    return;
+  }
+  if (state.rankingHistoryError && !state.rankingHistory.length) {
+    history.innerHTML = `<p class="ff-ranking-history-error">${esc(state.rankingHistoryError)}</p>`;
+    count.textContent = 'Histórico indisponível';
+    previous.disabled = true;
+    next.disabled = true;
+    pageLabel.textContent = '';
+    return;
+  }
+  if (!state.rankingHistory.length) {
+    history.innerHTML = '<p class="ff-ranking-history-empty">Nenhuma sessão de pontuação gravada ainda.</p>';
+    count.textContent = '0 sessões';
+    previous.disabled = true;
+    next.disabled = true;
+    pageLabel.textContent = '';
+    return;
+  }
+  const filteredSessions = dateSessions.filter(session =>
+    !state.rankingHistoryHour || normalizeRankingSessionHour(session.hour) === state.rankingHistoryHour);
+  const pageCount = Math.max(1, Math.ceil(filteredSessions.length / RANKING_HISTORY_PAGE_SIZE));
+  state.rankingHistoryPage = Math.min(state.rankingHistoryPage, pageCount - 1);
+  const start = state.rankingHistoryPage * RANKING_HISTORY_PAGE_SIZE;
+  const visibleSessions = filteredSessions.slice(start, start + RANKING_HISTORY_PAGE_SIZE);
+  count.textContent = filteredSessions.length
+    ? `Mostrando ${start + 1}–${Math.min(start + RANKING_HISTORY_PAGE_SIZE, filteredSessions.length)} de ${filteredSessions.length} sessões`
+    : '0 sessões encontradas';
+  previous.disabled = state.rankingHistoryPage === 0;
+  next.disabled = state.rankingHistoryPage >= pageCount - 1;
+  pageLabel.textContent = filteredSessions.length ? `Página ${state.rankingHistoryPage + 1} de ${pageCount}` : '';
+  if (!filteredSessions.length) {
+    history.innerHTML = '<p class="ff-ranking-history-empty">Nenhuma sessão encontrada para esses filtros.</p>';
+    return;
+  }
+  history.innerHTML = visibleSessions.map(session => {
+    const teams = [...session.teams].sort((left, right) =>
+      Number(right?.points || 0) - Number(left?.points || 0) ||
+      Number(right?.wins || 0) - Number(left?.wins || 0) ||
+      Number(right?.kills || 0) - Number(left?.kills || 0) ||
+      String(left?.teamName || '').localeCompare(String(right?.teamName || ''), 'pt-BR'));
+    const label = session.eventLabel ||
+      (session.eventType === 'modo-liga' ? 'TREINO MODO LIGA' : 'TREINO FREITAS');
+    const hour = String(session.hour || '').replace(/[^\d]/g, '').padStart(2, '0');
+    const updatedAt = formatRankingSessionUpdatedAt(session.updatedAt);
+    return `
+      <details class="ff-ranking-history-item">
+        <summary>
+          <span class="ff-ranking-history-date">${esc(formatRankingSessionDate(session.date))} · ${esc(hour)}h</span>
+          <span class="ff-ranking-history-event">${esc(label)}</span>
+          <span class="ff-ranking-history-count">${teams.length} equipes</span>
+        </summary>
+        <div class="ff-ranking-history-content">
+          ${updatedAt ? `<p class="ff-ranking-history-updated">Última gravação: ${esc(updatedAt)}</p>` : ''}
+          <div class="ff-ranking-history-table-scroll">
+            <table class="ff-ranking-history-table">
+              <thead><tr><th>Equipe</th><th>Pontos</th><th>Vitórias</th><th>Abates</th></tr></thead>
+              <tbody>${teams.map(team => `
+                <tr>
+                  <td>${esc(team?.teamName || 'Equipe sem nome')}</td>
+                  <td>${Number(team?.points || 0)}</td>
+                  <td>${Number(team?.wins || 0)}</td>
+                  <td>${Number(team?.kills || 0)}</td>
+                </tr>`).join('') || '<tr><td colspan="4">Sem equipes nesta sessão.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>`;
+  }).join('');
+  if (state.rankingHistoryError) {
+    history.insertAdjacentHTML('afterbegin',
+      `<p class="ff-ranking-history-error">${esc(state.rankingHistoryError)}</p>`);
+  }
+}
+async function loadGeneralRankingSessionHistory() {
+  if (!window.firebaseDb || !canOpen()) return;
+  state.rankingHistoryLoading = true;
+  state.rankingHistoryError = '';
+  renderGeneralRankingSessionHistory();
+  try {
+    const sessions = await getGeneralRankingSessions(window.firebaseDb);
+    state.rankingHistory = sessions.sort((left, right) =>
+      right.date.localeCompare(left.date) ||
+      Number(right.hour.replace(/[^\d]/g, '') || 0) - Number(left.hour.replace(/[^\d]/g, '') || 0) ||
+      left.eventType.localeCompare(right.eventType));
+  } catch (error) {
+    state.rankingHistoryError =
+      `Não foi possível carregar o histórico: ${error.message || 'erro de leitura'}`;
+  } finally {
+    state.rankingHistoryLoading = false;
+    renderGeneralRankingSessionHistory();
+  }
 }
 function setNotice(type, message) {
   state.error = type === 'error' ? message : '';
@@ -2691,6 +2854,22 @@ function build(root) {
         <p id="ffRankingImportStatus" class="ff-export-note" role="status" aria-live="polite"></p>
       </div>
     </section>
+    <section class="ff-panel ff-ranking-history-panel" aria-labelledby="ffRankingHistoryTitle">
+      <div class="ff-ranking-history-heading">
+        <div><h2 id="ffRankingHistoryTitle">Histórico de pontuações gravadas</h2><p>Consulte cada sessão por data, horário e evento.</p></div>
+        <button type="button" id="ffRankingHistoryRefresh" class="ff-button ff-button-light">Atualizar lista</button>
+      </div>
+      <div class="ff-ranking-history-filters">
+        <label class="ff-field">Data<input id="ffRankingHistoryDate" type="date" aria-label="Filtrar histórico por data"></label>
+        <label class="ff-field">Horário<select id="ffRankingHistoryHour"><option value="">Todos os horários</option></select></label>
+        <button type="button" id="ffRankingHistoryClearDate" class="ff-button ff-button-light" disabled>Todas as datas</button>
+      </div>
+      <div id="ffRankingHistory" aria-live="polite"><p class="ff-ranking-history-empty">As sessões gravadas aparecerão aqui.</p></div>
+      <div class="ff-ranking-history-pagination">
+        <span id="ffRankingHistoryCount" aria-live="polite">Sessões gravadas</span>
+        <div><button type="button" id="ffRankingHistoryPrevious" class="ff-button ff-button-light" disabled>Anterior</button><span id="ffRankingHistoryPage"></span><button type="button" id="ffRankingHistoryNext" class="ff-button ff-button-light" disabled>Próximas</button></div>
+      </div>
+    </section>
     <div id="ffNotice" class="ff-notice hidden" role="status"></div>
     <div id="ffBusy" class="ff-busy hidden"><span class="ff-skeleton"></span><div><b id="ffBusyLabel">Analisando imagens</b><small>Isso pode levar alguns instantes. Não feche esta seção.</small></div></div>
     <div class="ff-layout">
@@ -2834,6 +3013,34 @@ function build(root) {
     readRankingImportFile(e.target.files?.[0]);
   });
   $('ffImportRanking').addEventListener('click', importRankingBase);
+  $('ffRankingHistoryRefresh').addEventListener('click', () => {
+    loadGeneralRankingSessionHistory();
+  });
+  $('ffRankingHistoryDate').addEventListener('change', e => {
+    state.rankingHistoryDate = String(e.target.value || '');
+    state.rankingHistoryHour = '';
+    state.rankingHistoryPage = 0;
+    renderGeneralRankingSessionHistory();
+  });
+  $('ffRankingHistoryClearDate').addEventListener('click', () => {
+    state.rankingHistoryDate = '';
+    state.rankingHistoryHour = '';
+    state.rankingHistoryPage = 0;
+    renderGeneralRankingSessionHistory();
+  });
+  $('ffRankingHistoryHour').addEventListener('change', e => {
+    state.rankingHistoryHour = String(e.target.value || '');
+    state.rankingHistoryPage = 0;
+    renderGeneralRankingSessionHistory();
+  });
+  $('ffRankingHistoryPrevious').addEventListener('click', () => {
+    state.rankingHistoryPage = Math.max(0, state.rankingHistoryPage - 1);
+    renderGeneralRankingSessionHistory();
+  });
+  $('ffRankingHistoryNext').addEventListener('click', () => {
+    state.rankingHistoryPage += 1;
+    renderGeneralRankingSessionHistory();
+  });
   $('ffDrops').addEventListener('change', e => { state.dropsCount = Number(e.target.value); render(); });
   $('ffImageQualityMode').addEventListener('change', e => {
     state.imageQualityMode = e.target.value === 'original' ? 'original' : 'auto';
@@ -3409,27 +3616,23 @@ async function exportJpeg() {
     });
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
     if (!blob) throw new Error('O navegador não conseguiu gerar o arquivo JPEG.');
-    let rankingWarning = '';
+    triggerBlobDownload(blob, `freitas-${state.event}-leaderboard.jpg`);
+    const downloadMessage =
+      `JPEG exportado em ${canvas.width} × ${canvas.height} px (${Math.round(blob.size / 1024)} KB).`;
     if (state.event === 'treino' && !readOnly()) {
-      try {
-        await persistImageModeGeneralRanking();
-      } catch (error) {
-        rankingWarning = `A tabela foi exportada, mas o Ranking Geral não foi atualizado: ${error.message || 'erro de gravação'}`;
-        state.rankingStatus = rankingWarning;
-      }
+      const signature = generalRankingContributionSignature(
+        'treino-freitas',
+        state.rankingDate,
+        state.rankingHour,
+        standings(),
+      );
+      if (signature !== imageRankingSavedSignature) {
+        imageRankingAttemptedSignature = '';
+        state.rankingStatus = 'JPEG baixado. Atualizando o Ranking Geral em segundo plano…';
+        scheduleImageRankingSave();
     }
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `freitas-${state.event}-leaderboard.jpg`;
-    link.click();
-    URL.revokeObjectURL(url);
-    if (rankingWarning) {
-      setNotice('error', rankingWarning);
-    } else {
-      setNotice('success', state.rankingStatus ||
-        `JPEG exportado em ${canvas.width} × ${canvas.height} px (${Math.round(blob.size / 1024)} KB).`);
     }
+    setNotice('success', downloadMessage);
   } catch (error) { setNotice('error', error.message || 'Falha ao exportar a tabela.'); }
   render();
 }
@@ -3447,6 +3650,7 @@ export async function openFreefireScoringAdmin() {
       loadMatchResultTemplate(),
       matchResultState.eventType === 'modo-liga' ? loadModoLigaLogoCatalog(true) : Promise.resolve(),
       loadRankingImportStatus(),
+      loadGeneralRankingSessionHistory(),
     ]);
     stage = 'atualização final da tela';
     render();

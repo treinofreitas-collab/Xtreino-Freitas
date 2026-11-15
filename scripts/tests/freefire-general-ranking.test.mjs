@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   aggregateGeneralRankingImport,
@@ -9,8 +10,87 @@ import {
 } from '../../artifacts/xtreino/public/js/freefire-general-ranking.mjs';
 import {
   chooseLatestGeneralRankingLogo,
+  getGeneralRankingSessions,
   syncGeneralRankingLogoToTeam,
 } from '../../artifacts/xtreino/public/js/freefire-general-ranking-store.mjs';
+
+const imageScoringSource = readFileSync(
+  new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+  'utf8',
+);
+
+test('downloads the JPEG before saving ranking data and labels the selected training date', () => {
+  const exportStart = imageScoringSource.indexOf('async function exportJpeg()');
+  const exportEnd = imageScoringSource.indexOf('export async function openFreefireScoringAdmin()', exportStart);
+  const exportImplementation = imageScoringSource.slice(exportStart, exportEnd);
+  const downloadIndex = exportImplementation.indexOf('triggerBlobDownload(blob');
+  const backgroundSaveIndex = exportImplementation.indexOf('scheduleImageRankingSave()');
+
+  assert.ok(exportStart >= 0 && exportEnd > exportStart, 'image-mode JPEG exporter should exist');
+  assert.ok(downloadIndex >= 0 && backgroundSaveIndex > downloadIndex, 'start the download before scheduling ranking sync');
+  assert.doesNotMatch(exportImplementation, /await\s+persistImageModeGeneralRanking\s*\(/);
+  assert.match(imageScoringSource, /Ranking Geral salvo para o treino de \$\{date\}, às \$\{hour\}h/);
+});
+test('loads authorized ranking history without returning editor identity data', async () => {
+  const originalWindow = globalThis.window;
+  let requestedCollection = '';
+  globalThis.window = {
+    __freefireRankingFirestore: {
+      collection: (_db, name) => ({ name }),
+      doc: (_db, collection, id) => ({ collection, id }),
+      getDocs: async reference => {
+        requestedCollection = reference.name;
+        return {
+          docs: [
+            {
+              id: 'treino-freitas_2026-11-13_21',
+              data: () => ({
+                eventType: 'treino-freitas',
+                eventLabel: 'TREINO FREITAS',
+                date: '2026-11-13',
+                hour: '21',
+                teams: [{ teamName: 'FOLTEST PRO', points: 1258, wins: 1, kills: 12 }],
+                updatedBy: 'private-user-id',
+              }),
+            },
+            {
+              id: 'invalid',
+              data: () => ({ eventType: 'intensivo', date: '2026-11-13', hour: '20', teams: [] }),
+            },
+          ],
+        };
+      },
+    },
+  };
+
+  try {
+    const sessions = await getGeneralRankingSessions({});
+    assert.equal(requestedCollection, 'freefire_general_ranking_sessions');
+    assert.equal(sessions.length, 1);
+    assert.deepEqual(sessions[0], {
+      sessionId: 'treino-freitas_2026-11-13_21',
+      eventType: 'treino-freitas',
+      eventLabel: 'TREINO FREITAS',
+      date: '2026-11-13',
+      hour: '21',
+      teams: [{ teamName: 'FOLTEST PRO', points: 1258, wins: 1, kills: 12 }],
+      updatedAt: null,
+    });
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('shows five ranking sessions per page with date and hour filters', () => {
+  assert.match(imageScoringSource, /const RANKING_HISTORY_PAGE_SIZE = 5;/);
+  assert.match(imageScoringSource, /id="ffRankingHistoryDate" type="date"/);
+  assert.match(imageScoringSource, /id="ffRankingHistoryHour"/);
+  assert.match(imageScoringSource, /id="ffRankingHistoryClearDate"/);
+  assert.match(imageScoringSource, /filteredSessions\.slice\(start,\s*start \+ RANKING_HISTORY_PAGE_SIZE\)/);
+  assert.match(imageScoringSource, /state\.rankingHistoryDate = String\(e\.target\.value \|\| ''\)/);
+  assert.match(imageScoringSource, /state\.rankingHistoryHour = String\(e\.target\.value \|\| ''\)/);
+});
 
 test('imports Challenge.place Markdown standings with position, name, and points', () => {
   const imported = parseGeneralRankingImport([
@@ -188,6 +268,7 @@ test('a saved team logo updates only an existing ranking row and preserves point
     else globalThis.window = originalWindow;
   }
 });
+
 test('a saved logo does not create a ranking row for an unranked team', async () => {
   const originalWindow = globalThis.window;
   const writes = [];

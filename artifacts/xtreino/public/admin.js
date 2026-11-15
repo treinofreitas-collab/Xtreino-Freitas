@@ -14618,7 +14618,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionFreefireScoring':
-                    await import('./js/admin-freefire-scoring.mjs?v=ranking-logo-auto-3')
+                    await import('./js/admin-freefire-scoring.mjs?v=ranking-session-history-3')
                         .then(m => m.openFreefireScoringAdmin())
                         .catch(error => {
                             console.error('[Free Fire] Falha ao carregar o placar:', error);
