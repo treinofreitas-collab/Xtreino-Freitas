@@ -915,6 +915,7 @@ main.with-sidebar { padding-left: calc(var(--sidebar-w) + 1.5rem) !important; }
 .ff-workspace .ff-player-list { display:grid; gap:.18rem; max-width:200px; margin-top:.28rem; color:#8e9991; font-size:.57rem; line-height:1.35; white-space:normal; overflow-wrap:anywhere; }
 .ff-workspace .ff-player-kill { display:flex; align-items:center; justify-content:space-between; gap:.35rem; }
 .ff-workspace .ff-player-kill span { min-width:0; overflow-wrap:anywhere; }
+.ff-workspace .ff-reserve-label { display:block; color:#946116; font-size:.52rem; line-height:1.25; }
 .ff-workspace .ff-edit-table .ff-player-kill input { flex:0 0 48px; width:48px; min-width:48px; padding:.22rem .3rem; text-align:center; }
 .ff-workspace .ff-edit-table input[readonly] { background:#f2f5ef; color:#33443b; font-weight:700; }
 .ff-workspace .ff-standings-panel { position:sticky; top:calc(var(--header-h) + 1rem); padding:1.15rem 1rem; }

@@ -408,7 +408,14 @@ function normalizePlacements(result: unknown, officialTeams: OfficialTeam[]) {
           const lobbyRosterMatched = rosterSlot !== undefined;
           const lobbyRosterAmbiguous = lobbyRoster.ambiguousPlayers.has(nameKey);
           const lobbySlot = lobbyRosterMatched ? rosterSlot : null;
-          return [{ name, kills: playerKills, lobbySlot, lobbyRosterMatched, lobbyRosterAmbiguous }];
+          return [{
+            name,
+            kills: playerKills,
+            lobbySlot,
+            lobbyRosterMatched,
+            lobbyRosterAmbiguous,
+            lobbyReserveInferred: false,
+          }];
         }).slice(0, 6)
       : [];
     const ambiguousLobbyNames = [...new Set(
@@ -665,6 +672,220 @@ function playerFingerprint(
     .join("|");
 }
 
+type CurrentDropRead = ReturnType<typeof normalizePlacements>;
+type CurrentDropPlacement = CurrentDropRead["placements"][number];
+
+function resolveCurrentLobbyAssociations(
+  placements: CurrentDropPlacement[],
+  reads: CurrentDropRead[],
+  officialTeams: OfficialTeam[],
+) {
+  const teamNamesBySlot = new Map(officialTeams.map((team) => [Number(team.slot), team.teamName]));
+  const evidenceByPosition = new Map<
+    number,
+    Map<string, { slots: Set<number>; reads: Set<number>; ambiguous: boolean }>
+  >();
+
+  for (const [readIndex, read] of reads.entries()) {
+    for (const placement of read?.placements || []) {
+      let evidenceByPlayer = evidenceByPosition.get(placement.position);
+      if (!evidenceByPlayer) {
+        evidenceByPlayer = new Map();
+        evidenceByPosition.set(placement.position, evidenceByPlayer);
+      }
+      for (const player of placement.players || []) {
+        const key = normalizePlayerName(String(player.name || ""));
+        if (!key) continue;
+        let evidence = evidenceByPlayer.get(key);
+        if (!evidence) {
+          evidence = { slots: new Set(), reads: new Set(), ambiguous: false };
+          evidenceByPlayer.set(key, evidence);
+        }
+        if (player.lobbyRosterAmbiguous) evidence.ambiguous = true;
+        const slot = Number(player.lobbySlot);
+        if (player.lobbyRosterMatched && Number.isInteger(slot) && slot >= 1 && slot <= 12) {
+          evidence.slots.add(slot);
+          evidence.reads.add(readIndex);
+        }
+      }
+    }
+  }
+
+  const addReview = (
+    placement: CurrentDropPlacement,
+    note: string,
+    fields: string[] = [],
+  ): CurrentDropPlacement => ({
+    ...placement,
+    confidence: "low",
+    reviewFields: [...new Set([...(placement.reviewFields || []), ...fields, "reading"])],
+    readAgreement: "Revisão manual",
+    notes: [note, placement.notes].filter(Boolean).join(" ").slice(0, 500),
+  });
+
+  const resolvedPlacements = placements.map((placement) => {
+    const evidenceByPlayer = evidenceByPosition.get(placement.position) || new Map();
+    const selectedEvidence = new Map<string, number>();
+    const observedSlots = new Set<number>();
+    let hasAmbiguousPlayer = false;
+    let hasInsufficientEvidence = false;
+    for (const player of placement.players || []) {
+      const key = normalizePlayerName(String(player.name || ""));
+      if (!key) continue;
+      const evidence = evidenceByPlayer.get(key);
+      if (!evidence) continue;
+      if (evidence.ambiguous || evidence.slots.size > 1) {
+        hasAmbiguousPlayer = true;
+        continue;
+      }
+      if (evidence.slots.size === 0) continue;
+      const observedSlot = [...evidence.slots][0];
+      observedSlots.add(observedSlot);
+      if (evidence.reads.size < 2) {
+        hasInsufficientEvidence = true;
+        continue;
+      }
+      selectedEvidence.set(key, observedSlot);
+    }
+
+    const knownSlots = new Set(selectedEvidence.values());
+    if (observedSlots.size > 1 || knownSlots.size > 1) {
+      const players = (placement.players || []).map((player) => {
+        const key = normalizePlayerName(String(player.name || ""));
+        const slot = selectedEvidence.get(key);
+        return slot === undefined
+          ? player
+          : { ...player, lobbySlot: slot, lobbyRosterMatched: true, lobbyRosterAmbiguous: false };
+      });
+      return addReview(
+        { ...placement, slot: null, teamName: null, players },
+        "Jogadores reconhecidos nas imagens atuais dos slots apontam para equipes diferentes; a associação foi suspensa para conferência.",
+        ["slot", "players"],
+      );
+    }
+
+    if (knownSlots.size === 0) {
+      if (placement.slot === null) return placement;
+      return addReview(
+        placement,
+        hasAmbiguousPlayer
+          ? "Há jogador com correspondência ambígua nas imagens atuais dos slots. Confira a equipe no placar antes de confirmar."
+          : hasInsufficientEvidence
+            ? "A correspondência com os slots não foi confirmada em duas leituras independentes. Confira a equipe no placar antes de confirmar."
+            : "Nenhum jogador deste grupo foi reconhecido nas imagens atuais dos slots. Confira a equipe no placar antes de confirmar.",
+        ["slot", "players"],
+      );
+    }
+
+    const [slot] = knownSlots;
+    const knownPlayerCount = selectedEvidence.size;
+    const canAssociateReserves =
+      knownPlayerCount >= 2 && !hasAmbiguousPlayer && !hasInsufficientEvidence;
+    let associatedReserveCount = 0;
+    const players = (placement.players || []).map((player) => {
+      const key = normalizePlayerName(String(player.name || ""));
+      const evidence = evidenceByPlayer.get(key);
+      const matchedSlot = selectedEvidence.get(key);
+      if (matchedSlot !== undefined) {
+        return {
+          ...player,
+          lobbySlot: matchedSlot,
+          lobbyRosterMatched: true,
+          lobbyRosterAmbiguous: false,
+          lobbyReserveInferred: false,
+        };
+      }
+      if (evidence?.ambiguous || (evidence?.slots.size || 0) > 1) {
+        return {
+          ...player,
+          lobbySlot: null,
+          lobbyRosterMatched: false,
+          lobbyRosterAmbiguous: true,
+          lobbyReserveInferred: false,
+        };
+      }
+      if (evidence?.slots.size === 1) {
+        return {
+          ...player,
+          lobbySlot: [...evidence.slots][0],
+          lobbyRosterMatched: true,
+          lobbyRosterAmbiguous: false,
+          lobbyReserveInferred: false,
+        };
+      }
+      if (canAssociateReserves && key) {
+        associatedReserveCount += 1;
+        return {
+          ...player,
+          lobbySlot: slot,
+          lobbyRosterMatched: false,
+          lobbyRosterAmbiguous: false,
+          lobbyReserveInferred: true,
+        };
+      }
+      return player;
+    });
+
+    const slotChanged = placement.slot !== slot;
+    let next: CurrentDropPlacement = {
+      ...placement,
+      slot,
+      teamName: teamNamesBySlot.get(slot) || null,
+      players,
+    };
+    if (slotChanged) {
+      next = addReview(
+        next,
+        `Slot ${slot} confirmado por correspondência única com a lista de slots desta queda; confira a divergência da leitura.`,
+        ["slot"],
+      );
+    }
+    if (associatedReserveCount > 0) {
+      next = addReview(
+        next,
+        `${associatedReserveCount} reserva(s) associada(s) ao slot ${slot}: ${knownPlayerCount} jogadores reconhecidos no mesmo grupo apontaram para esta equipe. Confira os nicks e abates no placar.`,
+        ["players"],
+      );
+    } else if (hasAmbiguousPlayer) {
+      next = addReview(
+        next,
+        "Há jogador com correspondência ambígua nas imagens atuais dos slots; reservas não foram associadas automaticamente.",
+        ["players"],
+      );
+    } else if (hasInsufficientEvidence) {
+      next = addReview(
+        next,
+        "A lista de slots não confirmou todos os jogadores em duas leituras independentes; reservas não foram associadas automaticamente.",
+        ["players"],
+      );
+    } else if (knownPlayerCount < 2 && players.some((player) => Boolean(String(player.name || "").trim()))) {
+      next = addReview(
+        next,
+        "Menos de dois jogadores foram reconhecidos no grupo; reservas não foram associadas automaticamente.",
+        ["players"],
+      );
+    }
+    return next;
+  });
+
+  return { placements: resolvedPlacements };
+}
+
+function removeAssociatedReservesFromUnmatched(
+  unmatchedPlayers: string[],
+  placements: CurrentDropPlacement[],
+) {
+  const associatedNames = new Set(
+    placements.flatMap((placement) =>
+      (placement.players || [])
+        .filter((player) => player.lobbyReserveInferred)
+        .map((player) => normalizePlayerName(String(player.name || "")))
+        .filter(Boolean),
+    ),
+  );
+  return [...new Set(unmatchedPlayers)].filter((name) => !associatedNames.has(normalizePlayerName(name)));
+}
+
 function sumReadablePlayerKills(
   players: Array<{ kills: number | null }> | null | undefined,
 ) {
@@ -883,6 +1104,7 @@ function clearDuplicatePlayers(
         lobbySlot: null,
         lobbyRosterMatched: false,
         lobbyRosterAmbiguous: true,
+        lobbyReserveInferred: false,
       };
     });
     const readablePlayerKills: number[] = playersWithoutNameAssociations.flatMap((player): number[] =>
@@ -1258,8 +1480,13 @@ function clearDuplicateSlots(
       };
     }
     if (!losingPositions.has(placement.position)) return placement;
+    const players = placement.players.map((player) =>
+      player.lobbyReserveInferred
+        ? { ...player, lobbySlot: null, lobbyReserveInferred: false }
+        : player,
+    );
     return {
-      ...markPlacementForReview({ ...placement, slot: null, teamName: null }, reason),
+      ...markPlacementForReview({ ...placement, slot: null, teamName: null, players }, reason),
       reviewFields: [...new Set([...(placement.reviewFields || []), "slot"])],
     };
   });
@@ -1268,9 +1495,11 @@ function clearDuplicateSlots(
 function uniquePlayerRuleLines() {
   return [
     "Regra obrigatória: cada nick, normalizado sem diferença de maiúsculas, acentos ou símbolos decorativos, pode ser associado a somente uma equipe/slot nesta queda.",
-    "Extraia primeiro lobbyRoster das fotos do lobby, agrupando cada nick legível pelo número do slot. Essa lista atual do lobby é a referência principal para associar jogadores aos times.",
+    "Em cada leitura de cada queda, releia do zero as três imagens atuais dos slots desta solicitação junto com o placar atual; nunca reutilize a leitura visual do lobby de uma queda anterior.",
+    "Extraia primeiro lobbyRoster das três imagens atuais do lobby, agrupando cada nick legível pelo número do slot. Essa lista atual é a referência principal para associar jogadores aos times.",
     "Se um nick repetido tiver correspondência única em lobbyRoster, mantenha-o somente na colocação cujo slot corresponde ao lobby e remova a associação incorreta; não apague a associação correta junto com a incorreta.",
     "Se a lista do lobby não resolver a duplicidade ou o nick aparecer em mais de um slot, não o inclua em nenhuma das equipes conflitantes; liste-o em unmatchedPlayers e explique a dúvida em notes.",
+    "Se pelo menos dois nicks diferentes no mesmo grupo do placar corresponderem sem ambiguidade ao mesmo slot das imagens atuais do lobby, associe os outros nicks desse grupo como reservas temporários desse time e mantenha os abates individuais. Se houver menos de dois jogadores reconhecidos ou qualquer conflito, não associe reservas automaticamente e peça revisão.",
     "Antes de responder, compare os nicks de todos os placements: um jogador nunca pode aparecer em mais de uma equipe na mesma queda. Jogador não encontrado no lobby pode ser reserva; não invente seu slot.",
   ];
 }
@@ -1318,6 +1547,7 @@ router.post("/freefire/analyze", async (req, res) => {
     );
     const prompt = [
       `Analise as imagens da queda ${Number(body.dropNumber)} de um campeonato Free Fire.`,
+      "Esta chamada recebe novamente as três imagens atuais da lista de slots e as imagens do resultado final desta queda. Releia as três imagens de slots do zero nesta queda; nunca copie o lobbyRoster nem a associação de jogadores de uma queda anterior.",
       "As primeiras imagens mostram a sala/lobby e a composição de jogadores em cada slot; depois estão as imagens com o resultado final e abates individuais. Extraia primeiro uma lista estruturada lobbyRoster com slot numérico e todos os nicks legíveis de cada slot.",
       "Associe cada nick do placar à lobbyRoster por correspondência única do nick, ignorando apenas caixa, acentos e símbolos decorativos. Um jogador com correspondência única recebe esse slot; reserva sem correspondência fica com lobbySlot:null.",
       "Para definir o slot do time, use os jogadores reconhecidos: uma evidência única sem conflito pode determinar o slot, mesmo que o agrupamento/etiqueta do placar sugira outro; se houver slots conflitantes, só use maioria clara com pelo menos dois jogadores e sinalize revisão.",
@@ -1356,6 +1586,7 @@ router.post("/freefire/analyze", async (req, res) => {
     const preliminary = reconcilePlacements(firstResult, secondResult);
     const thirdTargetPositions = getThirdReviewPositions(firstResult, secondResult, preliminary);
     let reconciled = preliminary;
+    let thirdResult: ReturnType<typeof normalizePlacements> | null = null;
     if (thirdTargetPositions.length) {
       const thirdPrompt = [
         `Faça uma terceira leitura independente da queda ${Number(body.dropNumber)} usando somente as imagens originais.`,
@@ -1366,7 +1597,7 @@ router.post("/freefire/analyze", async (req, res) => {
         prompt,
       ].join("\n");
       try {
-        const thirdResult = normalizePlacements(
+        thirdResult = normalizePlacements(
           await generateJsonWithRetry(thirdPrompt, images),
           officialTeams,
         );
@@ -1391,9 +1622,14 @@ router.post("/freefire/analyze", async (req, res) => {
       }
     }
 
-    const repeatedPlayers = duplicatePlayerGroups(reconciled.placements);
-    const playerResolution = resolveDuplicatePlayersUsingLobby(
+    const currentLobbyResolution = resolveCurrentLobbyAssociations(
       reconciled.placements,
+      [firstResult, secondResult, ...(thirdResult ? [thirdResult] : [])],
+      officialTeams,
+    );
+    const repeatedPlayers = duplicatePlayerGroups(currentLobbyResolution.placements);
+    const playerResolution = resolveDuplicatePlayersUsingLobby(
+      currentLobbyResolution.placements,
       repeatedPlayers,
       officialTeams,
     );
@@ -1404,13 +1640,17 @@ router.post("/freefire/analyze", async (req, res) => {
     const finalPlacements = playerResolution.unresolvedGroups.length
       ? clearDuplicatePlayers(placementsWithoutDuplicateSlots, playerResolution.unresolvedGroups)
       : placementsWithoutDuplicateSlots;
-    res.json({
-      ...reconciled,
-      placements: finalPlacements,
-      unmatchedPlayers: addDuplicatePlayersToUnmatched(
+    const unmatchedPlayers = removeAssociatedReservesFromUnmatched(
+      addDuplicatePlayersToUnmatched(
         reconciled.unmatchedPlayers,
         playerResolution.unresolvedGroups,
       ),
+      finalPlacements,
+    );
+    res.json({
+      ...reconciled,
+      placements: finalPlacements,
+      unmatchedPlayers,
     });
   } catch (error) {
     const apiError =

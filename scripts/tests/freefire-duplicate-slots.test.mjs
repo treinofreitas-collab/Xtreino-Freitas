@@ -35,6 +35,8 @@ globalThis.testHelpers = {
   clearDuplicateSlots,
   duplicatePlayerGroups,
   resolveDuplicatePlayersUsingLobby,
+  resolveCurrentLobbyAssociations,
+  removeAssociatedReservesFromUnmatched,
   clearDuplicatePlayers,
   addDuplicatePlayersToUnmatched,
   reconcilePlacements,
@@ -135,6 +137,143 @@ for (const source of loaded) {
         dropNumbers: [1, 2],
       }],
     });
+  });
+
+  test(`${source.name}: two current lobby matches associate unnamed teammates as reserves`, async () => {
+    const { resolveCurrentLobbyAssociations, removeAssociatedReservesFromUnmatched } = await loadHelpers(source.text, source.typescript);
+    const officialTeams = [{ slot: 3, teamName: 'TIME FREITAS' }];
+    const players = [
+      { name: 'João', kills: 2, lobbySlot: 3, lobbyRosterMatched: true, lobbyRosterAmbiguous: false },
+      { name: 'Marcos', kills: 1, lobbySlot: 3, lobbyRosterMatched: true, lobbyRosterAmbiguous: false },
+      { name: 'André', kills: 4, lobbySlot: null, lobbyRosterMatched: false, lobbyRosterAmbiguous: false },
+      { name: 'Sousa', kills: 3, lobbySlot: null, lobbyRosterMatched: false, lobbyRosterAmbiguous: false },
+    ];
+    const placement = {
+      position: 4,
+      slot: 3,
+      teamName: 'TIME FREITAS',
+      kills: 10,
+      players,
+      confidence: 'high',
+      reviewFields: [],
+      readAgreement: '2 leituras concordam',
+      notes: '',
+    };
+    const reads = [0, 1].map(() => ({
+      placements: [{
+        position: 4,
+        players: players.map(player => ({ ...player })),
+      }],
+      unmatchedPlayers: ['André', 'Sousa'],
+    }));
+
+    const result = plain(resolveCurrentLobbyAssociations([placement], reads, officialTeams));
+    const resolved = result.placements[0];
+    assert.equal(resolved.slot, 3);
+    assert.equal(resolved.teamName, 'TIME FREITAS');
+    assert.deepEqual(resolved.players.slice(2).map(player => [player.name, player.lobbySlot, player.lobbyReserveInferred, player.kills]), [
+      ['André', 3, true, 4],
+      ['Sousa', 3, true, 3],
+    ]);
+    assert.ok(resolved.reviewFields.includes('players'));
+    assert.match(resolved.notes, /2 reserva/);
+    assert.deepEqual(
+      plain(removeAssociatedReservesFromUnmatched(['André', 'Sousa', 'Nick sem vínculo'], result.placements)),
+      ['Nick sem vínculo'],
+    );
+    assert.equal(resolved.kills, 10);
+  });
+
+  test(`${source.name}: one lobby match does not automatically assign reserves`, async () => {
+    const { resolveCurrentLobbyAssociations } = await loadHelpers(source.text, source.typescript);
+    const placement = {
+      position: 2,
+      slot: 3,
+      teamName: 'TIME FREITAS',
+      kills: 5,
+      players: [
+        { name: 'João', kills: 2, lobbySlot: 3, lobbyRosterMatched: true, lobbyRosterAmbiguous: false },
+        { name: 'André', kills: 3, lobbySlot: null, lobbyRosterMatched: false, lobbyRosterAmbiguous: false },
+      ],
+      confidence: 'high',
+      reviewFields: [],
+      readAgreement: '2 leituras concordam',
+      notes: '',
+    };
+    const reads = [0, 1].map(() => ({
+      placements: [{ position: 2, players: placement.players.map(player => ({ ...player })) }],
+    }));
+    const result = plain(resolveCurrentLobbyAssociations([placement], reads, [{ slot: 3, teamName: 'TIME FREITAS' }]));
+
+    assert.equal(result.placements[0].players[1].lobbyReserveInferred, undefined);
+    assert.equal(result.placements[0].players[1].lobbySlot, null);
+    assert.ok(result.placements[0].reviewFields.includes('players'));
+    assert.match(result.placements[0].notes, /Menos de dois jogadores/);
+  });
+
+  test(`${source.name}: reserve inference requires lobby matches across independent reads`, async () => {
+    const { resolveCurrentLobbyAssociations } = await loadHelpers(source.text, source.typescript);
+    const players = [
+      { name: 'João', kills: 2, lobbySlot: 3, lobbyRosterMatched: true, lobbyRosterAmbiguous: false },
+      { name: 'Marcos', kills: 1, lobbySlot: 3, lobbyRosterMatched: true, lobbyRosterAmbiguous: false },
+      { name: 'André', kills: 3, lobbySlot: null, lobbyRosterMatched: false, lobbyRosterAmbiguous: false },
+    ];
+    const placement = {
+      position: 2,
+      slot: 3,
+      teamName: 'TIME FREITAS',
+      kills: 6,
+      players,
+      confidence: 'high',
+      reviewFields: [],
+      readAgreement: '2 leituras concordam',
+      notes: '',
+    };
+    const reads = [
+      { placements: [{ position: 2, players: players.map(player => ({ ...player })) }] },
+      { placements: [{ position: 2, players: players.map(player => ({
+        ...player,
+        lobbySlot: null,
+        lobbyRosterMatched: false,
+      })) }] },
+    ];
+    const result = plain(resolveCurrentLobbyAssociations([placement], reads, [{ slot: 3, teamName: 'TIME FREITAS' }]));
+
+    assert.equal(result.placements[0].players[2].lobbyReserveInferred, undefined);
+    assert.equal(result.placements[0].players[2].lobbySlot, null);
+    assert.ok(result.placements[0].reviewFields.includes('players'));
+    assert.match(result.placements[0].notes, /duas leituras independentes/);
+  });
+
+  test(`${source.name}: conflicting current lobby slots suspend team assignment`, async () => {
+    const { resolveCurrentLobbyAssociations } = await loadHelpers(source.text, source.typescript);
+    const placement = {
+      position: 2,
+      slot: 3,
+      teamName: 'TIME FREITAS',
+      kills: 5,
+      players: [
+        { name: 'João', kills: 2, lobbySlot: 3, lobbyRosterMatched: true, lobbyRosterAmbiguous: false },
+        { name: 'Marcos', kills: 3, lobbySlot: 4, lobbyRosterMatched: true, lobbyRosterAmbiguous: false },
+        { name: 'André', kills: 0, lobbySlot: null, lobbyRosterMatched: false, lobbyRosterAmbiguous: false },
+      ],
+      confidence: 'high',
+      reviewFields: [],
+      readAgreement: '2 leituras concordam',
+      notes: '',
+    };
+    const result = plain(resolveCurrentLobbyAssociations([placement], [{
+      placements: [{ position: 2, players: placement.players }],
+    }], [
+      { slot: 3, teamName: 'TIME FREITAS' },
+      { slot: 4, teamName: 'OUTRA EQUIPE' },
+    ]));
+
+    assert.equal(result.placements[0].slot, null);
+    assert.equal(result.placements[0].teamName, null);
+    assert.equal(result.placements[0].players[2].lobbyReserveInferred, undefined);
+    assert.ok(result.placements[0].reviewFields.includes('slot'));
+    assert.match(result.placements[0].notes, /apontam para equipes diferentes/);
   });
 
   test(`${source.name}: two independent identical reads reach agreement`, async () => {
@@ -367,7 +506,7 @@ for (const source of loaded) {
 
   test(`${source.name}: AI instructions forbid assigning a nickname to multiple teams`, () => {
     assert.match(source.text, /cada nick, normalizado sem diferença de maiúsculas, acentos ou símbolos decorativos, pode ser associado a somente uma equipe\/slot nesta queda/);
-    assert.match(source.text, /Extraia primeiro lobbyRoster das fotos do lobby/);
+    assert.match(source.text, /Extraia primeiro lobbyRoster das três imagens atuais do lobby/);
     assert.match(source.text, /mantenha-o somente na colocação cujo slot corresponde ao lobby/);
     assert.match(source.text, /liste-o em unmatchedPlayers/);
   });
@@ -379,5 +518,8 @@ for (const source of loaded) {
     assert.match(source.text, /Comece do zero para a queda atual: não receba nem use respostas das leituras anteriores desta queda/);
     assert.match(source.text, /Não use os resultados de leituras anteriores desta queda/);
     assert.match(source.text, /Faça uma terceira leitura independente/);
+    assert.match(source.text, /releia do zero as três imagens atuais dos slots/);
+    assert.match(source.text, /const images = \[\.\.\.slotImages, \.\.\.resultImages\]/);
+    assert.match(source.text, /resolveCurrentLobbyAssociations\(/);
   });
 }

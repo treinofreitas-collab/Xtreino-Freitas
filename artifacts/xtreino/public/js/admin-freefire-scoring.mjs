@@ -2567,7 +2567,8 @@ function renderPlacements(drop) {
       <td><strong class="ff-reviewed-team">${esc(drop.rosterSnapshot?.[Number(p.slot) - 1]?.teamName || state.teams[Number(p.slot) - 1]?.teamName || p.teamName || 'Não identificada')}</strong>
           ${p.players?.length ? `<div class="ff-player-list">${p.players.map((player, playerIndex) => {
             const playerName = String(player.name || '').trim() || 'Jogador sem associação';
-            return `<label class="ff-player-kill"><span>${esc(playerName)}</span><input data-edit-player-kills data-index="${i}" data-player-index="${playerIndex}" type="number" min="0" max="99" aria-label="Abates de ${esc(playerName)}" placeholder="?" value="${Number.isInteger(player.kills) ? esc(player.kills) : ''}" ${readOnly() || state.busy ? 'disabled' : ''}></label>`;
+            const reserveLabel = player.lobbyReserveInferred ? '<small class="ff-reserve-label">Reserva associada pelo grupo</small>' : '';
+            return `<label class="ff-player-kill"><span>${esc(playerName)}${reserveLabel}</span><input data-edit-player-kills data-index="${i}" data-player-index="${playerIndex}" type="number" min="0" max="99" aria-label="Abates de ${esc(playerName)}" placeholder="?" value="${Number.isInteger(player.kills) ? esc(player.kills) : ''}" ${readOnly() || state.busy ? 'disabled' : ''}></label>`;
           }).join('')}</div>` : '<small class="ff-player-list">Jogadores não identificados</small>'}</td>
       <td><input data-edit="position" data-index="${i}" aria-label="Colocação" type="number" min="1" max="12" value="${esc(p.position)}" ${readOnly() || state.busy ? 'disabled' : ''}></td>
        <td><input data-kill-total="${i}" aria-label="Soma individual de abates" type="number" min="0" max="99" readonly placeholder="Sem leitura" value="${Number.isInteger(sumReadablePlayerKills(p.players)) ? esc(sumReadablePlayerKills(p.players)) : ''}"></td>
@@ -2717,7 +2718,7 @@ function build(root) {
           <div class="ff-roster-confirm-row"><span id="ffRosterConfirmStatus" role="status"></span></div>
         </section>
         <section class="ff-panel ff-lobby-panel">
-          <div class="ff-panel-heading"><div class="ff-step">03</div><div><h2>Slots do lobby</h2><p>Envie as 3 fotos uma vez. Elas serão reutilizadas em todas as quedas deste evento.</p></div></div>
+          <div class="ff-panel-heading"><div class="ff-step">03</div><div><h2>Slots do lobby</h2><p>Envie as 3 fotos uma vez. A IA relê essas imagens em cada queda.</p></div></div>
           <div class="ff-lobby-upload">
             <label class="ff-upload-tile"><input id="ffSlotUpload" type="file" accept="image/png,image/jpeg,image/webp" multiple><i class="fas fa-border-all"></i><b>Slots do lobby (3 fotos)</b><small id="ffSlotFiles">Nenhuma imagem selecionada</small><span>Arraste ou clique para adicionar</span></label>
             <div id="ffSlotPreviews" class="ff-image-previews" aria-live="polite"></div>
@@ -2736,7 +2737,7 @@ function build(root) {
             </div>
             <button type="button" id="ffAnalyzeDrop" class="ff-button ff-button-primary"><i class="fas fa-wand-magic-sparkles"></i> Analisar esta queda</button>
           </div>
-          <p id="ffUploadHelp" class="ff-upload-help">As 3 fotos do lobby cadastradas acima serão reutilizadas nesta queda. Adicione até 2 fotos do placar; as imagens serão otimizadas ao analisar.</p>
+          <p id="ffUploadHelp" class="ff-upload-help">As 3 fotos dos slots serão enviadas e lidas novamente junto com o placar desta queda. Adicione até 2 fotos do placar.</p>
           <div id="ffExtraction" class="ff-extraction"></div>
         </section>
       </div>
