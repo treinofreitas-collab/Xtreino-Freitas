@@ -579,8 +579,7 @@ service cloud.firestore {
     }
 
     match /freefire_general_ranking_team_links/{teamId} {
-      allow get, list: if true;
-      allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow get, list, create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
       allow delete: if false;
     }
 
