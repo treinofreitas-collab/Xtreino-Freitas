@@ -1,4 +1,5 @@
 const RANKING_COLLECTION = "freefire_general_ranking";
+const RANKING_TEAM_LINK_COLLECTION = "freefire_general_ranking_team_links";
 const LOGO_CATALOG_COLLECTION = "championship_config";
 const LOGO_ASSOCIATION_PREFIX = "freefire_modo_liga_logo_association_";
 const LOGO_MANUAL_PREFIX = "freefire_modo_liga_logo_";
@@ -79,22 +80,25 @@ function latestRegistrationLogos(registrations) {
     ).trim();
     const teamKey = normalizeTeamName(teamName);
     if (!teamKey || !validLogoUrl(logoUrl)) continue;
+    const rankingTeamId = String(registration.rankingTeamId || registration.teamId || "").trim();
 
     const candidate = {
       teamKey,
+      rankingTeamId,
       teamName,
       logoUrl,
       source: "purchase",
       updatedAtMs: registrationLogoTimestamp(registration),
     };
-    const current = byTeam.get(teamKey);
+    const aggregationKey = rankingTeamId ? `id:${rankingTeamId}` : `name:${teamKey}`;
+    const current = byTeam.get(aggregationKey);
     if (
       !current
       || candidate.updatedAtMs > current.updatedAtMs
       || (candidate.updatedAtMs === current.updatedAtMs
         && Boolean(registration.teamLogoUrl) && !current.hasOriginalLogo)
     ) {
-      byTeam.set(teamKey, { ...candidate, hasOriginalLogo: Boolean(registration.teamLogoUrl) });
+      byTeam.set(aggregationKey, { ...candidate, hasOriginalLogo: Boolean(registration.teamLogoUrl) });
     }
   }
 
@@ -109,18 +113,38 @@ async function syncPaidRegistrationLogos(db, registrations, FieldValue) {
   for (const purchase of purchases) {
     const teamId = teamDocumentId(purchase.teamKey);
     const logoKey = safeLogoKey(purchase.teamKey);
-    const rankingRef = db.collection(RANKING_COLLECTION).doc(teamId);
+    const legacyRankingRef = db.collection(RANKING_COLLECTION).doc(teamId);
+    const linkRef = purchase.rankingTeamId
+      ? db.collection(RANKING_TEAM_LINK_COLLECTION).doc(purchase.rankingTeamId)
+      : null;
     const associationRef = db.collection(LOGO_CATALOG_COLLECTION)
       .doc(`${LOGO_ASSOCIATION_PREFIX}${logoKey}`);
     const manualRef = db.collection(LOGO_CATALOG_COLLECTION).doc(`${LOGO_MANUAL_PREFIX}${logoKey}`);
 
     const changed = await db.runTransaction(async transaction => {
-      const [rankingSnapshot, associationSnapshot, manualSnapshot] = await Promise.all([
-        transaction.get(rankingRef),
+      const [linkSnapshot, associationSnapshot, manualSnapshot] = await Promise.all([
+        linkRef ? transaction.get(linkRef) : Promise.resolve(null),
         transaction.get(associationRef),
         transaction.get(manualRef),
       ]);
+      const mappedDocumentId = String(linkSnapshot?.exists ? linkSnapshot.data()?.rankingDocumentId || "" : "");
+      const rankingRef = mappedDocumentId
+        ? db.collection(RANKING_COLLECTION).doc(mappedDocumentId)
+        : legacyRankingRef;
+      const rankingSnapshot = await transaction.get(rankingRef);
       if (!rankingSnapshot.exists) return false;
+      const ranking = rankingSnapshot.data();
+      if (
+        purchase.rankingTeamId
+        && ranking.rankingTeamId
+        && ranking.rankingTeamId !== purchase.rankingTeamId
+      ) return false;
+      if (
+        purchase.rankingTeamId
+        && !mappedDocumentId
+        && ranking.teamId
+        && ranking.teamId !== purchase.rankingTeamId
+      ) return false;
       matchedTeamCount += 1;
 
       const candidates = [purchase];
@@ -141,7 +165,7 @@ async function syncPaidRegistrationLogos(db, registrations, FieldValue) {
         });
       }
 
-      const latest = chooseLatestLogo(candidates, rankingSnapshot.data());
+      const latest = chooseLatestLogo(candidates, ranking);
       if (!latest) return false;
       transaction.update(rankingRef, {
         logoUrl: latest.logoUrl,

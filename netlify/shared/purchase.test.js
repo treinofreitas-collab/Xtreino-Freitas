@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const firebase = require("./firebase-admin");
+const { accountRankingTeamId } = require("./ranking-team-identity");
 
 function fakeDatabase(seed, reads = []) {
   let records = new Map(Object.entries(structuredClone(seed)));
@@ -330,11 +331,91 @@ test("approved event purchases sync the newest logo to an existing ranking row w
 
   assert.equal(result.status, "paid");
   assert.equal(currentDb.read("registrations/r").status, "paid");
+  const rankingTeamId = accountRankingTeamId("buyer", "FOLTEST PRO");
+  assert.equal(currentDb.read("registrations/r").rankingTeamId, rankingTeamId);
+  assert.equal(currentDb.read(`freefire_general_ranking_team_links/${rankingTeamId}`).rankingDocumentId, "team_foltest_pro");
+  assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").rankingTeamId, rankingTeamId);
   assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").logoUrl, "https://storage.example/foltest.webp");
   assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").logoSource, "purchase");
   assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").logoUpdatedAt, logoTimestamp);
   assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").totalPoints, 1258);
   assert.equal(currentDb.read("freefire_general_ranking/team_equipe_nova"), undefined);
+});
+
+test("a later buyer with the same exact name receives a separate identity without taking the legacy points", async () => {
+  currentDb = fakeDatabase({
+    "users/buyer-one": { tokens: 0 },
+    "users/buyer-two": { tokens: 0 },
+    "adminEvents/freitas": { name: "TREINO FREITAS", eventType: "treino-freitas", preco: 3, status: "Aberto" },
+    "registrations/first": {
+      userId: "buyer-one", status: "pending", eventType: "treino-freitas",
+      date: "2026-10-14", schedule: "Quarta - 21h", external_reference: "same_name_one",
+      teamName: "RANGERS",
+    },
+    "registrations/second": {
+      userId: "buyer-two", status: "pending", eventType: "treino-freitas",
+      date: "2026-10-14", schedule: "Quarta - 21h", external_reference: "same_name_two",
+      teamName: "RANGERS",
+    },
+    "freefire_general_ranking/team_rangers": {
+      teamKey: "rangers", teamName: "RANGERS",
+      baselinePoints: 100, sessionPoints: 20, totalPoints: 120,
+    },
+  });
+
+  await preparePurchase("buyer-one", { external_reference: "same_name_one", unit_price: 3 }, "mercadopago");
+  await completePurchase("same_name_one", { payment: { ...payment("same_name_one"), transaction_amount: 3 } });
+  const firstId = accountRankingTeamId("buyer-one", "RANGERS");
+  await preparePurchase("buyer-two", { external_reference: "same_name_two", unit_price: 3 }, "mercadopago");
+  await completePurchase("same_name_two", {
+    payment: { ...payment("same_name_two"), id: 988, transaction_amount: 3 },
+  });
+  const secondId = accountRankingTeamId("buyer-two", "RANGERS");
+
+  assert.notEqual(firstId, secondId);
+  assert.equal(currentDb.read("registrations/first").rankingTeamId, firstId);
+  assert.equal(currentDb.read("registrations/second").rankingTeamId, secondId);
+  assert.equal(currentDb.read("freefire_general_ranking/team_rangers").rankingTeamId, firstId);
+  assert.equal(currentDb.read("freefire_general_ranking/team_rangers").totalPoints, 120);
+  assert.equal(currentDb.read(`freefire_general_ranking_team_links/${secondId}`), undefined);
+});
+
+test("a verified existing team ID is preserved when the exact-name legacy row is linked", async () => {
+  currentDb = fakeDatabase({
+    "users/buyer": { tokens: 0 },
+    "adminEvents/freitas": { name: "TREINO FREITAS", eventType: "treino-freitas", preco: 3, status: "Aberto" },
+    "teams/team-profile-123": {
+      nome: "FOLTEST PRO",
+      capitaoId: "buyer",
+      membrosUids: ["buyer", "player-two"],
+    },
+    "registrations/r": {
+      userId: "buyer", status: "pending", eventType: "treino-freitas",
+      date: "2026-10-14", schedule: "Quarta - 21h", external_reference: "existing_team_identity",
+      teamName: "FOLTEST PRO", teamId: "team-profile-123",
+    },
+    "freefire_general_ranking/team_foltest_pro": {
+      teamKey: "foltest pro", teamName: "FOLTEST PRO", teamId: "team-profile-123",
+      baselinePoints: 100, sessionPoints: 25, totalPoints: 125,
+    },
+  });
+
+  await preparePurchase("buyer", {
+    external_reference: "existing_team_identity", unit_price: 3,
+  }, "mercadopago");
+  await completePurchase("existing_team_identity", {
+    payment: { ...payment("existing_team_identity"), transaction_amount: 3 },
+  });
+
+  assert.equal(currentDb.read("registrations/r").teamId, "team-profile-123");
+  assert.equal(currentDb.read("registrations/r").rankingTeamId, "team-profile-123");
+  assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").teamId, "team-profile-123");
+  assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").rankingTeamId, "team-profile-123");
+  assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").totalPoints, 125);
+  assert.equal(
+    currentDb.read("freefire_general_ranking_team_links/team-profile-123").rankingDocumentId,
+    "team_foltest_pro",
+  );
 });
 
 test("event purchases paid with tokens automatically sync the team logo", async () => {

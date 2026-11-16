@@ -19,6 +19,28 @@ export function generalRankingTeamKey(teamName) {
     : '';
 }
 
+export function generalRankingIdentityKey(team) {
+  const rankingTeamId = String(team?.rankingTeamId || team?.teamId || '').trim();
+  if (rankingTeamId) return `id:${rankingTeamId}`;
+  const nameKey = generalRankingTeamKey(team?.nameKey || team?.teamName || team?.key);
+  return nameKey ? `name:${nameKey}` : '';
+}
+
+export function accountRankingTeamId(userId, teamName) {
+  const uid = String(userId || '').trim();
+  const nameKey = generalRankingTeamKey(teamName);
+  if (!uid || !nameKey) return '';
+  const input = `${uid}\u0000${nameKey}`;
+  let first = 2166136261;
+  let second = 2246822519;
+  for (let index = 0; index < input.length; index += 1) {
+    const code = input.charCodeAt(index);
+    first = Math.imul(first ^ code, 16777619);
+    second = Math.imul(second ^ code, 3266489917);
+  }
+  return `account_${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`;
+}
+
 const MAX_IMPORT_ROWS = 20_000;
 export const MIN_GENERAL_RANKING_SEED_ROWS = 4_000;
 
@@ -309,26 +331,34 @@ export function buildGeneralRankingSessionTeams(standings = []) {
   const teams = new Map();
   for (const row of Array.isArray(standings) ? standings : []) {
     const teamName = String(row?.teamName || '').trim();
-    const key = generalRankingTeamKey(teamName);
+    const nameKey = generalRankingTeamKey(teamName);
+    const rankingTeamId = String(row?.rankingTeamId || row?.teamId || '').trim();
+    const key = rankingTeamId ? `id:${rankingTeamId}` : `name:${nameKey}`;
     const points = Number(row?.points);
     const wins = Number(row?.wins || 0);
     const kills = Number(row?.kills || 0);
-    if (!key || !teamName || !Number.isSafeInteger(points) || points < 0) continue;
+    if (!nameKey || !key || !teamName || !Number.isSafeInteger(points) || points < 0) continue;
     const current = teams.get(key) || {
       key,
+      nameKey,
+      rankingTeamId,
       teamName,
       points: 0,
       wins: 0,
       kills: 0,
       logoUrl: '',
       logoSource: '',
+      logoUpdatedAt: 0,
     };
     current.points += points;
     current.wins += Number.isSafeInteger(wins) && wins > 0 ? wins : 0;
     current.kills += Number.isSafeInteger(kills) && kills > 0 ? kills : 0;
-    if (!current.logoUrl && row.logoUrl) {
+    if (!current.rankingTeamId && rankingTeamId) current.rankingTeamId = rankingTeamId;
+    if (row.logoUrl &&
+        (!current.logoUrl || Number(row.logoUpdatedAt || 0) > Number(current.logoUpdatedAt || 0))) {
       current.logoUrl = String(row.logoUrl);
       current.logoSource = String(row.logoSource || '');
+      current.logoUpdatedAt = Number(row.logoUpdatedAt || 0);
     }
     teams.set(key, current);
   }
@@ -338,7 +368,8 @@ export function buildGeneralRankingSessionTeams(standings = []) {
 export function rankGeneralRankingRows(rows = []) {
   const sorted = [...(Array.isArray(rows) ? rows : [])].sort((a, b) =>
     Number(b.totalPoints || 0) - Number(a.totalPoints || 0) ||
-    generalRankingTeamKey(a.teamName).localeCompare(generalRankingTeamKey(b.teamName)),
+    generalRankingTeamKey(a.teamName).localeCompare(generalRankingTeamKey(b.teamName)) ||
+    String(a.rankingTeamId || '').localeCompare(String(b.rankingTeamId || '')),
   );
   let previousPoints = null;
   let currentRank = 0;

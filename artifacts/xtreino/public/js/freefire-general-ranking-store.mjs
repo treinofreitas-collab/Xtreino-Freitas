@@ -6,11 +6,12 @@ import {
   MIN_GENERAL_RANKING_SEED_ROWS,
   parseGeneralRankingImport,
   rankGeneralRankingRows,
-} from './freefire-general-ranking.mjs?v=general-ranking-logo-time-1';
+} from './freefire-general-ranking.mjs?v=ranking-team-identity-1';
 
 const TEAM_COLLECTION = 'freefire_general_ranking';
 const SESSION_COLLECTION = 'freefire_general_ranking_sessions';
 const META_COLLECTION = 'freefire_general_ranking_meta';
+const TEAM_LINK_COLLECTION = 'freefire_general_ranking_team_links';
 const META_ID = 'current';
 const IMPORT_BATCH_SIZE = 400;
 
@@ -21,6 +22,14 @@ function databaseOrThrow(db = window.firebaseDb) {
 
 function teamDocumentId(key) {
   return `team_${String(key || '').replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/gu, '').slice(0, 110)}`;
+}
+
+function identityTeamDocumentId(team) {
+  const nameId = teamDocumentId(team?.nameKey || generalRankingTeamKey(team?.teamName));
+  const identity = String(team?.rankingTeamId || '').trim();
+  return identity
+    ? `${nameId}_id_${encodeURIComponent(identity).replace(/%/g, '_').slice(0, 500)}`
+    : nameId;
 }
 
 function timestampMs(value) {
@@ -53,6 +62,7 @@ export function chooseLatestGeneralRankingLogo(candidates, current = null) {
 
 export async function syncGeneralRankingLogoToTeam(db, {
   teamName,
+  rankingTeamId = '',
   logoUrl,
   source = 'association',
   updatedAtMs = Date.now(),
@@ -68,9 +78,29 @@ export async function syncGeneralRankingLogoToTeam(db, {
 
   await getFirestoreFunctions();
   const { runTransaction, serverTimestamp } = window.__freefireRankingFirestore;
-  const rankingRef = rankingCollections(targetDb).teamRef(key);
+  const refs = rankingCollections(targetDb);
+  const identity = String(rankingTeamId || '').trim();
+  const legacyRef = refs.teamRef(key);
+  const linkRef = identity ? refs.teamLinkRef(identity) : null;
   return runTransaction(targetDb, async transaction => {
-    const snapshot = await transaction.get(rankingRef);
+    const [legacySnapshot, linkSnapshot] = await Promise.all([
+      transaction.get(legacyRef),
+      linkRef ? transaction.get(linkRef) : Promise.resolve(null),
+    ]);
+    const mappedDocumentId = String(linkSnapshot?.exists() ? linkSnapshot.data()?.rankingDocumentId || '' : '');
+    const legacy = legacySnapshot.exists() ? legacySnapshot.data() : {};
+    if (!identity && (legacy.rankingTeamId || legacy.teamId)) return false;
+    const rankingRef = mappedDocumentId
+      ? window.__freefireRankingFirestore.doc(targetDb, TEAM_COLLECTION, mappedDocumentId)
+      : identity && (legacy.rankingTeamId === identity || legacy.teamId === identity)
+        ? legacyRef
+        : identity
+          ? refs.teamRefById({ nameKey: key, teamName, rankingTeamId: identity })
+          : legacyRef;
+    const snapshot = (
+      (!mappedDocumentId && (!identity || legacy.rankingTeamId === identity || legacy.teamId === identity)) ||
+      mappedDocumentId === legacyRef.id
+    ) ? legacySnapshot : await transaction.get(rankingRef);
     if (!snapshot.exists()) return false;
     const latest = chooseLatestGeneralRankingLogo([{
       logoUrl: candidateUrl,
@@ -93,6 +123,8 @@ function rankingCollections(db) {
   return {
     teams: collection(db, TEAM_COLLECTION),
     teamRef: key => doc(db, TEAM_COLLECTION, teamDocumentId(key)),
+    teamRefById: team => doc(db, TEAM_COLLECTION, identityTeamDocumentId(team)),
+    teamLinkRef: teamId => doc(db, TEAM_LINK_COLLECTION, String(teamId || '')),
     sessions: collection(db, SESSION_COLLECTION),
     sessionRef: id => doc(db, SESSION_COLLECTION, id),
     metaRef: doc(db, META_COLLECTION, META_ID),
@@ -230,27 +262,98 @@ export async function upsertGeneralRankingSession(db, {
     const oldTeams = Array.isArray(previousSessionSnapshot.data()?.teams)
       ? previousSessionSnapshot.data().teams
       : [];
-    const oldByKey = new Map(oldTeams.map(team => [team.key, team]));
+    const oldByKey = new Map(oldTeams.map(team => {
+      const nameKey = String(team.nameKey || generalRankingTeamKey(team.teamName || team.key) || '');
+      const rankingTeamId = String(team.rankingTeamId || '').trim();
+      const key = rankingTeamId ? `id:${rankingTeamId}` : `name:${nameKey}`;
+      return [key, { ...team, key, nameKey, rankingTeamId }];
+    }));
     const nextByKey = new Map(teams.map(team => [team.key, team]));
     const allKeys = [...new Set([...oldByKey.keys(), ...nextByKey.keys()])];
-    const teamRefs = new Map(allKeys.map(key => [key, refs.teamRef(key)]));
-    const teamSnapshots = new Map();
-    for (const key of allKeys) {
-      teamSnapshots.set(key, await transaction.get(teamRefs.get(key)));
+    const nextIdentityKeys = new Set(nextByKey.keys());
+    const identityTeams = new Map(allKeys.map(key => [key, nextByKey.get(key) || oldByKey.get(key)]));
+    const legacyRefs = new Map();
+    const linkRefs = new Map();
+    for (const team of identityTeams.values()) {
+      if (!legacyRefs.has(team.nameKey)) legacyRefs.set(team.nameKey, refs.teamRef(team.nameKey));
+      if (team.rankingTeamId && !linkRefs.has(team.rankingTeamId)) {
+        linkRefs.set(team.rankingTeamId, refs.teamLinkRef(team.rankingTeamId));
+      }
     }
 
+    const linkSnapshots = new Map();
+    for (const [teamId, ref] of linkRefs) linkSnapshots.set(teamId, await transaction.get(ref));
+    const legacySnapshots = new Map();
+    for (const [nameKey, ref] of legacyRefs) legacySnapshots.set(nameKey, await transaction.get(ref));
+
+    const resolveTeamRef = team => {
+      const linkSnapshot = team.rankingTeamId ? linkSnapshots.get(team.rankingTeamId) : null;
+      if (linkSnapshot?.exists()) {
+        const documentId = String(linkSnapshot.data()?.rankingDocumentId || '');
+        if (documentId) return window.__freefireRankingFirestore.doc(targetDb, TEAM_COLLECTION, documentId);
+      }
+      const legacySnapshot = legacySnapshots.get(team.nameKey);
+      const legacyData = legacySnapshot?.exists() ? legacySnapshot.data() : {};
+      if (
+        !team.rankingTeamId &&
+        nextIdentityKeys.has(team.key) &&
+        (legacyData.rankingTeamId || legacyData.teamId)
+      ) {
+        throw new Error(
+          `A equipe "${team.teamName}" já está vinculada a um ID. Identifique a equipe desta sessão antes de salvar para não misturar pontuações.`,
+        );
+      }
+      if (
+        team.rankingTeamId &&
+        (legacyData.rankingTeamId === team.rankingTeamId || legacyData.teamId === team.rankingTeamId)
+      ) {
+        return refs.teamRef(team.nameKey);
+      }
+      return team.rankingTeamId ? refs.teamRefById(team) : refs.teamRef(team.nameKey);
+    };
+
+    const documentGroups = new Map();
     for (const key of allKeys) {
-      const previous = oldByKey.get(key) || { points: 0, wins: 0, kills: 0 };
-      const next = nextByKey.get(key) || { points: 0, wins: 0, kills: 0 };
-      const snapshot = teamSnapshots.get(key);
+      const identity = identityTeams.get(key);
+      const teamRef = resolveTeamRef(identity);
+      const documentKey = teamRef.path || `${teamRef.collection || TEAM_COLLECTION}/${teamRef.id || ''}`;
+      const group = documentGroups.get(documentKey) || {
+        teamRef,
+        previous: { points: 0, wins: 0, kills: 0 },
+        next: { points: 0, wins: 0, kills: 0 },
+        names: [],
+        nameKey: identity.nameKey,
+        rankingTeamId: '',
+        incoming: null,
+      };
+      const previous = oldByKey.get(key);
+      const next = nextByKey.get(key);
+      for (const field of ['points', 'wins', 'kills']) {
+        group.previous[field] += Number(previous?.[field] || 0);
+        group.next[field] += Number(next?.[field] || 0);
+      }
+      const teamName = String(next?.teamName || previous?.teamName || '').trim();
+      if (teamName && !group.names.includes(teamName)) group.names.push(teamName);
+      group.rankingTeamId ||= String(identity.rankingTeamId || '');
+      if (next) group.incoming = next;
+      documentGroups.set(documentKey, group);
+    }
+
+    const teamSnapshots = new Map();
+    for (const [documentKey, group] of documentGroups) {
+      teamSnapshots.set(documentKey, await transaction.get(group.teamRef));
+    }
+
+    for (const [documentKey, group] of documentGroups) {
+      const snapshot = teamSnapshots.get(documentKey);
       const current = snapshot.exists() ? snapshot.data() : {};
       const currentPoints = Number(current.sessionPoints || 0);
       const currentWins = Number(current.wins || 0);
       const currentKills = Number(current.kills || 0);
-      const sessionPoints = Math.max(0, currentPoints - Number(previous.points || 0) + Number(next.points || 0));
-      const wins = Math.max(0, currentWins - Number(previous.wins || 0) + Number(next.wins || 0));
-      const kills = Math.max(0, currentKills - Number(previous.kills || 0) + Number(next.kills || 0));
-      const incoming = nextByKey.get(key);
+      const sessionPoints = Math.max(0, currentPoints - group.previous.points + group.next.points);
+      const wins = Math.max(0, currentWins - group.previous.wins + group.next.wins);
+      const kills = Math.max(0, currentKills - group.previous.kills + group.next.kills);
+      const incoming = group.incoming;
       const latestLogo = incoming?.logoUrl
         ? chooseLatestGeneralRankingLogo([{
             logoUrl: incoming.logoUrl,
@@ -258,14 +361,15 @@ export async function upsertGeneralRankingSession(db, {
             updatedAtMs: Number(incoming.logoUpdatedAt || 0),
           }], current)
         : null;
-      transaction.set(teamRefs.get(key), {
-        teamKey: key,
-        teamName: current.teamName || incoming?.teamName || previous.teamName || key,
+      transaction.set(group.teamRef, {
+        teamKey: current.teamKey || group.nameKey,
+        teamName: current.teamName || incoming?.teamName || group.names[0] || group.nameKey,
         baselinePoints: Number(current.baselinePoints || 0),
         sessionPoints,
         wins,
         kills,
         totalPoints: Number(current.baselinePoints || 0) + sessionPoints,
+        ...(group.rankingTeamId ? { rankingTeamId: group.rankingTeamId } : {}),
         ...(latestLogo ? {
           logoUrl: latestLogo.logoUrl,
           logoSource: latestLogo.source,
@@ -273,6 +377,15 @@ export async function upsertGeneralRankingSession(db, {
         } : {}),
         updatedAt: serverTimestamp(),
       }, { merge: true });
+      if (group.rankingTeamId) {
+        const linkRef = refs.teamLinkRef(group.rankingTeamId);
+        transaction.set(linkRef, {
+          rankingTeamId: group.rankingTeamId,
+          rankingDocumentId: group.teamRef.id,
+          teamName: current.teamName || incoming?.teamName || group.names[0] || group.nameKey,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
     }
 
     transaction.set(sessionRef, {
@@ -386,6 +499,28 @@ export async function getGeneralRankingTeamPositionsByNames(db, teamNames) {
     const snapshot = await getDocs(query(refs.teams, where('teamKey', 'in', pageKeys)));
     teams.push(...snapshot.docs.map(document => ({ id: document.id, ...document.data() })));
   }
+  return rankTeamPositions(targetDb, teams, refs);
+}
+
+export async function getGeneralRankingTeamPositionsByIds(db, teamIds) {
+  const targetDb = databaseOrThrow(db);
+  await getFirestoreFunctions();
+  const { getDocs, query, where } = window.__freefireRankingFirestore;
+  const refs = rankingCollections(targetDb);
+  const ids = [...new Set((Array.isArray(teamIds) ? teamIds : [])
+    .map(value => String(value || '').trim())
+    .filter(Boolean))];
+  const teams = [];
+  for (let index = 0; index < ids.length; index += 30) {
+    const pageIds = ids.slice(index, index + 30);
+    const snapshot = await getDocs(query(refs.teams, where('rankingTeamId', 'in', pageIds)));
+    teams.push(...snapshot.docs.map(document => ({ id: document.id, ...document.data() })));
+  }
+  return rankTeamPositions(targetDb, teams, refs);
+}
+
+async function rankTeamPositions(db, teams, refs) {
+  const { getCountFromServer, query, where } = window.__freefireRankingFirestore;
   const points = [...new Set(teams.map(team => Number(team.totalPoints || 0)))];
   const rankByPoints = new Map();
   await Promise.all(points.map(async totalPoints => {
@@ -394,8 +529,11 @@ export async function getGeneralRankingTeamPositionsByNames(db, teamNames) {
     );
     rankByPoints.set(totalPoints, countSnapshot.data().count + 1);
   }));
-  return new Map(teams.map(team => [
-    team.teamKey,
-    { ...team, rank: rankByPoints.get(Number(team.totalPoints || 0)) || 1 },
-  ]));
+  const entries = [];
+  for (const team of teams) {
+    const ranked = { ...team, rank: rankByPoints.get(Number(team.totalPoints || 0)) || 1 };
+    if (team.teamKey) entries.push([String(team.teamKey), ranked]);
+    if (team.rankingTeamId) entries.push([String(team.rankingTeamId), ranked]);
+  }
+  return new Map(entries);
 }

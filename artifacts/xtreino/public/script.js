@@ -11229,6 +11229,39 @@ function _gerarCodigoUnico() {
     return c;
 }
 
+function _rankingTeamNameKey(teamName) {
+    return String(teamName || '')
+        .normalize('NFKC')
+        .replace(/[\u200b-\u200f\uFEFF]/gu, '')
+        .replace(/[Ɐɐ]/gu, 'a')
+        .normalize('NFD')
+        .replace(/\p{M}/gu, '')
+        .replace(/&/g, ' e ')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLocaleLowerCase('pt-BR');
+}
+
+function _rankingAccountTeamId(userId, teamName) {
+    const nameKey = _rankingTeamNameKey(teamName);
+    if (!userId || !nameKey) return '';
+    const input = `${userId}\u0000${nameKey}`;
+    let first = 2166136261;
+    let second = 2246822519;
+    for (let index = 0; index < input.length; index += 1) {
+        const code = input.charCodeAt(index);
+        first = Math.imul(first ^ code, 16777619);
+        second = Math.imul(second ^ code, 3266489917);
+    }
+    return `account_${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function _rankingTeamDocumentId(teamName) {
+    const key = _rankingTeamNameKey(teamName);
+    return `team_${key.replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/gu, '').slice(0, 110)}`;
+}
+
 window.confirmarCriarTime = async function() {
     const nome = document.getElementById('equipeNomeInput')?.value?.trim();
     const email = document.getElementById('equipeEmailInput')?.value?.trim();
@@ -11243,7 +11276,7 @@ window.confirmarCriarTime = async function() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Criando…';
 
     try {
-        const { collection, doc, setDoc, query, where, getDocs, serverTimestamp, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+        const { collection, doc, getDoc, setDoc, query, where, getDocs, serverTimestamp, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
         const db = window.firebaseDb;
         if (!db) throw new Error('Firebase não conectado');
 
@@ -11255,6 +11288,16 @@ window.confirmarCriarTime = async function() {
         const nomeUsuario = window.currentUserProfile?.name || window.currentUserProfile?.nickname || window.currentUser.displayName || 'Capitão';
         const teamRef = doc(collection(db, 'teams'));
         const membro = { uid: window.currentUser.uid, nome: nomeUsuario, role: 'capitao', fotoUrl: window.currentUser.photoURL || null, entradaEm: Date.now() };
+        const accountRankingTeamId = _rankingAccountTeamId(window.currentUser.uid, nome);
+        const legacyRankingSnapshot = await getDoc(doc(
+            db,
+            'freefire_general_ranking',
+            _rankingTeamDocumentId(nome),
+        ));
+        const inheritedRankingTeamId = legacyRankingSnapshot.exists() &&
+            legacyRankingSnapshot.data()?.rankingTeamId === accountRankingTeamId
+            ? accountRankingTeamId
+            : '';
 
         // Guarda a miniatura no perfil e o arquivo original no Storage.
         let logoBase64 = null;
@@ -11277,6 +11320,7 @@ window.confirmarCriarTime = async function() {
             codigoConvite: codigo,
             membros: [membro],
             membrosUids: [window.currentUser.uid],
+            ...(inheritedRankingTeamId ? { rankingTeamId: inheritedRankingTeamId } : {}),
             status: 'aguardando',
             criadoEm: serverTimestamp()
         };

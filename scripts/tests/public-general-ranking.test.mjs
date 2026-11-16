@@ -106,8 +106,8 @@ test("Ranking logos render without duplicate initials and safely fall back on im
   const safeUrlBranch = clientJs.indexOf("if (safeUrl)", logoMarkupStart);
   const initialsDeclaration = clientJs.indexOf("const initials =", logoMarkupStart);
   assert.ok(initialsDeclaration >= 0 && initialsDeclaration < safeUrlBranch);
-  assert.match(rankingHtml, /ranking-logo-auto-6/);
-  assert.match(clientHtml, /general-ranking-dashboard-6/);
+  assert.match(rankingHtml, /ranking-team-identity-1/);
+  assert.match(clientHtml, /ranking-team-identity-1/);
 });
 
 test("purchase logos sync automatically after payment without exposing registrations publicly", () => {

@@ -2,6 +2,14 @@ const { getAdmin } = require("./firebase-admin");
 const { toCents, validateApprovedPayment } = require("./token-purchase");
 const { findAffiliateRef } = require("./credit-token-order");
 const { syncPaidPurchaseRegistrationLogos } = require("./ranking-logo-sync");
+const {
+  LINK_COLLECTION: RANKING_TEAM_LINK_COLLECTION,
+  RANKING_COLLECTION,
+  accountRankingTeamId,
+  isGeneralRankingEvent,
+  normalizeTeamName: normalizeRankingTeamName,
+  teamDocumentId: rankingTeamDocumentId,
+} = require("./ranking-team-identity");
 const { isDeepStrictEqual } = require("node:util");
 const CAMP_SEASON_7_START_DATE = "2026-11-18";
 
@@ -340,6 +348,109 @@ function sourcePricingFields(source) {
   return Object.fromEntries(fields.map(field => [field, source[field]]));
 }
 
+async function resolvePurchaseRankingIdentities(transaction, db, sourceSnapshots, ownerUid) {
+  const candidates = sourceSnapshots.map((snapshot, index) => {
+    const registration = snapshot.data() || {};
+    const teamName = String(registration.teamName || registration.team || registration.squadName || "").trim();
+    const nameKey = normalizeRankingTeamName(teamName);
+    if (
+      !teamName
+      || !nameKey
+      || !isGeneralRankingEvent(registration.eventType)
+      || registration.userId !== ownerUid
+    ) return null;
+    const requestedTeamId = String(registration.teamId || "").trim();
+    const validTeamId = /^[A-Za-z0-9_-]{1,128}$/.test(requestedTeamId) ? requestedTeamId : "";
+    return {
+      index,
+      sourceRef: snapshot.ref,
+      registration,
+      teamName,
+      nameKey,
+      validTeamId,
+      teamRef: validTeamId ? db.collection("teams").doc(validTeamId) : null,
+    };
+  }).filter(Boolean);
+  if (!candidates.length) return { get: () => null, links: new Map() };
+
+  const teamSnapshots = new Map();
+  for (const candidate of candidates) {
+    if (candidate.teamRef && !teamSnapshots.has(candidate.validTeamId)) {
+      teamSnapshots.set(candidate.validTeamId, await transaction.get(candidate.teamRef));
+    }
+  }
+  for (const candidate of candidates) {
+    const snapshot = teamSnapshots.get(candidate.validTeamId);
+    const profile = snapshot?.exists ? snapshot.data() : null;
+    const memberUids = Array.isArray(profile?.membrosUids) ? profile.membrosUids : [];
+    const belongsToBuyer = profile && (
+      profile.capitaoId === ownerUid || memberUids.includes(ownerUid)
+    );
+    const profileName = normalizeRankingTeamName(profile?.nome || profile?.name || "");
+    const verifiedTeam = belongsToBuyer && profileName === candidate.nameKey ? profile : null;
+    candidate.teamId = verifiedTeam ? candidate.validTeamId : "";
+    candidate.rankingTeamId = verifiedTeam
+      ? String(verifiedTeam.rankingTeamId || candidate.validTeamId)
+      : accountRankingTeamId(ownerUid, candidate.teamName);
+  }
+
+  const distinctIdsByName = new Map();
+  for (const candidate of candidates) {
+    const ids = distinctIdsByName.get(candidate.nameKey) || new Set();
+    ids.add(candidate.rankingTeamId);
+    distinctIdsByName.set(candidate.nameKey, ids);
+  }
+  const links = new Map();
+  const linkRefs = new Map();
+  const legacyRefs = new Map();
+  for (const candidate of candidates) {
+    if (!linkRefs.has(candidate.rankingTeamId)) {
+      linkRefs.set(
+        candidate.rankingTeamId,
+        db.collection(RANKING_TEAM_LINK_COLLECTION).doc(candidate.rankingTeamId),
+      );
+    }
+    if (!legacyRefs.has(candidate.nameKey)) {
+      legacyRefs.set(
+        candidate.nameKey,
+        db.collection(RANKING_COLLECTION).doc(rankingTeamDocumentId(candidate.nameKey)),
+      );
+    }
+  }
+  const linkSnapshots = new Map();
+  for (const [teamId, ref] of linkRefs) linkSnapshots.set(teamId, await transaction.get(ref));
+  const legacySnapshots = new Map();
+  for (const [nameKey, ref] of legacyRefs) legacySnapshots.set(nameKey, await transaction.get(ref));
+
+  for (const candidate of candidates) {
+    const linkSnapshot = linkSnapshots.get(candidate.rankingTeamId);
+    const legacySnapshot = legacySnapshots.get(candidate.nameKey);
+    const legacy = legacySnapshot?.exists ? legacySnapshot.data() : null;
+    const existingIdentity = String(legacy?.rankingTeamId || legacy?.teamId || "").trim();
+    const uniqueIdentityForName = distinctIdsByName.get(candidate.nameKey)?.size === 1;
+    const mayClaimLegacy = uniqueIdentityForName
+      && legacySnapshot?.exists
+      && (!existingIdentity || existingIdentity === candidate.rankingTeamId)
+      && (!linkSnapshot?.exists || String(linkSnapshot.data()?.rankingDocumentId || "") === legacySnapshot.id);
+    if (mayClaimLegacy) {
+      links.set(candidate.rankingTeamId, {
+        rankingTeamId: candidate.rankingTeamId,
+        teamId: candidate.teamId,
+        teamName: candidate.teamName,
+        legacyRef: legacySnapshot.ref,
+        linkRef: linkRefs.get(candidate.rankingTeamId),
+        claimLegacy: !legacy?.rankingTeamId,
+        createLink: !linkSnapshot?.exists,
+      });
+    }
+  }
+  const plans = new Map(candidates.map(candidate => [
+    candidate.sourceRef.path,
+    { rankingTeamId: candidate.rankingTeamId, teamId: candidate.teamId },
+  ]));
+  return { get: path => plans.get(path) || null, links };
+}
+
 async function settlePurchase(transaction, reference, {
   payment = null, uid = null, admin, db, checkoutRef,
   preparedCheckout = null, preparedSources = null, expectedTotal = null, affiliateRef = null,
@@ -413,6 +524,12 @@ async function settlePurchase(transaction, reference, {
       }
       return review("reservation_not_pending", "Uma das inscrições vinculadas já não está pendente; é necessária uma conferência.");
     }
+    const rankingIdentityPlans = await resolvePurchaseRankingIdentities(
+      transaction,
+      db,
+      sources,
+      checkout.userId,
+    );
     if (!snapshot.exists && preparedSources && sources.some((source, index) =>
       !isDeepStrictEqual(sourcePricingFields(source.data()), sourcePricingFields(preparedSources[index].data())))) {
       fail("O pedido mudou. Tente novamente.");
@@ -495,6 +612,9 @@ async function settlePurchase(transaction, reference, {
       allocatedCents += cents;
       transaction.update(refs[index], {
       ...patch,
+      ...(rankingIdentityPlans.get(refs[index].path) ? {
+        rankingTeamId: rankingIdentityPlans.get(refs[index].path).rankingTeamId,
+      } : {}),
       ...(checkout.kind === "event" && checkout.originalCents === 0 && source.data().isFreeEvent === true
         ? { status: source.data().freeParticipationStatus === "lisagem_gratis" ? "lisagem_gratis" : "confirmed" } : {}),
       ...(!payment ? { tokensUsed: cents / 100 } : {}),
@@ -504,6 +624,26 @@ async function settlePurchase(transaction, reference, {
       } : {}),
       });
     });
+    for (const link of rankingIdentityPlans.links.values()) {
+      if (link.claimLegacy) {
+        transaction.update(link.legacyRef, {
+          rankingTeamId: link.rankingTeamId,
+          ...(link.teamId ? { teamId: link.teamId } : {}),
+          identityLinkedAt: timestamp,
+          identityLinkedBy: "confirmed_purchase",
+          updatedAt: timestamp,
+        });
+      }
+      if (link.createLink) {
+        transaction.create(link.linkRef, {
+          rankingTeamId: link.rankingTeamId,
+          rankingDocumentId: link.legacyRef.id,
+          teamName: link.teamName,
+          linkedBy: "confirmed_purchase",
+          linkedAt: timestamp,
+        });
+      }
+    }
     if (checkout.kind === "event") {
       const first = sources[0].data();
       transaction.set(db.collection("orders").doc(`event_${reference}`), {

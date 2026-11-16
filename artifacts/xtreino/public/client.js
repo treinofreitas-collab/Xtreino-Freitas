@@ -137,10 +137,11 @@ import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-d
 import { isDisplayableEventRegistration } from './js/customer-event-orders.mjs?v=customer-order-recovery-1';
 import {
     getGeneralRankingPage,
+    getGeneralRankingTeamPositionsByIds,
     getGeneralRankingTeamPositionsByNames,
     getGeneralRankingTop
-} from './js/freefire-general-ranking-store.mjs?v=general-ranking-dashboard-4';
-import { generalRankingTeamKey } from './js/freefire-general-ranking.mjs?v=general-ranking-baseline-3';
+} from './js/freefire-general-ranking-store.mjs?v=ranking-team-identity-1';
+import { accountRankingTeamId, generalRankingTeamKey } from './js/freefire-general-ranking.mjs?v=ranking-team-identity-1';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
 let app = null;
@@ -633,7 +634,8 @@ async function loadTeamRankingDashboard() {
     try {
         const registrations = await fetchUserDocs('registrations', 200, true);
         if (uid !== currentUser?.uid) return;
-        const byKey = new Map();
+        const byName = new Map();
+        const byId = new Map();
         for (const row of registrations) {
             const data = row?.data || {};
             if (!isDisplayableEventRegistration(data)) continue;
@@ -641,17 +643,42 @@ async function loadTeamRankingDashboard() {
             const title = String(data.title || '').toLowerCase();
             if (eventType.includes('solo') || title.includes('solo')) continue;
             const teamName = String(data.teamName || data.team || data.squadName || '').trim();
-            const key = generalRankingTeamKey(teamName);
-            if (key && !byKey.has(key)) byKey.set(key, teamName);
+            const nameKey = generalRankingTeamKey(teamName);
+            if (!nameKey) continue;
+            const rankingTeamId = String(
+                data.rankingTeamId || data.teamId || accountRankingTeamId(data.userId || uid, teamName),
+            ).trim();
+            if (rankingTeamId) {
+                if (!byId.has(rankingTeamId)) byId.set(rankingTeamId, { teamName, nameKey });
+            } else if (!byName.has(nameKey)) {
+                byName.set(nameKey, teamName);
+            }
         }
-        if (!byKey.size) {
+        if (!byId.size && !byName.size) {
             container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">Não encontramos nomes de equipes nas suas compras elegíveis.</p>';
             return;
         }
-        const positions = await getGeneralRankingTeamPositionsByNames(db, [...byKey.values()]);
+        const [positionsById, positionsByName] = await Promise.all([
+            getGeneralRankingTeamPositionsByIds(db, [...byId.keys()]),
+            getGeneralRankingTeamPositionsByNames(db, [...new Set([
+                ...byName.values(),
+                ...[...byId.values()].map(team => team.teamName),
+            ])]),
+        ]);
         if (uid !== currentUser?.uid) return;
-        container.innerHTML = [...byKey].map(([key, teamName]) => {
-            const team = positions.get(key);
+        const dashboardTeams = [
+            ...[...byId].map(([rankingTeamId, item]) => {
+                const legacy = positionsByName.get(item.nameKey);
+                const team = positionsById.get(rankingTeamId) ||
+                    (legacy && !legacy.rankingTeamId && !legacy.teamId ? legacy : null);
+                return { teamName: item.teamName, team };
+            }),
+            ...[...byName].map(([nameKey, teamName]) => ({
+                teamName,
+                team: positionsByName.get(nameKey),
+            })),
+        ];
+        container.innerHTML = dashboardTeams.map(({ teamName, team }) => {
             const rank = team?.rank ? `#${Number(team.rank).toLocaleString('pt-BR')}` : '—';
             const points = team ? Number(team.totalPoints || 0).toLocaleString('pt-BR') : 'Aguardando base';
             const details = team

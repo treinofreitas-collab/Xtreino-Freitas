@@ -446,6 +446,7 @@ export function calculateMatchResultStandings(drops, dropCount, roster = []) {
   return standings.map((team, index) => ({
     rank: index + 1,
     teamName: team.teamName,
+    slot: Number(team.slot) || index + 1,
     wins: team.wins,
     kills: team.kills,
     points: team.points,

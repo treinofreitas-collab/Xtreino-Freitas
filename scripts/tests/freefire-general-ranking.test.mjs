@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  accountRankingTeamId,
   aggregateGeneralRankingImport,
   buildGeneralRankingSessionTeams,
   generalRankingSessionKey,
@@ -12,6 +13,7 @@ import {
   chooseLatestGeneralRankingLogo,
   getGeneralRankingSessions,
   syncGeneralRankingLogoToTeam,
+  upsertGeneralRankingSession,
 } from '../../artifacts/xtreino/public/js/freefire-general-ranking-store.mjs';
 
 const imageScoringSource = readFileSync(
@@ -201,6 +203,163 @@ test('builds one team contribution from duplicate rows and assigns shared ranks 
     { teamName: 'XLT IPHINITY', points: 23, wins: 1, kills: 11, logoUrl: 'logo.svg', logoSource: 'purchase' },
   ]);
   assert.deepEqual(rankGeneralRankingRows(teams).map(row => row.rank), [1, 1]);
+});
+
+test('keeps same-named teams separate when their ranking IDs differ', () => {
+  const teams = buildGeneralRankingSessionTeams([
+    { teamName: 'RANGERS', rankingTeamId: 'team-a', points: 10, wins: 1, kills: 4 },
+    { teamName: 'RANGERS', rankingTeamId: 'team-b', points: 7, wins: 0, kills: 7 },
+    { teamName: 'Rangers', rankingTeamId: 'team-a', points: 3, wins: 0, kills: 3 },
+  ]);
+
+  assert.equal(teams.length, 2);
+  assert.deepEqual(
+    teams.map(team => [team.rankingTeamId, team.teamName, team.points]).sort(),
+    [['team-a', 'RANGERS', 13], ['team-b', 'RANGERS', 7]],
+  );
+});
+
+test('generates one account identity per account and normalized team name', () => {
+  assert.equal(accountRankingTeamId('user-1', 'Rangers'), accountRankingTeamId('user-1', ' RÁNGERS '));
+  assert.notEqual(accountRankingTeamId('user-1', 'Rangers'), accountRankingTeamId('user-2', 'Rangers'));
+});
+
+function createRankingFirestore(seed = {}) {
+  const records = new Map(Object.entries(seed));
+  const writes = [];
+  const reference = (collectionName, id) => ({
+    collection: collectionName,
+    id,
+    path: `${collectionName}/${id}`,
+  });
+  return {
+    writes,
+    firestore: {
+      collection: (_db, collectionName) => ({ name: collectionName }),
+      doc: (_db, collectionName, id) => reference(collectionName, id),
+      runTransaction: async (_db, callback) => callback({
+        get: async ref => ({
+          exists: () => records.has(ref.path),
+          data: () => records.get(ref.path) || {},
+        }),
+        set: (ref, data, options) => writes.push({ kind: 'set', ref, data, options }),
+        update: (ref, data) => writes.push({ kind: 'update', ref, data }),
+      }),
+      serverTimestamp: () => 'server-time',
+    },
+  };
+}
+
+test('stores same-named teams under separate ranking IDs', async () => {
+  const originalWindow = globalThis.window;
+  const mock = createRankingFirestore({
+    'freefire_general_ranking_meta/current': { initialImportStatus: 'complete' },
+  });
+  globalThis.window = { __freefireRankingFirestore: mock.firestore };
+  try {
+    await upsertGeneralRankingSession({}, {
+      eventType: 'treino-freitas',
+      date: '2026-11-15',
+      hour: '21h',
+      standings: [
+        { teamName: 'RANGERS', rankingTeamId: 'team-a', points: 12, kills: 2 },
+        { teamName: 'RANGERS', rankingTeamId: 'team-b', points: 8, kills: 1 },
+      ],
+    });
+    const teamWrites = mock.writes.filter(write =>
+      write.ref.collection === 'freefire_general_ranking' && write.ref.id !== 'current');
+    assert.equal(teamWrites.length, 2);
+    assert.equal(new Set(teamWrites.map(write => write.ref.id)).size, 2);
+    assert.deepEqual(teamWrites.map(write => write.data.totalPoints).sort((a, b) => a - b), [8, 12]);
+    assert.equal(mock.writes.filter(write => write.ref.collection === 'freefire_general_ranking_team_links').length, 2);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('replaces a claimed legacy session on the same ranking row without moving its baseline', async () => {
+  const originalWindow = globalThis.window;
+  const mock = createRankingFirestore({
+    'freefire_general_ranking_meta/current': { initialImportStatus: 'complete' },
+    'freefire_general_ranking_sessions/treino-freitas_2026-11-15_21': {
+      teams: [{ key: 'rangers', teamName: 'RANGERS', points: 10, wins: 1, kills: 3 }],
+    },
+    'freefire_general_ranking/team_rangers': {
+      teamKey: 'rangers', teamName: 'RANGERS', rankingTeamId: 'team-a',
+      baselinePoints: 100, sessionPoints: 10, wins: 1, kills: 3, totalPoints: 110,
+    },
+    'freefire_general_ranking_team_links/team-a': {
+      rankingTeamId: 'team-a', rankingDocumentId: 'team_rangers',
+    },
+  });
+  globalThis.window = { __freefireRankingFirestore: mock.firestore };
+  try {
+    await upsertGeneralRankingSession({}, {
+      eventType: 'treino-freitas',
+      date: '2026-11-15',
+      hour: '21h',
+      standings: [{ teamName: 'RANGERS', rankingTeamId: 'team-a', points: 5, kills: 2 }],
+    });
+    const rowWrite = mock.writes.find(write =>
+      write.ref.collection === 'freefire_general_ranking' && write.ref.id === 'team_rangers');
+    assert.equal(rowWrite.data.baselinePoints, 100);
+    assert.equal(rowWrite.data.sessionPoints, 5);
+    assert.equal(rowWrite.data.totalPoints, 105);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('refuses to add name-only points to a legacy row already claimed by an ID', async () => {
+  const originalWindow = globalThis.window;
+  const mock = createRankingFirestore({
+    'freefire_general_ranking_meta/current': { initialImportStatus: 'complete' },
+    'freefire_general_ranking/team_rangers': {
+      teamKey: 'rangers', teamName: 'RANGERS', rankingTeamId: 'claimed-team-id',
+      baselinePoints: 100, sessionPoints: 0, totalPoints: 100,
+    },
+  });
+  globalThis.window = { __freefireRankingFirestore: mock.firestore };
+  try {
+    await assert.rejects(
+      upsertGeneralRankingSession({}, {
+        eventType: 'treino-freitas',
+        date: '2026-11-15',
+        hour: '21h',
+        standings: [{ teamName: 'RANGERS', points: 12, kills: 2 }],
+      }),
+      /já está vinculada a um ID/,
+    );
+    assert.equal(mock.writes.length, 0);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('does not send a name-only logo update to a ranking row that already has an ID', async () => {
+  const originalWindow = globalThis.window;
+  const mock = createRankingFirestore({
+    'freefire_general_ranking/team_rangers': {
+      teamKey: 'rangers', teamName: 'RANGERS', rankingTeamId: 'claimed-team-id',
+      logoUrl: 'https://storage.example/current.webp', totalPoints: 100,
+    },
+  });
+  globalThis.window = { __freefireRankingFirestore: mock.firestore };
+  try {
+    const updated = await syncGeneralRankingLogoToTeam({}, {
+      teamName: 'RANGERS',
+      logoUrl: 'https://storage.example/new.webp',
+      updatedAtMs: 123,
+    });
+    assert.equal(updated, false);
+    assert.equal(mock.writes.length, 0);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
 });
 
 test('chooses the newest purchase or SPEC logo regardless of source priority', () => {

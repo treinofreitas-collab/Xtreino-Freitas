@@ -22,17 +22,19 @@ import {
   removeConnectedEdgeBackground,
 } from './spec-logo-image-tools.mjs?v=leaderboard-logo-cleanup-1';
 import {
+  accountRankingTeamId,
   aggregateGeneralRankingImport,
+  generalRankingTeamKey,
   MIN_GENERAL_RANKING_SEED_ROWS,
   parseGeneralRankingImport,
-} from './freefire-general-ranking.mjs?v=general-ranking-logo-time-1';
+} from './freefire-general-ranking.mjs?v=ranking-team-identity-1';
 import {
   getGeneralRankingSessions,
   getGeneralRankingMeta,
   importGeneralRankingSeed,
   syncGeneralRankingLogoToTeam,
   upsertGeneralRankingSession,
-} from './freefire-general-ranking-store.mjs?v=ranking-session-history-1';
+} from './freefire-general-ranking-store.mjs?v=ranking-team-identity-1';
 
 const EVENTS = [
   ['TREINO FREITAS', 'treino'],
@@ -1472,6 +1474,7 @@ async function persistMatchResultGeneralRanking(data) {
   let logoWarning = '';
   let rows = data.standings.map(row => ({
     teamName: row.teamName,
+    slot: Number(row.slot) || null,
     wins: Number(row.wins || 0),
     kills: Number(row.kills || 0),
     points: Number(row.points || 0),
@@ -1479,6 +1482,7 @@ async function persistMatchResultGeneralRanking(data) {
     logoSource: row.logoSource || '',
     storagePath: row.logoAsset?.storagePath || '',
   }));
+  rows = await attachGeneralRankingTeamIdentities(rows, 'modo-liga', date, hour);
   try {
     rows = await attachGeneralRankingLogos(rows);
   } catch (error) {
@@ -1960,6 +1964,7 @@ function exportIssue() {
 }
 let rankingPurchaseLogoRows = null;
 let rankingPurchaseLogoRowsLoadedAt = 0;
+const rankingIdentityRowsCache = new Map();
 async function loadRankingPurchaseLogoRows() {
   if (Array.isArray(rankingPurchaseLogoRows) && Date.now() - rankingPurchaseLogoRowsLoadedAt < 5 * 60 * 1000) {
     return rankingPurchaseLogoRows;
@@ -1985,6 +1990,112 @@ async function loadRankingPurchaseLogoRows() {
   rankingPurchaseLogoRows = snapshot.docs.map(item => item.data());
   rankingPurchaseLogoRowsLoadedAt = Date.now();
   return rankingPurchaseLogoRows;
+}
+function rankingHourKey(value) {
+  const match = String(value || '').match(/(?:^|\D)(\d{1,2})(?:\s*h|:\d{2}|$)/i);
+  return match ? String(Number(match[1])).padStart(2, '0') : '';
+}
+function rankingRegistrationSlot(registration) {
+  for (const value of [registration.slotNumber, registration.slotNum, registration.slot]) {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  }
+  const label = String(registration.slotDisplay || registration.title || '');
+  const letter = label.match(/\bletra\s+([a-o])\b/i);
+  if (letter) return letter[1].toLocaleUpperCase('en-US').charCodeAt(0) - 64;
+  const match = label.match(/(?:slot|vaga)?\s*0*(\d{1,2})\b/i);
+  return match ? Number(match[1]) : null;
+}
+function rankingEventMatchesRegistration(eventType, registration) {
+  const type = String(registration.eventType || '').normalize('NFD')
+    .replace(/\p{M}/gu, '').toLowerCase();
+  const title = String(registration.title || registration.eventName || '').normalize('NFD')
+    .replace(/\p{M}/gu, '').toLowerCase();
+  if (eventType === 'modo-liga') return type.includes('modo-liga') || type.includes('treino-modo-liga') || title.includes('modo liga');
+  return type.includes('treino-freitas') || type.includes('xtreino-tokens') ||
+    (title.includes('treino') && title.includes('freitas'));
+}
+async function loadRankingIdentityRows(eventType, date) {
+  const cacheKey = `${eventType}:${date}`;
+  const cached = rankingIdentityRowsCache.get(cacheKey);
+  if (cached && Date.now() - cached.loadedAt < 60_000) return cached.rows;
+  const role = String(window.lastAppliedRole || window.adminRoleLower || '').toLowerCase().trim();
+  if (role === 'admin' && eventType !== 'modo-liga') return [];
+  const { collection, getDocs, query, where } =
+    await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+  const constraints = [where('date', '==', date)];
+  if (role === 'admin') constraints.push(where('eventType', '==', 'modo-liga'));
+  const snapshot = await getDocs(query(collection(window.firebaseDb, 'registrations'), ...constraints));
+  const rows = snapshot.docs.map(item => item.data());
+  rankingIdentityRowsCache.set(cacheKey, { rows, loadedAt: Date.now() });
+  return rows;
+}
+async function attachGeneralRankingTeamIdentities(rows, eventType, date, hour) {
+  const registrations = await loadRankingIdentityRows(eventType, date);
+  const sessionHour = rankingHourKey(hour);
+  const { doc, getDoc } =
+    await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+  const verifiedTeamIds = new Set();
+  const teamIds = [...new Set(registrations
+    .filter(registration => !registration.rankingTeamId && registration.teamId)
+    .map(registration => String(registration.teamId).trim())
+    .filter(Boolean))];
+  await Promise.all(teamIds.map(async teamId => {
+    const matchingRegistrations = registrations.filter(registration =>
+      !registration.rankingTeamId && String(registration.teamId || '').trim() === teamId);
+    const snapshot = await getDoc(doc(window.firebaseDb, 'teams', teamId));
+    if (!snapshot.exists()) return;
+    const profile = snapshot.data() || {};
+    const memberUids = Array.isArray(profile.membrosUids) ? profile.membrosUids : [];
+    const profileNameKey = generalRankingTeamKey(profile.nome || profile.name || '');
+    if (matchingRegistrations.some(registration =>
+      profileNameKey === generalRankingTeamKey(registration.teamName || registration.team || registration.squadName) &&
+      (profile.capitaoId === registration.userId || memberUids.includes(registration.userId)))) {
+      verifiedTeamIds.add(teamId);
+    }
+  }));
+  const byName = new Map();
+  for (const registration of registrations) {
+    const status = String(registration.status || '').toLowerCase();
+    if (!['paid', 'approved', 'confirmed'].includes(status)) continue;
+    if (String(registration.date || registration.eventDate || '') !== String(date || '')) continue;
+    if (!rankingEventMatchesRegistration(eventType, registration)) continue;
+    if (rankingHourKey(registration.hour || registration.schedule) !== sessionHour) continue;
+    const teamName = String(registration.teamName || registration.team || registration.squadName || '').trim();
+    const nameKey = generalRankingTeamKey(teamName);
+    if (!nameKey) continue;
+    const rankingTeamId = String(
+      registration.rankingTeamId ||
+      (verifiedTeamIds.has(String(registration.teamId || '').trim()) ? registration.teamId : '') ||
+      accountRankingTeamId(registration.userId, teamName),
+    ).trim();
+    if (!rankingTeamId) continue;
+    const candidates = byName.get(nameKey) || [];
+    candidates.push({
+      rankingTeamId,
+      slot: rankingRegistrationSlot(registration),
+    });
+    byName.set(nameKey, candidates);
+  }
+
+  return (Array.isArray(rows) ? rows : []).map(row => {
+    const teamName = String(row?.teamName || '').trim();
+    const nameKey = generalRankingTeamKey(teamName);
+    const candidates = byName.get(nameKey) || [];
+    const verifiedRow = { ...(row || {}) };
+    delete verifiedRow.rankingTeamId;
+    if (!candidates.length) return verifiedRow;
+    const slot = Number(row?.slot) || null;
+    const slotMatches = slot ? candidates.filter(candidate => candidate.slot === slot) : [];
+    const relevant = slotMatches.length ? slotMatches : candidates;
+    const ids = [...new Set(relevant.map(candidate => candidate.rankingTeamId))];
+    if (ids.length > 1) {
+      throw new Error(
+        `A equipe "${teamName}" tem mais de um ID nas compras deste horário. Revise a associação do slot ${slot || 'correspondente'} antes de salvar.`,
+      );
+    }
+    return ids.length === 1 ? { ...verifiedRow, rankingTeamId: ids[0] } : verifiedRow;
+  });
 }
 async function attachGeneralRankingLogos(rows) {
   const roster = (Array.isArray(rows) ? rows : []).map((row, index) => ({
@@ -2074,10 +2185,12 @@ async function persistImageModeGeneralRanking() {
   let logoWarning = '';
   let rows = standings().map(row => ({
     teamName: row.teamName,
+    slot: Number(row.slot) || null,
     wins: Number(row.wins || 0),
     kills: Number(row.kills || 0),
     points: Number(row.points || 0),
   }));
+  rows = await attachGeneralRankingTeamIdentities(rows, 'treino-freitas', date, hour);
   try {
     rows = await attachGeneralRankingLogos(rows);
   } catch (error) {

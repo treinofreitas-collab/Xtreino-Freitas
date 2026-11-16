@@ -578,6 +578,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /freefire_general_ranking_team_links/{teamId} {
+      allow get, list: if true;
+      allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
+      allow delete: if false;
+    }
+
     match /freefire_general_ranking_sessions/{sessionId} {
       allow get, list: if isAuthorizedAdmin() || isGerente() || isAdminRole();
       allow create, update: if isAuthorizedAdmin() || isGerente() || isAdminRole();
