@@ -28,7 +28,8 @@ import {
   MIN_GENERAL_RANKING_SEED_ROWS,
   parseGeneralRankingImport,
   preferredGeneralRankingTeamId,
-} from './freefire-general-ranking.mjs?v=ranking-team-identity-2';
+  resolveMatchResultRankingTeamId,
+} from './freefire-general-ranking.mjs?v=ranking-team-identity-3';
 import {
   getGeneralRankingSession,
   getGeneralRankingSessions,
@@ -2687,10 +2688,16 @@ function attachGeneralRankingTeamIdentities(rows) {
 }
 
 async function attachMatchResultRankingTeamIdentities(rows, eventType, date, hour) {
-  const names = new Set((Array.isArray(rows) ? rows : [])
-    .map(row => generalRankingTeamKey(row?.teamName || ''))
+  const teamNames = [...new Set((Array.isArray(rows) ? rows : [])
+    .map(row => String(row?.teamName || '').trim())
+    .filter(Boolean))];
+  const names = new Set(teamNames
+    .map(teamName => generalRankingTeamKey(teamName))
     .filter(Boolean));
-  const registrations = await loadRankingIdentityRows(eventType, date);
+  const [registrations, existingTeams] = await Promise.all([
+    loadRankingIdentityRows(eventType, date),
+    getGeneralRankingTeamsByNames(window.firebaseDb, teamNames),
+  ]);
   const sessionHour = rankingHourKey(hour);
   const eligibleRegistrations = registrations.filter(registration => {
     const status = String(registration.status || '').toLowerCase();
@@ -2705,6 +2712,14 @@ async function attachMatchResultRankingTeamIdentities(rows, eventType, date, hou
   });
   const verifiedTeamIds = await getVerifiedRankingTeamIds(eligibleRegistrations);
   const candidatesByName = new Map();
+  for (const team of existingTeams) {
+    const key = generalRankingTeamKey(team.teamName || '');
+    const rankingTeamId = String(team.rankingTeamId || team.teamId || '').trim();
+    if (!key || !rankingTeamId) continue;
+    const candidates = candidatesByName.get(key) || [];
+    candidates.push({ rankingTeamId, source: 'ranking', slot: null });
+    candidatesByName.set(key, candidates);
+  }
   for (const registration of eligibleRegistrations) {
     const teamName = String(registration.teamName || registration.team || registration.squadName || '').trim();
     const key = generalRankingTeamKey(teamName);
@@ -2715,7 +2730,7 @@ async function attachMatchResultRankingTeamIdentities(rows, eventType, date, hou
     ).trim();
     if (!key || !rankingTeamId) continue;
     const candidates = candidatesByName.get(key) || [];
-    candidates.push({ rankingTeamId, slot: rankingRegistrationSlot(registration) });
+    candidates.push({ rankingTeamId, source: 'purchase', slot: rankingRegistrationSlot(registration) });
     candidatesByName.set(key, candidates);
   }
 
@@ -2723,17 +2738,31 @@ async function attachMatchResultRankingTeamIdentities(rows, eventType, date, hou
     const key = generalRankingTeamKey(row?.teamName || '');
     const candidates = candidatesByName.get(key) || [];
     const slot = Number(row?.slot) || null;
-    const slotCandidates = slot ? candidates.filter(candidate => candidate.slot === slot) : [];
-    const relevant = slotCandidates.length ? slotCandidates : candidates;
-    const ids = [...new Set(relevant.map(candidate => candidate.rankingTeamId))];
+    const purchaseCandidates = candidates.filter(candidate => candidate.source === 'purchase');
+    const slotCandidates = slot ? purchaseCandidates.filter(candidate => candidate.slot === slot) : [];
+    const relevantPurchases = slotCandidates.length ? slotCandidates : purchaseCandidates;
+    const existingIds = [...new Set(candidates
+      .filter(candidate => candidate.source === 'ranking')
+      .map(candidate => candidate.rankingTeamId))];
+    const registeredIds = [...new Set(relevantPurchases.map(candidate => candidate.rankingTeamId))];
     const selectedId = String(row?.rankingTeamId || '').trim();
-    if (selectedId && ids.includes(selectedId)) return { ...row, rankingTeamId: selectedId };
-    if (ids.length > 1) {
+    const rankingTeamId = resolveMatchResultRankingTeamId({
+      existingRankingTeamIds: existingIds,
+      registeredTeamIds: registeredIds,
+      selectedTeamId: selectedId,
+    });
+    if (rankingTeamId) return { ...row, rankingTeamId };
+    if (existingIds.length > 1) {
+      throw new Error(
+        `A equipe "${row.teamName}" tem mais de um ID no Ranking Geral. Revise a associação do slot ${slot || 'correspondente'} antes de salvar.`,
+      );
+    }
+    if (registeredIds.length > 1) {
       throw new Error(
         `A equipe "${row.teamName}" tem mais de um ID nas compras deste horário. Revise a associação do slot ${slot || 'correspondente'} antes de salvar.`,
       );
     }
-    return ids.length === 1 ? { ...row, rankingTeamId: ids[0] } : { ...row };
+    return { ...row };
   });
 }
 

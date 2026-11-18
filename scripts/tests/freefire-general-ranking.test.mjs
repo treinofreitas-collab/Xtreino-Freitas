@@ -8,6 +8,7 @@ import {
   generalRankingSessionKey,
   parseGeneralRankingImport,
   preferredGeneralRankingTeamId,
+  resolveMatchResultRankingTeamId,
   rankGeneralRankingRows,
 } from '../../artifacts/xtreino/public/js/freefire-general-ranking.mjs';
 import {
@@ -404,6 +405,31 @@ test('prefers the unique existing ranking team over a new purchase identity', ()
   assert.equal(preferredGeneralRankingTeamId([
     { rankingTeamId: 'new-buyer', sources: ['purchase'] },
   ]), 'new-buyer');
+});
+
+test('match-result scoring reuses a unique existing team ID before purchase identities', () => {
+  assert.equal(resolveMatchResultRankingTeamId({
+    existingRankingTeamIds: ['existing-flm'],
+    registeredTeamIds: ['new-account-id'],
+  }), 'existing-flm');
+  assert.equal(resolveMatchResultRankingTeamId({
+    existingRankingTeamIds: ['existing-flm', 'other-flm'],
+    registeredTeamIds: ['other-flm'],
+  }), 'other-flm');
+  assert.equal(resolveMatchResultRankingTeamId({
+    existingRankingTeamIds: ['existing-flm', 'other-flm'],
+    registeredTeamIds: [],
+  }), '');
+  assert.equal(resolveMatchResultRankingTeamId({
+    existingRankingTeamIds: [],
+    registeredTeamIds: ['new-team-id'],
+  }), 'new-team-id');
+});
+
+test('match-result ranking lookup includes existing Ranking Geral IDs', () => {
+  assert.match(imageScoringSource, /getGeneralRankingTeamsByNames\(window\.firebaseDb, teamNames\)/);
+  assert.match(imageScoringSource, /existingRankingTeamIds: existingIds/);
+  assert.match(imageScoringSource, /resolveMatchResultRankingTeamId/);
 });
 
 function createRankingFirestore(seed = {}) {

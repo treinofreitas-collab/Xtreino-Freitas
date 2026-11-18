@@ -40,6 +40,24 @@ export function preferredGeneralRankingTeamId(candidates = []) {
   return purchaseIds.size === 1 ? [...purchaseIds][0] : '';
 }
 
+export function resolveMatchResultRankingTeamId({
+  existingRankingTeamIds = [],
+  registeredTeamIds = [],
+  selectedTeamId = '',
+} = {}) {
+  const existingIds = [...new Set(existingRankingTeamIds.map(value => String(value || '').trim()).filter(Boolean))];
+  const registeredIds = [...new Set(registeredTeamIds.map(value => String(value || '').trim()).filter(Boolean))];
+  const selectedId = String(selectedTeamId || '').trim();
+
+  if (existingIds.length === 1) return existingIds[0];
+  if (existingIds.length > 1) {
+    if (selectedId && existingIds.includes(selectedId)) return selectedId;
+    const matchedIds = existingIds.filter(id => registeredIds.includes(id));
+    return matchedIds.length === 1 ? matchedIds[0] : '';
+  }
+  return registeredIds.length === 1 ? registeredIds[0] : '';
+}
+
 export function accountRankingTeamId(userId, teamName) {
   const uid = String(userId || '').trim();
   const nameKey = generalRankingTeamKey(teamName);
