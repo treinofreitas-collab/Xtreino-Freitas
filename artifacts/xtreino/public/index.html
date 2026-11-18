@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google-site-verification" content="TjlHRWQ7pCfnlBn-RTrK0hATKwOmI4RKssy7uhLUTOI" />
     <title>PLATAFORMA FREITAS - Treinamento eSports de Alta Performance</title>
+    <meta name="description" content="Participe de campeonatos e treinos de Free Fire na Plataforma Freitas. Reserve horários, acompanhe eventos e encontre jogadores e times no Mercado da Bala.">
+    <meta property="og:title" content="PLATAFORMA FREITAS - Treinamento eSports de Alta Performance">
+    <meta property="og:description" content="Participe de campeonatos e treinos de Free Fire na Plataforma Freitas. Reserve horários, acompanhe eventos e encontre jogadores e times no Mercado da Bala.">
+    <meta name="twitter:card" content="summary">
     <link rel="icon" type="image/png" href="assets/images/Logo - Xtreino Freitas.png">
     <script>
         (function() {
@@ -703,9 +708,9 @@
                     <h4 class="text-lg font-bold mb-4">Links Úteis</h4>
                     <div class="space-y-2">
                         <a href="#" class="block text-gray-600 hover:text-blue-matte transition-colors">FAQ</a>
-                        <a href="#" class="block text-gray-600 hover:text-blue-matte transition-colors">Termos de Uso</a>
-                        <a href="#" class="block text-gray-600 hover:text-blue-matte transition-colors">Política de Privacidade</a>
-                        <a href="#" class="block text-gray-600 hover:text-blue-matte transition-colors">Suporte</a>
+                        <a href="/termos-de-uso.html" rel="terms-of-service" class="block text-gray-600 hover:text-blue-matte transition-colors">Termos de Uso</a>
+                        <a href="/politica-de-privacidade.html" rel="privacy-policy" class="block text-gray-600 hover:text-blue-matte transition-colors">Política de Privacidade</a>
+                        <a href="mailto:treinofreitas@gmail.com" class="block text-gray-600 hover:text-blue-matte transition-colors">Suporte</a>
                     </div>
                 </div>
                 
@@ -1525,7 +1530,7 @@
         }
     </script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-    <script src="script.js?v=ranking-team-identity-1-camp-season-7-v6"></script>
+    <script src="script.js?v=ranking-team-identity-1"></script>
     
     <style>
         /* Esconder botões flutuantes no mobile quando modal estiver aberto */
@@ -1575,7 +1580,9 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        switchMainTab('home');
+        var requestedTab = new URLSearchParams(window.location.search).get('tab');
+        var supportedTabs = ['home', 'eventos', 'loja', 'sobre', 'contato'];
+        switchMainTab(supportedTabs.includes(requestedTab) ? requestedTab : 'home');
     });
     </script>
 

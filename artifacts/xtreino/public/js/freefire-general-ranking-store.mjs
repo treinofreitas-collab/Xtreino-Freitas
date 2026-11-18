@@ -6,7 +6,7 @@ import {
   MIN_GENERAL_RANKING_SEED_ROWS,
   parseGeneralRankingImport,
   rankGeneralRankingRows,
-} from './freefire-general-ranking.mjs?v=ranking-team-identity-1';
+} from './freefire-general-ranking.mjs?v=ranking-team-identity-2';
 
 const TEAM_COLLECTION = 'freefire_general_ranking';
 const SESSION_COLLECTION = 'freefire_general_ranking_sessions';
@@ -138,6 +138,18 @@ async function getFirestoreFunctions() {
     );
   }
   return window.__freefireRankingFirestore;
+}
+
+function generalRankingSessionFromData(data = {}, fallbackId = '') {
+  return {
+    sessionId: String(data.sessionId || fallbackId || ''),
+    eventType: String(data.eventType || ''),
+    eventLabel: String(data.eventLabel || ''),
+    date: String(data.date || ''),
+    hour: String(data.hour || ''),
+    teams: Array.isArray(data.teams) ? data.teams : [],
+    updatedAt: data.updatedAt || null,
+  };
 }
 
 function importFingerprint(source) {
@@ -415,22 +427,11 @@ export async function getGeneralRankingMeta(db) {
 export async function getGeneralRankingSessions(db) {
   const targetDb = databaseOrThrow(db);
   await getFirestoreFunctions();
-  const { getDocs } = window.__freefireRankingFirestore;
+  const { getDocsFromServer } = window.__freefireRankingFirestore;
   const refs = rankingCollections(targetDb);
-  const snapshot = await getDocs(refs.sessions);
+  const snapshot = await getDocsFromServer(refs.sessions);
   return snapshot.docs
-    .map(document => {
-      const data = document.data() || {};
-      return {
-        sessionId: String(data.sessionId || document.id || ''),
-        eventType: String(data.eventType || ''),
-        eventLabel: String(data.eventLabel || ''),
-        date: String(data.date || ''),
-        hour: String(data.hour || ''),
-        teams: Array.isArray(data.teams) ? data.teams : [],
-        updatedAt: data.updatedAt || null,
-      };
-    })
+    .map(document => generalRankingSessionFromData(document.data() || {}, document.id))
     .filter(session =>
       ['treino-freitas', 'modo-liga'].includes(session.eventType) &&
       /^\d{4}-\d{2}-\d{2}$/.test(session.date) &&
@@ -438,12 +439,27 @@ export async function getGeneralRankingSessions(db) {
     );
 }
 
+export async function getGeneralRankingSession(db, { eventType, date, hour } = {}) {
+  const targetDb = databaseOrThrow(db);
+  const sessionId = generalRankingSessionKey(eventType, date, hour);
+  await getFirestoreFunctions();
+  const { getDocFromServer } = window.__freefireRankingFirestore;
+  const refs = rankingCollections(targetDb);
+  const snapshot = await getDocFromServer(refs.sessionRef(sessionId));
+  if (!snapshot.exists()) return null;
+  const session = generalRankingSessionFromData(snapshot.data() || {}, snapshot.id);
+  return ['treino-freitas', 'modo-liga'].includes(session.eventType) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(session.date)
+    ? session
+    : null;
+}
+
 export async function getGeneralRankingTop(db, pageSize = 3) {
   const targetDb = databaseOrThrow(db);
   await getFirestoreFunctions();
-  const { getDocs, limit, orderBy, query } = window.__freefireRankingFirestore;
+  const { getDocsFromServer, limit, orderBy, query } = window.__freefireRankingFirestore;
   const refs = rankingCollections(targetDb);
-  const snapshot = await getDocs(query(refs.teams, orderBy('totalPoints', 'desc'), limit(pageSize)));
+  const snapshot = await getDocsFromServer(query(refs.teams, orderBy('totalPoints', 'desc'), limit(pageSize)));
   return rankGeneralRankingRows(
     snapshot.docs.map(document => ({ id: document.id, ...document.data() })),
   );
@@ -455,11 +471,11 @@ export async function getGeneralRankingPage(db, {
 } = {}) {
   const targetDb = databaseOrThrow(db);
   await getFirestoreFunctions();
-  const { getDocs, limit, orderBy, query, startAfter } = window.__freefireRankingFirestore;
+  const { getDocsFromServer, limit, orderBy, query, startAfter } = window.__freefireRankingFirestore;
   const refs = rankingCollections(targetDb);
   const parts = [refs.teams, orderBy('totalPoints', 'desc'), limit(pageSize)];
   if (cursor) parts.splice(2, 0, startAfter(cursor));
-  const snapshot = await getDocs(query(...parts));
+  const snapshot = await getDocsFromServer(query(...parts));
   return {
     rows: snapshot.docs.map(document => ({ id: document.id, ...document.data() })),
     cursor: snapshot.docs.at(-1) || null,
@@ -500,6 +516,36 @@ export async function getGeneralRankingTeamPositionsByNames(db, teamNames) {
     teams.push(...snapshot.docs.map(document => ({ id: document.id, ...document.data() })));
   }
   return rankTeamPositions(targetDb, teams, refs);
+}
+
+export async function getGeneralRankingTeamsByNames(db, teamNames) {
+  const targetDb = databaseOrThrow(db);
+  await getFirestoreFunctions();
+  const { getDocFromServer, getDocsFromServer, query, where } = window.__freefireRankingFirestore;
+  const refs = rankingCollections(targetDb);
+  const keys = [...new Set((Array.isArray(teamNames) ? teamNames : [])
+    .map(generalRankingTeamKey)
+    .filter(Boolean))];
+  const teamsByDocumentId = new Map();
+
+  for (let index = 0; index < keys.length; index += 30) {
+    const pageKeys = keys.slice(index, index + 30);
+    const snapshot = await getDocsFromServer(query(refs.teams, where('teamKey', 'in', pageKeys)));
+    for (const document of snapshot.docs) {
+      teamsByDocumentId.set(document.id, { id: document.id, ...document.data() });
+    }
+  }
+
+  await Promise.all(keys.map(async key => {
+    const reference = refs.teamRef(key);
+    if (teamsByDocumentId.has(reference.id)) return;
+    const snapshot = await getDocFromServer(reference);
+    if (snapshot.exists()) teamsByDocumentId.set(snapshot.id, { id: snapshot.id, ...snapshot.data() });
+  }));
+
+  return [...teamsByDocumentId.values()]
+    .map(team => ({ ...team, rankingTeamId: String(team.rankingTeamId || team.teamId || '').trim() }))
+    .filter(team => team.rankingTeamId);
 }
 
 export async function getGeneralRankingTeamPositionsByIds(db, teamIds) {

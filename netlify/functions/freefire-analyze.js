@@ -171,6 +171,99 @@ function normalizeKillCount(value) {
   return parsed <= 99 ? parsed : null;
 }
 
+function normalizeRankingTableNumber(value, maximum) {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 && value <= maximum ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text) return null;
+  const normalized = /^\d{1,3}(?:[.,]\d{3})+$/.test(text)
+    ? text.replace(/[.,]/g, "")
+    : text;
+  if (!/^\d+$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed <= maximum ? parsed : null;
+}
+
+function normalizeRankingTableRead(value) {
+  if (!isRecord(value) || !Array.isArray(value.rows)) {
+    throw new ApiError(503, "A IA não conseguiu identificar as linhas da tabela.");
+  }
+  const rows = value.rows.flatMap((rawRow) => {
+    if (!isRecord(rawRow)) return [];
+    const position = normalizeRankingTableNumber(rawRow.position, 15);
+    const teamName = typeof rawRow.teamName === "string"
+      ? rawRow.teamName.trim().replace(/\s+/g, " ").slice(0, 80)
+      : "";
+    if (position === null || position < 1 || !teamName) return [];
+    return [{
+      position,
+      teamName,
+      wins: normalizeRankingTableNumber(rawRow.wins, 9999),
+      kills: normalizeRankingTableNumber(rawRow.kills, 9999),
+      points: normalizeRankingTableNumber(rawRow.points, 99999),
+    }];
+  }).slice(0, 15).sort((left, right) => left.position - right.position);
+  if (!rows.length) {
+    throw new ApiError(503, "A IA não encontrou equipes legíveis na tabela.");
+  }
+  const positions = new Set();
+  for (const row of rows) {
+    if (positions.has(row.position)) {
+      throw new ApiError(503, "A leitura encontrou posições repetidas. Confira a foto e tente novamente.");
+    }
+    positions.add(row.position);
+  }
+  return rows;
+}
+
+function normalizedRankingTableTeamName(value) {
+  return String(value || "").normalize("NFKC").normalize("NFD")
+    .replace(/\p{M}/gu, "").replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim().toLocaleLowerCase("pt-BR");
+}
+
+function rankingTableRowSignature(row) {
+  return JSON.stringify([
+    normalizedRankingTableTeamName(row.teamName),
+    row.wins,
+    row.kills,
+    row.points,
+  ]);
+}
+
+function compareRankingTableReads(firstRead, secondRead) {
+  const firstByPosition = new Map(firstRead.map((row) => [row.position, row]));
+  const secondByPosition = new Map(secondRead.map((row) => [row.position, row]));
+  const positions = [...new Set([...firstByPosition.keys(), ...secondByPosition.keys()])]
+    .sort((left, right) => left - right);
+  const conflicts = positions.flatMap((position) => {
+    const first = firstByPosition.get(position);
+    const second = secondByPosition.get(position);
+    if (!first || !second) {
+      return [{ position, field: "row", first: first || null, second: second || null }];
+    }
+    return ["teamName", "wins", "kills", "points"]
+      .filter((field) => field === "teamName"
+        ? normalizedRankingTableTeamName(first.teamName) !== normalizedRankingTableTeamName(second.teamName)
+        : first[field] !== second[field])
+      .map((field) => ({ position, field, first: first[field], second: second[field] }));
+  });
+  const rows = positions.flatMap((position) => {
+    const row = secondByPosition.get(position) || firstByPosition.get(position);
+    return row ? [row] : [];
+  });
+  return {
+    rows,
+    firstRead,
+    conflicts,
+    readsAgree: firstRead.length === secondRead.length &&
+      firstRead.every((row, index) => Boolean(secondRead[index]) &&
+        rankingTableRowSignature(row) === rankingTableRowSignature(secondRead[index])),
+  };
+}
+
 function formatKillCount(value) {
   return Number.isInteger(value) ? String(value) : "ilegível";
 }
@@ -1373,8 +1466,35 @@ function parseRequestBody(event) {
 }
 
 async function analyze(body) {
-  if (!isRecord(body) || (body.mode !== "roster" && body.mode !== "drop")) {
+  if (!isRecord(body) ||
+      (body.mode !== "roster" && body.mode !== "drop" && body.mode !== "ranking-table")) {
     throw new ApiError(400, "Solicitação de análise inválida.");
+  }
+
+  if (body.mode === "ranking-table") {
+    const images = parseImageGroup([body.image], 1, 1);
+    enforceImagePayload(images);
+    const prompt = [
+      "Leia a tabela final de pontuação Free Fire nesta imagem.",
+      "Extraia somente as equipes e os valores que estão visíveis na tabela; não complete dados ilegíveis por suposição.",
+      "Retorne no máximo 15 linhas na ordem visual da tabela, com position (posição impressa ou ordem visual), teamName (nome exato), wins (vitórias/B!), kills (abates/A!) e points (pontos/P!).",
+      "Para valores ilegíveis ou ausentes, retorne null. Não calcule pontos, não some colunas e não corrija nomes.",
+      "Ignore títulos, rodapés, anúncios e linhas sem equipe. Preserve zeros que estiverem visíveis.",
+      "Retorne somente JSON no formato {\"rows\":[{\"position\":1,\"teamName\":\"NOME\",\"wins\":0,\"kills\":0,\"points\":0}]}.",
+    ].join("\n");
+    const verificationPrompt = [
+      "Faça uma segunda leitura independente da imagem original. Comece do zero, não consulte outra leitura.",
+      "Confira cuidadosamente cada nome e os valores de vitórias (B!), abates (A!) e pontos (P!). Não invente nem complete valores ilegíveis.",
+      prompt,
+    ].join("\n");
+    const [firstRaw, secondRaw] = await Promise.all([
+      generateJsonWithRetry(prompt, images),
+      generateJsonWithRetry(verificationPrompt, images),
+    ]);
+    return compareRankingTableReads(
+      normalizeRankingTableRead(firstRaw),
+      normalizeRankingTableRead(secondRaw),
+    );
   }
 
   if (body.mode === "roster") {
@@ -1433,16 +1553,17 @@ async function analyze(body) {
     "Inclua jogadores visíveis mesmo se o nick estiver ilegível: use name:\"\" e preserve o kills individual legível. Nunca descarte um abate legível por falta de associação do jogador.",
     "A pontuação é calculada pelo sistema depois; não calcule pontos de colocação.",
   ].join("\n");
-  const firstResult = normalizePlacements(await generateJsonWithRetry(prompt, images), officialTeams);
   const verificationPrompt = [
     "Faça uma segunda leitura independente a partir destas imagens originais. Comece do zero para a queda atual: não receba nem use respostas das leituras anteriores desta queda. Pode usar o mapa oficial e as referências históricas confirmadas incluídas no prompt somente como evidência secundária.",
       "Use 0 somente quando o zero estiver claramente visível; use null para abates individuais ilegíveis. Kills da equipe deve ser a soma dos abates individuais legíveis, ignorando o total agregado impresso; se nenhum for legível, use null. Não adivinhe nomes, slots, colocações ou abates.",
     prompt,
   ].join("\n");
-  const secondResult = normalizePlacements(
-    await generateJsonWithRetry(verificationPrompt, images),
-    officialTeams,
-  );
+  const [firstRawResult, secondRawResult] = await Promise.all([
+    generateJsonWithRetry(prompt, images),
+    generateJsonWithRetry(verificationPrompt, images),
+  ]);
+  const firstResult = normalizePlacements(firstRawResult, officialTeams);
+  const secondResult = normalizePlacements(secondRawResult, officialTeams);
   const preliminary = reconcilePlacements(firstResult, secondResult);
   const thirdTargetPositions = getThirdReviewPositions(firstResult, secondResult, preliminary);
   let reconciled = preliminary;

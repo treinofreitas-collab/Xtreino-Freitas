@@ -19,7 +19,7 @@
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="admin-styles.css?v=ranking-session-history-3">
+    <link rel="stylesheet" href="admin-styles.css?v=ranking-photo-identity-8">
 </head>
 <body class="bg-white text-black">
     <header class="w-full border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white sticky top-0 z-40 shadow-sm">
@@ -111,6 +111,7 @@
 
         <p class="sidebar-section-label">Operações</p>
         <ul class="sidebar-menu">
+            <li><button class="sidebar-link" data-page="operacoes" onclick="adminNav('operacoes','sectionRanking',this)"><i class="fas fa-trophy"></i><span>Ranking</span></button></li>
             <li><button class="sidebar-link" data-page="operacoes" onclick="adminNav('operacoes','sectionFreefireScoring',this)"><i class="fas fa-crosshairs"></i><span>Placar Free Fire</span></button></li>
             <li><button class="sidebar-link" data-page="operacoes" onclick="adminNav('operacoes','sectionSpecLogos',this)"><i class="fas fa-images"></i><span>Logos para SPEC</span></button></li>
             <li><button class="sidebar-link sidebar-danger" data-page="operacoes" onclick="adminNav('operacoes','sectionResetData',this)"><i class="fas fa-exclamation-triangle"></i><span>Reset Dados</span></button></li>
@@ -1464,6 +1465,19 @@
                 <div id="freefireScoringRoot"></div>
             </section>
 
+            <section id="sectionRanking" class="ff-workspace" style="display:none" aria-label="Ranking">
+                <div id="rankingDashboardRoot" class="ranking-dashboard">
+                    <header class="ranking-dashboard-heading">
+                        <span class="ranking-dashboard-mark"><i class="fas fa-trophy"></i></span>
+                        <div><h1>Ranking</h1><p>Ranking Geral, lançamento de pontuação e histórico.</p></div>
+                    </header>
+                    <div id="rankingLoadError" class="ranking-load-error" role="alert" hidden></div>
+                    <div id="rankingGeneralRoot" class="ranking-dashboard-panel"></div>
+                    <div id="rankingPhotoRoot" class="ranking-dashboard-panel"></div>
+                    <div id="rankingHistoryRoot" class="ranking-dashboard-panel"></div>
+                </div>
+            </section>
+
             <!-- Reset de Dados (Perigoso) -->
             <div id="sectionResetData" class="bg-white border border-red-300 rounded-xl p-6 mt-6" style="display:none">
                 <div class="flex items-center justify-between mb-3">
@@ -1711,7 +1725,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="js/admin-read-control.js"></script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-    <script src="admin.js?v=ranking-team-identity-1"></script>
+    <script src="admin.js?v=ranking-photo-identity-8"></script>
     <script type="module" src="js/admin-market-reports.mjs"></script>
 
     <!-- Sidebar / Page Router -->
@@ -1775,7 +1789,8 @@
 
         /* Show a page, then load only the selected menu section */
         function showPage(page, sectionId) {
-            if (String(window.adminRoleLower || '').toLowerCase().trim() === 'admin') {
+            if (String(window.adminRoleLower || '').toLowerCase().trim() === 'admin'
+                && !['sectionFreefireScoring', 'sectionRanking'].includes(sectionId)) {
                 page = 'operacoes';
                 sectionId = 'sectionFreefireScoring';
             }
@@ -1806,10 +1821,27 @@
             if (sectionId) scrollToSection(sectionId);
         }
 
+        var rankingOperationSectionIds = [
+            'sectionFreefireScoring',
+            'sectionRanking',
+        ];
+        function syncRankingOperationSection() {
+            var activeSection = window._activeAdminSection;
+            var isRankingOperation = window._activeAdminPage === 'operacoes'
+                && rankingOperationSectionIds.includes(activeSection)
+                && (window._adminAllowedSections || []).includes(activeSection);
+            rankingOperationSectionIds.forEach(function(id) {
+                var section = document.getElementById(id);
+                if (!section) return;
+                section.style.display = isRankingOperation && id === activeSection ? '' : 'none';
+            });
+        }
+        window.addEventListener('admin:sectionchange', syncRankingOperationSection);
+
         /* Navigate: update hash → triggers hashchange → showPage */
         window.adminNav = function(page, sectionId, btn) {
             if (String(window.adminRoleLower || '').toLowerCase().trim() === 'admin'
-                && sectionId !== 'sectionFreefireScoring') {
+                && !['sectionFreefireScoring', 'sectionRanking'].includes(sectionId)) {
                 page = 'operacoes';
                 sectionId = 'sectionFreefireScoring';
                 btn = document.querySelector('.sidebar-link[onclick*="sectionFreefireScoring"]') || btn;
@@ -1887,8 +1919,8 @@
         /* Handle hash changes */
         function onHashChange() {
             var hash = (window.location.hash || '').replace('#', '').trim();
-            var scoringOnlyAdmin = String(window.adminRoleLower || '').toLowerCase().trim() === 'admin';
-            if (scoringOnlyAdmin && hash !== 'operacoes') {
+            var restrictedOperationsAdmin = String(window.adminRoleLower || '').toLowerCase().trim() === 'admin';
+            if (restrictedOperationsAdmin && hash !== 'operacoes') {
                 window._pendingSection = 'sectionFreefireScoring';
                 window.location.hash = 'operacoes';
                 return;
@@ -1902,7 +1934,10 @@
                 || (window._adminActiveSections && window._adminActiveSections[hash])
                 || (window._activeAdminPage === hash ? window._activeAdminSection : null)
                 || defaultSectionForPage(hash);
-            if (scoringOnlyAdmin) sectionId = 'sectionFreefireScoring';
+            if (restrictedOperationsAdmin
+                && !['sectionFreefireScoring', 'sectionRanking'].includes(sectionId)) {
+                sectionId = 'sectionFreefireScoring';
+            }
             showPage(hash, sectionId);
             /* Highlight matching sidebar link */
             document.querySelectorAll('.sidebar-link').forEach(function(l) {

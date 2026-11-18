@@ -339,21 +339,24 @@ window.showWarningToast = function(message, title = 'Atenção') {
           'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
           'sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionMarketReports','sectionShirtOrders',
-          'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring','sectionSpecLogos'],
+          'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring','sectionSpecLogos',
+          'sectionRanking'],
     // SOCIO: tudo, somente visualização (sem reset)
     socio: ['sectionKPIs','sectionFilters','sectionCharts','sectionUsers','sectionOrders',
             'sectionTokenStats','sectionUsersManagement','sectionTokens','sectionCoupons',
             'sectionCouponUsage','sectionAffiliates','sectionAffiliateSales','sectionAffiliatePayouts',
             'sectionPasseBooyah','sectionHighlights','sectionNews',
           'sectionProducts','sectionEvents','sectionShirtOrders',
-            'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionFreefireScoring','sectionSpecLogos'],
+            'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionFreefireScoring','sectionSpecLogos',
+            'sectionRanking'],
     // GERENTE: tudo, EXCETO aba principal completa (KPIs, filtros, gráficos, pedidos, tokenStats)
     gerente: ['sectionUsers','sectionUsersManagement',
               'sectionTokens','sectionCoupons','sectionCouponUsage','sectionAffiliates',
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah',
               'sectionHighlights','sectionNews','sectionProducts','sectionEvents',
               'sectionShirtOrders','sectionSchedules','sectionEventLinks',
-              'sectionAdminHistory','sectionFreefireScoring','sectionSpecLogos'],
+              'sectionAdminHistory','sectionFreefireScoring','sectionSpecLogos',
+              'sectionRanking'],
     // DESIGNER: apenas conteúdo (destaques, notícias, produtos, eventos) — sem camisas, sem horários
     designer: ['sectionHighlights','sectionNews','sectionProducts','sectionEvents'],
     // VENDEDOR: usuários + financeiro (sem aba principal) + camisas + produtos
@@ -362,7 +365,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
                'sectionAffiliateSales','sectionAffiliatePayouts','sectionPasseBooyah','sectionShirtOrders',
                'sectionProducts'],
     // ADMIN: somente o placar do Free Fire
-    admin: ['sectionFreefireScoring'],
+    admin: ['sectionFreefireScoring','sectionRanking'],
     // STAFF: eventos
     staff: ['sectionEvents'],
     // MODERADOR: igual ao staff
@@ -389,6 +392,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     'sectionHighlights','sectionNews','sectionProducts','sectionEvents','sectionShirtOrders',
     'sectionMarketReports',
     'sectionSchedules','sectionEventLinks','sectionAdminHistory','sectionResetData','sectionFreefireScoring','sectionSpecLogos',
+    'sectionRanking',
   ];
 
   // Control section visibility based on role
@@ -569,7 +573,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
                '#sectionProducts','#sectionSpecLogos'],
     suporte:  ['#sectionTokens','#sectionShirtOrders'],
     streamer: ['#sectionSpecLogos', '.sidebar-link', '#btnLogout'],
-    admin:    ['#sectionFreefireScoring','.sidebar-link','#adminSidebarToggle','#btnLogout'],
+    admin:    ['#sectionFreefireScoring','#sectionRanking',
+               '.sidebar-link','#adminSidebarToggle','#btnLogout'],
   };
 
   function controlEditPermissions(userRole) {
@@ -5054,7 +5059,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         return;
       }      
 
-      const docsArr = await findAllOverridesForHour(date, ovEventType, hh, rawEventId);
+      const docsArr = await findAllOverridesForHour(date, ovEventType, hh, rawEventId);       
       if (docsArr.length > 0) {        
         // Verificar estado atual
         const anyLocked = docsArr.some(d => d.data()?.locked === true);
@@ -14618,7 +14623,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionFreefireScoring':
-                    await import('./js/admin-freefire-scoring.mjs?v=ranking-team-identity-1')
+                    await import('./js/admin-freefire-scoring.mjs?v=ranking-photo-identity-8')
                         .then(m => m.openFreefireScoringAdmin())
                         .catch(error => {
                             console.error('[Free Fire] Falha ao carregar o placar:', error);
@@ -14637,6 +14642,18 @@ window.loadPageData = async function(page, requestedSectionId) {
                                         ...stack.split('\n').slice(0, 3),
                                     ].join('\n');
                                 }
+                            }
+                        });
+                    break;
+                case 'sectionRanking':
+                    await import('./js/admin-freefire-scoring.mjs?v=ranking-photo-identity-8')
+                        .then(m => m.openFreefireRankingAdmin())
+                        .catch(error => {
+                            console.error('[Ranking] Falha ao carregar a seção:', error);
+                            const status = document.getElementById('rankingLoadError');
+                            if (status) {
+                                status.hidden = false;
+                                status.textContent = 'Não foi possível carregar o Ranking. Atualize a página e tente novamente.';
                             }
                         });
                     break;

@@ -27,14 +27,17 @@ import {
   generalRankingTeamKey,
   MIN_GENERAL_RANKING_SEED_ROWS,
   parseGeneralRankingImport,
-} from './freefire-general-ranking.mjs?v=ranking-team-identity-1';
+  preferredGeneralRankingTeamId,
+} from './freefire-general-ranking.mjs?v=ranking-team-identity-2';
 import {
+  getGeneralRankingSession,
   getGeneralRankingSessions,
   getGeneralRankingMeta,
+  getGeneralRankingTeamsByNames,
   importGeneralRankingSeed,
   syncGeneralRankingLogoToTeam,
   upsertGeneralRankingSession,
-} from './freefire-general-ranking-store.mjs?v=ranking-team-identity-1';
+} from './freefire-general-ranking-store.mjs?v=ranking-identity-picker-2';
 
 const EVENTS = [
   ['TREINO FREITAS', 'treino'],
@@ -402,6 +405,24 @@ const state = {
   rankingImportBusy: false,
   rankingImportMessage: '',
   rankingImportMeta: null,
+  rankingTableImport: {
+    eventType: 'treino-freitas',
+    date: brasiliaDateKey(),
+    hour: '',
+    file: null,
+    previewUrl: '',
+    firstRead: [],
+    rows: [],
+    conflicts: [],
+    identityOptions: {},
+    identityLoading: false,
+    identityError: '',
+    identityRequestId: 0,
+    busy: false,
+    reviewed: false,
+    message: '',
+    rowsVersion: 0,
+  },
   rankingHistory: [],
   rankingHistoryLoading: false,
   rankingHistoryError: '',
@@ -417,6 +438,8 @@ let matchResultRankingSaveTimer = null;
 let matchResultRankingSavePromise = null;
 let matchResultRankingSavedSignature = '';
 let matchResultRankingAttemptedSignature = '';
+let rankingTableRenderedVersion = -1;
+let rankingHistoryLoadSequence = 0;
 function blankMatchResultDrop(index) {
   return { index, fileName: '', parsed: null, reviewed: false };
 }
@@ -478,7 +501,27 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const allowed = ['ceo', 'socio', 'sócio', 'gerente', 'admin'];
 function canOpen() { return allowed.includes(String(window.lastAppliedRole || window.adminRoleLower || '').toLowerCase().trim()); }
 function readOnly() { return ['socio', 'sócio'].includes(String(window.lastAppliedRole || window.adminRoleLower || '').toLowerCase().trim()); }
-function visible() { return $('sectionFreefireScoring')?.style.display !== 'none'; }
+const rankingAdminSections = new Set(['sectionRanking']);
+function visible() {
+  const sectionId = String(window._activeAdminSection || '');
+  return sectionId === 'sectionFreefireScoring' || rankingAdminSections.has(sectionId);
+}
+
+function moveRankingPanelsToDedicatedRoots() {
+  const panels = [
+    ['ffRankingImportPanel', 'rankingGeneralRoot'],
+    ['ffRankingPhotoPanel', 'rankingPhotoRoot'],
+    ['ffRankingHistoryPanel', 'rankingHistoryRoot'],
+  ];
+  for (const [panelId, rootId] of panels) {
+    const panel = $(panelId);
+    const root = $(rootId);
+    if (!panel || !root) {
+      throw new Error(`Não foi possível separar o painel ${panelId} da área de Ranking.`);
+    }
+    root.replaceChildren(panel);
+  }
+}
 
 async function loadMatchResultTemplate() {
   matchResultState.templateError = '';
@@ -1482,7 +1525,7 @@ async function persistMatchResultGeneralRanking(data) {
     logoSource: row.logoSource || '',
     storagePath: row.logoAsset?.storagePath || '',
   }));
-  rows = await attachGeneralRankingTeamIdentities(rows, 'modo-liga', date, hour);
+  rows = await attachMatchResultRankingTeamIdentities(rows, 'modo-liga', date, hour);
   try {
     rows = await attachGeneralRankingLogos(rows);
   } catch (error) {
@@ -1503,6 +1546,499 @@ async function persistMatchResultGeneralRanking(data) {
   );
   void loadGeneralRankingSessionHistory();
   return { ...result, logoWarning, date, hour };
+}
+
+function rankingTableReadConflict(position, field) {
+  return state.rankingTableImport.conflicts.find(conflict =>
+    conflict.position === position && conflict.field === field);
+}
+function rankingTableIdentityOptionsForRow(row) {
+  return state.rankingTableImport.identityOptions[generalRankingTeamKey(row?.teamName || '')] || [];
+}
+function rankingTableNameHasDuplicates(row) {
+  const key = generalRankingTeamKey(row?.teamName || '');
+  return Boolean(key && state.rankingTableImport.rows.filter(item =>
+    generalRankingTeamKey(item?.teamName || '') === key).length > 1);
+}
+function rankingTableIdentityReviewMessage(session) {
+  let unresolved = session.rows.filter(row =>
+    rankingTableIdentityOptionsForRow(row).length > 0 && !row.rankingTeamId).length;
+  const rowsByName = new Map();
+  for (const row of session.rows) {
+    const key = generalRankingTeamKey(row.teamName);
+    if (!key) continue;
+    const group = rowsByName.get(key) || [];
+    group.push(row);
+    rowsByName.set(key, group);
+  }
+  for (const group of rowsByName.values()) {
+    if (group.length < 2) continue;
+    const ids = group.map(row => String(row.rankingTeamId || '').trim());
+    if (ids.some(id => !id) || new Set(ids).size !== ids.length) unresolved += group.length;
+  }
+  const readSummary = session.conflicts.length
+    ? `${session.conflicts.length} divergência(s) entre as leituras. Confira os campos destacados na foto.`
+    : 'Duas leituras independentes concordaram.';
+  return unresolved
+    ? `${readSummary} ${unresolved} equipe(s) já têm ID(s). Escolha o vínculo correto abaixo do nome ou crie um ID separado.`
+    : `${readSummary} IDs consultados. Confira os dados na foto antes de salvar.`;
+}
+function rankingIdentityOptionLabel(candidate) {
+  const source = candidate.sources.includes('purchase') ? 'Compra confirmada' : 'Já cadastrada';
+  const shortId = candidate.rankingTeamId.slice(-7);
+  const points = candidate.totalPoints === null || candidate.totalPoints === undefined
+    ? ''
+    : ` · ${Number(candidate.totalPoints).toLocaleString('pt-BR')} pts`;
+  return `${source} · ID …${shortId}${points}`;
+}
+function renderRankingTableIdentityPicker(row) {
+  const session = state.rankingTableImport;
+  const options = rankingTableIdentityOptionsForRow(row);
+  if (!options.length && !row.identityIsManual && !row.rankingTeamId &&
+      !rankingTableNameHasDuplicates(row)) return '';
+  const selectedId = String(row.rankingTeamId || '');
+  const selectedOptionExists = options.some(option => option.rankingTeamId === selectedId);
+  const manualOption = row.identityIsManual && selectedId && !selectedOptionExists
+    ? `<option value="${esc(selectedId)}">ID separado deste time</option>`
+    : '';
+  return `<label class="ff-ranking-identity-picker">
+    <span>Vínculo da equipe</span>
+    <select data-ranking-table-identity-position="${row.position}"
+      aria-label="Identificar equipe da linha ${row.position}"
+      ${readOnly() || session.busy || session.identityLoading ? 'disabled' : ''}>
+      <option value="">Selecione o ID correto</option>
+      ${options.map(option => `<option value="${esc(option.rankingTeamId)}" ${selectedId === option.rankingTeamId ? 'selected' : ''}>${esc(rankingIdentityOptionLabel(option))}</option>`).join('')}
+      ${manualOption}
+      <option value="__new__">É outro time — criar ID separado</option>
+    </select>
+    <small>Times com o mesmo nome ficam separados pelo ID escolhido.</small>
+  </label>`;
+}
+function rankingTableImportIssue() {
+  const session = state.rankingTableImport;
+  if (!session.file) return 'Selecione a foto da tabela pronta.';
+  if (!session.rows.length) return 'Analise a foto para revisar os dados.';
+  if (session.identityLoading) return 'Aguarde a consulta dos vínculos das equipes.';
+  if (session.identityError) return 'Atualize os vínculos das equipes antes de salvar.';
+  if (!session.eventType || !['treino-freitas', 'modo-liga'].includes(session.eventType)) {
+    return 'Selecione o evento.';
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(session.date)) return 'Selecione uma data válida.';
+  if (!/^(?:[01]?\d|2[0-3])$/.test(String(session.hour))) return 'Selecione o horário do evento.';
+  const positions = new Set();
+  const teamsByName = new Map();
+  for (const row of session.rows) {
+    if (!Number.isInteger(row.position) || row.position < 1 || row.position > 15 ||
+        positions.has(row.position)) return 'Corrija as posições repetidas ou inválidas.';
+    positions.add(row.position);
+    const name = String(row.teamName || '').trim();
+    const key = generalRankingTeamKey(name);
+    if (!name) return `Informe o nome da equipe na linha ${row.position}.`;
+    const sameNameRows = teamsByName.get(key) || [];
+    const rowsWithSameName = [...sameNameRows, row];
+    if (rowsWithSameName.length > 1) {
+      const identityIds = rowsWithSameName.map(item => String(item.rankingTeamId || '').trim());
+      if (identityIds.some(id => !id)) {
+        return `O nome "${name}" aparece mais de uma vez. Se são times distintos, escolha um ID diferente para cada linha.`;
+      }
+      if (new Set(identityIds).size !== identityIds.length) {
+        return `As equipes "${name}" estão com o mesmo ID. Escolha IDs distintos para não somar seus pontos.`;
+      }
+    }
+    teamsByName.set(key, rowsWithSameName);
+    const identityOptions = rankingTableIdentityOptionsForRow(row);
+    const selectedId = String(row.rankingTeamId || '').trim();
+    if (identityOptions.length && !selectedId) {
+      return `Selecione o ID correto ou crie um ID separado para "${name}".`;
+    }
+    if (selectedId && !row.identityIsManual &&
+        !identityOptions.some(option => option.rankingTeamId === selectedId)) {
+      return `Atualize o vínculo da equipe "${name}" antes de salvar.`;
+    }
+    for (const field of ['wins', 'kills', 'points']) {
+      if (!Number.isSafeInteger(row[field]) || row[field] < 0 || row[field] > 99999) {
+        return `Confira ${field === 'wins' ? 'as vitórias' : field === 'kills' ? 'os abates' : 'os pontos'} da equipe "${name}".`;
+      }
+    }
+  }
+  if (!session.reviewed) return 'Confira a leitura na foto e marque a confirmação antes de salvar.';
+  return '';
+}
+function renderRankingTableReview() {
+  const table = $('ffRankingTableReview');
+  const body = $('ffRankingTableRows');
+  const review = $('ffRankingTableConfirm');
+  const session = state.rankingTableImport;
+  if (!table || !body || !review) return;
+  if (!session.rows.length) {
+    table.hidden = true;
+    body.innerHTML = '';
+    review.hidden = true;
+    return;
+  }
+  table.hidden = false;
+  review.hidden = false;
+  body.innerHTML = session.rows.map(row => {
+    const teamConflict = rankingTableReadConflict(row.position, 'teamName');
+    const rowConflict = rankingTableReadConflict(row.position, 'row');
+    const cells = [
+      ['teamName', 'Nome da equipe'],
+      ['wins', 'Vitórias'],
+      ['kills', 'Abates'],
+      ['points', 'Pontos'],
+    ];
+    return `<tr>
+      <td class="ff-ranking-table-position">${row.position}</td>
+      ${cells.map(([field, label]) => {
+        const conflict = rankingTableReadConflict(row.position, field) || rowConflict;
+        const first = conflict?.field === 'row'
+          ? conflict.first?.teamName || 'linha ausente'
+          : conflict?.first === null || conflict?.first === undefined
+          ? 'ilegível'
+          : String(conflict.first);
+        const second = conflict?.field === 'row'
+          ? conflict.second?.teamName || 'linha ausente'
+          : conflict?.second === null || conflict?.second === undefined
+          ? 'ilegível'
+          : String(conflict.second);
+        const title = conflict
+          ? `Leitura 1: ${first} · Leitura 2: ${second}`
+          : label;
+        const numeric = field !== 'teamName';
+        return `<td><input data-ranking-table-position="${row.position}" data-ranking-table-field="${field}"
+          aria-label="${label}, posição ${row.position}" title="${esc(title)}"
+          class="${conflict ? 'ff-ranking-table-conflict' : ''}" ${numeric ? 'type="number" min="0" max="99999" step="1"' : 'type="text" maxlength="80"'}
+          value="${esc(row[field] ?? '')}" placeholder="${numeric ? 'Conferir' : 'Nome da equipe'}"
+          ${readOnly() || state.rankingTableImport.busy || state.rankingTableImport.identityLoading ? 'disabled' : ''}>${field === 'teamName' ? renderRankingTableIdentityPicker(row) : ''}</td>`;
+      }).join('')}
+      <td><button type="button" class="ff-ranking-table-remove" data-remove-ranking-table-position="${row.position}" aria-label="Remover equipe ${esc(row.position)}" title="Remover linha">×</button></td>
+    </tr>`;
+  }).join('');
+  review.checked = session.reviewed;
+  review.disabled = readOnly() || session.busy;
+}
+function updateRankingTableImportUI() {
+  const session = state.rankingTableImport;
+  const event = $('ffRankingTableEvent');
+  const date = $('ffRankingTableDate');
+  const hour = $('ffRankingTableHour');
+  const fileInput = $('ffRankingTableFile');
+  const fileName = $('ffRankingTableFileName');
+  const image = $('ffRankingTableImage');
+  const analyze = $('ffAnalyzeRankingTable');
+  const save = $('ffSaveRankingTable');
+  const message = $('ffRankingTableMessage');
+  const confirmed = $('ffRankingTableConfirm');
+  const identityRefresh = $('ffRankingIdentityRefresh');
+  if (!event || !date || !hour || !fileInput || !fileName || !image || !analyze || !save || !message || !confirmed) return;
+  const disabled = readOnly() || session.busy || session.identityLoading;
+  event.value = session.eventType;
+  date.value = session.date;
+  hour.value = session.hour;
+  event.disabled = disabled;
+  date.disabled = disabled;
+  hour.disabled = disabled;
+  fileInput.disabled = disabled;
+  fileName.textContent = session.file
+    ? `${session.file.name} · ${Math.ceil(session.file.size / 1024)} KB`
+    : 'Arraste a foto até o botão ou clique para selecionar.';
+  image.hidden = !session.previewUrl;
+  if (session.previewUrl && image.src !== session.previewUrl) image.src = session.previewUrl;
+  analyze.disabled = disabled || !session.file;
+  analyze.textContent = session.busy ? 'Analisando duas vezes…' : 'Analisar foto';
+  message.textContent = session.message ||
+    (session.conflicts.length
+      ? `${session.conflicts.length} divergência(s) entre as duas leituras. Confira os campos destacados com a foto.`
+      : session.rows.length
+        ? (session.rows.length !== (session.eventType === 'modo-liga' ? 15 : 12)
+          ? `Foram lidas ${session.rows.length} equipes; o esperado é ${session.eventType === 'modo-liga' ? 15 : 12}. Confira se faltou alguma.`
+          : 'As duas leituras concordaram. Confira os dados na foto antes de salvar.')
+        : 'A foto é enviada apenas para leitura e não fica armazenada.');
+  if (identityRefresh) {
+    identityRefresh.hidden = !session.rows.length || (!session.identityError && !session.identityLoading);
+    identityRefresh.disabled = disabled;
+    identityRefresh.textContent = session.identityLoading ? 'Consultando…' : 'Atualizar vínculos';
+  }
+  if (session.rowsVersion !== rankingTableRenderedVersion) {
+    renderRankingTableReview();
+    rankingTableRenderedVersion = session.rowsVersion;
+  } else {
+    confirmed.checked = session.reviewed;
+    confirmed.disabled = disabled;
+    $('ffRankingTableRows')?.querySelectorAll('input').forEach(input => {
+      input.disabled = disabled;
+    });
+      $('ffRankingTableRows')?.querySelectorAll('[data-ranking-table-identity-position]').forEach(select => {
+        select.disabled = disabled;
+      });
+  }
+  const issue = rankingTableImportIssue();
+  save.disabled = disabled || Boolean(issue);
+  save.textContent = session.busy ? 'Aguarde…' : 'Confirmar e salvar no Ranking Geral';
+  save.title = issue || 'Salvar esta sessão no Ranking Geral';
+  const addRow = $('ffRankingTableAddRow');
+  if (addRow) addRow.disabled = disabled || session.rows.length >= 15;
+}
+function resetRankingTableRead(message = '') {
+  const session = state.rankingTableImport;
+  session.firstRead = [];
+  session.rows = [];
+  session.conflicts = [];
+  session.identityOptions = {};
+  session.identityLoading = false;
+  session.identityError = '';
+  session.identityRequestId += 1;
+  session.reviewed = false;
+  session.message = message;
+  session.rowsVersion += 1;
+}
+function handleRankingTableFile(file) {
+  const session = state.rankingTableImport;
+  if (session.previewUrl) URL.revokeObjectURL(session.previewUrl);
+  session.file = file || null;
+  session.previewUrl = '';
+  if (file) {
+    if (!SUPPORTED_IMAGES.has(file.type)) {
+      session.file = null;
+      session.message = 'Use uma foto PNG, JPG ou WebP.';
+    } else if (file.size > MAX_DROPPED_REMOTE_IMAGE_BYTES) {
+      session.file = null;
+      session.message = 'A foto precisa ter até 25 MB.';
+    } else {
+      session.previewUrl = URL.createObjectURL(file);
+      session.message = '';
+    }
+  } else {
+    session.message = '';
+  }
+  resetRankingTableRead(session.message);
+  updateRankingTableImportUI();
+}
+async function analyzeRankingTablePhoto() {
+  const session = state.rankingTableImport;
+  if (!session.file || session.busy || readOnly()) return;
+  if (!session.date || !session.hour) {
+    session.message = 'Selecione a data e o horário antes de analisar.';
+    updateRankingTableImportUI();
+    return;
+  }
+  session.busy = true;
+  session.reviewed = false;
+  session.message = 'Enviando a foto para duas leituras independentes…';
+  updateRankingTableImportUI();
+  try {
+    const image = await toPayload(await optimizeAnalysisImage(session.file));
+    const result = await requestAnalyze({ mode: 'ranking-table', image });
+    if (!Array.isArray(result.rows) || !result.rows.length ||
+        !Array.isArray(result.conflicts) || !Array.isArray(result.firstRead)) {
+      throw new Error('A leitura retornou uma tabela incompleta. Nenhuma pontuação foi salva.');
+    }
+    session.rows = result.rows.map(row => ({
+      position: Number(row.position),
+      teamName: String(row.teamName || ''),
+      wins: row.wins === null ? null : Number(row.wins),
+      kills: row.kills === null ? null : Number(row.kills),
+      points: row.points === null ? null : Number(row.points),
+    }));
+    session.identityOptions = {};
+    session.identityError = '';
+    session.firstRead = result.firstRead;
+    session.conflicts = result.conflicts;
+    session.reviewed = false;
+    session.message = result.readsAgree
+      ? 'Duas leituras independentes concordaram. Confira cada linha na foto antes de salvar.'
+      : 'As leituras divergiram. Os campos destacados precisam ser conferidos na foto.';
+    session.rowsVersion += 1;
+    await refreshRankingTableIdentityOptions();
+  } catch (error) {
+    resetRankingTableRead(error.message || 'Não foi possível ler a tabela. Nenhuma pontuação foi salva.');
+  } finally {
+    session.busy = false;
+    updateRankingTableImportUI();
+  }
+}
+function editRankingTableCell(event) {
+  const input = event.target.closest('[data-ranking-table-position][data-ranking-table-field]');
+  if (!input) return;
+  const session = state.rankingTableImport;
+  const row = session.rows.find(item => item.position === Number(input.dataset.rankingTablePosition));
+  if (!row) return;
+  const field = input.dataset.rankingTableField;
+  const previousName = row.teamName;
+  row[field] = field === 'teamName'
+    ? input.value
+    : input.value === '' ? null : Number(input.value);
+  if (field === 'teamName' && previousName !== row.teamName) {
+    row.rankingTeamId = '';
+    row.identitySource = '';
+    row.identityIsManual = false;
+  }
+  session.reviewed = false;
+  const review = $('ffRankingTableConfirm');
+  if (review) review.checked = false;
+  updateRankingTableImportUI();
+}
+function editRankingTableIdentity(event) {
+  const select = event.target.closest('[data-ranking-table-identity-position]');
+  if (!select) return;
+  const session = state.rankingTableImport;
+  const row = session.rows.find(item => item.position === Number(select.dataset.rankingTableIdentityPosition));
+  if (!row) return;
+  if (select.value === '__new__') {
+    const randomId = globalThis.crypto?.randomUUID?.() ||
+      `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    row.rankingTeamId = `manual_${randomId}`;
+    row.identitySource = 'manual';
+    row.identityIsManual = true;
+  } else {
+    row.rankingTeamId = String(select.value || '');
+    row.identitySource = row.rankingTeamId ? 'selected' : '';
+    row.identityIsManual = false;
+  }
+  session.message = rankingTableIdentityReviewMessage(session);
+  session.reviewed = false;
+  const review = $('ffRankingTableConfirm');
+  if (review) review.checked = false;
+  session.rowsVersion += 1;
+  renderRankingTableReview();
+  rankingTableRenderedVersion = session.rowsVersion;
+  updateRankingTableImportUI();
+}
+function refreshRankingTableIdentityForEditedName(event) {
+  const input = event.target.closest('[data-ranking-table-field="teamName"]');
+  if (input) void refreshRankingTableIdentityOptions();
+}
+function addRankingTableRow() {
+  const session = state.rankingTableImport;
+  if (session.rows.length >= 15 || readOnly() || session.busy) return;
+  const usedPositions = new Set(session.rows.map(row => row.position));
+  let position = 1;
+  while (usedPositions.has(position) && position <= 15) position += 1;
+  if (position > 15) return;
+  session.rows.push({ position, teamName: '', wins: null, kills: null, points: null });
+  session.rows.sort((left, right) => left.position - right.position);
+  session.reviewed = false;
+  session.rowsVersion += 1;
+  renderRankingTableReview();
+  rankingTableRenderedVersion = session.rowsVersion;
+  updateRankingTableImportUI();
+}
+function removeRankingTableRow(position) {
+  const session = state.rankingTableImport;
+  if (readOnly() || session.busy) return;
+  session.rows = session.rows.filter(row => row.position !== Number(position));
+  session.reviewed = false;
+  session.rowsVersion += 1;
+  renderRankingTableReview();
+  rankingTableRenderedVersion = session.rowsVersion;
+  updateRankingTableImportUI();
+}
+async function saveRankingTableImport() {
+  const session = state.rankingTableImport;
+  const issue = rankingTableImportIssue();
+  if (issue || session.busy || readOnly()) {
+    session.message = issue || 'Não foi possível salvar esta leitura.';
+    updateRankingTableImportUI();
+    return;
+  }
+  if (!window.firebaseDb || !window.firebaseAuth?.currentUser) {
+    session.message = 'Entre no painel com uma conta autorizada para salvar no Ranking Geral.';
+    updateRankingTableImportUI();
+    return;
+  }
+  const existing = state.rankingHistory.find(item =>
+    item.eventType === session.eventType && item.date === session.date &&
+    normalizeRankingSessionHour(item.hour) === String(Number(session.hour)).padStart(2, '0'));
+  const eventLabel = session.eventType === 'modo-liga' ? 'MODO LIGA' : 'TREINO FREITAS';
+  session.busy = true;
+  session.message = existing
+    ? `Substituindo a sessão de ${eventLabel} em ${formatRankingSessionDate(session.date)}, às ${session.hour}h…`
+    : `Gravando ${session.rows.length} equipes de ${eventLabel} em ${formatRankingSessionDate(session.date)}, às ${session.hour}h…`;
+  updateRankingTableImportUI();
+  let savedSession = null;
+  try {
+    let rows = session.rows.map(row => ({
+      teamName: String(row.teamName).trim(),
+      wins: Number(row.wins),
+      kills: Number(row.kills),
+      points: Number(row.points),
+      ...(row.rankingTeamId ? { rankingTeamId: row.rankingTeamId } : {}),
+      ...(row.identityIsManual ? { identityIsManual: true } : {}),
+    }));
+    rows = attachGeneralRankingTeamIdentities(rows);
+    const result = await upsertGeneralRankingSession(window.firebaseDb, {
+      eventType: session.eventType,
+      date: session.date,
+      hour: session.hour,
+      standings: rows,
+      updatedBy: window.firebaseAuth.currentUser.uid,
+    });
+    savedSession = {
+      sessionId: result.sessionId,
+      eventType: session.eventType,
+      eventLabel: session.eventType === 'modo-liga' ? 'TREINO MODO LIGA' : 'TREINO FREITAS',
+      date: session.date,
+      hour: normalizeRankingSessionHour(session.hour),
+      teams: rows,
+      updatedAt: new Date(),
+    };
+    session.reviewed = false;
+    state.rankingHistoryDate = session.date;
+    state.rankingHistoryHour = savedSession.hour;
+    state.rankingHistoryPage = 0;
+    mergeGeneralRankingSessionHistory(savedSession);
+
+    let verificationIssue = '';
+    try {
+      const confirmedSession = await getGeneralRankingSession(window.firebaseDb, {
+        eventType: session.eventType,
+        date: session.date,
+        hour: session.hour,
+      });
+      if (confirmedSession) savedSession = confirmedSession;
+      else verificationIssue = `O servidor não retornou o documento freefire_general_ranking_sessions/${result.sessionId}.`;
+    } catch (error) {
+      verificationIssue = `Não foi possível confirmar o documento ${result.sessionId} no servidor (${error.message || 'erro de leitura'}).`;
+    }
+
+    await loadGeneralRankingSessionHistory();
+    const listedSession = state.rankingHistory.find(item => item.sessionId === savedSession.sessionId);
+    if (listedSession) {
+      savedSession = listedSession;
+      verificationIssue = '';
+    } else {
+      verificationIssue ||= `A consulta do histórico não retornou o documento ${result.sessionId}.`;
+    }
+    if (state.rankingHistoryError) verificationIssue ||= state.rankingHistoryError;
+    mergeGeneralRankingSessionHistory(savedSession);
+    session.message = verificationIssue
+      ? `Pontuação gravada no Ranking Geral, mas a conferência do histórico falhou: ${verificationIssue} Ela foi mantida visível nesta tela; não salve novamente antes de conferir.`
+      : `Pontuação gravada e confirmada no banco: ${result.teamCount} equipes em ${formatRankingSessionDate(session.date)}, às ${session.hour}h. O histórico e os totais do ranking foram atualizados.`;
+    $('ffRankingHistoryTitle')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setNotice(verificationIssue ? 'error' : 'success', session.message);
+  } catch (error) {
+    if (savedSession) {
+      mergeGeneralRankingSessionHistory(savedSession);
+      session.message = `Pontuação gravada no Ranking Geral, mas não consegui atualizar a tela: ${error.message || 'erro de atualização'}. Não salve novamente antes de conferir o histórico.`;
+      setNotice('error', session.message);
+    } else {
+      const message = error.message || 'erro de gravação';
+      if (/já está vinculada a um ID|ID correto da equipe/i.test(message)) {
+        session.reviewed = false;
+        const review = $('ffRankingTableConfirm');
+        if (review) review.checked = false;
+        session.identityError = '';
+        session.message = `${message} Vou atualizar as opções de vínculo para você escolher o ID certo.`;
+        await refreshRankingTableIdentityOptions();
+        setNotice('error', session.message);
+      } else {
+        session.message = `Não foi possível salvar no Ranking Geral: ${message}`;
+      }
+    }
+  } finally {
+    session.busy = false;
+    updateRankingTableImportUI();
+  }
 }
 
 async function exportMatchResultJpeg() {
@@ -2015,34 +2551,37 @@ function rankingEventMatchesRegistration(eventType, registration) {
   return type.includes('treino-freitas') || type.includes('xtreino-tokens') ||
     (title.includes('treino') && title.includes('freitas'));
 }
-async function loadRankingIdentityRows(eventType, date) {
-  const cacheKey = `${eventType}:${date}`;
-  const cached = rankingIdentityRowsCache.get(cacheKey);
-  if (cached && Date.now() - cached.loadedAt < 60_000) return cached.rows;
+async function loadRankingIdentityRows(eventType, date, { forceRefresh = false } = {}) {
   const role = String(window.lastAppliedRole || window.adminRoleLower || '').toLowerCase().trim();
   if (role === 'admin' && eventType !== 'modo-liga') return [];
-  const { collection, getDocs, query, where } =
+  const cacheKey = `${role}:${eventType}:${date}`;
+  const cached = rankingIdentityRowsCache.get(cacheKey);
+  if (!forceRefresh && cached && Date.now() - cached.loadedAt < 60_000) return cached.rows;
+  const { collection, getDocsFromServer, query, where } =
     await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
   const constraints = [where('date', '==', date)];
   if (role === 'admin') constraints.push(where('eventType', '==', 'modo-liga'));
-  const snapshot = await getDocs(query(collection(window.firebaseDb, 'registrations'), ...constraints));
+  const snapshot = await getDocsFromServer(
+    query(collection(window.firebaseDb, 'registrations'), ...constraints),
+  );
   const rows = snapshot.docs.map(item => item.data());
   rankingIdentityRowsCache.set(cacheKey, { rows, loadedAt: Date.now() });
   return rows;
 }
-async function attachGeneralRankingTeamIdentities(rows, eventType, date, hour) {
-  const registrations = await loadRankingIdentityRows(eventType, date);
-  const sessionHour = rankingHourKey(hour);
+async function getVerifiedRankingTeamIds(registrations) {
+  const registrationsWithTeamId = registrations.filter(registration =>
+    !registration.rankingTeamId && registration.teamId);
+  const teamIds = [...new Set(registrationsWithTeamId
+    .map(registration => String(registration.teamId).trim())
+    .filter(Boolean))];
+  if (!teamIds.length) return new Set();
+
   const { doc, getDoc } =
     await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
   const verifiedTeamIds = new Set();
-  const teamIds = [...new Set(registrations
-    .filter(registration => !registration.rankingTeamId && registration.teamId)
-    .map(registration => String(registration.teamId).trim())
-    .filter(Boolean))];
   await Promise.all(teamIds.map(async teamId => {
-    const matchingRegistrations = registrations.filter(registration =>
-      !registration.rankingTeamId && String(registration.teamId || '').trim() === teamId);
+    const matchingRegistrations = registrationsWithTeamId.filter(registration =>
+      String(registration.teamId || '').trim() === teamId);
     const snapshot = await getDoc(doc(window.firebaseDb, 'teams', teamId));
     if (!snapshot.exists()) return;
     const profile = snapshot.data() || {};
@@ -2054,49 +2593,211 @@ async function attachGeneralRankingTeamIdentities(rows, eventType, date, hour) {
       verifiedTeamIds.add(teamId);
     }
   }));
-  const byName = new Map();
-  for (const registration of registrations) {
+  return verifiedTeamIds;
+}
+
+async function loadGeneralRankingTeamIdentityOptions(rows, eventType, date, hour) {
+  const teamNames = [...new Set((Array.isArray(rows) ? rows : [])
+    .map(row => String(row?.teamName || '').trim())
+    .filter(Boolean))];
+  if (!teamNames.length) return {};
+
+  const [registrations, existingTeams] = await Promise.all([
+    loadRankingIdentityRows(eventType, date, { forceRefresh: true }),
+    getGeneralRankingTeamsByNames(window.firebaseDb, teamNames),
+  ]);
+  const sessionHour = rankingHourKey(hour);
+  const requestedNames = new Set(teamNames.map(generalRankingTeamKey));
+  const eligibleRegistrations = registrations.filter(registration => {
     const status = String(registration.status || '').toLowerCase();
-    if (!['paid', 'approved', 'confirmed'].includes(status)) continue;
-    if (String(registration.date || registration.eventDate || '') !== String(date || '')) continue;
-    if (!rankingEventMatchesRegistration(eventType, registration)) continue;
-    if (rankingHourKey(registration.hour || registration.schedule) !== sessionHour) continue;
+    const registrationName = generalRankingTeamKey(
+      registration.teamName || registration.team || registration.squadName || '',
+    );
+    return ['paid', 'approved', 'confirmed'].includes(status) &&
+      String(registration.date || registration.eventDate || '') === String(date || '') &&
+      rankingEventMatchesRegistration(eventType, registration) &&
+      rankingHourKey(registration.hour || registration.schedule) === sessionHour &&
+      requestedNames.has(registrationName);
+  });
+  const verifiedTeamIds = await getVerifiedRankingTeamIds(eligibleRegistrations);
+  const byName = new Map();
+  const addCandidate = (teamName, rankingTeamId, source, totalPoints = null) => {
+    const key = generalRankingTeamKey(teamName);
+    const id = String(rankingTeamId || '').trim();
+    const pointsValue = totalPoints === null || totalPoints === undefined || totalPoints === ''
+      ? null
+      : Number.isFinite(Number(totalPoints)) ? Number(totalPoints) : null;
+    if (!key || !id) return;
+    if (!byName.has(key)) byName.set(key, new Map());
+    const candidates = byName.get(key);
+    const existing = candidates.get(id);
+    if (existing) {
+      if (!existing.sources.includes(source)) existing.sources.push(source);
+      if (pointsValue !== null) existing.totalPoints = pointsValue;
+      return;
+    }
+    candidates.set(id, {
+      rankingTeamId: id,
+      teamName: String(teamName || '').trim(),
+      sources: [source],
+      totalPoints: pointsValue,
+    });
+  };
+
+  for (const team of existingTeams) {
+    addCandidate(team.teamName, team.rankingTeamId || team.teamId, 'ranking', team.totalPoints);
+  }
+  for (const registration of eligibleRegistrations) {
     const teamName = String(registration.teamName || registration.team || registration.squadName || '').trim();
-    const nameKey = generalRankingTeamKey(teamName);
-    if (!nameKey) continue;
+    if (!generalRankingTeamKey(teamName)) continue;
     const rankingTeamId = String(
       registration.rankingTeamId ||
       (verifiedTeamIds.has(String(registration.teamId || '').trim()) ? registration.teamId : '') ||
       accountRankingTeamId(registration.userId, teamName),
     ).trim();
-    if (!rankingTeamId) continue;
-    const candidates = byName.get(nameKey) || [];
-    candidates.push({
-      rankingTeamId,
-      slot: rankingRegistrationSlot(registration),
-    });
-    byName.set(nameKey, candidates);
+    addCandidate(teamName, rankingTeamId, 'purchase');
+  }
+
+  return Object.fromEntries([...byName.entries()].map(([key, candidates]) => [
+    key,
+    [...candidates.values()].sort((left, right) =>
+      Number(right.sources.includes('purchase')) - Number(left.sources.includes('purchase')) ||
+      Number(right.totalPoints ?? -1) - Number(left.totalPoints ?? -1) ||
+      left.rankingTeamId.localeCompare(right.rankingTeamId)),
+  ]));
+}
+
+function attachGeneralRankingTeamIdentities(rows) {
+  const optionsByName = state.rankingTableImport.identityOptions || {};
+  return (Array.isArray(rows) ? rows : []).map(row => {
+    const key = generalRankingTeamKey(row?.teamName || '');
+    const candidates = optionsByName[key] || [];
+    const selectedId = String(row?.rankingTeamId || '').trim();
+    if (row?.identityIsManual && selectedId.startsWith('manual_')) return { ...row };
+    if (selectedId && candidates.some(candidate => candidate.rankingTeamId === selectedId)) {
+      return { ...row, rankingTeamId: selectedId };
+    }
+    const preferredId = preferredGeneralRankingTeamId(candidates);
+    if (preferredId) return { ...row, rankingTeamId: preferredId };
+    if (candidates.length > 0) {
+      throw new Error(`Identifique o ID correto da equipe "${row.teamName}" antes de salvar.`);
+    }
+    return { ...row };
+  });
+}
+
+async function attachMatchResultRankingTeamIdentities(rows, eventType, date, hour) {
+  const names = new Set((Array.isArray(rows) ? rows : [])
+    .map(row => generalRankingTeamKey(row?.teamName || ''))
+    .filter(Boolean));
+  const registrations = await loadRankingIdentityRows(eventType, date);
+  const sessionHour = rankingHourKey(hour);
+  const eligibleRegistrations = registrations.filter(registration => {
+    const status = String(registration.status || '').toLowerCase();
+    const key = generalRankingTeamKey(
+      registration.teamName || registration.team || registration.squadName || '',
+    );
+    return ['paid', 'approved', 'confirmed'].includes(status) &&
+      String(registration.date || registration.eventDate || '') === String(date || '') &&
+      rankingEventMatchesRegistration(eventType, registration) &&
+      rankingHourKey(registration.hour || registration.schedule) === sessionHour &&
+      names.has(key);
+  });
+  const verifiedTeamIds = await getVerifiedRankingTeamIds(eligibleRegistrations);
+  const candidatesByName = new Map();
+  for (const registration of eligibleRegistrations) {
+    const teamName = String(registration.teamName || registration.team || registration.squadName || '').trim();
+    const key = generalRankingTeamKey(teamName);
+    const rankingTeamId = String(
+      registration.rankingTeamId ||
+      (verifiedTeamIds.has(String(registration.teamId || '').trim()) ? registration.teamId : '') ||
+      accountRankingTeamId(registration.userId, teamName),
+    ).trim();
+    if (!key || !rankingTeamId) continue;
+    const candidates = candidatesByName.get(key) || [];
+    candidates.push({ rankingTeamId, slot: rankingRegistrationSlot(registration) });
+    candidatesByName.set(key, candidates);
   }
 
   return (Array.isArray(rows) ? rows : []).map(row => {
-    const teamName = String(row?.teamName || '').trim();
-    const nameKey = generalRankingTeamKey(teamName);
-    const candidates = byName.get(nameKey) || [];
-    const verifiedRow = { ...(row || {}) };
-    delete verifiedRow.rankingTeamId;
-    if (!candidates.length) return verifiedRow;
+    const key = generalRankingTeamKey(row?.teamName || '');
+    const candidates = candidatesByName.get(key) || [];
     const slot = Number(row?.slot) || null;
-    const slotMatches = slot ? candidates.filter(candidate => candidate.slot === slot) : [];
-    const relevant = slotMatches.length ? slotMatches : candidates;
+    const slotCandidates = slot ? candidates.filter(candidate => candidate.slot === slot) : [];
+    const relevant = slotCandidates.length ? slotCandidates : candidates;
     const ids = [...new Set(relevant.map(candidate => candidate.rankingTeamId))];
+    const selectedId = String(row?.rankingTeamId || '').trim();
+    if (selectedId && ids.includes(selectedId)) return { ...row, rankingTeamId: selectedId };
     if (ids.length > 1) {
       throw new Error(
-        `A equipe "${teamName}" tem mais de um ID nas compras deste horário. Revise a associação do slot ${slot || 'correspondente'} antes de salvar.`,
+        `A equipe "${row.teamName}" tem mais de um ID nas compras deste horário. Revise a associação do slot ${slot || 'correspondente'} antes de salvar.`,
       );
     }
-    return ids.length === 1 ? { ...verifiedRow, rankingTeamId: ids[0] } : verifiedRow;
+    return ids.length === 1 ? { ...row, rankingTeamId: ids[0] } : { ...row };
   });
 }
+
+async function refreshRankingTableIdentityOptions({ clearAutomaticSelections = false } = {}) {
+  const session = state.rankingTableImport;
+  if (!session.rows.length) return;
+  const requestId = ++session.identityRequestId;
+  if (!window.firebaseDb) {
+    session.identityLoading = false;
+    session.identityOptions = {};
+    session.identityError = 'O banco do Ranking não está disponível para consultar os IDs.';
+    session.message = session.identityError;
+    session.rowsVersion += 1;
+    updateRankingTableImportUI();
+    return;
+  }
+
+  if (clearAutomaticSelections) {
+    session.rows = session.rows.map(row => (
+      row.identitySource === 'auto'
+        ? { ...row, rankingTeamId: '', identitySource: '' }
+        : row
+    ));
+  }
+  session.identityLoading = true;
+  session.identityError = '';
+  session.message = 'Conferindo os IDs das equipes para não misturar times com nomes iguais…';
+  updateRankingTableImportUI();
+
+  try {
+    session.identityOptions = await loadGeneralRankingTeamIdentityOptions(
+      session.rows,
+      session.eventType,
+      session.date,
+      session.hour,
+    );
+    if (requestId !== session.identityRequestId) return;
+    session.rows = session.rows.map(row => {
+      if (row.identityIsManual && String(row.rankingTeamId || '').startsWith('manual_')) return row;
+      const options = session.identityOptions[generalRankingTeamKey(row.teamName)] || [];
+      const selectedId = String(row.rankingTeamId || '').trim();
+      if (
+        row.identitySource === 'selected' &&
+        options.some(option => option.rankingTeamId === selectedId)
+      ) return row;
+       const preferredId = preferredGeneralRankingTeamId(options);
+       if (preferredId) {
+         return { ...row, rankingTeamId: preferredId, identitySource: 'auto' };
+      }
+      return { ...row, rankingTeamId: '', identitySource: '' };
+    });
+    session.message = rankingTableIdentityReviewMessage(session);
+  } catch (error) {
+    if (requestId !== session.identityRequestId) return;
+    session.identityError = `Não foi possível consultar os IDs das equipes: ${error.message || 'erro de leitura'}`;
+    session.message = session.identityError;
+  } finally {
+    if (requestId !== session.identityRequestId) return;
+    session.identityLoading = false;
+    session.rowsVersion += 1;
+    updateRankingTableImportUI();
+  }
+}
+
 async function attachGeneralRankingLogos(rows) {
   const roster = (Array.isArray(rows) ? rows : []).map((row, index) => ({
     slot: Number(row.slot) || index + 1,
@@ -2190,7 +2891,7 @@ async function persistImageModeGeneralRanking() {
     kills: Number(row.kills || 0),
     points: Number(row.points || 0),
   }));
-  rows = await attachGeneralRankingTeamIdentities(rows, 'treino-freitas', date, hour);
+  rows = await attachMatchResultRankingTeamIdentities(rows, 'treino-freitas', date, hour);
   try {
     rows = await attachGeneralRankingLogos(rows);
   } catch (error) {
@@ -2548,23 +3249,39 @@ function renderGeneralRankingSessionHistory() {
       `<p class="ff-ranking-history-error">${esc(state.rankingHistoryError)}</p>`);
   }
 }
+function mergeGeneralRankingSessionHistory(session) {
+  if (!session?.sessionId) return;
+  state.rankingHistory = [
+    session,
+    ...state.rankingHistory.filter(item => item.sessionId !== session.sessionId),
+  ].sort((left, right) =>
+    right.date.localeCompare(left.date) ||
+    Number(normalizeRankingSessionHour(right.hour)) - Number(normalizeRankingSessionHour(left.hour)) ||
+    left.eventType.localeCompare(right.eventType));
+  renderGeneralRankingSessionHistory();
+}
 async function loadGeneralRankingSessionHistory() {
   if (!window.firebaseDb || !canOpen()) return;
+  const requestSequence = ++rankingHistoryLoadSequence;
   state.rankingHistoryLoading = true;
   state.rankingHistoryError = '';
   renderGeneralRankingSessionHistory();
   try {
     const sessions = await getGeneralRankingSessions(window.firebaseDb);
+    if (requestSequence !== rankingHistoryLoadSequence) return;
     state.rankingHistory = sessions.sort((left, right) =>
       right.date.localeCompare(left.date) ||
       Number(right.hour.replace(/[^\d]/g, '') || 0) - Number(left.hour.replace(/[^\d]/g, '') || 0) ||
       left.eventType.localeCompare(right.eventType));
   } catch (error) {
+    if (requestSequence !== rankingHistoryLoadSequence) return;
     state.rankingHistoryError =
       `Não foi possível carregar o histórico: ${error.message || 'erro de leitura'}`;
   } finally {
-    state.rankingHistoryLoading = false;
-    renderGeneralRankingSessionHistory();
+    if (requestSequence === rankingHistoryLoadSequence) {
+      state.rankingHistoryLoading = false;
+      renderGeneralRankingSessionHistory();
+    }
   }
 }
 function setNotice(type, message) {
@@ -2581,6 +3298,7 @@ function render() {
   if (!state.built || !root.querySelector('#ffEvent') || !root.querySelector('#ffMatchResultView')) {
     build(root);
   }
+  updateRankingTableImportUI();
   $('ffEvent').value = state.event;
   $('ffEvent').disabled = readOnly() || state.busy;
   $('ffRankingSessionFields').hidden = state.event !== 'treino';
@@ -2958,7 +3676,7 @@ function build(root) {
         <p>Da leitura do lobby à tabela oficial. Revise cada extração antes de fechar a pontuação.</p></div>
       <div class="ff-session"><span class="ff-session-dot"></span><div><b>Sessão em andamento</b><small>Dados não salvos após sair desta tela</small></div></div>
     </header>
-    <section class="ff-panel ff-ranking-import-panel" aria-labelledby="ffRankingImportTitle">
+    <section id="ffRankingImportPanel" class="ff-panel ff-ranking-import-panel" aria-labelledby="ffRankingImportTitle">
       <div class="ff-panel-heading"><div class="ff-step">🏆</div><div><h2 id="ffRankingImportTitle">Ranking Geral</h2><p>Importe uma vez a tabela baixada. Nomes duplicados serão unidos e os pontos somados.</p></div></div>
       <div class="ff-ranking-import-controls">
         <label class="ff-field">Arquivo inicial do ranking<input id="ffRankingImportFile" type="file" accept=".csv,.tsv,.txt,.json,.html,.htm,text/csv,text/plain,application/json,text/html" ${readOnly() ? 'disabled' : ''}></label>
@@ -2967,7 +3685,42 @@ function build(root) {
         <p id="ffRankingImportStatus" class="ff-export-note" role="status" aria-live="polite"></p>
       </div>
     </section>
-    <section class="ff-panel ff-ranking-history-panel" aria-labelledby="ffRankingHistoryTitle">
+    <section id="ffRankingPhotoPanel" class="ff-panel ff-ranking-photo-panel" aria-labelledby="ffRankingPhotoTitle">
+      <div class="ff-panel-heading"><div class="ff-step">📷</div><div><h2 id="ffRankingPhotoTitle">Adicionar pontuação pela foto da tabela</h2><p>Envie a tabela pronta. A leitura dupla é revisada antes de atualizar o Ranking Geral.</p></div></div>
+      <div class="ff-ranking-photo-fields">
+        <label class="ff-field">Evento<select id="ffRankingTableEvent"><option value="treino-freitas">Treino Freitas</option><option value="modo-liga">Modo Liga</option></select></label>
+        <label class="ff-field">Data<input id="ffRankingTableDate" type="date" value="${esc(state.rankingTableImport.date)}"></label>
+        <label class="ff-field">Horário<select id="ffRankingTableHour"><option value="">Selecione</option>${Array.from({ length: 24 }, (_, hour) => `<option value="${String(hour).padStart(2, '0')}">${String(hour).padStart(2, '0')}h</option>`).join('')}</select></label>
+      </div>
+      <div class="ff-ranking-photo-upload">
+        <label class="ff-button ff-button-light" for="ffRankingTableFile"><i class="fas fa-image"></i> Escolher foto da tabela</label>
+        <input id="ffRankingTableFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+         <span id="ffRankingTableFileName" class="ff-file-label" role="status" aria-live="polite">Arraste a foto até o botão ou clique para selecionar.</span>
+      </div>
+      <div class="ff-ranking-photo-workspace">
+        <div class="ff-ranking-photo-preview"><img id="ffRankingTableImage" alt="Foto da tabela selecionada" hidden></div>
+        <div class="ff-ranking-photo-results">
+          <button type="button" id="ffAnalyzeRankingTable" class="ff-button ff-button-primary" disabled>Analisar foto</button>
+          <p id="ffRankingTableMessage" class="ff-ranking-photo-message" role="status" aria-live="polite">A foto é enviada apenas para leitura e não fica armazenada.</p>
+          <div id="ffRankingTableReview" class="ff-ranking-table-review" hidden>
+            <div class="ff-ranking-table-scroll">
+              <table class="ff-ranking-history-table ff-ranking-photo-table">
+                <thead><tr><th>#</th><th>Equipe</th><th>Vitórias</th><th>Abates</th><th>Pontos</th><th></th></tr></thead>
+                <tbody id="ffRankingTableRows"></tbody>
+              </table>
+            </div>
+            <button type="button" id="ffRankingIdentityRefresh" class="ff-button ff-button-light" hidden>Atualizar vínculos</button>
+            <button type="button" id="ffRankingTableAddRow" class="ff-button ff-button-light">Adicionar equipe</button>
+            <div class="ff-ranking-photo-confirm">
+              <label><input id="ffRankingTableConfirm" type="checkbox"> Conferi os dados. Se já houver sessão nesse horário, autorizo substituí-la.</label>
+              <button type="button" id="ffSaveRankingTable" class="ff-button ff-button-primary" disabled>Confirmar e salvar no Ranking Geral</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="ff-ranking-photo-footnote">Uma pontuação já gravada para o mesmo evento, data e horário será substituída, não somada novamente.</p>
+    </section>
+    <section id="ffRankingHistoryPanel" class="ff-panel ff-ranking-history-panel" aria-labelledby="ffRankingHistoryTitle">
       <div class="ff-ranking-history-heading">
         <div><h2 id="ffRankingHistoryTitle">Histórico de pontuações gravadas</h2><p>Consulte cada sessão por data, horário e evento.</p></div>
         <button type="button" id="ffRankingHistoryRefresh" class="ff-button ff-button-light">Atualizar lista</button>
@@ -3044,6 +3797,7 @@ function build(root) {
     </div>
     </div>
     <div id="ffMatchResultView" hidden></div>`;
+  moveRankingPanelsToDedicatedRoots();
   matchResultView = createMatchResultView($('ffMatchResultView'), {
     onEventChange: eventType => { changeMatchResultEvent(eventType); },
     onEventHourChange: hour => { changeMatchResultHour(hour); },
@@ -3126,6 +3880,55 @@ function build(root) {
     readRankingImportFile(e.target.files?.[0]);
   });
   $('ffImportRanking').addEventListener('click', importRankingBase);
+  $('ffRankingTableEvent').addEventListener('change', e => {
+    state.rankingTableImport.eventType = String(e.target.value || '');
+    state.rankingTableImport.reviewed = false;
+    state.rankingTableImport.message = '';
+    updateRankingTableImportUI();
+    void refreshRankingTableIdentityOptions({ clearAutomaticSelections: true });
+  });
+  $('ffRankingTableDate').addEventListener('change', e => {
+    state.rankingTableImport.date = String(e.target.value || '');
+    state.rankingTableImport.reviewed = false;
+    state.rankingTableImport.message = '';
+    updateRankingTableImportUI();
+    void refreshRankingTableIdentityOptions({ clearAutomaticSelections: true });
+  });
+  $('ffRankingTableHour').addEventListener('change', e => {
+    state.rankingTableImport.hour = String(e.target.value || '');
+    state.rankingTableImport.reviewed = false;
+    state.rankingTableImport.message = '';
+    updateRankingTableImportUI();
+    void refreshRankingTableIdentityOptions({ clearAutomaticSelections: true });
+  });
+  $('ffRankingTableFile').addEventListener('change', e => {
+    handleRankingTableFile(e.target.files?.[0]);
+    e.target.value = '';
+  });
+  $('ffAnalyzeRankingTable').addEventListener('click', () => {
+    analyzeRankingTablePhoto();
+  });
+  $('ffRankingTableRows').addEventListener('input', editRankingTableCell);
+  $('ffRankingTableRows').addEventListener('change', e => {
+    if (e.target.closest('[data-ranking-table-identity-position]')) {
+      editRankingTableIdentity(e);
+      return;
+    }
+    refreshRankingTableIdentityForEditedName(e);
+  });
+  $('ffRankingTableRows').addEventListener('click', e => {
+    const remove = e.target.closest('[data-remove-ranking-table-position]');
+    if (remove) removeRankingTableRow(remove.dataset.removeRankingTablePosition);
+  });
+  $('ffRankingTableAddRow').addEventListener('click', addRankingTableRow);
+  $('ffRankingTableConfirm').addEventListener('change', e => {
+    state.rankingTableImport.reviewed = Boolean(e.target.checked);
+    updateRankingTableImportUI();
+  });
+  $('ffRankingIdentityRefresh').addEventListener('click', () => {
+    void refreshRankingTableIdentityOptions();
+  });
+  $('ffSaveRankingTable').addEventListener('click', saveRankingTableImport);
   $('ffRankingHistoryRefresh').addEventListener('click', () => {
     loadGeneralRankingSessionHistory();
   });
@@ -3340,6 +4143,7 @@ function build(root) {
   attachImageDropTarget(document.querySelector('label[for="ffRosterUpload"]'), $('ffRosterUpload'));
   attachImageDropTarget($('ffSlotUpload').closest('.ff-upload-tile'), $('ffSlotUpload'));
   attachImageDropTarget($('ffResultUpload').closest('.ff-upload-tile'), $('ffResultUpload'));
+  attachImageDropTarget($('ffRankingTableFile').closest('label'), $('ffRankingTableFile'));
   $('ffExport').addEventListener('click', exportJpeg);
   state.built = true;
   render();
@@ -3628,6 +4432,7 @@ async function requestAnalyze(payload) {
     let detail = '';
     try { detail = (await response.json()).error || ''; } catch (_) {}
     if (response.status === 404 || response.status === 501) throw new Error('O endpoint de análise Free Fire não está disponível no servidor. Nenhuma pontuação foi aplicada.');
+    if (response.status === 504) throw new Error('A análise excedeu o tempo limite do servidor. Nenhuma pontuação foi aplicada; aguarde alguns segundos e tente novamente.');
     throw new Error(detail || `Falha na análise (HTTP ${response.status}). Nenhuma pontuação foi aplicada.`);
   }
   return response.json();
@@ -3743,7 +4548,7 @@ async function exportJpeg() {
         imageRankingAttemptedSignature = '';
         state.rankingStatus = 'JPEG baixado. Atualizando o Ranking Geral em segundo plano…';
         scheduleImageRankingSave();
-    }
+      }
     }
     setNotice('success', downloadMessage);
   } catch (error) { setNotice('error', error.message || 'Falha ao exportar a tabela.'); }
@@ -3762,8 +4567,6 @@ export async function openFreefireScoringAdmin() {
       loadTemplate(),
       loadMatchResultTemplate(),
       matchResultState.eventType === 'modo-liga' ? loadModoLigaLogoCatalog(true) : Promise.resolve(),
-      loadRankingImportStatus(),
-      loadGeneralRankingSessionHistory(),
     ]);
     stage = 'atualização final da tela';
     render();
@@ -3773,4 +4576,21 @@ export async function openFreefireScoringAdmin() {
     error.scoringStage = stage;
     throw error;
   }
+}
+
+export async function openFreefireRankingAdmin() {
+  if (!canOpen() || !visible()) return;
+  state.error = '';
+  render();
+  const status = $('rankingLoadError');
+  if (status) {
+    status.hidden = true;
+    status.textContent = '';
+  }
+  updateRankingTableImportUI();
+  await Promise.all([
+    loadRankingImportStatus(),
+    loadGeneralRankingSessionHistory(),
+  ]);
+  updateRankingTableImportUI();
 }

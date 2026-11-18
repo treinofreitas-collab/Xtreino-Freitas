@@ -26,6 +26,20 @@ export function generalRankingIdentityKey(team) {
   return nameKey ? `name:${nameKey}` : '';
 }
 
+export function preferredGeneralRankingTeamId(candidates = []) {
+  const idsBySource = source => new Set(
+    (Array.isArray(candidates) ? candidates : [])
+      .filter(candidate => Array.isArray(candidate?.sources) && candidate.sources.includes(source))
+      .map(candidate => String(candidate?.rankingTeamId || '').trim())
+      .filter(Boolean),
+  );
+  const existingIds = idsBySource('ranking');
+  if (existingIds.size === 1) return [...existingIds][0];
+  if (existingIds.size > 1) return '';
+  const purchaseIds = idsBySource('purchase');
+  return purchaseIds.size === 1 ? [...purchaseIds][0] : '';
+}
+
 export function accountRankingTeamId(userId, teamName) {
   const uid = String(userId || '').trim();
   const nameKey = generalRankingTeamKey(teamName);

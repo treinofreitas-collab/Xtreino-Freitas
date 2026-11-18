@@ -140,8 +140,8 @@ import {
     getGeneralRankingTeamPositionsByIds,
     getGeneralRankingTeamPositionsByNames,
     getGeneralRankingTop
-} from './js/freefire-general-ranking-store.mjs?v=ranking-team-identity-1';
-import { accountRankingTeamId, generalRankingTeamKey } from './js/freefire-general-ranking.mjs?v=ranking-team-identity-1';
+} from './js/freefire-general-ranking-store.mjs?v=ranking-history-server-1';
+import { accountRankingTeamId, generalRankingTeamKey } from './js/freefire-general-ranking.mjs?v=ranking-team-identity-2';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
 let app = null;
