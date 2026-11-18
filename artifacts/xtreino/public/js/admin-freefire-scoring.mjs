@@ -1742,7 +1742,7 @@ function updateRankingTableImportUI() {
   fileInput.disabled = disabled;
   fileName.textContent = session.file
     ? `${session.file.name} · ${Math.ceil(session.file.size / 1024)} KB`
-    : 'Arraste a foto até o botão ou clique para selecionar.';
+    : 'Nenhuma foto selecionada.';
   image.hidden = !session.previewUrl;
   if (session.previewUrl && image.src !== session.previewUrl) image.src = session.previewUrl;
   analyze.disabled = disabled || !session.file;
@@ -3721,10 +3721,14 @@ function build(root) {
         <label class="ff-field">Data<input id="ffRankingTableDate" type="date" value="${esc(state.rankingTableImport.date)}"></label>
         <label class="ff-field">Horário<select id="ffRankingTableHour"><option value="">Selecione</option>${Array.from({ length: 24 }, (_, hour) => `<option value="${String(hour).padStart(2, '0')}">${String(hour).padStart(2, '0')}h</option>`).join('')}</select></label>
       </div>
-      <div class="ff-ranking-photo-upload">
+      <div id="ffRankingPhotoDropzone" class="ff-ranking-photo-upload ff-ranking-photo-dropzone" role="region" aria-label="Área para soltar a foto da tabela">
+        <div class="ff-ranking-photo-drop-copy">
+          <i class="fas fa-cloud-upload-alt" aria-hidden="true"></i>
+          <span><b>Arraste e solte a foto aqui</b><small>ou escolha um arquivo pelo botão</small></span>
+        </div>
         <label class="ff-button ff-button-light" for="ffRankingTableFile"><i class="fas fa-image"></i> Escolher foto da tabela</label>
         <input id="ffRankingTableFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-         <span id="ffRankingTableFileName" class="ff-file-label" role="status" aria-live="polite">Arraste a foto até o botão ou clique para selecionar.</span>
+        <span id="ffRankingTableFileName" class="ff-file-label" role="status" aria-live="polite">Nenhuma foto selecionada.</span>
       </div>
       <div class="ff-ranking-photo-workspace">
         <div class="ff-ranking-photo-preview"><img id="ffRankingTableImage" alt="Foto da tabela selecionada" hidden></div>
@@ -4172,7 +4176,11 @@ function build(root) {
   attachImageDropTarget(document.querySelector('label[for="ffRosterUpload"]'), $('ffRosterUpload'));
   attachImageDropTarget($('ffSlotUpload').closest('.ff-upload-tile'), $('ffSlotUpload'));
   attachImageDropTarget($('ffResultUpload').closest('.ff-upload-tile'), $('ffResultUpload'));
-  attachImageDropTarget($('ffRankingTableFile').closest('label'), $('ffRankingTableFile'));
+  attachImageDropTarget(
+    $('ffRankingPhotoDropzone'),
+    $('ffRankingTableFile'),
+    files => handleRankingTableFile(files[0]),
+  );
   $('ffExport').addEventListener('click', exportJpeg);
   state.built = true;
   render();
@@ -4352,7 +4360,7 @@ async function fetchDroppedImage(urlValue) {
   }
 }
 
-function attachImageDropTarget(target, input) {
+function attachImageDropTarget(target, input, onFilesDropped = null) {
   if (!target || !input) return;
   let dragDepth = 0;
   const hasImagePayload = dataTransfer => {
@@ -4408,6 +4416,12 @@ function attachImageDropTarget(target, input) {
       }
       if (!input.multiple && acceptedFiles.length > 1) {
         throw new Error('Arraste uma imagem por vez para esta área.');
+      }
+      if (onFilesDropped) {
+        state.error = '';
+        state.message = '';
+        await onFilesDropped(acceptedFiles);
+        return;
       }
       const transfer = new DataTransfer();
       acceptedFiles.forEach(file => transfer.items.add(file));

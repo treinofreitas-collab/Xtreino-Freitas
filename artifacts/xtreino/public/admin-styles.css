@@ -2930,8 +2930,16 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
 .ff-workspace .ff-ranking-photo-fields .ff-field { gap:.32rem; font-size:.65rem; }
 .ff-workspace .ff-ranking-photo-fields select,
 .ff-workspace .ff-ranking-photo-fields input[type="date"] { min-width:0; width:100%; border:1px solid #dce3dd; border-radius:8px; background:#fff; color:#253235; padding:.62rem .7rem; font:500 .75rem 'DM Sans',sans-serif; }
-.ff-workspace .ff-ranking-photo-upload { display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; }
-.ff-workspace .ff-ranking-photo-upload .ff-button { min-height:36px; padding:.48rem .75rem; font-size:.68rem; }
+.ff-workspace .ff-ranking-photo-upload { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:.4rem .8rem; width:100%; min-height:82px; padding:.75rem; border:1px dashed #c9d4ca; border-radius:10px; background:#fafcf8; transition:border-color .15s,background .15s,box-shadow .15s; }
+.ff-workspace .ff-ranking-photo-drop-copy { display:flex; align-items:center; gap:.6rem; min-width:0; color:#52635b; }
+.ff-workspace .ff-ranking-photo-drop-copy > i { display:grid; width:34px; height:34px; flex:0 0 34px; place-items:center; border-radius:9px; background:#edf6f1; color:#087f78; }
+.ff-workspace .ff-ranking-photo-drop-copy span { display:grid; gap:.15rem; min-width:0; }
+.ff-workspace .ff-ranking-photo-drop-copy b { font-size:.72rem; }
+.ff-workspace .ff-ranking-photo-drop-copy small { color:#849087; font-size:.62rem; }
+.ff-workspace .ff-ranking-photo-upload .ff-button { grid-column:2; grid-row:1/3; min-height:42px; padding:.55rem .75rem; font-size:.68rem; }
+.ff-workspace .ff-ranking-photo-upload .ff-file-label { grid-column:1; grid-row:2; overflow-wrap:anywhere; }
+.ff-workspace .ff-ranking-photo-dropzone.ff-drop-target-active { border-color:#dc8052; border-style:solid; background:#fff3ed; box-shadow:0 0 0 3px rgba(242,106,50,.14); }
+.ff-workspace .ff-ranking-photo-dropzone.ff-drop-target-loading { cursor:progress; opacity:.7; }
 .ff-workspace .ff-ranking-photo-workspace { display:grid; grid-template-columns:minmax(170px,240px) minmax(0,1fr); gap:.9rem; align-items:start; margin-top:.8rem; }
 .ff-workspace .ff-ranking-photo-preview { min-height:100px; display:grid; place-items:center; overflow:hidden; border:1px dashed #cfd9d0; border-radius:9px; background:#f7f9f5; }
 .ff-workspace .ff-ranking-photo-preview img { display:block; max-width:100%; max-height:300px; object-fit:contain; }
@@ -3019,6 +3027,9 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
     .ff-workspace .ff-ranking-photo-preview { max-height:220px; }
     .ff-workspace .ff-ranking-photo-preview img { max-height:220px; }
     .ff-workspace .ff-ranking-photo-confirm { align-items:flex-start; flex-direction:column; }
+    .ff-workspace .ff-ranking-photo-upload { grid-template-columns:minmax(0,1fr); gap:.5rem; min-height:0; padding:.7rem; }
+    .ff-workspace .ff-ranking-photo-upload .ff-button { grid-column:1; grid-row:auto; width:100%; justify-content:center; min-height:44px; }
+    .ff-workspace .ff-ranking-photo-upload .ff-file-label { grid-column:1; grid-row:auto; }
     .ff-workspace .ff-ranking-history-heading { align-items:stretch; flex-direction:column; }
     .ff-workspace .ff-ranking-history-filters { grid-template-columns:1fr 1fr; }
     .ff-workspace .ff-ranking-history-clear-date { grid-column:1/-1; justify-self:start; }
@@ -3027,4 +3038,82 @@ html.kpis-enabled #sectionKPIs { display: grid !important; }
     .ff-workspace .ff-ranking-history-count { grid-column:1; }
     .ff-workspace .ff-ranking-history-item summary::after { grid-column:2; grid-row:1/4; justify-self:end; }
     .ff-workspace .ff-ranking-history-pagination { align-items:flex-start; flex-direction:column; }
+
+    .ff-workspace .ff-ranking-table-scroll { overflow:visible; }
+    .ff-workspace .ff-ranking-photo-table {
+        display:block;
+        width:100%;
+        min-width:0;
+    }
+    .ff-workspace .ff-ranking-photo-table thead { display:none; }
+    .ff-workspace .ff-ranking-photo-table tbody { display:grid; gap:.5rem; }
+    .ff-workspace .ff-ranking-photo-table tbody tr {
+        display:grid;
+        grid-template-columns:24px repeat(3,minmax(0,1fr)) 40px;
+        align-items:start;
+        gap:.4rem;
+        padding:.55rem;
+        border:1px solid #e3e9e2;
+        border-radius:8px;
+        background:#fff;
+    }
+    .ff-workspace .ff-ranking-photo-table tbody td {
+        display:block;
+        min-width:0;
+        padding:0;
+        border:0;
+        text-align:left;
+        white-space:normal;
+    }
+    .ff-workspace .ff-ranking-photo-table td:first-child {
+        grid-column:1;
+        grid-row:1;
+        padding-top:.65rem;
+        text-align:center;
+    }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(2) {
+        grid-column:2/5;
+        grid-row:1;
+    }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(3) { grid-column:2; grid-row:2; }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(4) { grid-column:3; grid-row:2; }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(5) { grid-column:4; grid-row:2; }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(3)::before,
+    .ff-workspace .ff-ranking-photo-table td:nth-child(4)::before,
+    .ff-workspace .ff-ranking-photo-table td:nth-child(5)::before {
+        display:block;
+        margin:0 0 .22rem;
+        color:#7c8984;
+        font-size:.54rem;
+        font-weight:700;
+        line-height:1.2;
+        text-transform:uppercase;
+    }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(3)::before { content:"Vitórias"; }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(4)::before { content:"Abates"; }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(5)::before { content:"Pontos"; }
+    .ff-workspace .ff-ranking-photo-table input {
+        width:100%;
+        min-width:0;
+        padding:.5rem .4rem;
+    }
+    .ff-workspace .ff-ranking-photo-table td:nth-child(2) input { min-width:0; }
+    .ff-workspace .ff-ranking-identity-picker { min-width:0; }
+    .ff-workspace .ff-ranking-photo-table td:last-child {
+        grid-column:5;
+        grid-row:1;
+        justify-self:end;
+    }
+    .ff-workspace .ff-ranking-table-remove {
+        display:grid;
+        width:40px;
+        height:40px;
+        place-items:center;
+        border:1px solid #f0d5c9;
+        border-radius:8px;
+        background:#fff5ef;
+        color:#a64f36;
+        font-size:1.35rem;
+        line-height:1;
+    }
 }

@@ -134,6 +134,21 @@ test('ships fixed image tables for each event with event-specific export alignme
   assert.equal(getImageEventTemplateLayout('treino', 0, 1000), null);
 });
 
+test('keeps the ranking-table remove button visible in the mobile review layout', async () => {
+  const scoringSource = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  const styles = await readFile(
+    new URL('../../artifacts/xtreino/public/admin-styles.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(scoringSource, /class="ff-ranking-table-remove"[^>]*aria-label="Remover equipe/);
+  assert.match(styles, /@media \(max-width: 540px\)[\s\S]*?\.ff-ranking-photo-table tbody tr\s*\{[\s\S]*?grid-template-columns:24px repeat\(3,minmax\(0,1fr\)\) 40px/);
+  assert.match(styles, /\.ff-ranking-photo-table td:last-child\s*\{[\s\S]*?grid-column:5;[\s\S]*?grid-row:1;/);
+  assert.match(styles, /\.ff-ranking-table-remove\s*\{[\s\S]*?width:40px;[\s\S]*?height:40px;/);
+});
+
 test('parses 15-team MatchResult logs and recomputes placement and kill totals', () => {
   const text = Array.from({ length: 15 }, (_, index) =>
     teamBlock(`Equipe ${index + 1}`, index + 1, [index === 0 ? 4 : 0, 1, 0, 0]),
@@ -301,9 +316,27 @@ test('prepares leaderboard logos without solid edge backgrounds and keeps them i
     new URL('../../artifacts/xtreino/public/admin.html', import.meta.url),
     'utf8',
   );
-  assert.match(admin, /admin-freefire-scoring\.mjs\?v=ranking-logo-auto-3/);
-  assert.match(adminPage, /admin\.js\?v=ranking-logo-auto-3/);
+  assert.match(admin, /admin-freefire-scoring\.mjs\?v=ranking-photo-upload-mobile-1/);
+  assert.match(adminPage, /admin\.js\?v=ranking-photo-upload-mobile-1/);
+  assert.match(adminPage, /admin-styles\.css\?v=ranking-photo-upload-mobile-1/);
   assert.doesNotMatch(source, /ffTemplateUpload|ffTemplateReset|Substituir só neste navegador|Restaurar tabela oficial|table-templates|local-override/);
+});
+
+test('ranking-table upload accepts drops across the visible drop area', async () => {
+  const source = await readFile(
+    new URL('../../artifacts/xtreino/public/js/admin-freefire-scoring.mjs', import.meta.url),
+    'utf8',
+  );
+  const styles = await readFile(
+    new URL('../../artifacts/xtreino/public/admin-styles.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /id="ffRankingPhotoDropzone" class="ff-ranking-photo-upload ff-ranking-photo-dropzone"/);
+  assert.match(source, /attachImageDropTarget\([\s\S]*?\$\('ffRankingPhotoDropzone'\),[\s\S]*?\$\('ffRankingTableFile'\),[\s\S]*?files => handleRankingTableFile\(files\[0\]\)/);
+  assert.match(source, /if \(onFilesDropped\)[\s\S]*?await onFilesDropped\(acceptedFiles\)/);
+  assert.match(source, /<b>Arraste e solte a foto aqui<\/b>/);
+  assert.match(styles, /\.ff-ranking-photo-dropzone\.ff-drop-target-active/);
+  assert.match(styles, /@media \(max-width: 540px\)[\s\S]*?\.ff-ranking-photo-upload \{ grid-template-columns:minmax\(0,1fr\)/);
 });
 
 test('image analysis defaults to sending originals without recompression', async () => {
