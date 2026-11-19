@@ -137,7 +137,6 @@ import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-d
 import { isDisplayableEventRegistration } from './js/customer-event-orders.mjs?v=customer-order-recovery-1';
 import {
     getGeneralRankingPage,
-    getGeneralRankingSessions,
     getGeneralRankingTeamPositionsByIds,
     getGeneralRankingTeamPositionsByNames,
     getGeneralRankingTop
@@ -160,9 +159,8 @@ let generalRankingLoading = false;
 let generalRankingLastPoints = null;
 let generalRankingLastRank = 0;
 let teamPerformanceProfiles = [];
-let teamPerformanceSessionCache = null;
-let teamPerformanceSessionCacheAt = 0;
-let teamPerformanceSessionRequest = null;
+let teamPerformanceSessionCache = new Map();
+let teamPerformanceSessionRequest = new Map();
 let teamPerformanceProfileReturnFocus = null;
 let teamPerformanceProfileRequestId = 0;
 
@@ -274,6 +272,8 @@ async function checkAuthState() {
     }
     onAuthStateChanged(auth, async (user) => {
         if (userDocsStore.setUser(user)) {
+            teamPerformanceSessionCache.clear();
+            teamPerformanceSessionRequest.clear();
             pendingPaymentsGeneration += 1;
             if (pendingPaymentsExpiryTimer) clearTimeout(pendingPaymentsExpiryTimer);
             pendingPaymentsExpiryTimer = null;
@@ -702,12 +702,10 @@ async function loadTeamRankingDashboard() {
                 hasExplicitRankingTeamId: false,
             })),
         ];
-        teamPerformanceProfiles = dashboardTeams.map(({ teamName, team, registeredTeamId, hasExplicitRankingTeamId }) => ({
+        teamPerformanceProfiles = dashboardTeams.map(({ teamName, team, registeredTeamId }) => ({
             teamName,
             team,
-            rankingTeamId: String(
-                team?.rankingTeamId || team?.teamId || (hasExplicitRankingTeamId ? registeredTeamId : ''),
-            ).trim(),
+            rankingTeamId: String(team?.rankingTeamId || team?.teamId || registeredTeamId).trim(),
         }));
         container.innerHTML = teamPerformanceProfiles.map(({ teamName, team }, index) => {
             const rank = team?.rank ? `#${Number(team.rank).toLocaleString('pt-BR')}` : '—';
@@ -850,21 +848,55 @@ function renderTeamPerformanceProfileBody(profile, progress) {
     </div>`;
 }
 
-async function loadTeamPerformanceSessions() {
-    if (teamPerformanceSessionCache && Date.now() - teamPerformanceSessionCacheAt < 60_000) {
-        return teamPerformanceSessionCache;
+async function loadTeamPerformanceSessions(profile) {
+    const user = auth?.currentUser;
+    if (!user?.uid || !user.getIdToken) {
+        throw new Error('Entre novamente na sua conta para ver o histórico.');
     }
-    if (teamPerformanceSessionRequest) return teamPerformanceSessionRequest;
-    teamPerformanceSessionRequest = getGeneralRankingSessions(db)
-        .then(sessions => {
-            teamPerformanceSessionCache = sessions;
-            teamPerformanceSessionCacheAt = Date.now();
-            return sessions;
-        })
-        .finally(() => {
-            teamPerformanceSessionRequest = null;
+    const teamId = String(profile?.rankingTeamId || '').trim();
+    if (!teamId) {
+        throw new Error('Não foi possível identificar esta equipe nas suas compras.');
+    }
+    const cacheKey = `${user.uid}:${teamId}`;
+    const cached = teamPerformanceSessionCache.get(cacheKey);
+    if (cached && Date.now() - cached.savedAt < 60_000) return cached.sessions;
+    if (teamPerformanceSessionRequest.has(cacheKey)) {
+        return teamPerformanceSessionRequest.get(cacheKey);
+    }
+
+    const request = (async () => {
+        const token = await user.getIdToken();
+        const params = new URLSearchParams({ teamId });
+        const response = await fetch(`/api/freefire/team-sessions?${params}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
         });
-    return teamPerformanceSessionRequest;
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch {
+            // Keep a safe fallback for non-JSON server and proxy errors.
+        }
+        if (!response.ok) {
+            throw new Error(
+                typeof payload?.error === 'string' && payload.error.trim()
+                    ? payload.error
+                    : `Não foi possível carregar o histórico (HTTP ${response.status}).`,
+            );
+        }
+        if (!Array.isArray(payload?.sessions)) {
+            throw new Error('O servidor retornou um histórico em formato inválido.');
+        }
+        teamPerformanceSessionCache.set(cacheKey, {
+            sessions: payload.sessions,
+            savedAt: Date.now(),
+        });
+        return payload.sessions;
+    })().finally(() => {
+        teamPerformanceSessionRequest.delete(cacheKey);
+    });
+    teamPerformanceSessionRequest.set(cacheKey, request);
+    return request;
 }
 
 async function openTeamPerformanceProfile(index, trigger) {
@@ -898,7 +930,7 @@ async function openTeamPerformanceProfile(index, trigger) {
     if (!dialog.open) dialog.showModal();
 
     try {
-        const sessions = await loadTeamPerformanceSessions();
+        const sessions = await loadTeamPerformanceSessions(profile);
         if (requestId !== teamPerformanceProfileRequestId || !dialog.open) return;
         if (currentUser?.uid !== requestedUserId) {
             dialog.close();
@@ -925,7 +957,10 @@ async function openTeamPerformanceProfile(index, trigger) {
             return;
         }
         console.error('Não foi possível carregar a evolução da equipe:', error);
-        setTeamPerformanceProfileStatus('Não foi possível carregar as sessões desta equipe. Tente novamente.', 'error');
+        setTeamPerformanceProfileStatus(
+            error?.message || 'Não foi possível carregar as sessões desta equipe. Tente novamente.',
+            'error',
+        );
         body.innerHTML = '<p class="team-performance-history__empty">O histórico não foi carregado. Feche o perfil e tente novamente.</p>';
     }
 }

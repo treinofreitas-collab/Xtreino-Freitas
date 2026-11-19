@@ -86,7 +86,8 @@ test("team ranking rows open an accessible profile backed by saved scoring sessi
   assert.match(clientHtml, /id="teamPerformanceProfileStatus"/);
   assert.match(clientHtml, /id="teamPerformanceProfileBody"/);
   assert.match(clientJs, /data-team-performance-index/);
-  assert.match(clientJs, /getGeneralRankingSessions\(db\)/);
+  assert.match(clientJs, /\/api\/freefire\/team-sessions/);
+  assert.doesNotMatch(clientJs, /getGeneralRankingSessions\(db\)/);
   assert.match(clientJs, /buildGeneralRankingTeamProgress\(/);
   assert.match(clientJs, /teamPerformanceProfileDialog/);
 });
@@ -118,7 +119,7 @@ test("Ranking logos render without duplicate initials and safely fall back on im
   const initialsDeclaration = clientJs.indexOf("const initials =", logoMarkupStart);
   assert.ok(initialsDeclaration >= 0 && initialsDeclaration < safeUrlBranch);
   assert.match(rankingHtml, /ranking-history-server-1/);
-  assert.match(clientHtml, /client\.js\?v=team-performance-profile-1/);
+  assert.match(clientHtml, /client\.js\?v=team-performance-server-history-1/);
   assert.match(clientJs, /freefire-general-ranking-store\.mjs\?v=team-performance-profile-1/);
 });
 

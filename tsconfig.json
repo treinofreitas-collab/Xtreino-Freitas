@@ -10,6 +10,9 @@
       "path": "./lib/api-client-react"
     },
     {
+      "path": "./lib/freefire-ranking-access"
+    },
+    {
       "path": "./lib/api-zod"
     }
   ]

@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: freefire-scoring
     description: Free Fire tournament screenshot analysis
+  - name: freefire-ranking
+    description: Authenticated team ranking history
   - name: spec-logos
     description: Manage and export SPEC logos by event hour
 paths:
@@ -59,6 +61,38 @@ paths:
           description: Analysis rate limit reached
         "503":
           description: Image analysis is temporarily unavailable
+  /freefire/team-sessions:
+    get:
+      operationId: getOwnedFreeFireTeamSessions
+      tags: [freefire-ranking]
+      summary: Get saved scoring sessions for a purchased team
+      description: Returns only sanitized scoring rows for a team linked to the authenticated user's confirmed purchases.
+      security:
+        - FirebaseBearer: []
+      parameters:
+        - name: teamId
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: "^[^/]+$"
+      responses:
+        "200":
+          description: Saved sessions for the owned team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreeFireTeamSessionsResponse"
+        "400":
+          description: Invalid team identifier
+        "401":
+          description: Firebase authentication required
+        "403":
+          description: No confirmed purchase links this team to the account
+        "503":
+          description: Ranking history is temporarily unavailable
   /spec-logos/{hour}/export:
     get:
       operationId: exportSpecLogosForHour
@@ -269,6 +303,52 @@ components:
           type: array
           items:
             type: string
+    FreeFireTeamSessionTeam:
+      type: object
+      properties:
+        teamName:
+          type: string
+        rankingTeamId:
+          type: string
+        points:
+          type: integer
+          minimum: 0
+        wins:
+          type: integer
+          minimum: 0
+        kills:
+          type: integer
+          minimum: 0
+      required: [teamName, rankingTeamId, points, wins, kills]
+    FreeFireTeamSession:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        eventType:
+          type: string
+          enum: [treino-freitas, modo-liga]
+        eventLabel:
+          type: string
+        date:
+          type: string
+          pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+        hour:
+          type: string
+          pattern: "^\\d{2}$"
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireTeamSessionTeam"
+      required: [sessionId, eventType, eventLabel, date, hour, teams]
+    FreeFireTeamSessionsResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/FreeFireTeamSession"
+      required: [sessions]
     SpecLogoExportFile:
       type: object
       properties:

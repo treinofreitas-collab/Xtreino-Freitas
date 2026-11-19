@@ -49,6 +49,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/freefire/team-sessions"
+  to = "/.netlify/functions/freefire-team-sessions"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/treinofreitas"
   to = "/evento.html"
   status = 200

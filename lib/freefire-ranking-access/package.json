@@ -1,0 +1,9 @@
+{
+  "name": "@workspace/freefire-ranking-access",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
