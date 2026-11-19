@@ -6,7 +6,7 @@ import {
   MIN_GENERAL_RANKING_SEED_ROWS,
   parseGeneralRankingImport,
   rankGeneralRankingRows,
-} from './freefire-general-ranking.mjs?v=ranking-team-identity-2';
+} from './freefire-general-ranking.mjs?v=team-progress-1';
 
 const TEAM_COLLECTION = 'freefire_general_ranking';
 const SESSION_COLLECTION = 'freefire_general_ranking_sessions';
@@ -515,7 +515,16 @@ export async function getGeneralRankingTeamPositionsByNames(db, teamNames) {
     const snapshot = await getDocs(query(refs.teams, where('teamKey', 'in', pageKeys)));
     teams.push(...snapshot.docs.map(document => ({ id: document.id, ...document.data() })));
   }
-  return rankTeamPositions(targetDb, teams, refs);
+  const teamKeyCounts = new Map();
+  for (const team of teams) {
+    const teamKey = String(team.teamKey || generalRankingTeamKey(team.teamName));
+    if (teamKey) teamKeyCounts.set(teamKey, (teamKeyCounts.get(teamKey) || 0) + 1);
+  }
+  const positions = await rankTeamPositions(targetDb, teams, refs);
+  for (const [teamKey, count] of teamKeyCounts) {
+    if (count > 1 && positions.get(teamKey)?.teamKey === teamKey) positions.delete(teamKey);
+  }
+  return positions;
 }
 
 export async function getGeneralRankingTeamsByNames(db, teamNames) {

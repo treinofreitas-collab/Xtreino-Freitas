@@ -955,7 +955,7 @@
     </div>
 
     <script type="module" src="config/firebase.js"></script>
-    <script type="module" src="client.js?v=ranking-history-server-2"></script>
+    <script type="module" src="client.js?v=team-performance-profile-1"></script>
 
     <!-- Modal Dados de Entrega (Camisa) -->
     <div id="shippingModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
@@ -1044,6 +1044,49 @@
             </div>
         </div>
     </div>
+
+    <dialog id="teamPerformanceProfileDialog"
+        class="team-performance-dialog"
+        aria-labelledby="teamPerformanceProfileTitle"
+        aria-describedby="teamPerformanceProfileSubtitle">
+        <section class="team-performance-profile">
+            <header class="team-performance-profile__header">
+                <div class="team-performance-profile__identity">
+                    <div id="teamPerformanceProfileLogo"
+                        class="team-performance-profile__logo"
+                        aria-hidden="true"></div>
+                    <div class="team-performance-profile__heading">
+                        <p class="team-performance-profile__eyebrow">Perfil da equipe</p>
+                        <h2 id="teamPerformanceProfileTitle">Desempenho da equipe</h2>
+                        <p id="teamPerformanceProfileSubtitle">Detalhes e evolução da equipe selecionada.</p>
+                    </div>
+                </div>
+                <button id="teamPerformanceProfileClose"
+                    class="team-performance-profile__close"
+                    type="button"
+                    aria-label="Fechar perfil da equipe">
+                    <span aria-hidden="true">×</span>
+                </button>
+            </header>
+            <div class="team-performance-profile__content">
+                <p id="teamPerformanceProfileStatus"
+                    class="team-performance-profile__status"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true">Carregando informações da equipe...</p>
+                <div id="teamPerformanceProfileBody"
+                    class="team-performance-profile__body"
+                    role="region"
+                    aria-label="Detalhes e evolução da equipe"
+                    aria-live="polite">
+                    <div class="team-performance-profile__empty">
+                        <span class="team-performance-profile__empty-mark" aria-hidden="true"></span>
+                        <p>Os dados e a evolução da equipe aparecerão aqui.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </dialog>
 
 </body>
 

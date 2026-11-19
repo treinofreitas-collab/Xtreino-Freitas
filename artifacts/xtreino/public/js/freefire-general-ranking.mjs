@@ -397,6 +397,78 @@ export function buildGeneralRankingSessionTeams(standings = []) {
   return [...teams.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
+export function buildGeneralRankingTeamProgress(team, sessions = []) {
+  const teamName = String(team?.teamName || '').trim();
+  const teamKey = generalRankingTeamKey(teamName);
+  const rankingTeamId = String(team?.rankingTeamId || team?.teamId || '').trim();
+  if (!teamKey) return { baselinePoints: 0, sessions: [] };
+
+  const matchedSessions = [];
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const date = String(session?.date || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const dateTimestamp = Date.parse(`${date}T00:00:00.000Z`);
+    if (!Number.isFinite(dateTimestamp)) continue;
+    const rawHour = String(session?.hour || '').trim().replace(/[^\d]/g, '');
+    if (!/^\d{1,2}$/.test(rawHour) || Number(rawHour) > 23) continue;
+    const hour = String(Number(rawHour)).padStart(2, '0');
+    const rows = Array.isArray(session?.teams) ? session.teams : [];
+    const sameNameRows = rows.filter(row => generalRankingTeamKey(row?.teamName) === teamKey);
+    let matchingRows = [];
+
+    if (rankingTeamId) {
+      matchingRows = rows.filter(row =>
+        String(row?.rankingTeamId || row?.teamId || '').trim() === rankingTeamId,
+      );
+      if (!matchingRows.length) {
+        const conflictingId = sameNameRows.some(row => {
+          const rowId = String(row?.rankingTeamId || row?.teamId || '').trim();
+          return rowId && rowId !== rankingTeamId;
+        });
+        const legacyRows = sameNameRows.filter(row =>
+          !String(row?.rankingTeamId || row?.teamId || '').trim(),
+        );
+        if (!conflictingId && legacyRows.length === 1) matchingRows = legacyRows;
+      }
+    } else if (sameNameRows.length === 1) {
+      matchingRows = sameNameRows;
+    }
+    if (!matchingRows.length) continue;
+
+    const sum = field => matchingRows.reduce((total, row) => {
+      const value = Number(row?.[field] || 0);
+      return Number.isSafeInteger(value) && value >= 0 ? total + value : total;
+    }, 0);
+    matchedSessions.push({
+      sessionId: String(session?.sessionId || ''),
+      eventType: String(session?.eventType || ''),
+      eventLabel: String(session?.eventLabel || GENERAL_RANKING_EVENT_TYPES[session?.eventType] || 'Evento'),
+      date,
+      hour,
+      timestamp: dateTimestamp + Number(hour) * 60 * 60 * 1000,
+      points: sum('points'),
+      wins: sum('wins'),
+      kills: sum('kills'),
+    });
+  }
+
+  matchedSessions.sort((left, right) =>
+    left.timestamp - right.timestamp ||
+    left.eventType.localeCompare(right.eventType) ||
+    left.sessionId.localeCompare(right.sessionId),
+  );
+  const baselinePointsValue = Number(team?.baselinePoints);
+  const baselinePoints = Number.isSafeInteger(baselinePointsValue) && baselinePointsValue >= 0
+    ? baselinePointsValue
+    : 0;
+  let cumulativePoints = baselinePoints;
+  for (const session of matchedSessions) {
+    cumulativePoints += session.points;
+    session.cumulativePoints = cumulativePoints;
+  }
+  return { baselinePoints, sessions: matchedSessions };
+}
+
 export function rankGeneralRankingRows(rows = []) {
   const sorted = [...(Array.isArray(rows) ? rows : [])].sort((a, b) =>
     Number(b.totalPoints || 0) - Number(a.totalPoints || 0) ||

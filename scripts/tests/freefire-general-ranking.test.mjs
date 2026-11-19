@@ -5,6 +5,7 @@ import {
   accountRankingTeamId,
   aggregateGeneralRankingImport,
   buildGeneralRankingSessionTeams,
+  buildGeneralRankingTeamProgress,
   generalRankingSessionKey,
   parseGeneralRankingImport,
   preferredGeneralRankingTeamId,
@@ -14,6 +15,7 @@ import {
 import {
   getGeneralRankingSession,
   getGeneralRankingTeamsByNames,
+  getGeneralRankingTeamPositionsByNames,
   chooseLatestGeneralRankingLogo,
   getGeneralRankingPage,
   getGeneralRankingSessions,
@@ -166,6 +168,34 @@ test('loads every same-name ID so manual scoring can disambiguate teams', async 
       teams.map(team => team.rankingTeamId).sort(),
       ['legacy-team-id', 'team-a', 'team-b'],
     );
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('does not use a normalized team name when multiple ranking IDs share it', async () => {
+  const originalWindow = globalThis.window;
+  const documents = [
+    { id: 'rangers-a', data: () => ({ teamKey: 'rangers', teamName: 'RANGERS', rankingTeamId: 'team-a', totalPoints: 120 }) },
+    { id: 'rangers-b', data: () => ({ teamKey: 'rangers', teamName: 'RANGERS', rankingTeamId: 'team-b', totalPoints: 80 }) },
+  ];
+  globalThis.window = {
+    __freefireRankingFirestore: {
+      collection: (_db, name) => ({ name }),
+      doc: (_db, collection, id) => ({ collection, id }),
+      where: (field, operator, value) => ({ field, operator, value }),
+      query: (reference, ...constraints) => ({ reference, constraints }),
+      getDocs: async () => ({ docs: documents }),
+      getCountFromServer: async () => ({ data: () => ({ count: 0 }) }),
+    },
+  };
+
+  try {
+    const positions = await getGeneralRankingTeamPositionsByNames({}, ['RANGERS']);
+    assert.equal(positions.has('rangers'), false);
+    assert.equal(positions.get('team-a')?.teamName, 'RANGERS');
+    assert.equal(positions.get('team-b')?.teamName, 'RANGERS');
   } finally {
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
@@ -385,6 +415,73 @@ test('keeps same-named teams separate when their ranking IDs differ', () => {
     teams.map(team => [team.rankingTeamId, team.teamName, team.points]).sort(),
     [['team-a', 'RANGERS', 13], ['team-b', 'RANGERS', 7]],
   );
+});
+
+test('builds a team progress timeline from exact IDs and cumulative session points', () => {
+  const progress = buildGeneralRankingTeamProgress({
+    teamName: 'RANGERS',
+    rankingTeamId: 'rangers-main',
+    baselinePoints: 100,
+  }, [
+    {
+      sessionId: 'treino-freitas_2026-11-16_18',
+      eventType: 'treino-freitas',
+      eventLabel: 'TREINO FREITAS',
+      date: '2026-11-16',
+      hour: '18',
+      teams: [
+        { teamName: 'RANGERS', rankingTeamId: 'other-rangers', points: 900, wins: 9, kills: 90 },
+        { teamName: 'RANGERS LEGACY', rankingTeamId: 'rangers-main', points: 20, wins: 1, kills: 7 },
+      ],
+    },
+    {
+      sessionId: 'modo-liga_2026-11-14_20',
+      eventType: 'modo-liga',
+      date: '2026-11-14',
+      hour: '20h',
+      teams: [{ teamName: 'RANGERS', rankingTeamId: 'rangers-main', points: 15, wins: 0, kills: 5 }],
+    },
+  ]);
+  assert.equal(progress.baselinePoints, 100);
+  assert.deepEqual(progress.sessions.map(session => [
+    session.date,
+    session.hour,
+    session.points,
+    session.wins,
+    session.kills,
+    session.cumulativePoints,
+  ]), [
+    ['2026-11-14', '20', 15, 0, 5, 115],
+    ['2026-11-16', '18', 20, 1, 7, 135],
+  ]);
+});
+
+test('matches a unique legacy team name but excludes ambiguous same-name IDs', () => {
+  const progress = buildGeneralRankingTeamProgress({
+    teamName: 'OLD TEAM',
+    rankingTeamId: 'old-team-id',
+    baselinePoints: 0,
+  }, [
+    {
+      sessionId: 'legacy-unique',
+      eventType: 'treino-freitas',
+      date: '2026-11-10',
+      hour: '18',
+      teams: [{ teamName: 'Old Team', points: 12, wins: 1, kills: 4 }],
+    },
+    {
+      sessionId: 'ambiguous',
+      eventType: 'treino-freitas',
+      date: '2026-11-11',
+      hour: '18',
+      teams: [
+        { teamName: 'OLD TEAM', rankingTeamId: 'other-team-id', points: 99 },
+        { teamName: 'OLD TEAM', points: 99 },
+      ],
+    },
+  ]);
+  assert.deepEqual(progress.sessions.map(session => session.sessionId), ['legacy-unique']);
+  assert.equal(progress.sessions[0].cumulativePoints, 12);
 });
 
 test('generates one account identity per account and normalized team name', () => {

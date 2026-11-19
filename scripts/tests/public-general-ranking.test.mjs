@@ -80,6 +80,17 @@ test("Minha Equipe links to the purchased team ranking in the account dashboard"
   assert.match(clientJs, /window\.location\.hash !== '#teamPerformanceCard'/);
 });
 
+test("team ranking rows open an accessible profile backed by saved scoring sessions", () => {
+  assert.match(clientHtml, /<dialog id="teamPerformanceProfileDialog"/);
+  assert.match(clientHtml, /id="teamPerformanceProfileTitle"/);
+  assert.match(clientHtml, /id="teamPerformanceProfileStatus"/);
+  assert.match(clientHtml, /id="teamPerformanceProfileBody"/);
+  assert.match(clientJs, /data-team-performance-index/);
+  assert.match(clientJs, /getGeneralRankingSessions\(db\)/);
+  assert.match(clientJs, /buildGeneralRankingTeamProgress\(/);
+  assert.match(clientJs, /teamPerformanceProfileDialog/);
+});
+
 test("General Ranking reads are public while writes and private records stay restricted", () => {
   for (const path of ruleFiles) {
     const rules = readFileSync(path, "utf8");
@@ -106,8 +117,9 @@ test("Ranking logos render without duplicate initials and safely fall back on im
   const safeUrlBranch = clientJs.indexOf("if (safeUrl)", logoMarkupStart);
   const initialsDeclaration = clientJs.indexOf("const initials =", logoMarkupStart);
   assert.ok(initialsDeclaration >= 0 && initialsDeclaration < safeUrlBranch);
-  assert.match(rankingHtml, /ranking-team-identity-1/);
-  assert.match(clientHtml, /ranking-team-identity-1/);
+  assert.match(rankingHtml, /ranking-history-server-1/);
+  assert.match(clientHtml, /client\.js\?v=team-performance-profile-1/);
+  assert.match(clientJs, /freefire-general-ranking-store\.mjs\?v=team-performance-profile-1/);
 });
 
 test("purchase logos sync automatically after payment without exposing registrations publicly", () => {

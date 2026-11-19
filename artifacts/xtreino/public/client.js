@@ -137,11 +137,16 @@ import { createUserDocsStore, createUserDocsFirestoreAdapter } from './js/user-d
 import { isDisplayableEventRegistration } from './js/customer-event-orders.mjs?v=customer-order-recovery-1';
 import {
     getGeneralRankingPage,
+    getGeneralRankingSessions,
     getGeneralRankingTeamPositionsByIds,
     getGeneralRankingTeamPositionsByNames,
     getGeneralRankingTop
-} from './js/freefire-general-ranking-store.mjs?v=ranking-history-server-1';
-import { accountRankingTeamId, generalRankingTeamKey } from './js/freefire-general-ranking.mjs?v=ranking-team-identity-2';
+} from './js/freefire-general-ranking-store.mjs?v=team-performance-profile-1';
+import {
+    accountRankingTeamId,
+    buildGeneralRankingTeamProgress,
+    generalRankingTeamKey
+} from './js/freefire-general-ranking.mjs?v=team-progress-1';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
 let app = null;
@@ -154,6 +159,12 @@ let generalRankingHasMore = false;
 let generalRankingLoading = false;
 let generalRankingLastPoints = null;
 let generalRankingLastRank = 0;
+let teamPerformanceProfiles = [];
+let teamPerformanceSessionCache = null;
+let teamPerformanceSessionCacheAt = 0;
+let teamPerformanceSessionRequest = null;
+let teamPerformanceProfileReturnFocus = null;
+let teamPerformanceProfileRequestId = 0;
 
 // Inicializar Firebase imediatamente
 function initializeFirebase() {
@@ -625,10 +636,13 @@ async function loadGeneralRankingTopCard() {
 async function loadTeamRankingDashboard() {
     const container = document.getElementById('teamPerformanceRanking');
     if (!container) return;
+    setupTeamPerformanceProfile();
     if (!currentUser?.uid || !db) {
+        teamPerformanceProfiles = [];
         container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">Entre na sua conta para ver suas equipes no ranking.</p>';
         return;
     }
+    teamPerformanceProfiles = [];
     const uid = currentUser.uid;
     container.innerHTML = '<p style="color:rgba(255,255,255,.55);text-align:center;font-size:12px">Carregando posição das suas equipes...</p>';
     try {
@@ -645,11 +659,14 @@ async function loadTeamRankingDashboard() {
             const teamName = String(data.teamName || data.team || data.squadName || '').trim();
             const nameKey = generalRankingTeamKey(teamName);
             if (!nameKey) continue;
+            const explicitRankingTeamId = String(data.rankingTeamId || data.teamId || '').trim();
             const rankingTeamId = String(
-                data.rankingTeamId || data.teamId || accountRankingTeamId(data.userId || uid, teamName),
+                explicitRankingTeamId || accountRankingTeamId(data.userId || uid, teamName),
             ).trim();
             if (rankingTeamId) {
-                if (!byId.has(rankingTeamId)) byId.set(rankingTeamId, { teamName, nameKey });
+                if (!byId.has(rankingTeamId)) {
+                    byId.set(rankingTeamId, { teamName, nameKey, hasExplicitRankingTeamId: Boolean(explicitRankingTeamId) });
+                }
             } else if (!byName.has(nameKey)) {
                 byName.set(nameKey, teamName);
             }
@@ -671,28 +688,267 @@ async function loadTeamRankingDashboard() {
                 const legacy = positionsByName.get(item.nameKey);
                 const team = positionsById.get(rankingTeamId) ||
                     (legacy && !legacy.rankingTeamId && !legacy.teamId ? legacy : null);
-                return { teamName: item.teamName, team };
+                return {
+                    teamName: item.teamName,
+                    team,
+                    registeredTeamId: rankingTeamId,
+                    hasExplicitRankingTeamId: item.hasExplicitRankingTeamId,
+                };
             }),
             ...[...byName].map(([nameKey, teamName]) => ({
                 teamName,
                 team: positionsByName.get(nameKey),
+                registeredTeamId: '',
+                hasExplicitRankingTeamId: false,
             })),
         ];
-        container.innerHTML = dashboardTeams.map(({ teamName, team }) => {
+        teamPerformanceProfiles = dashboardTeams.map(({ teamName, team, registeredTeamId, hasExplicitRankingTeamId }) => ({
+            teamName,
+            team,
+            rankingTeamId: String(
+                team?.rankingTeamId || team?.teamId || (hasExplicitRankingTeamId ? registeredTeamId : ''),
+            ).trim(),
+        }));
+        container.innerHTML = teamPerformanceProfiles.map(({ teamName, team }, index) => {
             const rank = team?.rank ? `#${Number(team.rank).toLocaleString('pt-BR')}` : '—';
             const points = team ? Number(team.totalPoints || 0).toLocaleString('pt-BR') : 'Aguardando base';
             const details = team
                 ? `${Number(team.wins || 0).toLocaleString('pt-BR')} Booyahs · ${Number(team.kills || 0).toLocaleString('pt-BR')} abates`
                 : 'A equipe ainda não aparece na base importada.';
-            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+            return `<button type="button" class="team-performance-row" data-team-performance-index="${index}"
+                aria-haspopup="dialog" aria-label="Ver desempenho de ${escapeHtml(teamName)}">
                 ${rankingLogoMarkup({ ...team, teamName }, 36)}
-                <div style="min-width:0;flex:1"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:12px;font-weight:800">${escapeHtml(teamName)}</div><div style="margin-top:4px;color:rgba(255,255,255,.48);font-size:10px">${details}</div></div>
-                <div style="text-align:right;flex:0 0 auto"><div style="color:#42d4cc;font-size:15px;font-weight:900">${rank}</div><div style="margin-top:3px;color:rgba(255,255,255,.58);font-size:10px">${points === 'Aguardando base' ? points : `${points} pts`}</div></div>
-            </div>`;
+                <span class="team-performance-row__main"><span class="team-performance-row__name">${escapeHtml(teamName)}</span><span class="team-performance-row__summary">${details}</span></span>
+                <span class="team-performance-row__rank"><strong>${rank}</strong><small>${points === 'Aguardando base' ? points : `${points} pts`}</small></span>
+                <span class="team-performance-row__open" aria-hidden="true">›</span>
+            </button>`;
         }).join('');
     } catch (error) {
+        teamPerformanceProfiles = [];
         container.innerHTML = `<p style="color:#fca5a5;text-align:center;font-size:12px">Não foi possível carregar a posição das equipes (${escapeHtml(error?.code || 'erro')}).</p>`;
     }
+}
+
+function setTeamPerformanceProfileStatus(message, state = '') {
+    const status = document.getElementById('teamPerformanceProfileStatus');
+    if (!status) return;
+    status.textContent = message;
+    if (state) status.dataset.state = state;
+    else delete status.dataset.state;
+}
+
+function formatTeamPerformanceDate(date) {
+    const [year, month, day] = String(date || '').split('-');
+    return year && month && day ? `${day}/${month}/${year}` : String(date || '—');
+}
+
+function formatTeamPerformancePoints(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    const points = Number(value);
+    return Number.isFinite(points) && points >= 0
+        ? Math.round(points).toLocaleString('pt-BR')
+        : '—';
+}
+
+function formatTeamPerformanceChart(history, chartWidth = 640) {
+    const values = history.map(session => Number(session.cumulativePoints || 0));
+    const width = Math.max(320, chartWidth);
+    const height = 220;
+    const margin = { top: 20, right: 22, bottom: 38, left: 58 };
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    const maximum = Math.max(50, Math.ceil(Math.max(...values, 0) / 50) * 50);
+    const x = index => history.length === 1
+        ? margin.left + plotWidth
+        : margin.left + (index / (history.length - 1)) * plotWidth;
+    const y = value => margin.top + plotHeight - (value / maximum) * plotHeight;
+    const points = history.map((session, index) => ({
+        session,
+        x: x(index),
+        y: y(Number(session.cumulativePoints || 0)),
+    }));
+    const line = points.map((point, index) =>
+        `${index ? 'L' : 'M'}${point.x.toFixed(1)},${point.y.toFixed(1)}`,
+    ).join(' ');
+    const bottom = margin.top + plotHeight;
+    const area = points.length
+        ? `${line} L${points.at(-1).x.toFixed(1)},${bottom} L${points[0].x.toFixed(1)},${bottom} Z`
+        : '';
+    const ticks = [0, maximum / 2, maximum];
+    const grid = ticks.map(tick => {
+        const yPosition = y(tick);
+        return `<g class="team-performance-chart__tick"><line x1="${margin.left}" y1="${yPosition.toFixed(1)}" x2="${(width - margin.right).toFixed(1)}" y2="${yPosition.toFixed(1)}"></line><text x="${margin.left - 9}" y="${(yPosition + 4).toFixed(1)}" text-anchor="end">${formatTeamPerformancePoints(tick)}</text></g>`;
+    }).join('');
+    const labelIndexes = [...new Set([
+        0,
+        Math.floor((history.length - 1) / 2),
+        history.length - 1,
+    ])];
+    const labels = labelIndexes.map(index => {
+        const session = history[index];
+        return `<text class="team-performance-chart__date" x="${x(index).toFixed(1)}" y="${height - 9}" text-anchor="${index === 0 ? 'start' : index === history.length - 1 ? 'end' : 'middle'}">${formatTeamPerformanceDate(session.date)} · ${session.hour}h</text>`;
+    }).join('');
+    const circles = points.map(({ session, x: xPosition, y: yPosition }) =>
+        `<circle cx="${xPosition.toFixed(1)}" cy="${yPosition.toFixed(1)}" r="${history.length < 10 ? 4 : 2.7}"><title>${escapeHtml(`${formatTeamPerformanceDate(session.date)} às ${session.hour}h · ${session.eventLabel} · ${formatTeamPerformancePoints(session.cumulativePoints)} pontos acumulados`)}</title></circle>`,
+    ).join('');
+    return `<svg class="team-performance-chart__svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução dos pontos acumulados em ${history.length} sessões">
+        <text class="team-performance-chart__axis-title" x="8" y="14">PONTOS</text>
+        ${grid}
+        <path class="team-performance-chart__area" d="${area}"></path>
+        <path class="team-performance-chart__line" d="${line}"></path>
+        ${circles}
+        ${labels}
+    </svg>`;
+}
+
+function renderTeamPerformanceProfileBody(profile, progress) {
+    const team = profile.team || {};
+    const sessions = progress.sessions;
+    const lastCumulative = sessions.at(-1)?.cumulativePoints ?? progress.baselinePoints;
+    const profileBodyWidth = document.getElementById('teamPerformanceProfileBody')?.clientWidth || 680;
+    const chartWidth = Math.max(280, profileBodyWidth - 32);
+    const totalPoints = team.totalPoints ?? (
+        sessions.length || progress.baselinePoints > 0 ? lastCumulative : null
+    );
+    const aggregateTotal = Number(profile.team?.totalPoints);
+    const hasAggregateMismatch = Boolean(profile.team) &&
+        Number.isSafeInteger(aggregateTotal) &&
+        Number.isSafeInteger(Number(lastCumulative)) &&
+        aggregateTotal !== Number(lastCumulative);
+    const aggregateMismatch = hasAggregateMismatch
+        ? `<p class="team-performance-history-warning">A base inicial e as sessões identificadas somam ${formatTeamPerformancePoints(lastCumulative)} pts, mas o Ranking Geral mostra ${formatTeamPerformancePoints(aggregateTotal)} pts. Pode haver resultados antigos sem detalhamento ou alguma sessão associada a outro ID.</p>`
+        : '';
+    const metric = (label, value, note = '') =>
+        `<div class="team-performance-stat"><span>${label}</span><strong>${value}</strong>${note ? `<small>${note}</small>` : ''}</div>`;
+    const chart = sessions.length
+        ? `<div class="team-performance-chart">${formatTeamPerformanceChart(sessions, chartWidth)}<p>O acumulado parte da base inicial e soma as sessões salvas.</p></div>`
+        : `<div class="team-performance-chart__empty">Ainda não há sessões pontuadas para montar a evolução deste time.</div>`;
+    const history = sessions.length
+        ? `<ol class="team-performance-history">${[...sessions].reverse().map(session => `
+            <li class="team-performance-history__item">
+                <div><strong>${escapeHtml(session.eventLabel)}</strong><span>${formatTeamPerformanceDate(session.date)} · ${escapeHtml(session.hour)}h</span></div>
+                <div class="team-performance-history__values"><b>+${formatTeamPerformancePoints(session.points)} pts</b><small>${formatTeamPerformancePoints(session.wins)} Booyahs · ${formatTeamPerformancePoints(session.kills)} abates</small></div>
+            </li>`).join('')}</ol>`
+        : '<p class="team-performance-history__empty">As próximas sessões salvas aparecerão aqui.</p>';
+    return `<div class="team-performance-profile-data">
+        <section class="team-performance-metrics" aria-label="Resumo da equipe">
+            ${metric('Posição atual', team.rank ? `#${formatTeamPerformancePoints(team.rank)}` : '—')}
+            ${metric('Pontos totais', `${formatTeamPerformancePoints(totalPoints)} pts`)}
+            ${metric('Booyahs', team.rank ? formatTeamPerformancePoints(team.wins ?? 0) : '—')}
+            ${metric('Abates', team.rank ? formatTeamPerformancePoints(team.kills ?? 0) : '—')}
+        </section>
+        ${aggregateMismatch}
+        <section class="team-performance-profile-section">
+            <div class="team-performance-profile-section__heading"><h3>Evolução dos pontos</h3><span>${sessions.length} ${sessions.length === 1 ? 'sessão' : 'sessões'}</span></div>
+            ${chart}
+            <p class="team-performance-profile__footnote">Base inicial: ${formatTeamPerformancePoints(progress.baselinePoints)} pts. Ela guarda o total importado, não os resultados de cada partida anterior.</p>
+        </section>
+        <section class="team-performance-profile-section">
+            <div class="team-performance-profile-section__heading"><h3>Sessões pontuadas</h3><span>${sessions.length}</span></div>
+            ${history}
+        </section>
+    </div>`;
+}
+
+async function loadTeamPerformanceSessions() {
+    if (teamPerformanceSessionCache && Date.now() - teamPerformanceSessionCacheAt < 60_000) {
+        return teamPerformanceSessionCache;
+    }
+    if (teamPerformanceSessionRequest) return teamPerformanceSessionRequest;
+    teamPerformanceSessionRequest = getGeneralRankingSessions(db)
+        .then(sessions => {
+            teamPerformanceSessionCache = sessions;
+            teamPerformanceSessionCacheAt = Date.now();
+            return sessions;
+        })
+        .finally(() => {
+            teamPerformanceSessionRequest = null;
+        });
+    return teamPerformanceSessionRequest;
+}
+
+async function openTeamPerformanceProfile(index, trigger) {
+    const profile = teamPerformanceProfiles[index];
+    const dialog = document.getElementById('teamPerformanceProfileDialog');
+    const body = document.getElementById('teamPerformanceProfileBody');
+    const title = document.getElementById('teamPerformanceProfileTitle');
+    const subtitle = document.getElementById('teamPerformanceProfileSubtitle');
+    const logo = document.getElementById('teamPerformanceProfileLogo');
+    if (!profile || !dialog || !body || !title || !subtitle || !logo || !currentUser?.uid) return;
+
+    const requestedUserId = currentUser.uid;
+    const requestId = ++teamPerformanceProfileRequestId;
+    teamPerformanceProfileReturnFocus = trigger;
+    title.textContent = profile.teamName;
+    subtitle.textContent = profile.team?.rank
+        ? `#${formatTeamPerformancePoints(profile.team.rank)} no Ranking Geral · ${formatTeamPerformancePoints(profile.team.totalPoints || 0)} pontos`
+        : 'Aguardando dados de classificação; confira as sessões registradas abaixo.';
+    logo.innerHTML = rankingLogoMarkup({
+        ...profile.team,
+        teamName: profile.teamName,
+    }, 58);
+    const profileLogoImage = logo.querySelector('img');
+    if (profileLogoImage) {
+        const markLoaded = () => profileLogoImage.classList.add('loaded');
+        if (profileLogoImage.complete && profileLogoImage.naturalWidth > 0) markLoaded();
+        else profileLogoImage.addEventListener('load', markLoaded, { once: true });
+    }
+    setTeamPerformanceProfileStatus('Carregando o histórico das sessões…', 'loading');
+    body.innerHTML = '<div class="team-performance-profile__loading" aria-hidden="true"><span></span><span></span><span></span></div>';
+    if (!dialog.open) dialog.showModal();
+
+    try {
+        const sessions = await loadTeamPerformanceSessions();
+        if (requestId !== teamPerformanceProfileRequestId || !dialog.open) return;
+        if (currentUser?.uid !== requestedUserId) {
+            dialog.close();
+            return;
+        }
+        const progress = buildGeneralRankingTeamProgress({
+            teamName: profile.teamName,
+            rankingTeamId: profile.rankingTeamId,
+            baselinePoints: profile.team?.baselinePoints,
+        }, sessions);
+        body.innerHTML = renderTeamPerformanceProfileBody(profile, progress);
+        const status = document.getElementById('teamPerformanceProfileStatus');
+        if (status) status.dataset.state = progress.sessions.length ? '' : 'empty';
+        setTeamPerformanceProfileStatus(
+            progress.sessions.length
+                ? `${progress.sessions.length} sessões encontradas para esta equipe.`
+                : 'Não há sessões salvas para esta equipe. O total exibido pode incluir a base inicial.',
+            progress.sessions.length ? '' : 'empty',
+        );
+    } catch (error) {
+        if (requestId !== teamPerformanceProfileRequestId || !dialog.open) return;
+        if (currentUser?.uid !== requestedUserId) {
+            dialog.close();
+            return;
+        }
+        console.error('Não foi possível carregar a evolução da equipe:', error);
+        setTeamPerformanceProfileStatus('Não foi possível carregar as sessões desta equipe. Tente novamente.', 'error');
+        body.innerHTML = '<p class="team-performance-history__empty">O histórico não foi carregado. Feche o perfil e tente novamente.</p>';
+    }
+}
+
+function setupTeamPerformanceProfile() {
+    const container = document.getElementById('teamPerformanceRanking');
+    const dialog = document.getElementById('teamPerformanceProfileDialog');
+    const closeButton = document.getElementById('teamPerformanceProfileClose');
+    if (!container || !dialog || !closeButton || container.dataset.profileClickBound) return;
+    container.dataset.profileClickBound = 'true';
+    container.addEventListener('click', event => {
+        const trigger = event.target.closest('[data-team-performance-index]');
+        if (!trigger) return;
+        void openTeamPerformanceProfile(Number(trigger.dataset.teamPerformanceIndex), trigger);
+    });
+    closeButton.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => {
+        if (event.target === dialog) dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+        if (teamPerformanceProfileReturnFocus?.isConnected) teamPerformanceProfileReturnFocus.focus();
+        teamPerformanceProfileReturnFocus = null;
+    });
 }
 
 function renderGeneralRankingModalRows() {
