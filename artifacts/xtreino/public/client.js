@@ -144,8 +144,9 @@ import {
 import {
     accountRankingTeamId,
     buildGeneralRankingTeamProgress,
+    getGeneralRankingTeamSessionStats,
     generalRankingTeamKey
-} from './js/freefire-general-ranking.mjs?v=team-progress-1';
+} from './js/freefire-general-ranking.mjs?v=team-session-stats-1';
 
 // Reuse global Firebase app/auth/db initialized in firebase.js
 let app = null;
@@ -663,12 +664,22 @@ async function loadTeamRankingDashboard() {
             const rankingTeamId = String(
                 explicitRankingTeamId || accountRankingTeamId(data.userId || uid, teamName),
             ).trim();
+            const status = String(data.status || '').trim().toLowerCase();
+            const canEditLogo = data.paidWithTokens === true ||
+                ['paid', 'confirmed', 'approved'].includes(status);
             if (rankingTeamId) {
-                if (!byId.has(rankingTeamId)) {
-                    byId.set(rankingTeamId, { teamName, nameKey, hasExplicitRankingTeamId: Boolean(explicitRankingTeamId) });
-                }
+                const existing = byId.get(rankingTeamId);
+                if (existing) existing.canEditLogo ||= canEditLogo;
+                else byId.set(rankingTeamId, {
+                    teamName,
+                    nameKey,
+                    hasExplicitRankingTeamId: Boolean(explicitRankingTeamId),
+                    canEditLogo,
+                });
             } else if (!byName.has(nameKey)) {
-                byName.set(nameKey, teamName);
+                byName.set(nameKey, { teamName, canEditLogo });
+            } else {
+                byName.get(nameKey).canEditLogo ||= canEditLogo;
             }
         }
         if (!byId.size && !byName.size) {
@@ -693,19 +704,22 @@ async function loadTeamRankingDashboard() {
                     team,
                     registeredTeamId: rankingTeamId,
                     hasExplicitRankingTeamId: item.hasExplicitRankingTeamId,
+                    canEditLogo: item.canEditLogo,
                 };
             }),
-            ...[...byName].map(([nameKey, teamName]) => ({
-                teamName,
+            ...[...byName].map(([nameKey, item]) => ({
+                teamName: item.teamName,
                 team: positionsByName.get(nameKey),
                 registeredTeamId: '',
                 hasExplicitRankingTeamId: false,
+                canEditLogo: item.canEditLogo,
             })),
         ];
-        teamPerformanceProfiles = dashboardTeams.map(({ teamName, team, registeredTeamId }) => ({
+        teamPerformanceProfiles = dashboardTeams.map(({ teamName, team, registeredTeamId, canEditLogo }) => ({
             teamName,
             team,
             rankingTeamId: String(team?.rankingTeamId || team?.teamId || registeredTeamId).trim(),
+            canEditLogo: Boolean(canEditLogo),
         }));
         container.innerHTML = teamPerformanceProfiles.map(({ teamName, team }, index) => {
             const rank = team?.rank ? `#${Number(team.rank).toLocaleString('pt-BR')}` : '—';
@@ -746,6 +760,22 @@ function formatTeamPerformancePoints(value) {
     return Number.isFinite(points) && points >= 0
         ? Math.round(points).toLocaleString('pt-BR')
         : '—';
+}
+
+function formatTeamPerformanceAverage(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    const average = Number(value);
+    return Number.isFinite(average) && average >= 0
+        ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(average)
+        : '—';
+}
+
+function formatTeamPerformanceRecordSession(session) {
+    if (!session) return 'Sem sessões salvas';
+    const eventLabel = escapeHtml(session.eventLabel || 'Evento');
+    const date = formatTeamPerformanceDate(session.date);
+    const hour = escapeHtml(session.hour || '—');
+    return `${eventLabel} · ${date} · ${hour}h`;
 }
 
 function formatTeamPerformanceChart(history, chartWidth = 640) {
@@ -802,6 +832,7 @@ function formatTeamPerformanceChart(history, chartWidth = 640) {
 function renderTeamPerformanceProfileBody(profile, progress) {
     const team = profile.team || {};
     const sessions = progress.sessions;
+    const sessionStats = getGeneralRankingTeamSessionStats(sessions);
     const lastCumulative = sessions.at(-1)?.cumulativePoints ?? progress.baselinePoints;
     const profileBodyWidth = document.getElementById('teamPerformanceProfileBody')?.clientWidth || 680;
     const chartWidth = Math.max(280, profileBodyWidth - 32);
@@ -818,6 +849,9 @@ function renderTeamPerformanceProfileBody(profile, progress) {
         : '';
     const metric = (label, value, note = '') =>
         `<div class="team-performance-stat"><span>${label}</span><strong>${value}</strong>${note ? `<small>${note}</small>` : ''}</div>`;
+    const averageSampleNote = sessions.length
+        ? `Média de ${sessions.length} ${sessions.length === 1 ? 'sessão salva' : 'sessões salvas'}`
+        : 'Sem sessões salvas';
     const chart = sessions.length
         ? `<div class="team-performance-chart">${formatTeamPerformanceChart(sessions, chartWidth)}<p>O acumulado parte da base inicial e soma as sessões salvas.</p></div>`
         : `<div class="team-performance-chart__empty">Ainda não há sessões pontuadas para montar a evolução deste time.</div>`;
@@ -833,7 +867,11 @@ function renderTeamPerformanceProfileBody(profile, progress) {
             ${metric('Posição atual', team.rank ? `#${formatTeamPerformancePoints(team.rank)}` : '—')}
             ${metric('Pontos totais', `${formatTeamPerformancePoints(totalPoints)} pts`)}
             ${metric('Booyahs', team.rank ? formatTeamPerformancePoints(team.wins ?? 0) : '—')}
-            ${metric('Abates', team.rank ? formatTeamPerformancePoints(team.kills ?? 0) : '—')}
+            ${metric('Abates totais', team.rank ? formatTeamPerformancePoints(team.kills ?? 0) : '—')}
+            ${metric('Média de pontos por treino', sessionStats.averagePoints === null ? '—' : `${formatTeamPerformanceAverage(sessionStats.averagePoints)} pts`, averageSampleNote)}
+            ${metric('Média de abates por treino', formatTeamPerformanceAverage(sessionStats.averageKills), averageSampleNote)}
+            ${metric('Recorde de pontos em um único treino', sessionStats.recordPoints ? `${formatTeamPerformancePoints(sessionStats.recordPoints.value)} pts` : '—', formatTeamPerformanceRecordSession(sessionStats.recordPoints?.session))}
+            ${metric('Recorde de abates em um único treino', sessionStats.recordKills ? formatTeamPerformancePoints(sessionStats.recordKills.value) : '—', formatTeamPerformanceRecordSession(sessionStats.recordKills?.session))}
         </section>
         ${aggregateMismatch}
         <section class="team-performance-profile-section">
@@ -912,6 +950,17 @@ async function openTeamPerformanceProfile(index, trigger) {
     const requestId = ++teamPerformanceProfileRequestId;
     teamPerformanceProfileReturnFocus = trigger;
     title.textContent = profile.teamName;
+    logo.dataset.teamPerformanceIndex = String(index);
+    logo.disabled = !profile.canEditLogo;
+    logo.setAttribute(
+        'aria-label',
+        profile.canEditLogo
+            ? `Alterar logo de ${profile.teamName}`
+            : `Logo de ${profile.teamName}; é necessária uma compra confirmada para alterar`,
+    );
+    logo.title = profile.canEditLogo
+        ? 'Clique para alterar a logo'
+        : 'Apenas equipes com compra confirmada podem alterar a logo';
     subtitle.textContent = profile.team?.rank
         ? `#${formatTeamPerformancePoints(profile.team.rank)} no Ranking Geral · ${formatTeamPerformancePoints(profile.team.totalPoints || 0)} pontos`
         : 'Aguardando dados de classificação; confira as sessões registradas abaixo.';
@@ -943,12 +992,12 @@ async function openTeamPerformanceProfile(index, trigger) {
         }, sessions);
         body.innerHTML = renderTeamPerformanceProfileBody(profile, progress);
         const status = document.getElementById('teamPerformanceProfileStatus');
-        if (status) status.dataset.state = progress.sessions.length ? '' : 'empty';
+        if (status) status.dataset.state = progress.sessions.length ? 'sessions' : 'empty';
         setTeamPerformanceProfileStatus(
             progress.sessions.length
-                ? `${progress.sessions.length} sessões encontradas para esta equipe.`
+                ? `${progress.sessions.length} treinos encontrados para esta equipe.`
                 : 'Não há sessões salvas para esta equipe. O total exibido pode incluir a base inicial.',
-            progress.sessions.length ? '' : 'empty',
+            progress.sessions.length ? 'sessions' : 'empty',
         );
     } catch (error) {
         if (requestId !== teamPerformanceProfileRequestId || !dialog.open) return;
@@ -965,17 +1014,175 @@ async function openTeamPerformanceProfile(index, trigger) {
     }
 }
 
+function updateTeamPerformanceLogoViews(teamId, logoUrl) {
+    let activeProfile = null;
+    let activeIndex = -1;
+    teamPerformanceProfiles = teamPerformanceProfiles.map((profile, index) => {
+        if (profile.rankingTeamId !== teamId) return profile;
+        const updated = {
+            ...profile,
+            team: {
+                ...(profile.team || {}),
+                teamName: profile.teamName,
+                rankingTeamId: teamId,
+                logoUrl,
+                logoSource: 'custom',
+                logoUpdatedAt: Date.now(),
+            },
+        };
+        if (index === Number(document.getElementById('teamPerformanceProfileLogo')?.dataset.teamPerformanceIndex)) {
+            activeProfile = updated;
+            activeIndex = index;
+        }
+        return updated;
+    });
+
+    const logo = document.getElementById('teamPerformanceProfileLogo');
+    if (activeProfile && logo) {
+        logo.innerHTML = rankingLogoMarkup(activeProfile.team, 58);
+        const image = logo.querySelector('img');
+        if (image) image.addEventListener('load', () => image.classList.add('loaded'), { once: true });
+        if (activeIndex >= 0) {
+            logo.dataset.teamPerformanceIndex = String(activeIndex);
+        }
+    }
+
+    const list = document.getElementById('teamPerformanceRanking');
+    if (!list) return;
+    teamPerformanceProfiles.forEach((profile, index) => {
+        if (profile.rankingTeamId !== teamId) return;
+        const row = list.querySelector(`[data-team-performance-index="${index}"]`);
+        const main = row?.querySelector('.team-performance-row__main');
+        if (!row || !main) return;
+        Array.from(row.children)
+            .filter(node => !node.classList.contains('team-performance-row__main') &&
+                !node.classList.contains('team-performance-row__rank') &&
+                !node.classList.contains('team-performance-row__open'))
+            .forEach(node => node.remove());
+        const logoMarkup = document.createElement('span');
+        logoMarkup.innerHTML = rankingLogoMarkup({
+            ...profile.team,
+            teamName: profile.teamName,
+        }, 36);
+        while (logoMarkup.firstChild) row.insertBefore(logoMarkup.firstChild, main);
+    });
+}
+
+async function saveTeamPerformanceLogo(event) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    const logo = document.getElementById('teamPerformanceProfileLogo');
+    const profileIndex = Number(logo?.dataset.teamPerformanceIndex);
+    const profile = Number.isInteger(profileIndex) ? teamPerformanceProfiles[profileIndex] : null;
+    if (!file || !profile) {
+        input.value = '';
+        return;
+    }
+
+    const user = auth?.currentUser || currentUser;
+    const teamId = String(profile.rankingTeamId || '').trim();
+    const supportedTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
+    if (!profile.canEditLogo) {
+        setTeamPerformanceProfileStatus(
+            'É necessária uma compra confirmada desta equipe para trocar a logo.',
+            'error',
+        );
+        input.value = '';
+        return;
+    }
+    if (!storage || !user?.uid || !teamId) {
+        setTeamPerformanceProfileStatus('Entre novamente na conta para alterar a logo.', 'error');
+        input.value = '';
+        return;
+    }
+    if (!supportedTypes.has(file.type) || file.size < 1 || file.size > 5 * 1024 * 1024) {
+        setTeamPerformanceProfileStatus('Escolha uma imagem PNG, JPG ou WebP de até 5 MB.', 'error');
+        input.value = '';
+        return;
+    }
+
+    const extensionByType = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/webp': 'webp',
+    };
+    const randomId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const storagePath = `profile-photos/${user.uid}/team-logos/${teamId}/${Date.now()}-${randomId}.${extensionByType[file.type]}`;
+    const logoButton = document.getElementById('teamPerformanceProfileLogo');
+    if (logoButton) logoButton.disabled = true;
+    setTeamPerformanceProfileStatus('Enviando e atualizando a logo no Ranking Geral…', 'loading');
+
+    try {
+        const uploaded = await uploadBytes(ref(storage, storagePath), file, {
+            contentType: file.type,
+            customMetadata: { rankingTeamId: teamId },
+        });
+        const logoUrl = await getDownloadURL(uploaded.ref);
+        const token = await user.getIdToken();
+        const response = await fetch('/api/freefire/team-logo', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ teamId, storagePath, logoUrl }),
+            cache: 'no-store',
+        });
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch {
+            // The server response may be empty when a proxy fails.
+        }
+        if (!response.ok) {
+            throw new Error(
+                typeof payload?.error === 'string' && payload.error.trim()
+                    ? payload.error
+                    : `Não foi possível atualizar a logo (HTTP ${response.status}).`,
+            );
+        }
+        if (payload?.teamId !== teamId || typeof payload.logoUrl !== 'string') {
+            throw new Error('O servidor não confirmou a logo da equipe selecionada.');
+        }
+
+        updateTeamPerformanceLogoViews(teamId, payload.logoUrl);
+        setTeamPerformanceProfileStatus(
+            'Logo atualizada. O Ranking Geral já está usando a nova imagem.',
+            'success',
+        );
+        void loadGeneralRankingTopCard();
+    } catch (error) {
+        console.error('Não foi possível atualizar a logo da equipe:', error);
+        setTeamPerformanceProfileStatus(
+            error?.message || 'Não foi possível atualizar a logo. Tente novamente.',
+            'error',
+        );
+    } finally {
+        if (logoButton) {
+            logoButton.disabled = !teamPerformanceProfiles[profileIndex]?.canEditLogo;
+        }
+        input.value = '';
+    }
+}
+
 function setupTeamPerformanceProfile() {
     const container = document.getElementById('teamPerformanceRanking');
     const dialog = document.getElementById('teamPerformanceProfileDialog');
     const closeButton = document.getElementById('teamPerformanceProfileClose');
-    if (!container || !dialog || !closeButton || container.dataset.profileClickBound) return;
+    const logo = document.getElementById('teamPerformanceProfileLogo');
+    const logoInput = document.getElementById('teamPerformanceLogoInput');
+    if (!container || !dialog || !closeButton || !logo || !logoInput || container.dataset.profileClickBound) return;
     container.dataset.profileClickBound = 'true';
     container.addEventListener('click', event => {
         const trigger = event.target.closest('[data-team-performance-index]');
         if (!trigger) return;
         void openTeamPerformanceProfile(Number(trigger.dataset.teamPerformanceIndex), trigger);
     });
+    logo.addEventListener('click', () => {
+        if (logo.disabled) return;
+        logoInput.click();
+    });
+    logoInput.addEventListener('change', event => void saveTeamPerformanceLogo(event));
     closeButton.addEventListener('click', () => dialog.close());
     dialog.addEventListener('click', event => {
         if (event.target === dialog) dialog.close();

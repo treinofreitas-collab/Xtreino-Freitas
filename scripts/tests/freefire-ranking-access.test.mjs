@@ -4,6 +4,7 @@ import {
   accountRankingTeamId,
   filterRankingSessionsForTeam,
   generalRankingTeamKey,
+  hasConfirmedRankingTeamPurchase,
   resolveOwnedRankingTeam,
 } from "@workspace/freefire-ranking-access";
 
@@ -42,6 +43,67 @@ test("only a confirmed non-solo purchase grants access to its team history", () 
     ], "email-user", "email-id", "verified@example.com"),
     { teamId: "email-id", teamName: "EMAIL TEAM", teamKey: "email team" },
   );
+});
+
+test("logo changes require a paid general-ranking purchase for the exact team", () => {
+  const teamId = accountRankingTeamId("buyer-1", "FOLTEST PRO");
+  const registrations = [
+    {
+      userId: "buyer-1",
+      teamName: "FOLTEST PRO",
+      eventType: "treino-freitas",
+      status: "paid",
+    },
+    {
+      userId: "buyer-1",
+      teamName: "FREE TEAM",
+      eventType: "treino-freitas",
+      status: "lisagem_gratis",
+      rankingTeamId: "free-id",
+    },
+    {
+      userId: "buyer-1",
+      teamName: "PENDING TEAM",
+      eventType: "treino-freitas",
+      status: "pending",
+      rankingTeamId: "pending-id",
+    },
+    {
+      userId: "buyer-1",
+      teamName: "SOLO TEAM",
+      eventType: "diario-solo",
+      status: "paid",
+      rankingTeamId: "solo-id",
+    },
+    {
+      userId: "buyer-1",
+      teamName: "OTHER EVENT",
+      eventType: "marketplace",
+      status: "paid",
+      rankingTeamId: "other-event-id",
+    },
+  ];
+
+  assert.equal(hasConfirmedRankingTeamPurchase(registrations, "buyer-1", teamId), true);
+  assert.equal(hasConfirmedRankingTeamPurchase(registrations, "buyer-1", "free-id"), false);
+  assert.equal(hasConfirmedRankingTeamPurchase(registrations, "buyer-1", "pending-id"), false);
+  assert.equal(hasConfirmedRankingTeamPurchase(registrations, "buyer-1", "solo-id"), false);
+  assert.equal(hasConfirmedRankingTeamPurchase(registrations, "buyer-1", "other-event-id"), false);
+  assert.equal(hasConfirmedRankingTeamPurchase(registrations, "another-user", teamId), false);
+});
+
+test("a confirmed member can update the team linked to the purchaser's ranking ID", () => {
+  const teamId = accountRankingTeamId("captain-1", "NEXLV FFWS");
+  assert.equal(hasConfirmedRankingTeamPurchase([
+    {
+      userId: "captain-1",
+      membrosUids: ["member-1"],
+      teamName: "NEXLV FFWS",
+      eventType: "modo-liga",
+      status: "confirmed",
+      rankingTeamId: teamId,
+    },
+  ], "member-1", teamId), true);
 });
 
 test("team history includes exact and safe legacy matches without exposing other teams", () => {

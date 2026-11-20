@@ -73,16 +73,17 @@
         })();
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=team-performance-session-details-1">
     <link rel="stylesheet" href="mobile-optimizations.css">
+    <link rel="stylesheet" href="account-redesign.css?v=team-performance-status-2">
     <link rel="icon" type="image/png" href="assets/images/Logo - Xtreino Freitas.png">
     <style>
-        /* Tab nav dark theme — override Tailwind active classes */
+        /* Minha Conta: manter as abas legíveis sobre a navegação clara */
         .tab-button { transition: color 0.15s, border-color 0.15s; }
         .tab-button.text-blue-600,
-        .tab-button.active { color: #07b7b4 !important; }
-        .tab-button.border-blue-500 { border-bottom-color: #07b7b4 !important; }
-        .tab-button.text-gray-500 { color: rgba(255,255,255,0.45) !important; }
+        .tab-button.active { color: #159b92 !important; }
+        .tab-button.border-blue-500 { border-bottom-color: #159b92 !important; }
+        .tab-button.text-gray-500 { color: #73817c !important; }
         .tab-button.border-transparent { border-bottom-color: transparent !important; }
 
         /* Cards das abas secundárias (pedidos, perfil, etc.) ficam brancos sobre fundo escuro — OK */
@@ -101,10 +102,10 @@
     </style>
 </head>
 
-<body style="background:#0f172a;min-height:100vh;color:#fff">
+<body class="account-page" style="background:#0f172a;min-height:100vh;color:#fff">
 
     <!-- Header -->
-    <header style="background:#0d1424;border-bottom:1px solid rgba(7,183,180,0.2);position:sticky;top:0;z-index:40">
+    <header class="account-site-header" style="background:#0d1424;border-bottom:1px solid rgba(7,183,180,0.2);position:sticky;top:0;z-index:40">
         <nav style="max-width:960px;margin:0 auto;padding:11px 16px;display:flex;align-items:center;justify-content:space-between">
             <div style="display:flex;align-items:center;gap:10px">
                 <img src="assets/images/Logo - Xtreino Freitas.png" alt="XTreino Freitas" style="height:42px;width:42px;border-radius:10px;object-fit:contain">
@@ -122,7 +123,7 @@
     </header>
 
     <!-- Tab Nav gaming -->
-    <div style="background:#0d1424;border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:65px;z-index:39">
+    <div class="account-tab-bar" style="background:#0d1424;border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:65px;z-index:39">
         <nav style="max-width:960px;margin:0 auto;padding:0 12px;display:flex;overflow-x:auto;gap:0;scrollbar-width:none">
             <button id="dashboardTab" class="tab-button active border-transparent text-gray-500" style="padding:13px 14px;font-size:12px;font-weight:700;white-space:nowrap;border:none;background:transparent;cursor:pointer;color:#07b7b4;border-bottom:2px solid #07b7b4;flex-shrink:0">
                 🏠 Dashboard
@@ -146,13 +147,13 @@
     </div>
 
     <!-- Main Content -->
-    <div style="max-width:960px;margin:0 auto;padding:20px 16px 100px">
+    <div class="account-main" style="max-width:960px;margin:0 auto;padding:20px 16px 100px">
 
         <!-- ===== DASHBOARD ===== -->
         <div id="dashboardContent" class="tab-content">
 
             <!-- Welcome Card -->
-            <div style="background:linear-gradient(135deg,#0d1f2d 0%,#0a1929 100%);border:1px solid rgba(7,183,180,0.3);border-radius:16px;padding:20px;margin-bottom:14px;position:relative;overflow:hidden">
+            <div class="account-welcome" style="background:linear-gradient(135deg,#0d1f2d 0%,#0a1929 100%);border:1px solid rgba(7,183,180,0.3);border-radius:16px;padding:20px;margin-bottom:14px;position:relative;overflow:hidden">
                 <div style="position:absolute;top:-30px;right:-30px;width:120px;height:120px;background:rgba(7,183,180,0.05);border-radius:50%;pointer-events:none"></div>
                 <div style="position:absolute;bottom:-20px;right:60px;width:70px;height:70px;background:rgba(236,212,20,0.04);border-radius:50%;pointer-events:none"></div>
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
@@ -179,7 +180,7 @@
             </div>
 
             <!-- Aviso sobre acesso ao grupo -->
-            <div style="display:flex;align-items:flex-start;gap:12px;padding:13px 15px;margin-bottom:14px;background:rgba(236,212,20,0.07);border:1.5px solid rgba(236,212,20,0.3);border-radius:14px">
+            <div class="account-notice" style="display:flex;align-items:flex-start;gap:12px;padding:13px 15px;margin-bottom:14px;background:rgba(236,212,20,0.07);border:1.5px solid rgba(236,212,20,0.3);border-radius:14px">
                 <div style="font-size:18px;flex-shrink:0;margin-top:1px">🔔</div>
                 <div>
                     <div style="font-size:12px;font-weight:900;color:#ecd414;margin-bottom:3px;letter-spacing:0.5px">IMPORTANTE:</div>
@@ -188,7 +189,7 @@
             </div>
 
             <!-- Ações rápidas -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+            <div class="account-quick-actions" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
                 <button onclick="switchTab('orders')" style="display:flex;align-items:center;gap:10px;padding:14px;background:#1e293b;border:1px solid rgba(255,255,255,0.07);border-radius:14px;cursor:pointer;text-align:left;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(7,183,180,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
                     <div style="width:36px;height:36px;background:rgba(7,183,180,0.12);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">📋</div>
                     <div><div style="font-size:13px;font-weight:800;color:#fff">Meus Pedidos</div><div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px">Ver inscrições</div></div>
@@ -200,6 +201,14 @@
                 <button onclick="switchTab('profile')" style="display:flex;align-items:center;gap:10px;padding:14px;background:#1e293b;border:1px solid rgba(255,255,255,0.07);border-radius:14px;cursor:pointer;text-align:left;transition:border-color 0.15s" onmouseover="this.style.borderColor='rgba(168,85,247,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
                     <div style="width:36px;height:36px;background:rgba(168,85,247,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">👤</div>
                     <div><div style="font-size:13px;font-weight:800;color:#fff">Meu Perfil</div><div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px">Dados e avatar</div></div>
+                </button>
+                <button type="button" aria-controls="teamPerformanceCard" aria-label="Ir para Desempenho da Equipe"
+                    onclick="document.getElementById('teamPerformanceCard')?.scrollIntoView({behavior:'smooth',block:'start'})"
+                    style="display:flex;align-items:center;gap:10px;padding:14px;background:#1e293b;border:1px solid rgba(255,255,255,0.07);border-radius:14px;cursor:pointer;text-align:left;transition:border-color 0.15s"
+                    onmouseover="this.style.borderColor='rgba(7,183,180,0.4)'"
+                    onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
+                    <div style="width:36px;height:36px;background:rgba(7,183,180,0.12);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">📊</div>
+                    <div><div style="font-size:13px;font-weight:800;color:#fff">Desempenho da Equipe</div><div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px">Ranking e evolução</div></div>
                 </button>
             </div>
 
@@ -219,7 +228,7 @@
             </div>
 
             <!-- Próximos Treinos (dados reais) -->
-            <div style="background:#1e293b;border:1px solid rgba(7,183,180,0.18);border-radius:16px;overflow:hidden;margin-bottom:14px">
+            <div class="account-panel" style="background:#1e293b;border:1px solid rgba(7,183,180,0.18);border-radius:16px;overflow:hidden;margin-bottom:14px">
                 <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between">
                     <div style="display:flex;align-items:center;gap:8px">
                         <span style="font-size:16px">📅</span>
@@ -234,7 +243,7 @@
             </div>
 
             <!-- Pedidos Recentes (dados reais) -->
-            <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;margin-bottom:14px">
+            <div class="account-panel" style="background:#1e293b;border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;margin-bottom:14px">
                 <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:8px">
                     <span style="font-size:16px">🏆</span>
                     <span style="font-size:14px;font-weight:800;color:#fff">Pedidos Recentes</span>
@@ -244,7 +253,7 @@
                 </div>
             </div>
 
-            <section id="teamPerformanceCard" style="background:#1e293b;border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;margin-bottom:14px;scroll-margin-top:140px">
+            <section id="teamPerformanceCard" class="account-panel" style="background:#1e293b;border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;margin-bottom:14px;scroll-margin-top:140px">
                 <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;gap:10px">
                     <div style="display:flex;align-items:center;gap:8px"><span>📊</span><span style="font-size:14px;font-weight:800;color:#fff">Desempenho da Equipe</span></div>
                     <span style="font-size:12px;color:rgba(255,255,255,0.45)">Ranking acumulado</span>
@@ -301,7 +310,7 @@
                 </div>
             </div>
 
-            <section style="background:#1e293b;border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;margin-bottom:14px">
+                <section class="account-panel" style="background:#1e293b;border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;margin-bottom:14px">
                 <div style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;gap:12px">
                     <div style="display:flex;align-items:center;gap:8px"><span>🏆</span><span style="font-size:14px;font-weight:800;color:#fff">Ranking Geral</span></div>
                     <button type="button" id="openGeneralRanking" style="border:1px solid rgba(7,183,180,.35);border-radius:8px;background:rgba(7,183,180,.1);color:#42d4cc;padding:7px 10px;font-size:11px;font-weight:800;cursor:pointer">Ver ranking completo</button>
@@ -955,7 +964,7 @@
     </div>
 
     <script type="module" src="config/firebase.js"></script>
-    <script type="module" src="client.js?v=team-performance-server-history-1"></script>
+    <script type="module" src="client.js?v=team-performance-status-1"></script>
 
     <!-- Modal Dados de Entrega (Camisa) -->
     <div id="shippingModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
@@ -1052,9 +1061,11 @@
         <section class="team-performance-profile">
             <header class="team-performance-profile__header">
                 <div class="team-performance-profile__identity">
-                    <div id="teamPerformanceProfileLogo"
+                    <button id="teamPerformanceProfileLogo"
                         class="team-performance-profile__logo"
-                        aria-hidden="true"></div>
+                        type="button"
+                        aria-label="Alterar logo da equipe"
+                        title="Clique para alterar a logo"></button>
                     <div class="team-performance-profile__heading">
                         <p class="team-performance-profile__eyebrow">Perfil da equipe</p>
                         <h2 id="teamPerformanceProfileTitle">Desempenho da equipe</h2>
@@ -1086,6 +1097,11 @@
                 </div>
             </div>
         </section>
+        <input id="teamPerformanceLogoInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            aria-label="Escolha uma nova logo para a equipe"
+            hidden>
     </dialog>
 
 </body>

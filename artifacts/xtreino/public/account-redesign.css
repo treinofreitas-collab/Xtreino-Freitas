@@ -1,0 +1,692 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@400;500;600;700;800&display=swap');
+
+body.account-page {
+    --account-ink: #142421;
+    --account-muted: #71817b;
+    --account-green: #102522;
+    --account-teal: #159b92;
+    --account-yellow: #e5d719;
+    --account-paper: #f2f5f1;
+    --account-line: #dce5df;
+    min-height: 100vh;
+    background: var(--account-paper) !important;
+    color: var(--account-ink) !important;
+    font-family: "DM Sans", sans-serif !important;
+}
+
+body.account-page button,
+body.account-page input,
+body.account-page select,
+body.account-page textarea {
+    font-family: "DM Sans", sans-serif !important;
+}
+
+.account-site-header {
+    position: sticky;
+    isolation: isolate;
+    background: var(--account-green) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, .1) !important;
+}
+
+.account-site-header::before {
+    position: absolute;
+    z-index: 1;
+    inset: 0 0 auto;
+    height: 4px;
+    background: linear-gradient(90deg, var(--account-teal) 0 70%, var(--account-yellow) 70% 100%);
+    content: "";
+}
+
+.account-site-header nav,
+.account-tab-bar nav {
+    max-width: 1120px !important;
+}
+
+.account-site-header img {
+    border-radius: 10px !important;
+    background: #f6f5e9;
+}
+
+.account-site-header span {
+    color: #42c5b8 !important;
+    font-family: "Barlow Condensed", sans-serif !important;
+    font-size: 17px !important;
+    font-weight: 800 !important;
+    letter-spacing: 1.6px !important;
+}
+
+.account-site-header a {
+    border-color: rgba(21, 155, 146, .55) !important;
+    color: #66d1c5 !important;
+}
+
+.account-site-header #logoutBtn {
+    background: var(--account-yellow) !important;
+    color: var(--account-green) !important;
+}
+
+.account-tab-bar {
+    top: 65px;
+    background: #fff !important;
+    border-bottom: 1px solid var(--account-line) !important;
+    box-shadow: 0 5px 16px rgba(16, 37, 34, .04);
+}
+
+body.account-page .account-tab-bar .tab-button {
+    min-height: 48px;
+    border-bottom-width: 3px !important;
+    color: #73817c !important;
+    font-size: 12px !important;
+    transition: color .18s ease, border-color .18s ease, background .18s ease;
+}
+
+body.account-page .account-tab-bar .tab-button:hover,
+body.account-page .account-tab-bar .tab-button.active {
+    color: var(--account-green) !important;
+}
+
+body.account-page .account-tab-bar .tab-button.active {
+    border-bottom-color: var(--account-teal) !important;
+}
+
+.account-main {
+    max-width: 1120px !important;
+    padding-top: 28px !important;
+}
+
+.account-welcome {
+    min-height: 176px;
+    padding: 25px !important;
+    background:
+        linear-gradient(118deg, rgba(16, 37, 34, .98), rgba(16, 37, 34, .94)),
+        repeating-linear-gradient(135deg, transparent 0 28px, rgba(255,255,255,.025) 28px 29px) !important;
+    border-color: rgba(21, 155, 146, .46) !important;
+    border-radius: 18px !important;
+    box-shadow: 0 16px 38px rgba(16, 37, 34, .12);
+}
+
+.account-welcome > div:first-child::after {
+    position: absolute;
+    top: 22px;
+    right: 24px;
+    width: 56px;
+    height: 3px;
+    background: var(--account-yellow);
+    content: "";
+}
+
+.account-welcome #welcomeMessage {
+    font-family: "Barlow Condensed", sans-serif !important;
+    font-size: clamp(1.45rem, 3vw, 2rem) !important;
+    font-weight: 800 !important;
+}
+
+.account-welcome > div:nth-child(2) > div {
+    border-radius: 10px !important;
+}
+
+.account-welcome > div:nth-child(2) > div:first-child {
+    background: rgba(255, 255, 255, .08) !important;
+    border-color: rgba(255, 255, 255, .12) !important;
+}
+
+.account-welcome > div:nth-child(2) > div:nth-child(2) {
+    background: rgba(229, 215, 25, .11) !important;
+    border-color: rgba(229, 215, 25, .26) !important;
+}
+
+.account-welcome > div:nth-child(2) > div:nth-child(3) {
+    background: rgba(21, 155, 146, .16) !important;
+    border-color: rgba(21, 155, 146, .4) !important;
+}
+
+.account-welcome > div:nth-child(2) > div > div:first-child {
+    font-family: "Barlow Condensed", sans-serif !important;
+    font-size: 1.9rem !important;
+}
+
+.account-notice {
+    background: #fffbe2 !important;
+    border: 1px solid rgba(190, 171, 17, .45) !important;
+    border-radius: 12px !important;
+    color: #5b561d !important;
+}
+
+.account-notice div[style*="color:#ecd414"] {
+    color: #847700 !important;
+    font-family: "Barlow Condensed", sans-serif !important;
+    font-size: 15px !important;
+}
+
+.account-notice div[style*="color:rgba(255,255,255"] {
+    color: #5f6659 !important;
+}
+
+.account-quick-actions {
+    gap: 12px !important;
+}
+
+.account-quick-actions button {
+    min-height: 76px;
+    background: #fff !important;
+    border: 1px solid var(--account-line) !important;
+    border-radius: 13px !important;
+    box-shadow: 0 5px 16px rgba(16, 37, 34, .035);
+}
+
+.account-quick-actions button:hover {
+    border-color: rgba(21, 155, 146, .65) !important;
+    box-shadow: 0 9px 22px rgba(16, 37, 34, .08);
+    transform: translateY(-1px);
+}
+
+.account-quick-actions button > div:first-child {
+    background: rgba(21, 155, 146, .1) !important;
+}
+
+.account-quick-actions button > div:nth-child(2) > div:first-child {
+    color: var(--account-ink) !important;
+    font-family: "Barlow Condensed", sans-serif !important;
+    font-size: 17px !important;
+}
+
+.account-quick-actions button > div:nth-child(2) > div:last-child {
+    color: var(--account-muted) !important;
+}
+
+.account-panel,
+#dashboardContent > div[style*="background:#1e293b"],
+#dashboardContent > div[style*="background:#1e293b"] + div,
+#pendingPaymentsSection {
+    background: #fff !important;
+    border: 1px solid var(--account-line) !important;
+    border-radius: 15px !important;
+    box-shadow: 0 6px 20px rgba(16, 37, 34, .045);
+}
+
+.account-panel [style*="border-bottom:1px solid rgba(255,255,255"],
+#dashboardContent > div[style*="background:#1e293b"] [style*="border-bottom:1px solid rgba(255,255,255"],
+#pendingPaymentsSection [style*="border-bottom:1px solid rgba(255,255,255"] {
+    border-bottom-color: var(--account-line) !important;
+}
+
+.account-panel [style*="color:#fff"],
+#dashboardContent > div[style*="background:#1e293b"] [style*="color:#fff"],
+#pendingPaymentsSection [style*="color:#fff"] {
+    color: var(--account-ink) !important;
+}
+
+.account-panel [style*="color:rgba(255,255,255"],
+#dashboardContent > div[style*="background:#1e293b"] [style*="color:rgba(255,255,255"],
+#pendingPaymentsSection [style*="color:rgba(255,255,255"] {
+    color: var(--account-muted) !important;
+}
+
+.account-panel [style*="background:#1e293b"],
+#dashboardContent > div[style*="background:#1e293b"] [style*="background:#1e293b"] {
+    background: #f5f8f5 !important;
+}
+
+.account-panel [style*="border:1px solid rgba(255,255,255"],
+#dashboardContent > div[style*="background:#1e293b"] [style*="border:1px solid rgba(255,255,255"] {
+    border-color: var(--account-line) !important;
+}
+
+body.account-page .account-panel .team-performance-row {
+    border-bottom-color: var(--account-line);
+    border-radius: 9px;
+    color: var(--account-ink);
+}
+
+body.account-page .account-panel .team-performance-row:hover {
+    background: rgba(21, 155, 146, .08);
+}
+
+body.account-page .account-panel .team-performance-row__name {
+    color: var(--account-ink);
+}
+
+body.account-page .account-panel .team-performance-row__summary {
+    color: #63736d;
+}
+
+body.account-page .account-panel .team-performance-row__rank strong {
+    color: #087b72;
+}
+
+body.account-page .account-panel .team-performance-row__rank small,
+body.account-page .account-panel .team-performance-row__open {
+    color: #71817b;
+}
+
+.account-panel > div:first-child > div > span:last-child,
+.account-panel h2,
+.account-panel h3 {
+    font-family: "Barlow Condensed", sans-serif !important;
+    font-size: 18px !important;
+    font-weight: 800 !important;
+}
+
+#todayRegistrations [style*="color:#1f2937"],
+#recentOrders [style*="color:#1f2937"] {
+    color: var(--account-ink) !important;
+}
+
+#todayRegistrations [style*="color:#6b7280"],
+#recentOrders [style*="color:#6b7280"] {
+    color: var(--account-muted) !important;
+}
+
+#dashboardContent .account-panel button,
+#generalRankingModal button {
+    border-radius: 9px !important;
+}
+
+#ordersContent > .bg-white,
+#productsContent > .bg-white,
+#tokensContent > .bg-white,
+#profileContent > .bg-white,
+#affiliateContent > .bg-white,
+#affiliateContent > .bg-gradient-to-br,
+#profileContent .grid > .bg-white {
+    background: #fff !important;
+    border: 1px solid var(--account-line) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 6px 20px rgba(16, 37, 34, .045);
+}
+
+#ordersContent h3,
+#productsContent h3,
+#tokensContent h3,
+#tokensContent h4,
+#tokensContent h5,
+#profileContent h3,
+#profileContent h2,
+#affiliateContent h2 {
+    color: var(--account-ink) !important;
+    font-family: "Barlow Condensed", sans-serif !important;
+    font-weight: 800 !important;
+}
+
+#ordersContent [class*="border-gray"],
+#productsContent [class*="border-gray"],
+#profileContent [class*="border-gray"],
+#affiliateContent [class*="border-gray"] {
+    border-color: var(--account-line) !important;
+}
+
+#profileContent .bg-gradient-to-r {
+    background: linear-gradient(120deg, #102522, #173b35) !important;
+    border: 1px solid rgba(21, 155, 146, .45);
+    border-radius: 16px !important;
+}
+
+#tokensContent .bg-gray-50 {
+    background: #f4f7f3 !important;
+    border: 1px solid var(--account-line);
+    border-radius: 11px !important;
+}
+
+#tokensContent .bg-gradient-to-r,
+#affiliateContent > .bg-gradient-to-br {
+    background: linear-gradient(120deg, #102522, #17443c) !important;
+    border: 1px solid rgba(21, 155, 146, .4);
+    border-radius: 14px !important;
+}
+
+#tokensContent .bg-gradient-to-r h5,
+#tokensContent .bg-gradient-to-r p {
+    color: #fff !important;
+}
+
+#tokensContent .bg-gradient-to-r button {
+    background: var(--account-yellow) !important;
+    color: var(--account-green) !important;
+}
+
+#tokensContent h4#myTokenBalance {
+    color: var(--account-green) !important;
+    font-family: "Barlow Condensed", sans-serif !important;
+    font-size: 2rem !important;
+}
+
+#tokensPurchaseModal > div {
+    border: 1px solid var(--account-line);
+    border-radius: 16px !important;
+}
+
+#tokensPurchaseModal h3 {
+    color: var(--account-ink) !important;
+    font-family: "Barlow Condensed", sans-serif !important;
+}
+
+#tokensPurchaseModal button[class*="border-"] {
+    border-color: rgba(21, 155, 146, .32) !important;
+}
+
+#tokensPurchaseModal button[class*="border-"]:hover {
+    border-color: var(--account-teal) !important;
+    background: #eff8f5 !important;
+}
+
+#tokensPurchaseModal [class*="text-blue-"],
+#tokensPurchaseModal [class*="text-purple-"],
+#tokensPurchaseModal [class*="text-orange-"],
+#tokensPurchaseModal [class*="text-red-"] {
+    color: var(--account-green) !important;
+}
+
+#profileContent input:not([type="file"]),
+#profileContent select,
+#profileContent textarea {
+    min-height: 44px;
+    background: #f7f9f6 !important;
+    border-color: var(--account-line) !important;
+    border-radius: 9px !important;
+    color: var(--account-ink) !important;
+}
+
+#profileContent label {
+    color: #344640 !important;
+}
+
+#profileContent button[type="submit"] {
+    background: var(--account-teal) !important;
+    color: #fff !important;
+    border-radius: 9px !important;
+}
+
+#generalRankingModal > section {
+    background: #fff !important;
+    border-color: var(--account-line) !important;
+    color: var(--account-ink) !important;
+}
+
+#generalRankingModal h2 {
+    color: var(--account-ink) !important;
+    font-family: "Barlow Condensed", sans-serif !important;
+}
+
+body.account-page .team-performance-dialog {
+    color: var(--account-ink);
+    background: #fff;
+    border-color: var(--account-line);
+    box-shadow: 0 28px 90px rgba(16, 37, 34, .24), 0 0 0 1px rgba(229, 215, 25, .08);
+    font-family: "DM Sans", sans-serif;
+}
+
+body.account-page .team-performance-dialog::backdrop {
+    background: rgba(9, 29, 26, .68);
+}
+
+body.account-page .team-performance-profile__header {
+    background: linear-gradient(120deg, #102522, #173b35);
+    border-bottom-color: rgba(21, 155, 146, .3);
+}
+
+body.account-page .team-performance-profile__logo {
+    position: relative;
+    box-sizing: border-box;
+    margin: 0 !important;
+    padding: 0 !important;
+    appearance: none;
+    background: rgba(21, 155, 146, .15);
+    border-color: rgba(21, 155, 146, .5);
+    color: inherit;
+    cursor: pointer;
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+body.account-page .team-performance-profile__logo::after {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    display: grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, .85);
+    border-radius: 7px;
+    background: var(--account-teal);
+    color: #fff;
+    content: "✎";
+    font-family: "DM Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+body.account-page .team-performance-profile__logo:not(:disabled):hover {
+    border-color: var(--account-yellow);
+    box-shadow: 0 0 0 3px rgba(229, 215, 25, .18);
+    transform: translateY(-1px);
+}
+
+body.account-page .team-performance-profile__logo:focus-visible {
+    outline: 3px solid var(--account-yellow);
+    outline-offset: 3px;
+}
+
+body.account-page .team-performance-profile__logo:disabled {
+    cursor: default;
+    opacity: .82;
+}
+
+body.account-page .team-performance-profile__logo:disabled::after {
+    display: none;
+}
+
+body.account-page .team-performance-profile__eyebrow {
+    color: var(--account-yellow);
+    font-family: "Barlow Condensed", sans-serif;
+    font-size: 12px;
+}
+
+body.account-page .team-performance-profile__heading h2 {
+    color: #fff;
+    font-family: "Barlow Condensed", sans-serif;
+    font-size: clamp(22px, 3.5vw, 30px);
+    font-weight: 800;
+}
+
+body.account-page .team-performance-profile__heading > p:last-child {
+    color: rgba(255, 255, 255, .78);
+}
+
+body.account-page .team-performance-profile__close {
+    border-color: rgba(255, 255, 255, .28);
+    background: rgba(255, 255, 255, .08);
+    color: #fff;
+}
+
+body.account-page .team-performance-profile__close:hover {
+    border-color: var(--account-yellow);
+    background: var(--account-yellow);
+    color: var(--account-green);
+}
+
+body.account-page .team-performance-profile__close:focus-visible,
+body.account-page .team-performance-profile__body :focus-visible {
+    outline-color: var(--account-teal);
+}
+
+body.account-page .team-performance-profile__content {
+    background: var(--account-paper);
+}
+
+body.account-page .team-performance-profile__status {
+    border-color: rgba(21, 155, 146, .28);
+    background: #eaf6f2;
+    color: #315650;
+}
+
+body.account-page .team-performance-profile__status[data-state="sessions"] {
+    justify-content: center;
+    text-align: center;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+body.account-page .team-performance-profile__status[data-state="error"] {
+    border-color: rgba(184, 75, 57, .28);
+    background: #fff0eb;
+    color: #8a3329;
+}
+
+body.account-page .team-performance-profile__status[data-state="success"] {
+    border-color: rgba(21, 155, 146, .38);
+    background: #e8f6ef;
+    color: #0b6458;
+}
+
+body.account-page .team-performance-profile__status[data-state="empty"] {
+    border-color: rgba(190, 171, 17, .4);
+    background: #fffbe2;
+    color: #665d16;
+}
+
+body.account-page .team-performance-profile__body {
+    border-color: var(--account-line);
+    background: #f8faf7;
+    color: var(--account-ink);
+}
+
+body.account-page .team-performance-profile__empty p,
+body.account-page .team-performance-chart__empty,
+body.account-page .team-performance-history__empty {
+    border-color: #cbd9d1;
+    color: #61736c;
+}
+
+body.account-page .team-performance-stat {
+    border-color: var(--account-line);
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(16, 37, 34, .04);
+}
+
+body.account-page .team-performance-stat > span {
+    color: #63736d;
+}
+
+body.account-page .team-performance-stat > strong {
+    color: var(--account-green);
+    font-family: "Barlow Condensed", sans-serif;
+    font-size: clamp(21px, 2.8vw, 27px);
+}
+
+body.account-page .team-performance-stat > small {
+    color: #087b72;
+}
+
+body.account-page .team-performance-profile-section__heading h3 {
+    color: var(--account-green);
+    font-family: "Barlow Condensed", sans-serif;
+    font-size: 19px;
+}
+
+body.account-page .team-performance-profile-section__heading > span,
+body.account-page .team-performance-chart > p,
+body.account-page .team-performance-profile__footnote {
+    color: #63736d;
+}
+
+body.account-page .team-performance-chart {
+    border-color: rgba(21, 155, 146, .25);
+    background: #f1f8f4;
+}
+
+body.account-page .team-performance-chart__axis-title {
+    fill: #526a62;
+}
+
+body.account-page .team-performance-chart__tick line {
+    stroke: rgba(16, 37, 34, .16);
+}
+
+body.account-page .team-performance-chart__tick text,
+body.account-page .team-performance-chart__date {
+    fill: #61736c;
+}
+
+body.account-page .team-performance-chart__area {
+    fill: rgba(21, 155, 146, .14);
+}
+
+body.account-page .team-performance-chart__line {
+    stroke: #118c82;
+}
+
+body.account-page .team-performance-chart__svg circle {
+    fill: #118c82;
+    stroke: #f1f8f4;
+}
+
+body.account-page .team-performance-history-warning {
+    border-color: rgba(190, 171, 17, .4);
+    background: #fffbe2;
+    color: #665d16;
+}
+
+body.account-page .team-performance-history__item {
+    border-color: var(--account-line);
+    background: #fff;
+}
+
+body.account-page .team-performance-history__item strong {
+    color: var(--account-ink);
+}
+
+body.account-page .team-performance-history__item span,
+body.account-page .team-performance-history__values small {
+    color: #63736d;
+}
+
+body.account-page .team-performance-history__values b {
+    color: #087b72;
+}
+
+body.account-page .team-performance-profile__loading span {
+    background: var(--account-teal);
+}
+
+@media (max-width: 640px) {
+    .account-main {
+        padding: 16px 12px 84px !important;
+    }
+
+    .account-welcome {
+        padding: 18px 14px !important;
+    }
+
+    .account-welcome > div:nth-child(2) {
+        gap: 7px !important;
+    }
+
+    .account-welcome > div:nth-child(2) > div {
+        padding: 10px 5px !important;
+    }
+
+    .account-welcome > div:nth-child(2) > div > div:first-child {
+        font-size: 1.45rem !important;
+    }
+
+    .account-quick-actions {
+        grid-template-columns: 1fr !important;
+    }
+
+    .account-tab-bar nav {
+        padding-inline: 8px !important;
+    }
+
+    body.account-page .account-tab-bar .tab-button {
+        padding-inline: 11px !important;
+        font-size: 11px !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.account-page .account-tab-bar .tab-button,
+    .account-quick-actions button {
+        transition: none !important;
+    }
+}

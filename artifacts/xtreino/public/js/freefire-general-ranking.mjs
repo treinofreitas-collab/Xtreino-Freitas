@@ -469,6 +469,52 @@ export function buildGeneralRankingTeamProgress(team, sessions = []) {
   return { baselinePoints, sessions: matchedSessions };
 }
 
+export function getGeneralRankingTeamSessionStats(sessions = []) {
+  const totals = { points: 0, kills: 0 };
+  const counts = { points: 0, kills: 0 };
+  const records = { points: null, kills: null };
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    for (const field of Object.keys(records)) {
+      const rawValue = session?.[field];
+      if (rawValue === null || rawValue === undefined || rawValue === '') continue;
+      const value = Number(rawValue);
+      if (
+        Number.isSafeInteger(value) &&
+        value >= 0
+      ) {
+        totals[field] += value;
+        counts[field] += 1;
+        // Sessions arrive chronologically; replacing ties records the most recent occurrence.
+        if (records[field] === null || value >= records[field].value) {
+          records[field] = {
+            value,
+            session: {
+              date: String(session?.date || ''),
+              hour: String(session?.hour || ''),
+              eventLabel: String(session?.eventLabel || session?.eventType || ''),
+            },
+          };
+        }
+      }
+    }
+  }
+  return {
+    averagePoints: counts.points ? totals.points / counts.points : null,
+    averageKills: counts.kills ? totals.kills / counts.kills : null,
+    recordPoints: records.points,
+    recordKills: records.kills,
+  };
+}
+
+// Keep older already-open account pages working until they reload the new module URL.
+export function getGeneralRankingTeamRecords(sessions = []) {
+  const stats = getGeneralRankingTeamSessionStats(sessions);
+  return {
+    points: stats.recordPoints?.value ?? null,
+    kills: stats.recordKills?.value ?? null,
+  };
+}
+
 export function rankGeneralRankingRows(rows = []) {
   const sorted = [...(Array.isArray(rows) ? rows : [])].sort((a, b) =>
     Number(b.totalPoints || 0) - Number(a.totalPoints || 0) ||

@@ -93,6 +93,39 @@ paths:
           description: No confirmed purchase links this team to the account
         "503":
           description: Ranking history is temporarily unavailable
+  /freefire/team-logo:
+    post:
+      operationId: updateOwnedFreeFireTeamLogo
+      tags: [freefire-ranking]
+      summary: Update the logo for a purchased team
+      description: Saves a user's uploaded logo to the exact Ranking Geral team linked to a confirmed purchase.
+      security:
+        - FirebaseBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FreeFireTeamLogoInput"
+      responses:
+        "200":
+          description: Team logo updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FreeFireTeamLogoResponse"
+        "400":
+          description: Invalid team or uploaded image
+        "401":
+          description: Firebase authentication required
+        "403":
+          description: No confirmed purchase links this team to the account
+        "404":
+          description: Team is not yet present in Ranking Geral
+        "409":
+          description: Team identity conflicts with the ranking record
+        "503":
+          description: Team logo update is temporarily unavailable
   /spec-logos/{hour}/export:
     get:
       operationId: exportSpecLogosForHour
@@ -123,6 +156,55 @@ paths:
           description: Admin or operator role required
         "413":
           description: Export is too large
+        "503":
+          description: Firebase Storage is temporarily unavailable
+  /spec-logos/registrations/{registrationId}/original:
+    get:
+      operationId: getModoLigaRegistrationLogoOriginal
+      tags: [spec-logos]
+      summary: Download the original logo from a confirmed Modo Liga registration
+      description: Returns the original Firebase Storage image for an authenticated Modo Liga administrator, without browser cross-origin access.
+      security:
+        - FirebaseBearer: []
+      parameters:
+        - name: registrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: "^[A-Za-z0-9_-]+$"
+      responses:
+        "200":
+          description: Original logo image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid registration ID
+        "401":
+          description: Firebase authentication required
+        "403":
+          description: Modo Liga administrator role required
+        "404":
+          description: Registration or original logo not found
+        "409":
+          description: Registration is awaiting payment
+        "413":
+          description: Original logo exceeds the processing size limit
+        "415":
+          description: Unsupported logo file type
         "503":
           description: Firebase Storage is temporarily unavailable
   /spec-logos/{hour}:
@@ -349,6 +431,38 @@ components:
           items:
             $ref: "#/components/schemas/FreeFireTeamSession"
       required: [sessions]
+    FreeFireTeamLogoInput:
+      type: object
+      properties:
+        teamId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[^/]+$"
+        storagePath:
+          type: string
+          minLength: 1
+          maxLength: 512
+          pattern: "^profile-photos/[^/]+/team-logos/[^/]+/[^/]+$"
+        logoUrl:
+          type: string
+          format: uri
+          maxLength: 2048
+      required: [teamId, storagePath, logoUrl]
+    FreeFireTeamLogoResponse:
+      type: object
+      properties:
+        teamId:
+          type: string
+        teamName:
+          type: string
+        logoUrl:
+          type: string
+          format: uri
+        updatedAt:
+          type: integer
+          minimum: 0
+      required: [teamId, teamName, logoUrl, updatedAt]
     SpecLogoExportFile:
       type: object
       properties:

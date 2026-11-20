@@ -55,6 +55,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/freefire/team-logo"
+  to = "/.netlify/functions/freefire-team-logo"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/treinofreitas"
   to = "/evento.html"
   status = 200
