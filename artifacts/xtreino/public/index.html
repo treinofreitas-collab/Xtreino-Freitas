@@ -1521,7 +1521,7 @@
         }
     </script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-    <script src="script.js?v=carousel-auto-height-1"></script>
+    <script src="script.js?v=carousel-auto-height-3"></script>
     
     <style>
         /* Esconder botões flutuantes no mobile quando modal estiver aberto */
@@ -1576,75 +1576,52 @@
         var isMobile = window.matchMedia('(max-width: 767px)').matches;
         var initialTab = supportedTabs.includes(requestedTab) ? requestedTab : (isMobile ? 'eventos' : 'home');
         switchMainTab(initialTab, initialTab === 'eventos' ? 'instant' : undefined);
+        if (initialTab === 'eventos' && isMobile) {
+            var alignmentCancelled = false;
+            var inputEvents = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+            var alignmentTimer;
+
+            function cleanupEventsAlignment() {
+                window.clearTimeout(alignmentTimer);
+                inputEvents.forEach(function(eventName) {
+                    window.removeEventListener(eventName, cancelEventsAlignment);
+                });
+                window.removeEventListener('xtreino:highlights-rendered', alignAfterHighlights);
+            }
+
+            function cancelEventsAlignment() {
+                alignmentCancelled = true;
+                cleanupEventsAlignment();
+            }
+
+            function alignAfterHighlights() {
+                window.setTimeout(function() {
+                    if (alignmentCancelled) return cleanupEventsAlignment();
+                    var homePanel = document.getElementById('panel-home');
+                    var target = document.querySelector('#xtreinos h2') || document.getElementById('xtreinos');
+                    if (homePanel && homePanel.classList.contains('tab-active') && target) {
+                        target.scrollIntoView({ block: 'start', behavior: 'instant' });
+                    }
+                    cleanupEventsAlignment();
+                }, 350);
+            }
+
+            inputEvents.forEach(function(eventName) {
+                window.addEventListener(eventName, cancelEventsAlignment, { once: true, passive: true });
+            });
+            alignmentTimer = window.setTimeout(cleanupEventsAlignment, 5000);
+            if (window._xtreinoHighlightsRendered) {
+                alignAfterHighlights();
+            } else {
+                window.addEventListener('xtreino:highlights-rendered', alignAfterHighlights, { once: true });
+            }
+        }
         if (initialTab === 'eventos') {
             window.addEventListener('load', function() {
                 var homePanel = document.getElementById('panel-home');
                 var target = document.querySelector('#xtreinos h2') || document.getElementById('xtreinos');
                 if (homePanel && homePanel.classList.contains('tab-active') && target) {
                     target.scrollIntoView({ block: 'start', behavior: 'instant' });
-
-                    if (isMobile) {
-                        var carouselViewport = document.getElementById('carouselViewport');
-                        var carouselTrack = document.getElementById('carouselTrack');
-                        var eventsNav = document.querySelector('.mobile-nav-btn[data-tab="home"]');
-                        if (!carouselViewport || !carouselTrack || !eventsNav) return;
-
-                        var expectedTop = target.getBoundingClientRect().top;
-                        var alignmentActive = true;
-                        var alignmentTimer;
-                        var inputEvents = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
-                        var resizeObserver;
-                        var mutationObserver;
-
-                        function stopEventsAlignment() {
-                            if (!alignmentActive) return;
-                            alignmentActive = false;
-                            if (alignmentTimer) window.clearTimeout(alignmentTimer);
-                            if (resizeObserver) resizeObserver.disconnect();
-                            if (mutationObserver) mutationObserver.disconnect();
-                            inputEvents.forEach(function(eventName) {
-                                window.removeEventListener(eventName, stopEventsAlignment);
-                            });
-                        }
-
-                        function keepEventsInPlace() {
-                            if (!alignmentActive) return;
-                            if (!homePanel.classList.contains('tab-active') || !eventsNav.classList.contains('active')) {
-                                stopEventsAlignment();
-                                return;
-                            }
-                            var currentTop = target.getBoundingClientRect().top;
-                            var shift = currentTop - expectedTop;
-                            if (Math.abs(shift) > 1) {
-                                window.scrollBy({ top: shift, behavior: 'instant' });
-                                expectedTop = target.getBoundingClientRect().top;
-                            }
-                        }
-
-                        function scheduleEventsAlignment() {
-                            window.requestAnimationFrame(keepEventsInPlace);
-                        }
-
-                        if (typeof ResizeObserver !== 'undefined') {
-                            resizeObserver = new ResizeObserver(scheduleEventsAlignment);
-                            resizeObserver.observe(carouselViewport);
-                        }
-                        if (typeof MutationObserver !== 'undefined') {
-                            mutationObserver = new MutationObserver(scheduleEventsAlignment);
-                            mutationObserver.observe(carouselTrack, {
-                                attributes: true,
-                                childList: true,
-                                characterData: true,
-                                subtree: true
-                            });
-                        }
-
-                        inputEvents.forEach(function(eventName) {
-                            window.addEventListener(eventName, stopEventsAlignment, { once: true, passive: true });
-                        });
-                        window.setTimeout(keepEventsInPlace, 1500);
-                        alignmentTimer = window.setTimeout(stopEventsAlignment, 5000);
-                    }
                 }
             }, { once: true });
         }

@@ -2883,6 +2883,17 @@ async function loadHighlightsFromFirestore() {
 
         // Inicializar carousel
         initCarousel();
+        const highlightImages = Array.from(track.querySelectorAll('img'));
+        Promise.all(highlightImages.map(image => {
+            if (image.complete) return Promise.resolve();
+            return new Promise(resolve => {
+                image.addEventListener('load', resolve, { once: true });
+                image.addEventListener('error', resolve, { once: true });
+            });
+        })).then(() => {
+            window._xtreinoHighlightsRendered = true;
+            window.dispatchEvent(new Event('xtreino:highlights-rendered'));
+        });
 
     } catch (error) {
         
