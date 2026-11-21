@@ -46,8 +46,6 @@
                         scr.style.opacity = '0';
                         setTimeout(function() {
                             if (scr.parentNode) scr.parentNode.removeChild(scr);
-                            var evt = document.getElementById('xtreinos');
-                            if (evt) evt.scrollIntoView({ behavior: 'instant', block: 'start' });
                         }, 400);
                     }, 180);
                 }
@@ -91,7 +89,7 @@
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="mobile-optimizations.css">
+    <link rel="stylesheet" href="mobile-optimizations.css?v=store-theme-1">
 </head>
 <body class="bg-white text-black enterprise-bg">
     <!-- Loading Screen — inline CSS only, sem depender do Tailwind -->
@@ -119,7 +117,7 @@
 
     <!-- Top Alert -->
     <div id="topAlert" class="w-full bg-[var(--brand-yellow)] text-[var(--brand-black)] text-sm py-2 text-center">
-        <span class="font-semibold">🏆 Participe dos treinos e concorra a um Celular!</span>
+        <span class="font-semibold" data-copy="Participe dos treinos e concorra a um celular!">Participe dos treinos e concorra a um celular!</span>
     </div>
     <!-- Header -->
     <header class="fixed w-full top-0 z-50 glass-effect">
@@ -142,7 +140,7 @@
                     <button id="loginBtnDesktop" onclick="openLoginModal()" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
                         LOGIN
                     </button>
-                    <span id="tokenBadgeDesktop" class="hidden bg-yellow-400 text-[var(--brand-black)] px-3 py-1 rounded-full text-xs font-bold shadow-sm">💎 0</span>
+                    <span id="tokenBadgeDesktop" class="hidden bg-yellow-400 text-[var(--brand-black)] px-3 py-1 rounded-full text-xs font-bold shadow-sm">0</span>
                     <div id="accountSectionDesktop" class="hidden flex items-center space-x-3">
                         <button id="accountBtnDesktop" onclick="window.location.href='client.html'" class="bg-blue-matte hover-blue-matte px-6 py-2 rounded-lg text-white font-semibold transition-colors">
                             MINHA CONTA
@@ -159,7 +157,7 @@
                 <!-- Mobile: login ou acesso à conta no header -->
                 <div class="md:hidden flex items-center gap-2 ml-auto">
                     <a href="javascript:void(0)" onclick="requestAdminAccess()" id="adminLinkMobile" class="text-black text-xs font-semibold px-2 py-1 hidden">ADMIN</a>
-                    <span id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-2 py-1 rounded-full text-xs font-bold shadow-sm">💎 0</span>
+                    <span id="tokenBadgeMobile" class="hidden bg-yellow-400 text-[var(--brand-black)] px-2 py-1 rounded-full text-xs font-bold shadow-sm">0</span>
                     <button id="loginBtnMobile" onclick="openLoginModal()" class="bg-blue-matte px-4 py-2 rounded-xl text-white text-xs font-bold transition-colors">
                         LOGIN
                     </button>
@@ -178,30 +176,18 @@
     <!-- ====== PAINEL: HOME ====== -->
     <div class="main-tab-panel tab-active" id="panel-home">
     <!-- Hero Section -->
-    <section id="home" class="pt-20 pb-4 md:pt-24 md:pb-0 md:h-[calc(100vh-6rem)] bg-white flex items-start md:items-center">
-        <div class="container mx-auto px-6">
-            <div class="max-w-2xl">
-                <div class="space-y-5 md:space-y-8">
-                    <h1 class="text-5xl md:text-7xl font-bold leading-tight">
-                        ELEVE SEU
-                        <span class="text-blue-matte">GAME</span>
-                        AO PRÓXIMO
-                        <span class="text-blue-matte">NÍVEL</span>
-                    </h1>
-                    <p class="text-xl text-gray-700 leading-relaxed">
-                        Treinamento eSports de alta performance para jogadores profissionais e aspirantes. 
-                        Desenvolva suas habilidades com os melhores coaches do cenário.
-                    </p>
-                    <div class="flex flex-col sm:flex-row gap-4">
-                        <button onclick="switchMainTab('home'); setTimeout(function(){document.getElementById('xtreinos')?.scrollIntoView({behavior:'smooth'})},100)" class="btn-primary px-8 py-4 rounded-lg font-bold text-lg transition-colors neon-glow">
-                            COMEÇAR AGORA
-                        </button>
-                        <button onclick="switchMainTab('sobre')" class="border-2 border-[var(--brand-yellow)] text-[var(--brand-black)] hover:bg-brand-yellow px-8 py-4 rounded-lg font-bold text-lg transition-colors">
-                            SAIBA MAIS
-                        </button>
-                    </div>
-                </div>
+    <section id="home" class="event-intro">
+        <div class="container mx-auto px-6 event-intro-inner">
+            <div class="event-intro-copy">
+                <div class="market-eyebrow">PLATAFORMA FREITAS · FREE FIRE</div>
+                <h1>ELEVE O SEU <em>GAME</em> PARA O PRÓXIMO <em>NÍVEL</em></h1>
+                <p>Do treino ao próximo desafio: tudo para sua jornada no Free Fire em um só lugar. Participe de campeonatos, acompanhe rankings, encontre produtos e conecte-se a jogadores, equipes e novas oportunidades.</p>
             </div>
+            <aside class="event-intro-aside">
+                <span class="event-live-mark"></span>
+                <div><strong>AGENDA ABERTA</strong><small>Confira as vagas disponíveis nos eventos</small></div>
+                <button onclick="switchMainTab('home'); setTimeout(function(){document.getElementById('xtreinos')?.scrollIntoView({behavior:'smooth'})},100)" class="event-jump">VER EVENTOS <span aria-hidden="true">↓</span></button>
+            </aside>
         </div>
     </section>
 
@@ -209,7 +195,7 @@
     <section class="py-8 md:py-16 bg-white overflow-hidden">
         <div class="container mx-auto px-6 overflow-hidden">
             <div class="flex items-center justify-between mb-6">
-                <h2 class="text-2xl font-bold">Destaques</h2>
+                <h2 class="text-2xl font-bold">DESTAQUES DA AGENDA</h2>
                 <div class="flex space-x-3">
                     <button id="carouselPrev" class="w-12 h-12 bg-blue-matte hover:bg-blue-600 text-white rounded-full flex items-center justify-center transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 border-2 border-white">
                         <span class="text-white font-bold text-xl">‹</span>
@@ -324,19 +310,24 @@
 
     <!-- ====== PAINEL: LOJA ====== -->
     <div class="main-tab-panel" id="panel-loja">
-    <!-- Loja Section -->
-    <section id="loja" class="py-20 bg-white">
-        <div class="container mx-auto px-6">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold mb-6 text-blue-matte">LOJA VIRTUAL</h2>
-                <p class="text-xl text-black max-w-3xl mx-auto">
-                    Produtos físicos e digitais para elevar sua performance
-                </p>
+    <section id="loja" class="store-page">
+        <div class="store-intro">
+            <div class="container mx-auto px-6 store-intro-inner">
+                <div class="market-eyebrow">PLATAFORMA FREITAS · LOJA OFICIAL</div>
+                <h2>LOJA <em>VIRTUAL</em></h2>
+                <p>Produtos físicos e digitais para elevar sua performance.</p>
             </div>
-            
-            <!-- Container dinâmico para os produtos -->
-            <div id="productsContainer" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        </div>
+
+        <div class="store-products">
+            <div class="container mx-auto px-6">
+                <div class="store-products-heading">
+                    <h3>PRODUTOS PARA SUA JORNADA</h3>
+                    <span>Físicos e digitais</span>
+                </div>
+                <div id="productsContainer" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <!-- Os produtos serão carregados aqui via JavaScript -->
+                </div>
             </div>
         </div>
     </section>
@@ -1530,7 +1521,7 @@
         }
     </script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-    <script src="script.js?v=ranking-team-identity-1"></script>
+    <script src="script.js?v=carousel-auto-height-1"></script>
     
     <style>
         /* Esconder botões flutuantes no mobile quando modal estiver aberto */

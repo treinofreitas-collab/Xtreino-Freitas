@@ -28,6 +28,10 @@ body.account-page textarea {
     border-bottom: 1px solid rgba(255, 255, 255, .1) !important;
 }
 
+body.account-page > header.account-site-header {
+    top: 0 !important;
+}
+
 .account-site-header::before {
     position: absolute;
     z-index: 1;

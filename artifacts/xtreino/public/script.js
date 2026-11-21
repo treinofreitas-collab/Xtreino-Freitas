@@ -2909,6 +2909,27 @@ function initCarousel() {
         return container.getBoundingClientRect().width || container.offsetWidth || 0;
     }
 
+    function syncActiveSlideHeight() {
+        if (!viewport) return;
+        if (window.innerWidth > 767) {
+            viewport.style.height = '';
+            return;
+        }
+        const activeSlide = track.children[index];
+        if (!activeSlide) return;
+        const content = activeSlide.firstElementChild || activeSlide;
+        const slideStyle = window.getComputedStyle(activeSlide);
+        const verticalSpace =
+            parseFloat(slideStyle.paddingTop) +
+            parseFloat(slideStyle.paddingBottom) +
+            parseFloat(slideStyle.borderTopWidth) +
+            parseFloat(slideStyle.borderBottomWidth);
+        const height = Math.ceil(content.getBoundingClientRect().height + verticalSpace);
+        if (height > 0 && Math.abs((parseFloat(viewport.style.height) || 0) - height) > 1) {
+            viewport.style.height = `${height}px`;
+        }
+    }
+
     function applyWidths() {
         const w = slideWidth();
         if (!w) return;
@@ -2923,6 +2944,7 @@ function initCarousel() {
     function update() {
         const w = slideWidth();
         track.style.transform = `translateX(-${index * w}px)`;
+        syncActiveSlideHeight();
     }
 
     function go(dir) {
@@ -2944,6 +2966,15 @@ function initCarousel() {
 
     const onResize = () => { applyWidths(); update(); };
     window.addEventListener('resize', onResize);
+    const slideResizeObserver = typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(syncActiveSlideHeight)
+        : null;
+    if (slideResizeObserver) {
+        Array.from(track.children).forEach(slide => {
+            slideResizeObserver.observe(slide);
+            if (slide.firstElementChild) slideResizeObserver.observe(slide.firstElementChild);
+        });
+    }
 
     const onPrev = () => { stopAuto(); go(-1); startAuto(); };
     const onNext = () => { stopAuto(); go(1);  startAuto(); };
@@ -2967,6 +2998,7 @@ function initCarousel() {
     window._carouselCleanup = () => {
         stopAuto();
         window.removeEventListener('resize', onResize);
+        if (slideResizeObserver) slideResizeObserver.disconnect();
         prev.removeEventListener('click', onPrev);
         next.removeEventListener('click', onNext);
         track.removeEventListener('touchstart', onTouchStart);
