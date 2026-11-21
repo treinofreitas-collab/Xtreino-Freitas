@@ -1534,14 +1534,14 @@
 
     <!-- ===== SISTEMA DE ABAS JS ===== -->
     <script>
-    function switchMainTab(tabId) {
+    function switchMainTab(tabId, scrollBehavior) {
         // Eventos agora está integrado na Home — redireciona e rola
         if (tabId === 'eventos') {
-            switchMainTab('home');
+            switchMainTab('home', scrollBehavior);
             setTimeout(function() {
-                var el = document.getElementById('xtreinos');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }, 80);
+                var target = document.querySelector('#xtreinos h2') || document.getElementById('xtreinos');
+                if (target) target.scrollIntoView({ block: 'start', behavior: scrollBehavior || 'smooth' });
+            }, scrollBehavior === 'instant' ? 0 : 80);
             filterEventsByCategory('all');
             return;
         }
@@ -1567,13 +1567,24 @@
             if (typeof loadProductsFromFirestore === 'function') loadProductsFromFirestore();
         }
 
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: scrollBehavior || 'smooth' });
     }
 
     document.addEventListener('DOMContentLoaded', function() {
         var requestedTab = new URLSearchParams(window.location.search).get('tab');
         var supportedTabs = ['home', 'eventos', 'loja', 'sobre', 'contato'];
-        switchMainTab(supportedTabs.includes(requestedTab) ? requestedTab : 'home');
+        var isMobile = window.matchMedia('(max-width: 767px)').matches;
+        var initialTab = supportedTabs.includes(requestedTab) ? requestedTab : (isMobile ? 'eventos' : 'home');
+        switchMainTab(initialTab, initialTab === 'eventos' ? 'instant' : undefined);
+        if (initialTab === 'eventos') {
+            window.addEventListener('load', function() {
+                var homePanel = document.getElementById('panel-home');
+                var target = document.querySelector('#xtreinos h2') || document.getElementById('xtreinos');
+                if (homePanel && homePanel.classList.contains('tab-active') && target) {
+                    target.scrollIntoView({ block: 'start', behavior: 'instant' });
+                }
+            }, { once: true });
+        }
     });
     </script>
 

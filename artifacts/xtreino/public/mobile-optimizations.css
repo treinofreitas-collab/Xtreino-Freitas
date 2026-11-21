@@ -1307,6 +1307,7 @@ body > header .bg-gradient-to-br { background: var(--brand-green-2) !important; 
     color: var(--brand-black) !important;
     font: 900 42px/.95 var(--xt-display) !important;
     letter-spacing: .02em;
+    scroll-margin-top: 182px;
 }
 #xtreinos .text-center p { margin-top: 5px; }
 #xtreinos .text-center p:nth-of-type(1) { color: var(--xt-muted); font-size: 13px; }
@@ -1495,8 +1496,9 @@ body > header .bg-gradient-to-br { background: var(--brand-green-2) !important; 
     .event-jump { margin: 0 0 0 auto; white-space: nowrap; }
     #panel-home > section:nth-of-type(2) { padding: 20px 0 16px !important; }
     #panel-home > section:nth-of-type(2) h2 { font-size: 25px; }
-    #xtreinos { padding: 29px 0 70px !important; scroll-margin-top: 86px; }
+    #xtreinos { padding: 29px 0 70px !important; scroll-margin-top: 98px; }
     #xtreinos h2 { font-size: 38px !important; }
+    #xtreinos h2 { scroll-margin-top: 112px; }
     #xtreinos > .container > .text-center { text-align: center !important; }
     #eventSubTabs { margin-left: -4px; margin-right: -4px; }
     #eventSubTabs .event-sub-tab { padding: 12px 13px !important; }
