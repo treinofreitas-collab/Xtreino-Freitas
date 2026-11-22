@@ -5332,6 +5332,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
       .trim()
       .toLowerCase()
       .replace(/[_\s]+/g, ' ');
+    const normalizeEventName = value => normalize(value)
+      .replace(/^(?:x\s*[- ]?\s*treino|treino)\s+/, '')
+      .replace(/\s*[-–—]\s*/g, ' - ')
+      .trim();
     const registrationTypeValues = [registration?.eventType, registration?.event_type].map(normalize).filter(Boolean);
     const registrationTypes = registrationTypeValues.map(type => normalize(canonicalType(type)));
     const expectedTypes = [eventType, evFieldType].map(type => normalize(canonicalType(type))).filter(Boolean);
@@ -5344,7 +5348,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     ].map(normalize).filter(Boolean);
     if (eventId && registrationIds.length) return registrationIds.includes(eventId);
 
-    const selectedName = normalize(eventName);
+    const selectedName = normalizeEventName(eventName);
     if (selectedName) {
       const registrationNames = [
         registration?.eventName,
@@ -5352,7 +5356,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         registration?.title,
         registration?.itemName,
         registration?.item,
-      ].map(normalize).filter(Boolean);
+      ].map(normalizeEventName).filter(Boolean);
       if (registrationNames.some(name => name === selectedName || name.startsWith(`${selectedName} -`))) {
         return true;
       }
