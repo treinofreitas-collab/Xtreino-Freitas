@@ -5611,7 +5611,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             editBtn.disabled = true;
             editBtn.textContent = 'Preparando logo…';
             try {
-              const specLogos = await import('./js/admin-spec-logos.mjs?v=spec-logo-zip-chunks-1');
+              const specLogos = await import('./js/admin-spec-logos.mjs?v=spec-avatar-codes-1');
               const letter = specLogos.normalizeModoLigaSpecLetter(typedLetter);
               if (!letter) {
                 window.alert('Letra inválida. Use uma letra de A a Z.');
@@ -14618,7 +14618,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                     }
                     break;
                 case 'sectionSpecLogos':
-                    await import('./js/admin-spec-logos.mjs?v=spec-logo-single-folder-archive-10')
+                    await import('./js/admin-spec-logos.mjs?v=spec-avatar-codes-1')
                         .then(m => m.openSpecLogosAdmin())
                         .catch(error => {
                             console.error('[SPEC] Falha ao carregar as logos:', error);

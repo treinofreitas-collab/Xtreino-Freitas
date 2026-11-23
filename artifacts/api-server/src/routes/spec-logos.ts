@@ -14,8 +14,8 @@ const MAX_LOGO_BATCH_BYTES = 10 * 1024 * 1024;
 const MAX_LOGO_BATCH_COUNT = 15;
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const STORAGE_ROOT = "teams/modo-liga/logos/spec";
-const SPEC_CODE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])\.png$/;
-const SPEC_CODE_VALUE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])$/;
+const SPEC_CODE_PATTERN = /^9020000(?:3[4-9]|[45][0-9]|30|0[67])\.png$/;
+const SPEC_CODE_VALUE_PATTERN = /^9020000(?:3[4-9]|[45][0-9]|30|0[67])$/;
 
 function firstString(value: unknown): string | undefined {
   const candidate = Array.isArray(value) ? value[0] : value;

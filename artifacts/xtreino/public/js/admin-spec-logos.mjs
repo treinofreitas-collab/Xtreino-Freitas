@@ -10,6 +10,11 @@ const HOURS = ['19', '20', '21', '22', '23', '00'];
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const MODO_LIGA_LETTERS = LETTERS.join('');
 const FIRST_CODE = 902000034;
+const AVATAR_CODES = [
+  { selection: 'avatar:kelly', name: 'Kelly', code: '902000007' },
+  { selection: 'avatar:maxim', name: 'Maxim', code: '902000030' },
+  { selection: 'avatar:andrew', name: 'Andrew', code: '902000006' },
+];
 const STORAGE_ROOT = 'teams/modo-liga/logos/spec';
 const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/+esm';
 const BACKGROUND_MODEL = 'onnx-community/ormbg-ONNX';
@@ -32,6 +37,32 @@ let specZipLibraryPromise = null;
 function codeForLetter(letter) {
   const index = LETTERS.indexOf(String(letter || '').toUpperCase());
   return index < 0 ? '' : String(FIRST_CODE + index);
+}
+
+function codeForSelection(selection) {
+  const value = String(selection || '').trim();
+  const letterCode = codeForLetter(value);
+  if (letterCode) return letterCode;
+  return AVATAR_CODES.find(avatar => avatar.selection === value)?.code || '';
+}
+
+function labelForSelection(selection) {
+  const value = String(selection || '').trim();
+  if (LETTERS.includes(value)) return `Letra ${value}`;
+  const avatar = AVATAR_CODES.find(item => item.selection === value);
+  return avatar ? `Avatar ${avatar.name}` : '';
+}
+
+function labelForCode(code) {
+  const letter = letterForCode(code);
+  if (letter) return `Letra ${letter}`;
+  const avatar = AVATAR_CODES.find(item => item.code === String(code));
+  return avatar ? `Avatar ${avatar.name}` : '';
+}
+
+function isValidSpecLogoCode(code) {
+  const value = String(code || '');
+  return Boolean(letterForCode(value) || AVATAR_CODES.some(avatar => avatar.code === value));
 }
 
 export function normalizeModoLigaSpecLetter(value) {
@@ -97,7 +128,7 @@ export function splitSpecLogoDownloadBatches(files, maxBytes = MAX_DOWNLOAD_BATC
   const parts = [];
   let current = null;
   files.forEach((file, fileIndex) => {
-    if (!/^9020000(?:3[4-9]|[45][0-9])$/.test(file?.code || '')) {
+    if (!isValidSpecLogoCode(file?.code)) {
       throw new Error('O servidor retornou um código de logo inválido.');
     }
     const knownSize = Number.isSafeInteger(file.totalBytes) && file.totalBytes >= 0;
@@ -149,7 +180,14 @@ function ensureFirebaseAccess() {
 
 function renderShell() {
   const hourOptions = HOURS.map(hour => `<option value="${hour}">${hour}H</option>`).join('');
-  const letterOptions = LETTERS.map(letter => `<option value="${letter}">${letter}</option>`).join('');
+  const letterOptions = `
+    <optgroup label="Letras">
+      ${LETTERS.map(letter => `<option value="${letter}">${letter}</option>`).join('')}
+    </optgroup>
+    <optgroup label="Avatares">
+      ${AVATAR_CODES.map(avatar => `<option value="${avatar.selection}">${avatar.name}</option>`).join('')}
+    </optgroup>
+  `;
   const streamerMode = isStreamer();
   const uploadControls = canUpload()
     ? `
@@ -160,7 +198,7 @@ function renderShell() {
           <label class="text-xs font-semibold text-slate-600">Horário
             <select id="specLogoHour" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800">${hourOptions}</select>
           </label>
-          <label class="text-xs font-semibold text-slate-600">Letra
+          <label class="text-xs font-semibold text-slate-600">Letra ou avatar
             <select id="specLogoLetter" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800">${letterOptions}</select>
           </label>
           <div class="text-xs font-semibold text-slate-600">Código SPEC
@@ -312,13 +350,13 @@ function getHourForList() {
 }
 
 function updateCodeLabel() {
-  const code = codeForLetter(selectedLetter());
+  const code = codeForSelection(selectedLetter());
   const output = root?.querySelector('#specLogoCode');
   const saveLabel = root?.querySelector('#specLogoSave [data-spec-code]');
   if (output) output.textContent = code;
   if (saveLabel) saveLabel.textContent = code;
   updateHourLabel();
-  if (pendingLogo && (pendingLogo.hour !== selectedHour() || pendingLogo.letter !== selectedLetter())) {
+  if (pendingLogo && (pendingLogo.hour !== selectedHour() || pendingLogo.selection !== selectedLetter())) {
     clearPendingPreview();
   }
 }
@@ -551,8 +589,9 @@ async function processSelectedLogo() {
   const saveButton = root.querySelector('#specLogoSave');
   const selected = {
     hour: selectedHour(),
-    letter: selectedLetter(),
-    code: codeForLetter(selectedLetter()),
+    selection: selectedLetter(),
+    label: labelForSelection(selectedLetter()),
+    code: codeForSelection(selectedLetter()),
   };
   clearPendingPreview();
   if (processButton) processButton.disabled = true;
@@ -624,7 +663,7 @@ async function processSelectedLogo() {
     const previewName = root.querySelector('#specLogoPreviewName');
     const undoButton = root.querySelector('#specLogoUndo');
     if (undoButton) undoButton.disabled = true;
-    if (previewName) previewName.textContent = `${selected.hour}H • ${selected.letter} • ${selected.code}.png • ${methodDescription}`;
+    if (previewName) previewName.textContent = `${selected.hour}H • ${selected.label} • ${selected.code}.png • ${methodDescription}`;
     if (preview) preview.classList.remove('hidden');
     if (saveButton) saveButton.disabled = false;
     setStatus(completionMessage || `Prévia pronta por ${methodDescription}. Use Restaurar/Apagar para corrigir detalhes antes de salvar.`, completionKind);
@@ -803,7 +842,7 @@ async function savePendingLogo() {
     return;
   }
 
-  const { hour, letter, code } = pendingLogo;
+  const { hour, label, code } = pendingLogo;
   const path = storagePath(hour, code);
   const button = root.querySelector('#specLogoSave');
   try {
@@ -822,7 +861,7 @@ async function savePendingLogo() {
         throw metadataError;
       }
     }
-    if (exists && !window.confirm(`Já existe uma logo para ${letter} às ${hour}H. Deseja substituí-la?`)) return;
+    if (exists && !window.confirm(`Já existe uma logo para ${label} às ${hour}H. Deseja substituí-la?`)) return;
     if (button) button.disabled = true;
     setStatus(`Salvando ${code}.png para ${hour}H…`);
     const uploaded = await uploadBytes(target, blob, {
@@ -835,7 +874,7 @@ async function savePendingLogo() {
     if (fileInput) fileInput.value = '';
     selectedLogoFile = null;
     clearSourceFilePreview();
-    setStatus(`Logo salva para ${hour}H: ${code}.png (${letter}).`, 'success');
+    setStatus(`Logo salva para ${hour}H: ${code}.png (${labelForCode(code)}).`, 'success');
     await refreshLogoList(hour);
   } catch (error) {
     setStatus(error?.code === 'storage/unauthorized'
@@ -944,11 +983,11 @@ async function listLogos(hour) {
     .map(item => {
       const match = item.name.match(/^(\d+)\.png$/i);
       const code = match?.[1] || '';
-      const letter = letterForCode(code);
-      return letter ? { item, code, letter } : null;
+      const label = labelForCode(code);
+      return label ? { item, code, label } : null;
     })
     .filter(Boolean)
-    .sort((a, b) => a.letter.localeCompare(b.letter));
+    .sort((a, b) => a.label.localeCompare(b.label));
   return Promise.all(entries.map(async entry => ({
     ...entry,
     url: await getDownloadURL(entry.item),
@@ -1100,10 +1139,10 @@ async function refreshLogoList(hour = getHourForList()) {
     list.innerHTML = entries.map(entry => `
       <div class="flex items-center gap-3 rounded-lg border border-slate-200 p-3">
         <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200" style="background-color:#fff;background-image:linear-gradient(45deg,#e5e7eb 25%,transparent 25%),linear-gradient(-45deg,#e5e7eb 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e5e7eb 75%),linear-gradient(-45deg,transparent 75%,#e5e7eb 75%);background-size:12px 12px;background-position:0 0,0 6px,6px -6px,-6px 0">
-          <img src="${escapeHtml(entry.url)}" alt="Logo ${entry.letter}" class="h-full w-full object-contain">
+          <img src="${escapeHtml(entry.url)}" alt="${escapeHtml(entry.label)}" class="h-full w-full object-contain">
         </div>
         <div class="min-w-0 flex-1">
-          <p class="text-sm font-semibold text-slate-800">Letra ${entry.letter}</p>
+          <p class="text-sm font-semibold text-slate-800">${escapeHtml(entry.label)}</p>
           <p class="font-mono text-xs text-slate-500">${entry.code}.png</p>
         </div>
         <div class="flex shrink-0 items-center gap-1.5">
@@ -1236,7 +1275,7 @@ async function fetchSpecLogoBatchFiles(hour, token, part, batchIndex, batchCount
     }
     let receivedChunkBytes = 0;
     for (const logo of payload.logos) {
-      if (!/^9020000(?:3[4-9]|[45][0-9])$/.test(logo?.code || '')
+      if (!isValidSpecLogoCode(logo?.code)
         || !expectedCodes.has(logo.code)
         || !Number.isSafeInteger(logo.offset) || logo.offset < 0
         || !Number.isSafeInteger(logo.totalBytes) || logo.totalBytes < 1
@@ -1506,6 +1545,8 @@ export async function openSpecLogosAdmin() {
 }
 
 export const specLogoCodeForLetter = codeForLetter;
+export const specLogoCodeForSelection = codeForSelection;
+export { isValidSpecLogoCode };
 export const specLogoLetterForCode = letterForCode;
 export const specLogoStoragePath = storagePath;
 export const SPEC_LOGO_HOURS = HOURS;
