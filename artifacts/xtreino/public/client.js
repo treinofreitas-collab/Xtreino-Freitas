@@ -606,12 +606,12 @@ function rankingLogoMarkup(team, size = 34) {
 function generalRankingRowMarkup(team, rank, compact = false) {
     const teamName = escapeHtml(team?.teamName || 'Equipe');
     const points = Number(team?.totalPoints || 0).toLocaleString('pt-BR');
-    const rankColor = rank === 1 ? '#ecd414' : rank === 2 ? '#cbd5e1' : rank === 3 ? '#d29a63' : '#94a3b8';
-    return `<div style="display:flex;align-items:center;gap:10px;padding:${compact ? '8px 9px' : '10px 8px'};border-bottom:1px solid rgba(255,255,255,.055)">
+    const rankColor = rank === 1 ? '#8b6b00' : rank === 2 ? '#596579' : rank === 3 ? '#8b4f1f' : '#52615c';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:${compact ? '8px 9px' : '10px 8px'};border-bottom:1px solid rgba(20,36,33,.12)">
         <span style="min-width:34px;color:${rankColor};font-size:13px;font-weight:900">#${Number(rank) || '—'}</span>
         ${rankingLogoMarkup(team, compact ? 30 : 34)}
-        <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f8fafc;font-size:${compact ? '11px' : '12px'};font-weight:750">${teamName}</span>
-        <span style="white-space:nowrap;color:#42d4cc;font-size:12px;font-weight:900">${points} pts</span>
+        <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#142421;font-size:${compact ? '11px' : '12px'};font-weight:750">${teamName}</span>
+        <span style="white-space:nowrap;color:#087b72;font-size:12px;font-weight:900">${points} pts</span>
     </div>`;
 }
 
