@@ -58,6 +58,45 @@ test('does not guess when a short organization code points to multiple teams', (
   assert.deepEqual(result.candidates.map(team => team.teamName), ['4S-CEO', '4S-ELITE']);
 });
 
+test('uses an identified organization sibling to map the remaining A/B team', () => {
+  const splitOrganizationRoster = [
+    { slot: 1, label: 'TIME A', teamName: 'REAL CRIA A' },
+    { slot: 2, label: 'TIME B', teamName: 'REAL CRIA B' },
+  ];
+  const parsed = {
+    teams: [
+      { teamName: 'REAL CRIA', rank: 3 },
+      { teamName: 'REAL CRIA B', rank: 1 },
+    ],
+  };
+  const mapped = mapMatchResultTeamsToRoster(parsed, splitOrganizationRoster);
+
+  assert.deepEqual(
+    mapped.teams.map(team => [team.sourceTeamName, team.teamName, team.slot]),
+    [
+      ['REAL CRIA', 'REAL CRIA A', 1],
+      ['REAL CRIA B', 'REAL CRIA B', 2],
+    ],
+  );
+  assert.deepEqual(mapped.ignored, []);
+  assert.ok(mapped.warnings.some(warning => warning.includes('REAL CRIA A')));
+});
+
+test('keeps an organization-only name ambiguous when no sibling is identified', () => {
+  const splitOrganizationRoster = [
+    { slot: 1, label: 'TIME A', teamName: 'REAL CRIA A' },
+    { slot: 2, label: 'TIME B', teamName: 'REAL CRIA B' },
+  ];
+  const mapped = mapMatchResultTeamsToRoster(
+    { teams: [{ teamName: 'REAL CRIA', rank: 3 }] },
+    splitOrganizationRoster,
+  );
+
+  assert.deepEqual(mapped.teams, []);
+  assert.deepEqual(mapped.ignored, ['REAL CRIA']);
+  assert.ok(mapped.warnings.some(warning => warning.includes('REAL CRIA A, REAL CRIA B')));
+});
+
 test('keeps names that have no convincing candidate unmatched', () => {
   assert.equal(resolveMatchResultTeam('STG KILLERS', roster).status, 'unmatched');
 });

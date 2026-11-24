@@ -209,42 +209,87 @@ export function resolveMatchResultTeam(teamName, roster) {
 }
 
 export function mapMatchResultTeamsToRoster(parsed, roster) {
-  const teams = [];
   const warnings = [];
   const errors = [];
   const ignored = [];
   const usedSlots = new Set();
+  const results = Array.isArray(parsed?.teams) ? parsed.teams : [];
+  const resolutions = results.map(result => resolveMatchResultTeam(result.teamName, roster));
+  const mappedByIndex = new Map();
+  const handled = new Set();
 
-  for (const result of parsed?.teams || []) {
-    const resolution = resolveMatchResultTeam(result.teamName, roster);
-    if (resolution.status === 'exact' || resolution.status === 'partial') {
-      const officialTeam = resolution.team;
-      if (usedSlots.has(officialTeam.slot)) {
-        errors.push(`Mais de um nome do log corresponde ao slot ${officialTeam.label || officialTeam.slot} (${officialTeam.teamName}).`);
-        continue;
-      }
-      usedSlots.add(officialTeam.slot);
-      teams.push({
-        ...result,
-        sourceTeamName: result.teamName,
-        teamName: officialTeam.teamName,
-        slot: officialTeam.slot,
-        slotLabel: officialTeam.label || `SLOT ${String(officialTeam.slot).padStart(2, '0')}`,
-        matchType: resolution.status,
-      });
-      if (resolution.status === 'partial') {
-        warnings.push(`Nome parcial reconhecido: "${result.teamName}" → ${officialTeam.label || `slot ${officialTeam.slot}`} · ${officialTeam.teamName}. Confira a correspondência.`);
-      }
-      continue;
+  const assign = (index, team, matchType, contextual = false) => {
+    if (usedSlots.has(team.slot)) {
+      errors.push(`Mais de um nome do log corresponde ao slot ${team.label || team.slot} (${team.teamName}).`);
+      return false;
     }
+    usedSlots.add(team.slot);
+    const result = results[index];
+    mappedByIndex.set(index, {
+      ...result,
+      sourceTeamName: result.teamName,
+      teamName: team.teamName,
+      slot: team.slot,
+      slotLabel: team.label || `SLOT ${String(team.slot).padStart(2, '0')}`,
+      matchType: contextual ? 'contextual' : matchType,
+    });
+    if (contextual) {
+      warnings.push(`Nome "${result.teamName}" associado a ${team.label || `slot ${team.slot}`} · ${team.teamName}, pois o outro time da organização já foi identificado no log. Confira a correspondência.`);
+    } else if (matchType === 'partial') {
+      warnings.push(`Nome parcial reconhecido: "${result.teamName}" → ${team.label || `slot ${team.slot}`} · ${team.teamName}. Confira a correspondência.`);
+    }
+    return true;
+  };
 
-    const candidateNames = resolution.candidates.map(candidate => candidate.teamName).join(', ');
+  // Reserve exact and uniquely partial matches first, regardless of their
+  // position in the log, so they can disambiguate a shared organization name.
+  resolutions.forEach((resolution, index) => {
+    if (resolution.status !== 'exact' && resolution.status !== 'partial') return;
+    handled.add(index);
+    assign(index, resolution.team, resolution.status);
+  });
+
+  // An organization-only name such as "REAL CRIA" can identify the remaining
+  // A/B roster slot once the explicitly named sibling has claimed its own slot.
+  let assignedContextualMatch = true;
+  while (assignedContextualMatch) {
+    assignedContextualMatch = false;
+    resolutions.forEach((resolution, index) => {
+      if (handled.has(index) || resolution.status !== 'ambiguous') return;
+      const baseKey = matchResultTeamKey(results[index].teamName);
+      const candidateKeys = resolution.candidates.map(candidate => matchResultTeamKey(candidate.teamName));
+      const isExplicitABPair = candidateKeys.length === 2 &&
+        candidateKeys.includes(`${baseKey} a`) &&
+        candidateKeys.includes(`${baseKey} b`);
+      if (!isExplicitABPair) return;
+      const availableCandidates = resolution.candidates.filter(candidate => !usedSlots.has(candidate.slot));
+      if (availableCandidates.length !== 1) return;
+      handled.add(index);
+      if (assign(index, availableCandidates[0], 'partial', true)) assignedContextualMatch = true;
+    });
+  }
+
+  resolutions.forEach((resolution, index) => {
+    if (handled.has(index)) return;
+    const result = results[index];
+    const availableCandidates = resolution.status === 'ambiguous'
+      ? resolution.candidates.filter(candidate => !usedSlots.has(candidate.slot))
+      : [];
+    const candidateNames = resolution.candidates
+      .map(candidate => candidate.teamName)
+      .join(', ');
     const reason = resolution.status === 'ambiguous'
-      ? `pode corresponder a ${candidateNames}`
+      ? availableCandidates.length
+        ? `pode corresponder a ${candidateNames}`
+        : `corresponde a equipes já identificadas (${candidateNames})`
       : 'não consta na lista oficial';
     ignored.push(result.teamName);
     warnings.push(`"${result.teamName}" ${reason}; sua pontuação será ignorada.`);
-  }
+  });
+
+  const teams = Array.from(mappedByIndex.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([, team]) => team);
 
   if (parsed?.teams?.length && !teams.length && !errors.length) {
     errors.push('Nenhuma equipe do log correspondeu à lista de slots. Confira os nomes antes de exportar.');

@@ -9,7 +9,7 @@ import {
   parseMatchResultLog,
   matchResultTeamKey,
   resolveMatchResultTeam,
-} from './freefire-matchresult.mjs?v=team-abbreviation-matching-1';
+} from './freefire-matchresult.mjs?v=team-abbreviation-matching-2';
 import {
   SPEC_LOGO_HOURS,
   loadModoLigaSpecLogoCatalog,
