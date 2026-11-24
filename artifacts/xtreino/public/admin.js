@@ -5611,7 +5611,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             editBtn.disabled = true;
             editBtn.textContent = 'Preparando logo…';
             try {
-              const specLogos = await import('./js/admin-spec-logos.mjs?v=spec-avatar-codes-1');
+              const specLogos = await import('./js/admin-spec-logos.mjs?v=spec-registration-original-logo-1');
               const letter = specLogos.normalizeModoLigaSpecLetter(typedLetter);
               if (!letter) {
                 window.alert('Letra inválida. Use uma letra de A a Z.');
@@ -5654,13 +5654,18 @@ window.showWarningToast = function(message, title = 'Atenção') {
                 teamName: registration.teamName || registration.name || '',
                 previousLetter: registration.modoLigaSpecLetter || '',
                 previousHour: registration.modoLigaSpecHour || targetHH,
+                keepOriginalBackground: true,
                 onProgress: message => {
                   editBtn.title = message;
                   editBtn.textContent = /baixando|carregando/i.test(message)
                     ? 'Carregando IA…'
-                    : /fundo complexo|removendo|preparando/i.test(message)
+                    : /fundo original|mantendo/i.test(message)
+                      ? 'Mantendo fundo…'
+                      : /removendo/i.test(message)
                       ? 'Removendo fundo…'
-                      : 'Salvando logo…';
+                      : /preparando/i.test(message)
+                        ? 'Preparando logo…'
+                        : 'Salvando logo…';
                 },
               });
               if (result.cancelled) return;
@@ -5678,7 +5683,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
                 : '';
               showToast(
                 'success',
-                `Logo sem fundo salva para ${targetHH}H • letra ${letter} • código ${result.code}. A vaga numérica foi mantida.${cleanupMessage}`,
+                `Logo salva para ${targetHH}H • letra ${letter} • código ${result.code}, mantendo o fundo original. A vaga numérica foi mantida.${cleanupMessage}`,
                 'Logo vinculada ao SPEC',
               );
               openManageHourModal(date, eventType, hour, rawEventId, evFieldType, eventName);
@@ -14618,7 +14623,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                     }
                     break;
                 case 'sectionSpecLogos':
-                    await import('./js/admin-spec-logos.mjs?v=spec-avatar-codes-1')
+                    await import('./js/admin-spec-logos.mjs?v=spec-registration-original-logo-1')
                         .then(m => m.openSpecLogosAdmin())
                         .catch(error => {
                             console.error('[SPEC] Falha ao carregar as logos:', error);
@@ -14627,7 +14632,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionFreefireScoring':
-                    await import('./js/admin-freefire-scoring.mjs?v=team-abbreviation-matching-1')
+                    await import('./js/admin-freefire-scoring.mjs?v=logo-source-priority-1')
                         .then(m => m.openFreefireScoringAdmin())
                         .catch(error => {
                             console.error('[Free Fire] Falha ao carregar o placar:', error);
@@ -14650,7 +14655,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionRanking':
-                    await import('./js/admin-freefire-scoring.mjs?v=team-abbreviation-matching-1')
+                    await import('./js/admin-freefire-scoring.mjs?v=logo-source-priority-1')
                         .then(m => m.openFreefireRankingAdmin())
                         .catch(error => {
                             console.error('[Ranking] Falha ao carregar a seção:', error);

@@ -509,14 +509,20 @@ function resizeImageData(imageData, width, height) {
   return targetContext.getImageData(0, 0, width, height);
 }
 
-async function makeAutomaticSpecLogoPng(file, onProgress = setStatus) {
+async function makeSpecLogoPng(file, onProgress = setStatus, { keepOriginalBackground = false } = {}) {
+  if (keepOriginalBackground) {
+    onProgress?.('Mantendo o fundo original e preparando o PNG para o SPEC…');
+  }
   const prepared = await prepareSourceImage(file);
   try {
     const source = prepared.sourceImageData;
     let processed;
     let methodDescription;
 
-    if (hasTransparentEdgeBackground(source)) {
+    if (keepOriginalBackground) {
+      processed = cloneImageData(source);
+      methodDescription = 'fundo original mantido';
+    } else if (hasTransparentEdgeBackground(source)) {
       processed = cloneImageData(source);
       methodDescription = 'logo já transparente';
     } else if (hasUniformEdgeBackground(source)) {
@@ -928,8 +934,10 @@ export async function saveRegistrationLogoToSpec(file, {
     return { cancelled: true, hour: normalizedHour, letter: normalizedLetter, code };
   }
 
-  onProgress?.('Preparando a logo e removendo o fundo automaticamente…');
-  const { blob, methodDescription } = await makeAutomaticSpecLogoPng(file, onProgress);
+  onProgress?.('Preparando a logo original para o SPEC…');
+  const { blob, methodDescription } = await makeSpecLogoPng(file, onProgress, {
+    keepOriginalBackground: true,
+  });
   const uploaded = await uploadBytes(target, blob, {
     contentType: 'image/png',
     cacheControl: 'public,max-age=60',

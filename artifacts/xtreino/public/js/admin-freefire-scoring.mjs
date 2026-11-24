@@ -290,18 +290,26 @@ export function resolveModoLigaTeamLogo({
   purchaseLogo = null,
   specLogo = null,
   associationLogo = null,
+  preferNewest = false,
 } = {}) {
   const candidates = [
     [manualLogo, 'custom'],
-    [purchaseLogo, 'purchase'],
     [specLogo, 'spec'],
+    [purchaseLogo, 'purchase'],
     [associationLogo, 'association'],
   ].filter(([logo]) => logo?.logoUrl);
-  const sourcePriority = { custom: 4, purchase: 3, spec: 2, association: 1 };
-  candidates.sort(([first, firstSource], [second, secondSource]) =>
-    Number(second.updatedAtMs || second.purchaseTimestamp || 0) -
-      Number(first.updatedAtMs || first.purchaseTimestamp || 0) ||
-    sourcePriority[secondSource] - sourcePriority[firstSource]);
+  const sourcePriority = { custom: 4, spec: 3, purchase: 2, association: 1 };
+  const newestPriority = { custom: 4, purchase: 3, spec: 2, association: 1 };
+  candidates.sort(([first, firstSource], [second, secondSource]) => {
+    const priority = preferNewest ? newestPriority : sourcePriority;
+    const priorityDifference = priority[secondSource] - priority[firstSource];
+    const timestampDifference =
+      Number(second.updatedAtMs || second.purchaseTimestamp || 0) -
+      Number(first.updatedAtMs || first.purchaseTimestamp || 0);
+    return preferNewest
+      ? timestampDifference || priorityDifference
+      : priorityDifference || timestampDifference;
+  });
   const [logo, source] = candidates[0] || [];
   return logo ? {
     ...logo,
@@ -2854,6 +2862,7 @@ async function attachGeneralRankingLogos(rows) {
       specLogo: carriedLogo?.source === 'spec' ? carriedLogo : null,
       associationLogo: modoLigaLogoAssociationCatalog.get(key) ||
         (carriedLogo?.source === 'association' ? carriedLogo : null),
+      preferNewest: true,
     });
     return bestLogo?.logoUrl
       ? {
@@ -2895,6 +2904,7 @@ async function buildGeneralRankingLogoCatalog(teams) {
       manualLogo: modoLigaLogoCatalog.get(key),
       purchaseLogo: purchaseCatalog.get(key),
       associationLogo: modoLigaLogoAssociationCatalog.get(key),
+      preferNewest: true,
     });
     return bestLogo?.logoUrl
       ? [[key, {

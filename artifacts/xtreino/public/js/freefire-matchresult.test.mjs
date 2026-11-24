@@ -5,6 +5,7 @@ import {
   parseMatchResultRoster,
   resolveMatchResultTeam,
 } from './freefire-matchresult.mjs';
+import { resolveModoLigaTeamLogo } from './admin-freefire-scoring.mjs';
 
 const rosterText = `⃟🩵 𝑻𝑰𝑴𝑬 𝑨: 4S-CEO🍀
 ⃟🩵 𝑻𝑰𝑴𝑬 𝑩: 4S-ELITE🍀
@@ -81,4 +82,46 @@ test('maps only the unique team and leaves ambiguous or unknown log names out', 
   );
   assert.deepEqual(mapped.ignored, ['4S-SPORTS', 'STG KILLERS']);
   assert.ok(mapped.warnings.some(warning => warning.includes('4S-CEO, 4S-ELITE')));
+});
+
+test('logo priority is manual, SPEC, purchase, then recovered association', () => {
+  const manual = { logoUrl: 'manual.png', updatedAtMs: 1 };
+  const spec = { logoUrl: 'spec.png', updatedAtMs: 2 };
+  const purchase = { logoUrl: 'purchase.png', updatedAtMs: 999 };
+  const recovered = { logoUrl: 'recovered.png', updatedAtMs: 1000 };
+
+  assert.equal(resolveModoLigaTeamLogo({
+    manualLogo: manual,
+    specLogo: spec,
+    purchaseLogo: purchase,
+    associationLogo: recovered,
+  }).logoUrl, 'manual.png');
+  assert.equal(resolveModoLigaTeamLogo({
+    specLogo: spec,
+    purchaseLogo: purchase,
+    associationLogo: recovered,
+  }).logoUrl, 'spec.png');
+  assert.equal(resolveModoLigaTeamLogo({
+    purchaseLogo: purchase,
+    associationLogo: recovered,
+  }).logoUrl, 'purchase.png');
+  assert.equal(resolveModoLigaTeamLogo({
+    associationLogo: recovered,
+  }).logoUrl, 'recovered.png');
+});
+
+test('ranking can still select the newest logo across sources', () => {
+  const result = resolveModoLigaTeamLogo({
+    specLogo: { logoUrl: 'spec.png', updatedAtMs: 1 },
+    purchaseLogo: { logoUrl: 'purchase.png', updatedAtMs: 2 },
+    associationLogo: { logoUrl: 'recovered.png', updatedAtMs: 3 },
+    preferNewest: true,
+  });
+
+  assert.equal(result.logoUrl, 'recovered.png');
+  assert.equal(resolveModoLigaTeamLogo({
+    specLogo: { logoUrl: 'spec.png', updatedAtMs: 5 },
+    purchaseLogo: { logoUrl: 'purchase.png', updatedAtMs: 5 },
+    preferNewest: true,
+  }).logoUrl, 'purchase.png');
 });
