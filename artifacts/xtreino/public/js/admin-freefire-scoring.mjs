@@ -16,12 +16,6 @@ import {
   specLogoCodeForLetter,
 } from './admin-spec-logos.mjs?v=spec-logo-zip-chunks-1';
 import {
-  getVisibleAlphaBounds,
-  hasTransparentEdgeBackground,
-  hasUniformEdgeBackground,
-  removeConnectedEdgeBackground,
-} from './spec-logo-image-tools.mjs?v=leaderboard-logo-cleanup-1';
-import {
   accountRankingTeamId,
   aggregateGeneralRankingImport,
   generalRankingTeamKey,
@@ -183,8 +177,8 @@ export function getModoLigaTemplateRowCenter(imageHeight, rowIndex) {
   return imageHeight * (MODO_LIGA_FIRST_ROW_CENTER + rowIndex * MODO_LIGA_ROW_PITCH);
 }
 
-export function getModoLigaLeaderboardLogoCenterY(imageHeight, rowIndex, logoSize) {
-  return getModoLigaTemplateRowCenter(imageHeight, rowIndex) - logoSize * 0.07;
+export function getModoLigaLeaderboardLogoCenterY(imageHeight, rowIndex) {
+  return getModoLigaTemplateRowCenter(imageHeight, rowIndex);
 }
 
 export function getModoLigaTop3LogoLayout(imageWidth, imageHeight) {
@@ -283,6 +277,69 @@ export function buildModoLigaPurchaseLogoCatalog(registrations, roster) {
   }
 
   return catalog;
+}
+
+export function buildGeneralRankingLogoSyncTeams(registrations, savedLogoSources = []) {
+  const teamsByKey = new Map();
+  const add = (teamName, logoUrl) => {
+    const name = String(teamName || '').trim();
+    const key = matchResultTeamKey(name);
+    if (!key || !String(logoUrl || '').trim() || teamsByKey.has(key)) return;
+    teamsByKey.set(key, { key, teamName: name });
+  };
+  const eligibleStatuses = new Set(['paid', 'approved', 'confirmed']);
+  for (const registration of Array.isArray(registrations) ? registrations : []) {
+    if (!eligibleStatuses.has(String(registration?.status || '').trim().toLowerCase())) continue;
+    add(
+      registration.teamName || registration.team || registration.squadName,
+      registration.teamLogoUrl || registration.teamLogoThumb || registration.logoUrl,
+    );
+  }
+  for (const logo of Array.isArray(savedLogoSources) ? savedLogoSources : []) {
+    add(logo?.teamName, logo?.logoUrl);
+  }
+  return [...teamsByKey.values()];
+}
+
+export function buildGeneralRankingIdLogoCandidates(registrations, rankingTeams) {
+  const existingTeamsById = new Map();
+  for (const team of Array.isArray(rankingTeams) ? rankingTeams : []) {
+    const rankingTeamId = String(team?.rankingTeamId || team?.teamId || '').trim();
+    const key = matchResultTeamKey(team?.teamName);
+    if (rankingTeamId && key) existingTeamsById.set(rankingTeamId, { ...team, key, rankingTeamId });
+  }
+  const candidatesById = new Map();
+  const eligibleStatuses = new Set(['paid', 'approved', 'confirmed']);
+  for (const registration of Array.isArray(registrations) ? registrations : []) {
+    if (!eligibleStatuses.has(String(registration?.status || '').trim().toLowerCase())) continue;
+    const registrationName = registration.teamName || registration.team || registration.squadName;
+    const registrationKey = matchResultTeamKey(registrationName);
+    const rankingTeamId = String(registration.rankingTeamId || registration.teamId || '').trim();
+    const team = existingTeamsById.get(rankingTeamId);
+    const logoUrl = String(
+      registration.teamLogoUrl || registration.teamLogoThumb || registration.logoUrl || '',
+    ).trim();
+    if (!team || !registrationKey || registrationKey !== team.key || !logoUrl) continue;
+
+    const updatedAtMs = registrationLogoTimestampMs(registration);
+    const hasOriginalLogo = Boolean(registration.teamLogoUrl);
+    const current = candidatesById.get(rankingTeamId);
+    if (
+      !current ||
+      updatedAtMs > current.updatedAtMs ||
+      (updatedAtMs === current.updatedAtMs && hasOriginalLogo && !current.hasOriginalLogo)
+    ) {
+      candidatesById.set(rankingTeamId, {
+        teamName: team.teamName,
+        rankingTeamId,
+        logoUrl,
+        source: 'purchase',
+        updatedAtMs,
+        hasOriginalLogo,
+      });
+    }
+  }
+  return [...candidatesById.values()];
 }
 
 export function resolveModoLigaTeamLogo({
@@ -1009,8 +1066,8 @@ async function loadModoLigaSpecLogos(hour, force = false) {
     session.specLogoCatalog = catalog;
     session.specLogoLoadedHour = selectedHour;
     session.specLogoStatus = catalog.size
-      ? `${catalog.size} logo(s) SPEC carregada(s) para ${selectedHour}H. Prioridade: logo manual, compra, SPEC e associação anterior.`
-      : `Nenhuma logo SPEC cadastrada para ${selectedHour}H. Logos manuais, de compra e associações anteriores continuam disponíveis.`;
+      ? `${catalog.size} logo(s) SPEC carregada(s) para ${selectedHour}H. Prioridade: logo manual, SPEC, compra e associação recuperada.`
+      : `Nenhuma logo SPEC cadastrada para ${selectedHour}H. Logos manuais, de compras e recuperadas continuam disponíveis.`;
   } catch (error) {
     if (requestId === session.specLogoRequestId && session.eventHour === selectedHour) {
       session.specLogoCatalog = new Map();
@@ -1464,41 +1521,8 @@ async function loadLogoBlobsThroughApi(urls) {
 }
 
 async function loadLeaderboardLogoBitmap(url, blob = null) {
-  const source = await loadLogoBitmap(url, blob);
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = source.width;
-    canvas.height = source.height;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('O navegador não conseguiu preparar a logo.');
-    context.drawImage(source, 0, 0);
-
-    let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-    if (!hasTransparentEdgeBackground(imageData) && hasUniformEdgeBackground(imageData)) {
-      const cleaned = removeConnectedEdgeBackground(imageData, 42);
-      imageData = new ImageData(cleaned.data, cleaned.width, cleaned.height);
-      context.putImageData(imageData, 0, 0);
-    }
-
-    const bounds = getVisibleAlphaBounds(imageData, 8);
-    if (!bounds) return await createImageBitmap(source);
-    const padding = Math.max(1, Math.round(Math.min(bounds.width, bounds.height) * 0.015));
-    const cropX = Math.max(0, bounds.x - padding);
-    const cropY = Math.max(0, bounds.y - padding);
-    const cropRight = Math.min(canvas.width, bounds.x + bounds.width + padding);
-    const cropBottom = Math.min(canvas.height, bounds.y + bounds.height + padding);
-    const cropWidth = cropRight - cropX;
-    const cropHeight = cropBottom - cropY;
-    const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = cropWidth;
-    cropCanvas.height = cropHeight;
-    const cropContext = cropCanvas.getContext('2d');
-    if (!cropContext) throw new Error('O navegador não conseguiu recortar a logo.');
-    cropContext.drawImage(canvas, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-    return await createImageBitmap(cropCanvas);
-  } finally {
-    source.close?.();
-  }
+  // A classificação deve reproduzir a logo do slot oficial sem remover fundo ou recortar pixels.
+  return loadLogoBitmap(url, blob);
 }
 
 function triggerBlobDownload(blob, filename) {
@@ -2131,7 +2155,7 @@ async function exportMatchResultJpeg() {
     context.textBaseline = 'middle';
     for (const [index, team] of data.standings.slice(0, 15).entries()) {
       const y = getModoLigaTemplateRowCenter(bitmap.height, index);
-      const logoCenterY = getModoLigaLeaderboardLogoCenterY(bitmap.height, index, logoSize);
+      const logoCenterY = getModoLigaLeaderboardLogoCenterY(bitmap.height, index);
       const customLogo = team.logoAsset || teamLogoCatalog.get(matchResultTeamKey(team.teamName));
       let teamLogo = organizationLogo;
       if (customLogo) {
@@ -2145,8 +2169,8 @@ async function exportMatchResultJpeg() {
         teamLogo.height,
         logoX,
         logoCenterY,
-        logoSize * 0.88,
-        logoSize * 0.88,
+        logoSize * 0.80,
+        logoSize * 0.80,
       );
       context.drawImage(teamLogo, logoRect.x, logoRect.y, logoRect.width, logoRect.height);
 
@@ -2510,29 +2534,35 @@ function exportIssue() {
 let rankingPurchaseLogoRows = null;
 let rankingPurchaseLogoRowsLoadedAt = 0;
 const rankingIdentityRowsCache = new Map();
-async function loadRankingPurchaseLogoRows() {
-  if (Array.isArray(rankingPurchaseLogoRows) && Date.now() - rankingPurchaseLogoRowsLoadedAt < 5 * 60 * 1000) {
+async function loadRankingPurchaseLogoRows({ forceRefresh = false } = {}) {
+  if (!forceRefresh && Array.isArray(rankingPurchaseLogoRows) &&
+      Date.now() - rankingPurchaseLogoRowsLoadedAt < 5 * 60 * 1000) {
     return rankingPurchaseLogoRows;
   }
   const role = String(window.lastAppliedRole || window.adminRoleLower || '').toLowerCase().trim();
   const { collection, getDocs, query, where } =
     await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-  let registrationsQuery;
+  const registrations = collection(window.firebaseDb, 'registrations');
+  let registrationsQueries;
   if (role === 'admin') {
-    registrationsQuery = query(
-      collection(window.firebaseDb, 'registrations'),
+    registrationsQueries = [query(
+      registrations,
       where('eventType', '==', 'modo-liga'),
-    );
+    )];
   } else if (['ceo', 'gerente'].includes(role)) {
-    registrationsQuery = query(
-      collection(window.firebaseDb, 'registrations'),
-      where('teamLogoUrl', '>', ''),
-    );
+    registrationsQueries = ['teamLogoUrl', 'teamLogoThumb', 'logoUrl'].map(field => query(
+      registrations,
+      where(field, '>', ''),
+    ));
   } else {
     return [];
   }
-  const snapshot = await getDocs(registrationsQuery);
-  rankingPurchaseLogoRows = snapshot.docs.map(item => item.data());
+  const snapshots = await Promise.all(registrationsQueries.map(getDocs));
+  const uniqueRegistrations = new Map();
+  for (const snapshot of snapshots) {
+    for (const item of snapshot.docs) uniqueRegistrations.set(item.id, item.data());
+  }
+  rankingPurchaseLogoRows = [...uniqueRegistrations.values()];
   rankingPurchaseLogoRowsLoadedAt = Date.now();
   return rankingPurchaseLogoRows;
 }
@@ -2915,6 +2945,111 @@ async function buildGeneralRankingLogoCatalog(teams) {
       : [];
   }));
 }
+
+async function synchronizeRankingLogos() {
+  const button = $('ffSyncRankingLogos');
+  const status = $('ffRankingLogoSyncStatus');
+  if (!button || !status || button.disabled) return;
+  if (!canOpen() || readOnly()) {
+    status.textContent = 'Seu perfil não pode atualizar as logos do Ranking Geral.';
+    return;
+  }
+  if (!window.firebaseDb || !window.firebaseAuth?.currentUser) {
+    status.textContent = 'Entre novamente no painel para sincronizar as logos.';
+    return;
+  }
+  if (!window.confirm(
+    'Buscar logos em compras aprovadas e associações SPEC já salvas? A ação atualiza apenas a logo da equipe e não altera pontos, nomes nem IDs.',
+  )) return;
+
+  button.disabled = true;
+  button.textContent = 'Buscando logos…';
+  status.textContent = 'Consultando compras aprovadas e associações SPEC…';
+  try {
+    await loadModoLigaLogoCatalog(true);
+    if (!modoLigaLogoCatalogLoaded) {
+      throw new Error('Não foi possível carregar as logos manuais e associações SPEC.');
+    }
+    const registrations = await loadRankingPurchaseLogoRows({ forceRefresh: true });
+    const savedLogoSources = [
+      ...modoLigaLogoCatalog.values(),
+      ...modoLigaLogoAssociationCatalog.values(),
+    ];
+    const candidateTeams = buildGeneralRankingLogoSyncTeams(registrations, savedLogoSources);
+    if (!candidateTeams.length) {
+      status.textContent = 'Não encontrei logos aprovadas ou associações SPEC para sincronizar.';
+      return;
+    }
+
+    const rankingRows = await getGeneralRankingTeamsByNames(
+      window.firebaseDb,
+      candidateTeams.map(team => team.teamName),
+    );
+    const rankingIdsByName = new Set(rankingRows
+      .filter(team => String(team.rankingTeamId || team.teamId || '').trim())
+      .map(team => matchResultTeamKey(team.teamName)));
+    const idCandidates = buildGeneralRankingIdLogoCandidates(registrations, rankingRows)
+      .flatMap(candidate => {
+        const key = matchResultTeamKey(candidate.teamName);
+        const logo = resolveModoLigaTeamLogo({
+          manualLogo: modoLigaLogoCatalog.get(key),
+          purchaseLogo: candidate,
+          associationLogo: modoLigaLogoAssociationCatalog.get(key),
+          preferNewest: true,
+        });
+        return logo ? [{ ...candidate, ...logo }] : [];
+      });
+    const unlinkedNameCandidates = candidateTeams.filter(team => !rankingIdsByName.has(team.key));
+    const logoCatalog = unlinkedNameCandidates.length
+      ? await buildGeneralRankingLogoCatalog(unlinkedNameCandidates)
+      : {};
+    const candidateByKey = new Map(unlinkedNameCandidates.map(team => [team.key, team]));
+    const entries = Object.entries(logoCatalog).flatMap(([key, logo]) => {
+      const team = candidateByKey.get(key);
+      return team && logo?.logoUrl
+        ? [{ teamName: team.teamName, ...logo }]
+        : [];
+    });
+    entries.push(...idCandidates);
+    if (!entries.length) {
+      status.textContent = 'As fontes foram consultadas, mas não encontrei logos válidas para essas equipes.';
+      return;
+    }
+
+    let updatedCount = 0;
+    let unchangedCount = 0;
+    let failedCount = 0;
+    const batchSize = 8;
+    for (let start = 0; start < entries.length; start += batchSize) {
+      const batch = entries.slice(start, start + batchSize);
+      const results = await Promise.allSettled(batch.map(entry =>
+        syncGeneralRankingLogoToTeam(window.firebaseDb, {
+          teamName: entry.teamName,
+          rankingTeamId: entry.rankingTeamId || '',
+          logoUrl: entry.logoUrl,
+          source: entry.logoSource || 'purchase',
+          updatedAtMs: entry.logoUpdatedAt ?? entry.updatedAtMs,
+        }),
+      ));
+      for (const result of results) {
+        if (result.status === 'rejected') failedCount += 1;
+        else if (result.value) updatedCount += 1;
+        else unchangedCount += 1;
+      }
+      status.textContent =
+        `Sincronizando logos: ${Math.min(start + batch.length, entries.length)} de ${entries.length} equipes…`;
+    }
+    status.textContent = failedCount
+      ? `Concluído: ${updatedCount} logo(s) atualizada(s), ${unchangedCount} sem alteração ou vínculo seguro e ${failedCount} falha(s). Pontos, nomes e IDs foram preservados.`
+      : `Concluído: ${updatedCount} logo(s) atualizada(s); ${unchangedCount} já estavam atuais, não tinham vínculo seguro ou não tinham equipe no ranking. Pontos, nomes e IDs foram preservados.`;
+  } catch (error) {
+    status.textContent = `Não foi possível sincronizar as logos. ${error.message || 'Verifique o acesso ao Firebase.'}`;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Sincronizar logos existentes';
+  }
+}
+
 async function persistImageModeGeneralRanking() {
   if (state.event !== 'treino' || readOnly()) return null;
   if (!window.firebaseDb || !window.firebaseAuth?.currentUser) {
@@ -3720,8 +3855,12 @@ function build(root) {
       <div class="ff-ranking-import-controls">
         <label class="ff-field">Arquivo inicial do ranking<input id="ffRankingImportFile" type="file" accept=".csv,.tsv,.txt,.json,.html,.htm,text/csv,text/plain,application/json,text/html" ${readOnly() ? 'disabled' : ''}></label>
         <div id="ffRankingImportPreview" class="ff-ranking-import-preview" aria-live="polite">Selecione o arquivo completo baixado do Challenge.place. Aceita CSV, TSV, TXT, JSON ou HTML.</div>
-        <button type="button" id="ffImportRanking" class="ff-button ff-button-primary" disabled>Importar base inicial</button>
+        <div class="ff-ranking-import-actions">
+          <button type="button" id="ffImportRanking" class="ff-button ff-button-primary" disabled>Importar base inicial</button>
+          <button type="button" id="ffSyncRankingLogos" class="ff-button ff-button-light" ${readOnly() ? 'disabled' : ''}>Sincronizar logos existentes</button>
+        </div>
         <p id="ffRankingImportStatus" class="ff-export-note" role="status" aria-live="polite"></p>
+        <p id="ffRankingLogoSyncStatus" class="ff-export-note" role="status" aria-live="polite">Atualiza somente logos de compras aprovadas e associações SPEC já salvas.</p>
       </div>
     </section>
     <section id="ffRankingPhotoPanel" class="ff-panel ff-ranking-photo-panel" aria-labelledby="ffRankingPhotoTitle">
@@ -3923,6 +4062,7 @@ function build(root) {
     readRankingImportFile(e.target.files?.[0]);
   });
   $('ffImportRanking').addEventListener('click', importRankingBase);
+  $('ffSyncRankingLogos').addEventListener('click', synchronizeRankingLogos);
   $('ffRankingTableEvent').addEventListener('change', e => {
     state.rankingTableImport.eventType = String(e.target.value || '');
     state.rankingTableImport.reviewed = false;

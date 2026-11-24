@@ -88,7 +88,7 @@
         })();
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=support-chat-layout-8">
     <link rel="stylesheet" href="mobile-optimizations.css?v=store-theme-2">
 </head>
 <body class="bg-white text-black enterprise-bg">
@@ -1521,7 +1521,7 @@
         }
     </script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-    <script src="script.js?v=carousel-auto-height-3"></script>
+    <script src="script.js?v=support-chat-friendly-shortcuts-7"></script>
     
     <style>
         /* Esconder botões flutuantes no mobile quando modal estiver aberto */
@@ -1674,81 +1674,92 @@
 
 <!-- Chat Interno -->
 <div id="chatWidget" class="fixed bottom-6 right-6 z-50">
-    <!-- Botão do Chat -->
-    <button id="chatToggle" class="bg-blue-matte hover:bg-blue-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300">
-        <i class="fas fa-comments text-2xl"></i>
+    <button id="chatToggle" type="button" aria-label="Abrir suporte" aria-expanded="false">
+        <i class="fas fa-comments" aria-hidden="true"></i>
     </button>
-    
-    <!-- Janela do Chat -->
-        <div id="chatWindow" class="hidden fixed bottom-24 right-2 left-2 md:left-auto md:right-6 md:bottom-24 w-auto md:w-[400px] max-w-[calc(100vw-1rem)] h-[65vh] md:h-[560px] bg-white rounded-lg shadow-2xl border border-gray-200 flex flex-col">
-        <!-- Header do Chat -->
-        <div class="bg-blue-matte text-white p-4 rounded-t-lg flex items-center justify-between">
-            <div class="flex items-center">
-                <div class="w-3 h-3 bg-green-400 rounded-full mr-2"></div>
-                <span class="font-semibold">Suporte Online</span>
+
+    <div id="chatWindow" class="hidden" role="dialog" aria-label="Suporte Freitas">
+        <header class="chat-header">
+            <div class="chat-brand-mark"><i class="fas fa-headset" aria-hidden="true"></i></div>
+            <div class="chat-brand-copy">
+                <strong>Suporte Freitas</strong>
+                <span><i aria-hidden="true"></i> <b id="chatPresence">Atendimento da equipe</b></span>
             </div>
-            <button id="chatClose" class="text-white hover:text-gray-200">
-                <i class="fas fa-times"></i>
+            <button id="chatClose" type="button" aria-label="Fechar suporte">
+                <i class="fas fa-times" aria-hidden="true"></i>
             </button>
-        </div>
-        
-        <!-- Status de Atendimento -->
-        <div id="chatStatus" class="p-3 bg-gray-50 border-b">
-            <div id="onlineStatus" class="hidden text-sm text-green-600">
-                <i class="fas fa-circle text-green-500 mr-1"></i>
-                Online - Chat disponível 24 horas
-            </div>
-            <div id="offlineStatus" class="hidden text-sm text-gray-500">
-                <i class="fas fa-clock text-gray-400 mr-1"></i>
-                Fora do horário - Atendimento de domingo a sexta, 08h às 23h30
-            </div>
-        </div>
-        
-        <!-- Mensagens -->
-        <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3">
-            <div class="flex justify-start">
-                <div class="bg-gray-100 rounded-lg p-3 max-w-xs">
-                    <p class="text-sm text-gray-700">Olá! Como posso ajudá-lo hoje?</p>
-                    <span class="text-xs text-gray-500">Agora</span>
+        </header>
+
+        <div id="chatStatus" class="chat-status">
+            <div class="chat-status-message">
+                <div id="onlineStatus" class="hidden chat-online">
+                    <i class="fas fa-circle" aria-hidden="true"></i>
+                    Online agora
+                </div>
+                <div id="offlineStatus" class="hidden chat-offline">
+                    <i class="fas fa-clock" aria-hidden="true"></i>
+                    Equipe offline
                 </div>
             </div>
+            <span class="chat-team-hours"><i class="far fa-clock" aria-hidden="true"></i> Equipe: dom–sex, 08h–23h30</span>
         </div>
-        
-        <!-- Sugestões de Perguntas Frequentes -->
-        <div id="chatSuggestions" class="px-4 pb-2 border-t border-gray-200">
-            <p class="text-xs text-gray-500 mb-2">Perguntas frequentes:</p>
-            <div class="flex flex-wrap gap-2">
-                <button onclick="sendQuickMessage('Qual o preço dos treinos?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
-                    💰 Preços
-                </button>
-                <button onclick="sendQuickMessage('Quais horários estão disponíveis?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
-                    🕐 Horários
-                </button>
-                <button onclick="sendQuickMessage('Como comprar tokens?')" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full transition-colors">
-                    💎 Tokens
-                </button>
-                <button onclick="openWhatsAppDirect()" class="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-full transition-colors">
-                    💬 WhatsApp
-                </button>
+
+        <div id="chatMessages" class="chat-messages">
+            <div class="chat-welcome">
+                <span class="chat-assistant-icon"><i class="fas fa-sparkles" aria-hidden="true"></i></span>
+                <div>
+                    <div class="chat-assistant-label">Suporte Freitas <span>AGORA</span></div>
+                    <p>Oi! Quer saber sobre preços, horários ou tokens? Escolha um atalho ou me mande sua dúvida.</p>
+                </div>
             </div>
+
+            <div id="chatHistory" class="chat-history" aria-live="polite"></div>
+
+            <article id="chatProductCatalog" class="chat-price-card" aria-label="Produtos disponíveis" style="display:none">
+                <div class="chat-price-heading">
+                    <span class="chat-price-mark">R$</span>
+                        <span><strong>Produtos da plataforma</strong><small>Toque em um produto para ver mais</small></span>
+                </div>
+                <div class="chat-product-options">
+                    <button type="button" class="chat-product-option" onclick="openChatProduct('sensibilidades')">
+                        <span>Sensibilidade no Free Fire</span><strong>R$ 14,90</strong><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="chat-product-option" onclick="openChatProduct('imagens')">
+                        <span>Imagens aéreas</span><strong>A partir de R$ 2,00</strong><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="chat-product-option" onclick="openChatProduct('planilhas')">
+                        <span>Planilha de análise</span><strong>R$ 19,00</strong><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="chat-product-option" onclick="openChatProduct('passe-booyah')">
+                        <span>Passe de Elite</span><strong>R$ 8,00</strong><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="chat-price-note"><i class="fas fa-check" aria-hidden="true"></i> Compra segura pela Plataforma Freitas</div>
+            </article>
         </div>
-        
-        <!-- Input de Mensagem -->
-        <div class="p-4 border-t">
-            <div class="flex space-x-2">
-                <input type="text" id="chatInput" placeholder="Digite sua mensagem..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-matte focus:border-transparent" disabled>
-                <button id="chatSend" class="bg-blue-matte hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm transition-colors" disabled>
-                    <i class="fas fa-paper-plane"></i>
+
+        <section class="chat-quick-actions" aria-label="Atalhos de ajuda">
+            <button type="button" data-chat-topic="prices" onclick="moveProductCatalogIntoChatHistory(); document.getElementById('chatInput').value='Quais são os preços?'; document.getElementById('chatSend').click()"><i class="fas fa-tag" aria-hidden="true"></i> Preços</button>
+            <button type="button" data-chat-topic="hours" onclick="document.getElementById('chatInput').value='Quais são os horários?'; document.getElementById('chatSend').click()"><i class="far fa-clock" aria-hidden="true"></i> Horários</button>
+            <button type="button" data-chat-topic="tokens" onclick="document.getElementById('chatInput').value='Como funcionam os tokens?'; document.getElementById('chatSend').click()"><i class="fas fa-gem" aria-hidden="true"></i> Tokens</button>
+            <button type="button" aria-label="Falar com a equipe pelo WhatsApp" onclick="window.open('https://wa.me/5511949830454?text=Ol%C3%A1%21%20Preciso%20de%20ajuda%20no%20site%20XTreino%20Freitas.', '_blank', 'noopener,noreferrer')">
+                <i class="fab fa-whatsapp" aria-hidden="true"></i> WhatsApp
+            </button>
+        </section>
+
+        <footer class="chat-compose">
+            <div class="chat-compose-row">
+                <input type="text" id="chatInput" placeholder="Escreva sua mensagem..." aria-label="Escreva sua mensagem" disabled>
+                <button id="chatSend" type="button" aria-label="Enviar mensagem" disabled>
+                    <i class="fas fa-paper-plane" aria-hidden="true"></i>
                 </button>
             </div>
-            <div class="flex items-center justify-between mt-2">
-                <p class="text-xs text-gray-500">Atendimento: Domingo a sexta, 08h às 23h30</p>
-                <button onclick="clearChatHistory()" class="text-xs text-gray-400 hover:text-gray-600 transition-colors" title="Limpar histórico">
-                    <i class="fas fa-trash-alt"></i>
-                </button>
+            <div class="chat-compose-meta">
+                <span>Suporte da Plataforma Freitas</span>
+                <button type="button" onclick="clearChatHistory()">Limpar conversa</button>
             </div>
+        </footer>
     </div>
-  </div>
 </div>
 
 <!-- Toast Notifications Container -->

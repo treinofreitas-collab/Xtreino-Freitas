@@ -5,7 +5,11 @@ import {
   parseMatchResultRoster,
   resolveMatchResultTeam,
 } from './freefire-matchresult.mjs';
-import { resolveModoLigaTeamLogo } from './admin-freefire-scoring.mjs';
+import {
+  getModoLigaLeaderboardLogoCenterY,
+  getModoLigaTemplateRowCenter,
+  resolveModoLigaTeamLogo,
+} from './admin-freefire-scoring.mjs';
 
 const rosterText = `⃟🩵 𝑻𝑰𝑴𝑬 𝑨: 4S-CEO🍀
 ⃟🩵 𝑻𝑰𝑴𝑬 𝑩: 4S-ELITE🍀
@@ -24,6 +28,13 @@ const rosterText = `⃟🩵 𝑻𝑰𝑴𝑬 𝑨: 4S-CEO🍀
 ⃟🩵 𝑻𝑰𝑴𝑬 𝑶: FLAMENGO`;
 
 const roster = parseMatchResultRoster(rosterText).roster;
+
+test('centers the leaderboard logo in its template row', () => {
+  assert.equal(
+    getModoLigaLeaderboardLogoCenterY(1024, 4),
+    getModoLigaTemplateRowCenter(1024, 4),
+  );
+});
 
 test('parses the 15 styled team slots and removes decorative emojis', () => {
   const parsed = parseMatchResultRoster(rosterText);

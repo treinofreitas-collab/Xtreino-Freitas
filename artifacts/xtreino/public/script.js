@@ -3398,12 +3398,16 @@ function initChat() {
     if (isOnline) {
         onlineStatus.classList.remove('hidden');
         offlineStatus.classList.add('hidden');
+        const presence = document.getElementById('chatPresence');
+        if (presence) presence.textContent = 'Online agora';
         chatInput.disabled = false;
         chatSend.disabled = false;
         chatInput.placeholder = 'Digite sua mensagem...';
     } else {
         onlineStatus.classList.add('hidden');
         offlineStatus.classList.remove('hidden');
+        const presence = document.getElementById('chatPresence');
+        if (presence) presence.textContent = 'Equipe offline';
         chatInput.disabled = true;
         chatSend.disabled = true;
         chatInput.placeholder = 'Fora do horário de atendimento';
@@ -3412,7 +3416,9 @@ function initChat() {
     // Toggle chat window
     chatToggle.addEventListener('click', () => {
         chatWindow.classList.toggle('hidden');
-        if (!chatWindow.classList.contains('hidden')) {
+        const isOpen = !chatWindow.classList.contains('hidden');
+        chatToggle.setAttribute('aria-expanded', String(isOpen));
+        if (isOpen) {
             chatInput.focus();
             // Carregar histórico quando abrir o chat
             loadChatHistory();
@@ -3422,12 +3428,28 @@ function initChat() {
     // Fechar chat
     chatClose.addEventListener('click', () => {
         chatWindow.classList.add('hidden');
+        chatToggle.setAttribute('aria-expanded', 'false');
     });
 
     // Enviar mensagem
     async function sendMessage() {
         const message = chatInput.value.trim();
         if (!message || !isOnline) return;
+        const productCatalog = document.getElementById('chatProductCatalog');
+        const shouldShowProductCatalog =
+            productCatalog?.style.display !== 'none' &&
+            /\b(preco|precos|valor|valores)\b/.test(normalizeText(message));
+
+        function scrollProductCatalogIntoView() {
+            const productCatalog = document.getElementById('chatProductCatalog');
+            const messagePane = document.getElementById('chatMessages');
+            if (!productCatalog || !messagePane) return;
+
+            const paneRect = messagePane.getBoundingClientRect();
+            const catalogRect = productCatalog.getBoundingClientRect();
+            const catalogTop = messagePane.scrollTop + catalogRect.top - paneRect.top - messagePane.clientTop - 8;
+            messagePane.scrollTo({ top: Math.max(0, catalogTop), behavior: 'smooth' });
+        }
 
         // Adicionar mensagem do usuário
         addMessage(message, 'user');
@@ -3435,10 +3457,17 @@ function initChat() {
 
         // Tenta primeiro resposta inteligente
         try {
-            const smart = await smartChatAnswer(message);
+            const smart = await Promise.race([
+                smartChatAnswer(message),
+                new Promise(resolve => setTimeout(() => resolve(null), 1200))
+            ]);
             if (smart && smart.answer) {
                 showTypingIndicator();
-                setTimeout(() => { hideTypingIndicator(); addMessage(smart.answer, 'support'); }, 1200);
+                setTimeout(() => {
+                    hideTypingIndicator();
+                    addMessage(smart.answer, 'support');
+                    if (shouldShowProductCatalog) scrollProductCatalogIntoView();
+                }, 400);
                 return;
             }
         } catch (_) { }
@@ -3452,107 +3481,107 @@ function initChat() {
             // Valores e preços (prioridade alta)
             {
                 match: ['valor', 'valores', 'preço', 'preços', 'quanto', 'custa', 'custo', 'precificar', 'orçamento', 'tabela', 'tabela de preços', 'preço dos', 'valor dos', 'quanto custa', 'quanto é', 'quanto sai', 'quanto fica', 'preço do', 'valor do', 'custo do', 'preço da', 'valor da', 'custo da', 'preço das', 'valor das', 'custo das', 'preço dos', 'valor dos', 'custo dos'],
-                reply: '💰 **VALORES DOS PRODUTOS:**\n\n📱 **Sensibilidade no Free Fire:** R$ 8,00\n🗺️ **Imagens Aéreas:** A partir de R$ 2,00\n📊 **Planilha de Análise:** R$ 19,00\n🎮 **Passe de Elite:** R$ 11,00\n👕 **Camisa Oficial:** R$ 89,90\n\n🎯 **EVENTOS:**\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 8,00 (promo no site — antes R$ 10,00) - 19h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\n💡 Precisa de mais detalhes sobre algum evento específico?'
+                reply: 'Claro! Sensibilidade custa R$ 14,90, imagens aéreas começam em R$ 2,00, a planilha custa R$ 19,00 e o Passe de Elite custa R$ 8,00. A camisa oficial sai por R$ 119,90.\n\nNos eventos, os valores por vaga são: XTreino Freitas R$ 1,00, Modo Liga R$ 3,00, Campeonato Freitas R$ 8,00 e Semanal Freitas R$ 3,50.\n\nSe quiser, posso explicar algum deles.'
             },
 
             // Horários e funcionamento (prioridade alta)
             {
                 match: ['horário', 'horários', 'hora', 'horas', 'que horas', 'funcionamento', 'atendimento', 'quando', 'disponível', 'disponibilidade', 'aberto', 'fechado', 'funciona', 'trabalha', 'atende', 'expediente', 'jornada', 'turno', 'período', 'tempo', 'schedule', 'time', 'hours', 'working', 'available', 'open', 'closed', 'business hours', 'operating hours'],
-                reply: '⏰ **HORÁRIOS DE FUNCIONAMENTO:**\n\n🕐 **Chat:** Disponível 24 horas\n🎮 **Treinos:** Geralmente entre 14h-23h\n📞 **WhatsApp:** Para dúvidas específicas\n\n💡 **DICAS:**\n• Eventos têm horários específicos\n• Tokens podem ser usados a qualquer hora\n• Suporte via WhatsApp é mais rápido para questões complexas'
+                reply: 'O chat fica disponível por aqui o tempo todo. Os horários dos treinos dependem do evento; você encontra a lista e as vagas na seção Eventos. Se preferir falar com a equipe, use o botão do WhatsApp.'
             },
             {
                 match: ['online', 'disponível', 'atendendo', 'suporte'],
-                reply: '✅ **SUPORTE DISPONÍVEL:**\n\n🤖 **Chat:** Online 24 horas (respostas automáticas)\n📱 **WhatsApp:** Para atendimento personalizado\n🎮 **Treinos:** Segunda a sexta, 14h-23h\n\n💡 Para dúvidas específicas sobre pedidos, use o WhatsApp!'
+                reply: 'Estou por aqui para ajudar. Para falar diretamente com a equipe, toque no botão do WhatsApp; para conferir os treinos, veja a seção Eventos.'
             },
 
             // Tokens (prioridade alta)
             {
                 match: ['token', 'tokens', 'comprar tokens', 'meus tokens', 'saldo', 'saldo de tokens', 'quantos tokens', 'tenho tokens', 'token balance', 'balance', 'crédito', 'créditos', 'moeda', 'moedas', 'pontos', 'pontuação', 'coin', 'coins', 'currency', 'wallet', 'carteira', 'dinheiro virtual', 'moeda virtual', 'comprar', 'adicionar tokens', 'recarregar', 'recarga', 'depositar', 'depósito', 'investir', 'investimento em tokens', 'token system', 'sistema de tokens', 'pagamento com token', 'pagar com token', 'usar token', 'gastar token', 'consumir token', 'token usado', 'tokens usados', 'token gasto', 'tokens gastos'],
-                reply: 'Tokens custam R$ 1,00 cada. Compre e veja seu saldo em Minha Conta > Meus Tokens. Use tokens para pagar eventos!'
+                reply: 'Cada token custa R$ 1,00. Você pode usar seu saldo para pagar alguns eventos e acompanhar seus tokens em Minha Conta > Meus Tokens.'
             },
 
             // Preços e valores (prioridade baixa - só se não for horário ou token)
             {
                 match: ['preço', 'preços', 'valor', 'valores', 'quanto', 'cust', 'custa', 'quanto custa', 'quanto é', 'quanto vale', 'cobrança', 'cobrar', 'pagar', 'pagamento', 'dinheiro', 'reais', 'r$', 'barato', 'caro', 'econômico', 'custo', 'gasto', 'investimento', 'vale a pena', 'compensa', 'financeiro', 'monetário', 'tarifa', 'taxa', 'valor total', 'preço final', 'desconto', 'promoção', 'oferta', 'liquidação', 'sale', 'price', 'cost', 'money', 'cheap', 'expensive', 'affordable'],
-                reply: 'Tokens: R$ 1,00 cada. Planilhas: R$ 19,00. Sensibilidades: R$ 8,00. Imagens Aéreas: R$ 2,00 por mapa. Camisa: R$ 89,90. Passe Booyah: R$ 11,00. Eventos: R$ 3,00-5,00.'
+                reply: 'Claro! Sensibilidade custa R$ 14,90, imagens aéreas começam em R$ 2,00, a planilha custa R$ 19,00 e o Passe de Elite custa R$ 8,00. A camisa oficial sai por R$ 119,90.\n\nAs vagas de evento custam de R$ 1,00 a R$ 8,00, dependendo do treino. Quer saber o valor de algum evento específico?'
             },
 
             // Produtos digitais
             {
-                match: ['sensibilidade', 'sensibilidades', 'sensis', 'configuração', 'config', 'configs', 'ajuste', 'ajustes', 'calibração', 'calibrar', 'mouse', 'teclado', 'dpi', 'fps', 'fps boost', 'otimização', 'otimizar', 'performance', 'rendimento', 'melhorar', 'melhoria', 'setup', 'settings', 'configurar', 'configurações', 'sens', 'sensibilidade do mouse', 'mouse sens', 'sens do mouse', 'sensibilidade da mira', 'mira', 'aim', 'apontar', 'apontamento', 'precisão', 'preciso', 'estabilidade', 'estável', 'controle', 'controlar', 'movimento', 'movimentação', 'crosshair', 'mira personalizada', 'personalizar', 'customizar', 'custom', 'personalização', 'personalizações', 'sensitivity', 'mouse sensitivity', 'aim sensitivity', 'game settings', 'jogo', 'gaming', 'gamer', 'free fire', 'ff', 'mobile', 'pc', 'android', 'ios', 'celular', 'computador', 'notebook', 'desktop', 'laptop', 'device', 'dispositivo', 'aparelho', 'equipamento', 'hardware', 'periférico', 'periféricos', 'mouse pad', 'mousepad', 'teclado mecânico', 'mechanical keyboard', 'gaming mouse', 'mouse gamer', 'teclado gamer', 'gaming keyboard', 'headset', 'fone', 'microfone', 'microphone', 'headphone', 'fone de ouvido', 'audio', 'som', 'sound', 'volume', 'vol', 'microfone', 'mic', 'micro', 'microfone gamer', 'gaming headset', 'headset gamer', 'fone gamer', 'gaming audio', 'audio gamer', 'som gamer', 'sound gamer', 'volume gamer', 'audio settings', 'configurações de áudio', 'configurações de som', 'configurações de audio', 'configurações de volume', 'configurações de microfone', 'configurações de mic', 'configurações de fone', 'configurações de headset', 'configurações de headphone', 'configurações de audio', 'configurações de som', 'configurações de volume', 'configurações de microfone', 'configurações de mic', 'configurações de fone', 'configurações de headset', 'configurações de headphone'],
-                reply: 'Sensibilidades: R$ 8,00. Inclui configuração para PC/Android/iOS. Após compra, baixe em Minha Conta > Meus Produtos.'
+                match: ['sensibilidade', 'sensibilidades', 'sensis', 'configuração', 'config', 'configs', 'ajuste', 'ajustes', 'calibração', 'calibrar', 'mouse', 'teclado', 'dpi', 'fps', 'fps boost', 'otimização', 'otimizar', 'performance', 'rendimento', 'melhorar', 'melhoria', 'setup', 'settings', 'configurar', 'configurações', 'sens', 'sensibilidade do mouse', 'mouse sens', 'sens do mouse', 'sensibilidade da mira', 'mira', 'aim', 'apontar', 'apontamento', 'precisão', 'estabilidade', 'estável', 'controle', 'controlar', 'movimento', 'movimentação', 'crosshair', 'mira personalizada', 'personalizar', 'customizar', 'custom', 'personalização', 'personalizações', 'sensitivity', 'mouse sensitivity', 'aim sensitivity', 'game settings', 'jogo', 'gaming', 'gamer', 'free fire', 'ff', 'mobile', 'pc', 'android', 'ios', 'celular', 'computador', 'notebook', 'desktop', 'laptop', 'device', 'dispositivo', 'aparelho', 'equipamento', 'hardware', 'periférico', 'periféricos', 'mouse pad', 'mousepad', 'teclado mecânico', 'mechanical keyboard', 'gaming mouse', 'mouse gamer', 'teclado gamer', 'gaming keyboard', 'headset', 'fone', 'microfone', 'microphone', 'headphone', 'fone de ouvido', 'audio', 'som', 'sound', 'volume', 'vol', 'microfone', 'mic', 'micro', 'microfone gamer', 'gaming headset', 'headset gamer', 'fone gamer', 'gaming audio', 'audio gamer', 'som gamer', 'sound gamer', 'volume gamer', 'audio settings', 'configurações de áudio', 'configurações de som', 'configurações de audio', 'configurações de volume', 'configurações de microfone', 'configurações de mic', 'configurações de fone', 'configurações de headset', 'configurações de headphone', 'configurações de audio', 'configurações de som', 'configurações de volume', 'configurações de microfone', 'configurações de mic', 'configurações de fone', 'configurações de headset', 'configurações de headphone'],
+                reply: 'A Sensibilidade para Free Fire custa R$ 14,90 e inclui configuração para PC, Android e iOS. Depois da compra, você encontra o produto em Minha Conta > Meus Produtos.'
             },
             {
                 match: ['imagens aéreas', 'mapa', 'mapas', 'calls', 'bermuda', 'purgatório', 'kalahari', 'nova terra', 'alpine'],
-                reply: 'Imagens Aéreas: R$ 2,00 por mapa. Escolha: Bermuda, Purgatório, Kalahari, Nova Terra, Alpine. Baixe em Minha Conta > Meus Produtos.'
+                reply: 'As imagens aéreas começam em R$ 2,00 por mapa. Temos Bermuda, Purgatório, Kalahari, Nova Terra e Alpine. Depois da compra, elas ficam em Minha Conta > Meus Produtos.'
             },
             {
                 match: ['planilha', 'planilhas', 'analise', 'análise', 'coach', 'analista'],
-                reply: 'Planilhas de Análise: R$ 19,00. Para coaches e analistas. Inclui dados precisos e gráficos. Download em Minha Conta > Meus Produtos.'
+                reply: 'A Planilha de Análise custa R$ 19,00 e reúne dados e gráficos para coaches e analistas. Você pode baixar em Minha Conta > Meus Produtos.'
             },
             {
                 match: ['passe', 'booyah', 'player id', 'id do jogador'],
-                reply: 'Passe Booyah: R$ 11,00. Informe seu Player ID na compra. Após confirmação, um admin valida e entrega.'
+                reply: 'O Passe de Elite custa R$ 8,00. Na compra, informe seu Player ID; depois da confirmação, a equipe valida e faz a entrega.'
             },
             {
                 match: ['camisa', 'camiseta', 'roupa', 'física', 'entrega'],
-                reply: 'Camisa Oficial: R$ 89,90. Produto físico com entrega. Escolha tamanho, cor, nome e endereço na compra.'
+                reply: 'A camisa oficial custa R$ 119,90 e é enviada para você. Na compra, escolha o tamanho e a cor e preencha o endereço de entrega.'
             },
 
             // Eventos e treinos
             {
                 match: ['evento', 'eventos', 'treino', 'treinos', 'xtreino'],
-                reply: '🎯 **EVENTOS DISPONÍVEIS:**\n\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 8,00 (promo no site — antes R$ 10,00) - 19h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\nVeja na seção Eventos para mais detalhes!'
+                reply: 'Temos quatro opções: XTreino Freitas (R$ 1,00), Modo Liga (R$ 3,00), Campeonato Freitas (R$ 8,00) e Semanal Freitas (R$ 3,50). Na seção Eventos você vê os detalhes, horários e vagas para reservar.'
             },
             {
                 match: ['modo liga', 'liga', 'competitivo'],
-                reply: '🏆 **XTREINO MODO LIGA:**\n\n💰 **Valor:** R$ 3,00\n⏰ **Horários:** 14h, 15h, 17h, 18h\n🎮 **Modalidade:** Misto | Squad | 2 quedas | 15 slots\n🏅 **Premiação:** Vaga em campeonato pro top¹ da tabela\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Transmissão modo liga ao vivo, montagem de cronograma, 15 slots e Troféu.'
+                reply: '🏆 XTREINO MODO LIGA\n\n💰 Valor: R$ 3,00\n⏰ Horários: 14h, 15h, 17h e 18h\n🎮 Modalidade: Misto | Squad | 2 quedas | 15 vagas\n🏅 Premiação: vaga em campeonato para o top da tabela\n\n🎯 Diferencial: transmissão ao vivo, cronograma e troféu.'
             },
             {
                 match: ['camp freitas', 'camp', 'campeonato'],
-                reply: '🏆 **CAMPEONATO FREITAS:**\n\n💰 **Valor:** R$ 8,00 (promo no site — antes R$ 10,00)\n⏰ **Horários:** 19h, 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas por fase\n🏅 **Premiação:** R$ 4.000,00 + Troféu\n📅 **Funcionamento:** Segunda a Sexta-feira\n\n🎯 **Diferencial:** Transmissão modo liga ao vivo a partir das Semifinais + Troféu.'
+                reply: '🏆 CAMPEONATO FREITAS\n\n💰 Valor: R$ 8,00 por vaga (promoção no site; de R$ 10,00)\n⏰ Horários: 19h, 20h, 21h, 22h e 23h\n🎮 Modalidade: Misto | Squad | 2 quedas por fase\n🏅 Premiação: R$ 4.000,00 + troféu\n\n🎯 Diferencial: transmissão ao vivo a partir das semifinais.'
             },
             {
                 match: ['semanal', 'semanal freitas'],
-                reply: '🏆 **SEMANAL FREITAS:**\n\n💰 **Valor:** R$ 3,50\n⏰ **Horários:** 1ª Fase às 20h e 21h | Final às 22h\n🎁 **Bônus:** Vaga direto na Final por apenas R$ 7,00\n🎮 **Modalidade:** Misto | Squad | 2 quedas\n🏅 **Premiação:** R$ 65,00\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Diferencial:** Termina no mesmo dia + premiação em dinheiro pro top¹.'
+                reply: '🏆 SEMANAL FREITAS\n\n💰 Valor: R$ 3,50 por vaga\n⏰ Horários: fases às 20h e 21h; final às 22h\n🎁 Bônus: vaga direta na final por R$ 7,00\n🎮 Modalidade: Misto | Squad | 2 quedas\n🏅 Premiação: R$ 65,00\n\n🎯 Diferencial: termina no mesmo dia e tem premiação em dinheiro.'
             },
             {
                 match: ['xtreino freitas', 'xtreino', 'token', 'tokens', 'treino normal'],
-                reply: '🎯 **XTREINO FREITAS:**\n\n💰 **Valor:** R$ 1,00 (1 token)\n⏰ **Horários:** 14h, 15h, 16h, 17h, 18h, 19h, 20h, 21h, 22h, 23h\n🎮 **Modalidade:** Misto | Squad | 2 quedas\n🏅 **Premiação:** Vaga em Campeonato pro top¹ da tabela\n📅 **Funcionamento:** Segunda a Sexta\n\n🎯 **Sobre o Evento:** Xtreino que visa o treinamento e aperfeiçoamento de Equipes amadoras e profissionais, onde Coach pode telar seu Time para avaliá-los. Oferecemos Tabela de pontuação, Banner de top³, Transmissão ao Vivo, Verificados, Ranking de melhor equipe com Troféu e mais...\n\n🎯 **Diferencial:** 10 horários diários, montagem de cronograma e Troféu.'
+                reply: '🎯 XTREINO FREITAS\n\n💰 Valor: R$ 1,00 por vaga (1 token)\n⏰ Horários: 14h às 23h\n🎮 Modalidade: Misto | Squad | 2 quedas\n🏅 Premiação: vaga em campeonato para o top da tabela\n\nTreino para equipes amadoras e profissionais, com tabela de pontuação, transmissão ao vivo e ranking.'
             },
 
             // Conta e pedidos
             {
                 match: ['minha conta', 'conta', 'login', 'entrar', 'cadastro', 'registro'],
-                reply: 'Acesse Minha Conta no menu. Faça login ou cadastre-se. Lá você vê pedidos, tokens, downloads e mais!'
+                reply: 'Você encontra Minha Conta no menu. Entre ou crie seu cadastro para consultar pedidos, tokens e downloads.'
             },
             {
                 match: ['pedido', 'pedidos', 'compra', 'compras', 'histórico'],
-                reply: 'Veja seus pedidos em Minha Conta > Meus Pedidos. Lá aparecem links de WhatsApp e status dos pagamentos.'
+                reply: 'Seus pedidos ficam em Minha Conta > Meus Pedidos. Por lá você acompanha o pagamento e encontra os links da reserva quando estiverem disponíveis.'
             },
             {
                 match: ['download', 'baixar', 'meus produtos', 'produtos'],
-                reply: 'Downloads ficam em Minha Conta > Meus Produtos. Sensibilidades, mapas, planilhas - tudo lá!'
+                reply: 'Seus downloads ficam em Minha Conta > Meus Produtos. Lá você encontra sensibilidades, mapas e planilhas que comprou.'
             },
 
             // WhatsApp e grupos
             {
                 match: ['whatsapp', 'grupo', 'link do grupo', 'id e senha', 'sala', 'discord'],
-                reply: 'Links de WhatsApp das salas aparecem em Minha Conta > Meus Pedidos quando seu pedido estiver confirmado.'
+                reply: 'Quando a reserva estiver confirmada, os links da sala aparecem em Minha Conta > Meus Pedidos.'
             },
             {
                 match: ['contato', 'falar', 'ajuda', 'suporte', 'problema'],
-                reply: 'Precisa de ajuda? Use este chat 24 horas ou WhatsApp: (11) 94911-3275. Chat sempre disponível!'
+                reply: 'Claro, posso tentar ajudar por aqui. Se for algo sobre um pedido ou precisar falar com alguém da equipe, toque em Falar pelo WhatsApp.'
             },
 
             // Pagamento e cupons
             {
                 match: ['pagamento', 'pagar', 'mercado pago', 'cartão', 'pix'],
-                reply: 'Aceitamos Mercado Pago (cartão, PIX, boleto). Pagamento seguro e rápido. Cupons de desconto disponíveis!'
+                reply: 'Você pode pagar pelo Mercado Pago, com as opções disponíveis no checkout. Se aparecer algum erro, me conte o que aconteceu ou fale com a equipe pelo WhatsApp.'
             },
             {
                 match: ['cupom', 'desconto', 'promoção', 'promo', 'código'],
-                reply: 'Cupons de desconto disponíveis! Digite o código na compra. Alguns são específicos para eventos ou loja.'
+                reply: 'Se você tiver um cupom, informe o código durante a compra. Alguns valem apenas para certos produtos ou eventos.'
             },
 
             // Informações gerais
@@ -3566,11 +3595,11 @@ function initChat() {
             },
             {
                 match: ['obrigado', 'valeu', 'thanks', 'obg'],
-                reply: 'De nada! Fico feliz em ajudar. Qualquer dúvida, estou aqui! 😊'
+                reply: 'Por nada! Se surgir outra dúvida, pode mandar por aqui.'
             },
             {
                 match: ['oi', 'olá', 'hello', 'hi', 'bom dia', 'boa tarde', 'boa noite'],
-                reply: 'Olá! Bem-vindo ao XTreino Freitas! Como posso te ajudar hoje? 😊'
+                reply: 'Oi! Que bom ter você por aqui. Quer ajuda com algum produto, evento ou pedido?'
             }
         ];
 
@@ -3616,19 +3645,6 @@ function initChat() {
                 }
             }
 
-            // Verificar palavras similares (primeiras 3 letras)
-            if (!matchFound) {
-                for (const keyword of c.match) {
-                    if (keyword.length >= 3) {
-                        const prefix = keyword.substring(0, 3);
-                        if (textLower.includes(prefix)) {
-                            matchFound = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
             if (matchFound) {
                 matchedReply = c.reply;
                 break;
@@ -3642,7 +3658,7 @@ function initChat() {
             } else if (textLower.includes('mapa') || textLower.includes('call') || textLower.includes('bermuda') || textLower.includes('purgatorio') || textLower.includes('kalahari') || textLower.includes('alpine') || textLower.includes('nova terra')) {
                 matchedReply = 'Imagens Aéreas: R$ 2,00 por mapa. Escolha: Bermuda, Purgatório, Kalahari, Nova Terra, Alpine. Baixe em Minha Conta > Meus Produtos.';
             } else if (textLower.includes('evento') || textLower.includes('treino') || textLower.includes('xtreino') || textLower.includes('liga') || textLower.includes('camp') || textLower.includes('semanal')) {
-                matchedReply = '🎯 **EVENTOS DISPONÍVEIS:**\n\n• **XTREINO FREITAS:** R$ 1,00 (1 token) - 14h às 23h\n• **XTREINO MODO LIGA:** R$ 3,00 - 14h, 15h, 17h, 18h\n• **CAMPEONATO FREITAS:** R$ 5,00 - 20h às 23h\n• **SEMANAL FREITAS:** R$ 3,50 - 20h, 21h, 22h\n\nVeja na seção Eventos para mais detalhes!';
+                matchedReply = '🎯 EVENTOS DISPONÍVEIS\n\n• XTREINO FREITAS — R$ 1,00 por vaga (1 token) | 14h–23h\n• XTREINO MODO LIGA — R$ 3,00 por vaga | 14h, 15h, 17h e 18h\n• CAMPEONATO FREITAS — R$ 8,00 por vaga (promoção no site; de R$ 10,00) | 19h–23h\n• SEMANAL FREITAS — R$ 3,50 por vaga | 20h, 21h e 22h\n\nConsulte a seção Eventos para ver os detalhes e reservar.';
             } else if (textLower.includes('conta') || textLower.includes('login') || textLower.includes('cadastro') || textLower.includes('registro')) {
                 matchedReply = 'Acesse Minha Conta no menu. Faça login ou cadastre-se. Lá você vê pedidos, tokens, downloads e mais!';
             } else if (textLower.includes('download') || textLower.includes('baixar') || textLower.includes('produto')) {
@@ -3654,21 +3670,22 @@ function initChat() {
             } else if (textLower.includes('cupom') || textLower.includes('desconto') || textLower.includes('promocao') || textLower.includes('promo')) {
                 matchedReply = 'Cupons de desconto disponíveis! Digite o código na compra. Alguns são específicos para eventos ou loja.';
             } else {
-                matchedReply = `❌ Não temos essa resposta no chat.\n\nChame no WhatsApp para saber melhor:\n\n📱 (11) 94911-3275\n\n🔗 [Clique aqui para abrir o WhatsApp](${whatsLink})`;
+                matchedReply = 'Não encontrei essa informação por aqui, mas a equipe pode ajudar. Toque em “Falar pelo WhatsApp” e conte o que você precisa.';
             }
         }
 
-        // Mostrar indicador de "digitando..." e simular digitação com atraso de 4 segundos
+        // Mostrar indicador de digitação por um curto intervalo.
         showTypingIndicator();
         setTimeout(() => {
             hideTypingIndicator();
             addMessage(matchedReply, 'support');
-        }, 3000);
+            if (shouldShowProductCatalog) scrollProductCatalogIntoView();
+        }, 650);
     }
 
     // Event listeners
     chatSend.addEventListener('click', sendMessage);
-    chatInput.addEventListener('keypress', (e) => {
+    chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
@@ -3683,12 +3700,16 @@ function initChat() {
             if (isOnline) {
                 onlineStatus.classList.remove('hidden');
                 offlineStatus.classList.add('hidden');
+                const presence = document.getElementById('chatPresence');
+                if (presence) presence.textContent = 'Online agora';
                 chatInput.disabled = false;
                 chatSend.disabled = false;
                 chatInput.placeholder = 'Digite sua mensagem...';
             } else {
                 onlineStatus.classList.add('hidden');
                 offlineStatus.classList.remove('hidden');
+                const presence = document.getElementById('chatPresence');
+                if (presence) presence.textContent = 'Equipe offline';
                 chatInput.disabled = true;
                 chatSend.disabled = true;
                 chatInput.placeholder = 'Fora do horário de atendimento';
@@ -3700,7 +3721,8 @@ function initChat() {
 // Mostrar indicador de "digitando..."
 function showTypingIndicator() {
     const chatMessages = document.getElementById('chatMessages');
-    if (!chatMessages) return;
+    const chatHistory = document.getElementById('chatHistory') || chatMessages;
+    if (!chatMessages || !chatHistory) return;
 
     // Remover indicador anterior se existir
     const existingTyping = document.getElementById('typingIndicator');
@@ -3720,7 +3742,7 @@ function showTypingIndicator() {
         <span class="text-sm text-gray-500">Digitando...</span>
     `;
 
-    chatMessages.appendChild(typingDiv);
+    chatHistory.appendChild(typingDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
@@ -3735,7 +3757,8 @@ function hideTypingIndicator() {
 // Adicionar mensagem ao chat
 function addMessage(text, sender) {
     const chatMessages = document.getElementById('chatMessages');
-    if (!chatMessages) return;
+    const chatHistory = document.getElementById('chatHistory') || chatMessages;
+    if (!chatMessages || !chatHistory) return;
 
     const messageDiv = document.createElement('div');
     const isUser = sender === 'user';
@@ -3746,21 +3769,55 @@ function addMessage(text, sender) {
     });
 
     messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
-    // Converter links markdown para HTML clicável
-    const textWithLinks = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
+    const bubble = document.createElement('div');
+    bubble.className = `chat-history-bubble${isUser ? ' chat-history-user' : ''}`;
+    const messageText = document.createElement('p');
+    messageText.className = 'chat-history-text';
+    appendChatMessageContent(messageText, text);
+    const timeLabel = document.createElement('span');
+    timeLabel.className = 'chat-history-time';
+    timeLabel.textContent = time;
+    bubble.append(messageText, timeLabel);
+    messageDiv.appendChild(bubble);
 
-    messageDiv.innerHTML = `
-        <div class="${isUser ? 'bg-blue-matte text-white' : 'bg-gray-100'} rounded-lg p-3 max-w-xs">
-            <p class="text-sm whitespace-pre-line">${textWithLinks}</p>
-            <span class="text-xs ${isUser ? 'text-blue-100' : 'text-gray-500'}">${time}</span>
-        </div>
-    `;
-
-    chatMessages.appendChild(messageDiv);
+    chatHistory.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
     // Salvar mensagem no histórico
     saveMessageToHistory(text, sender, now.toISOString());
+}
+
+function appendChatMessageContent(container, value) {
+    const text = String(value ?? '');
+    const tokenPattern = /\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+    let cursor = 0;
+    let match;
+
+    while ((match = tokenPattern.exec(text)) !== null) {
+        if (match.index > cursor) {
+            container.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+        }
+
+        if (match[1]) {
+            const strong = document.createElement('strong');
+            strong.textContent = match[1];
+            container.appendChild(strong);
+        } else {
+            const link = document.createElement('a');
+            link.href = match[3];
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.className = 'underline hover:no-underline';
+            link.textContent = match[2];
+            container.appendChild(link);
+        }
+
+        cursor = tokenPattern.lastIndex;
+    }
+
+    if (cursor < text.length) {
+        container.appendChild(document.createTextNode(text.slice(cursor)));
+    }
 }
 
 // Salvar mensagem no histórico (localStorage)
@@ -3778,54 +3835,64 @@ function saveMessageToHistory(text, sender, timestamp) {
     }
 }
 
+function moveProductCatalogIntoChatHistory() {
+    const catalog = document.getElementById('chatProductCatalog');
+    const chatHistory = document.getElementById('chatHistory');
+    if (!catalog || !chatHistory) return;
+
+    catalog.style.display = 'block';
+    chatHistory.appendChild(catalog);
+
+    try {
+        const history = getChatHistory().filter(item => item.type !== 'productCatalog');
+        history.push({ type: 'productCatalog', timestamp: new Date().toISOString() });
+        if (history.length > 100) history.shift();
+        localStorage.setItem('chatHistory', JSON.stringify(history));
+    } catch (_) {}
+}
+
 // Carregar histórico do chat
 function loadChatHistory() {
     try {
         const history = getChatHistory();
         const chatMessages = document.getElementById('chatMessages');
-        if (!chatMessages) return;
+        const chatHistory = document.getElementById('chatHistory') || chatMessages;
+        if (!chatMessages || !chatHistory) return;
+        const productCatalog = document.getElementById('chatProductCatalog');
+        if (productCatalog && chatHistory.contains(productCatalog)) productCatalog.remove();
 
-        // Se não houver histórico, manter mensagem inicial
-        if (history.length === 0) {
-            // Verificar se já tem a mensagem inicial
-            const hasInitialMessage = chatMessages.querySelector('.bg-gray-100');
-            if (!hasInitialMessage) {
-                chatMessages.innerHTML = `
-                    <div class="flex justify-start">
-                        <div class="bg-gray-100 rounded-lg p-3 max-w-xs">
-                            <p class="text-sm text-gray-700">Olá! Como posso ajudá-lo hoje?</p>
-                            <span class="text-xs text-gray-500">Agora</span>
-                        </div>
-                    </div>
-                `;
-            }
-            return;
-        }
-
-        // Limpar mensagem inicial e adicionar histórico
-        chatMessages.innerHTML = '';
+        // Restaure as mensagens e reposicione o catálogo no marcador salvo da conversa.
+        chatHistory.innerHTML = '';
 
         // Adicionar todas as mensagens do histórico
         history.forEach(msg => {
+            if (msg.type === 'productCatalog') {
+                if (productCatalog) {
+                    productCatalog.style.display = 'block';
+                    chatHistory.appendChild(productCatalog);
+                }
+                return;
+            }
             const messageDiv = document.createElement('div');
             const isUser = msg.sender === 'user';
             const date = new Date(msg.timestamp);
-            const time = date.toLocaleTimeString('pt-BR', {
+            const time = Number.isNaN(date.getTime()) ? 'Agora' : date.toLocaleTimeString('pt-BR', {
                 hour: '2-digit',
                 minute: '2-digit'
             });
 
             messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
-            const textWithLinks = msg.text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" class="underline hover:no-underline">$1</a>');
-
-            messageDiv.innerHTML = `
-                <div class="${isUser ? 'bg-blue-matte text-white' : 'bg-gray-100'} rounded-lg p-3 max-w-xs">
-                    <p class="text-sm whitespace-pre-line">${textWithLinks}</p>
-                    <span class="text-xs ${isUser ? 'text-blue-100' : 'text-gray-500'}">${time}</span>
-                </div>
-            `;
-
-            chatMessages.appendChild(messageDiv);
+            const bubble = document.createElement('div');
+            bubble.className = `chat-history-bubble${isUser ? ' chat-history-user' : ''}`;
+            const messageText = document.createElement('p');
+            messageText.className = 'chat-history-text';
+            appendChatMessageContent(messageText, msg.text);
+            const timeLabel = document.createElement('span');
+            timeLabel.className = 'chat-history-time';
+            timeLabel.textContent = time;
+            bubble.append(messageText, timeLabel);
+            messageDiv.appendChild(bubble);
+            chatHistory.appendChild(messageDiv);
         });
 
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -3849,32 +3916,67 @@ function clearChatHistory() {
     showConfirm('Limpar Histórico', 'Deseja limpar todo o histórico de conversas? Esta ação não pode ser desfeita.', 'Limpar', 'Cancelar').then((confirmed) => {
         if (confirmed) {
             localStorage.removeItem('chatHistory');
+            const chatHistory = document.getElementById('chatHistory');
             const chatMessages = document.getElementById('chatMessages');
-            if (chatMessages) {
-                chatMessages.innerHTML = `
+            const productCatalog = document.getElementById('chatProductCatalog');
+            if (productCatalog && chatHistory?.contains(productCatalog)) productCatalog.remove();
+            if (chatHistory) {
+                chatHistory.innerHTML = `
                     <div class="flex justify-start">
-                        <div class="bg-gray-100 rounded-lg p-3 max-w-xs">
-                            <p class="text-sm text-gray-700">Histórico limpo! Como posso ajudá-lo hoje?</p>
-                            <span class="text-xs text-gray-500">Agora</span>
+                        <div class="chat-history-bubble">
+                            <p class="chat-history-text">Histórico limpo! Como posso ajudá-lo hoje?</p>
+                            <span class="chat-history-time">Agora</span>
                         </div>
                     </div>
                 `;
+                if (productCatalog) {
+                    productCatalog.style.display = 'none';
+                    productCatalog.dataset.openedFromPrices = 'false';
+                    chatHistory.after(productCatalog);
+                }
             }
+            if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
             showSuccessToast('Histórico limpo com sucesso!');
         }
     });
 }
 
-// Enviar mensagem rápida (sugestões)
-function sendQuickMessage(message) {
-    const chatInput = document.getElementById('chatInput');
-    const chatSend = document.getElementById('chatSend');
+async function openChatProduct(productId) {
+    const productAliases = {
+        sensibilidades: ['sensibilidade'],
+        imagens: ['imagem', 'mapa'],
+        planilhas: ['planilha'],
+        'passe-booyah': ['passe', 'booyah']
+    };
+    const normalize = value => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+    const aliases = productAliases[productId] || [normalize(productId)];
 
-    if (chatInput && chatSend && !chatInput.disabled) {
-        chatInput.value = message;
-        chatSend.click();
+    // Os produtos são administráveis no Firestore; carregue a versão ativa antes de abrir.
+    try {
+        await loadProductsFromFirestore();
+    } catch (_) {}
+
+    const match = Object.entries(scheduleConfig).find(([id, config]) => {
+        if (!config?.isProduct) return false;
+        const searchable = normalize(`${id} ${config.label || ''} ${config.category || ''}`);
+        return id === productId || aliases.some(alias => searchable.includes(normalize(alias)));
+    });
+
+    if (match) {
+        document.getElementById('chatWindow')?.classList.add('hidden');
+        document.getElementById('chatToggle')?.setAttribute('aria-expanded', 'false');
+        openScheduleModal(match[0]);
+        return;
     }
+
+    // Se o produto estiver desativado/removido, encaminha para a loja em vez de abrir outro item.
+    if (typeof switchMainTab === 'function') switchMainTab('loja');
+    showToast('Esse produto não está disponível para compra no momento.', 3500);
 }
+window.openChatProduct = openChatProduct;
 
 // Abrir WhatsApp diretamente
 function openWhatsAppDirect() {
