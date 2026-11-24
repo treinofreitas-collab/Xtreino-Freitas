@@ -10,7 +10,7 @@ export const LBFF_PLACEMENT_POINTS_15 = [12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0,
 export const MAX_MATCHRESULT_FILE_BYTES = 2 * 1024 * 1024;
 const TEAM_HEADER = /^TeamName:\s*(.*?)\s+Rank:\s*(-?\d+)\s+KillScore:\s*(-?\d+)\s+RankScore:\s*(-?\d+)\s+TotalScore:\s*(-?\d+)\s*$/u;
 const PLAYER_ROW = /^NAME:\s*(.*?)\s+ID:\s*(\d+)\s+KILL:\s*(-?\d+)\s*$/u;
-const GENERIC_TEAM_WORDS = new Set(['team', 'time', 'equipe', 'esports', 'org']);
+const GENERIC_TEAM_WORDS = new Set(['team', 'time', 'equipe', 'esport', 'esports', 'sport', 'sports', 'org']);
 
 export function matchResultTeamKey(name) {
   return String(name ?? '')
@@ -124,40 +124,87 @@ export function resolveMatchResultTeam(teamName, roster) {
   if (exact.length === 1) return { status: 'exact', team: exact[0], candidates: exact };
   if (exact.length > 1) return { status: 'ambiguous', candidates: exact };
 
-  const inputTokens = inputKey.split(' ');
-  const inputLength = inputTokens.join('').length;
-  const candidates = entries.filter(entry => {
-    const targetKey = matchResultTeamKey(entry.teamName);
-    const targetTokens = targetKey.split(' ');
-    const inputCompact = inputTokens.join('');
-    const targetCompact = targetTokens.join('');
-    const compactPrefix = inputCompact.length >= 4 &&
-      !GENERIC_TEAM_WORDS.has(inputCompact) &&
-      targetCompact.startsWith(inputCompact);
-    const tokenOffset = targetTokens.findIndex((_, offset) =>
-      offset + inputTokens.length <= targetTokens.length &&
-      inputTokens.every((token, index) => targetTokens[offset + index].startsWith(token)),
-    );
-    const tokenSequenceMatch = tokenOffset >= 0;
-    if (compactPrefix) return true;
-    if (!tokenSequenceMatch) return false;
+  const identityTokens = value => matchResultTeamKey(value)
+    .split(' ')
+    .filter(token => token.length > 1 && !GENERIC_TEAM_WORDS.has(token));
+  const inputTokens = identityTokens(inputKey);
+  if (!inputTokens.length) return { status: 'unmatched', candidates: [] };
 
-    const informativeExactToken = inputTokens.some((token, index) =>
-      token === targetTokens[tokenOffset + index] &&
-      token.length >= 2 &&
-      !GENERIC_TEAM_WORDS.has(token),
-    );
-    if (inputTokens.length === 1) {
-      const token = inputTokens[0];
-      if (GENERIC_TEAM_WORDS.has(token)) return false;
-      return token.length >= 4 ||
-        (token.length >= 2 && token === targetTokens[tokenOffset]);
+  const tokenSimilarity = (left, right) => {
+    if (left === right) {
+      return { score: left.length >= 3 ? 4 : 1, strong: left.length >= 3 };
     }
-    return inputLength >= 5 || (inputLength >= 4 && informativeExactToken);
-  });
 
-  if (candidates.length === 1) return { status: 'partial', team: candidates[0], candidates };
-  if (candidates.length > 1) return { status: 'ambiguous', candidates };
+    const shorter = left.length <= right.length ? left : right;
+    const longer = shorter === left ? right : left;
+    if (shorter.length >= 3 && longer.startsWith(shorter) && shorter.length / longer.length >= 0.65) {
+      return { score: 3, strong: true };
+    }
+
+    if (Math.max(left.length, right.length) < 5) return null;
+    let differences = 0;
+    let leftIndex = 0;
+    let rightIndex = 0;
+    while (leftIndex < left.length && rightIndex < right.length) {
+      if (left[leftIndex] === right[rightIndex]) {
+        leftIndex += 1;
+        rightIndex += 1;
+        continue;
+      }
+      differences += 1;
+      if (differences > 1) return null;
+      if (left.length > right.length) leftIndex += 1;
+      else if (right.length > left.length) rightIndex += 1;
+      else {
+        leftIndex += 1;
+        rightIndex += 1;
+      }
+    }
+    if (leftIndex < left.length || rightIndex < right.length) differences += 1;
+    return differences === 1 ? { score: 2.5, strong: true } : null;
+  };
+
+  const scored = entries.map(entry => {
+    const targetTokens = identityTokens(entry.teamName);
+    const available = new Set(targetTokens.map((_, index) => index));
+    let score = 0;
+    let strongMatches = 0;
+    for (const inputToken of inputTokens) {
+      let best = null;
+      let bestIndex = -1;
+      for (const targetIndex of available) {
+        const similarity = tokenSimilarity(inputToken, targetTokens[targetIndex]);
+        if (similarity && (!best || similarity.score > best.score)) {
+          best = similarity;
+          bestIndex = targetIndex;
+        }
+      }
+      if (!best) continue;
+      score += best.score;
+      if (best.strong) strongMatches += 1;
+      available.delete(bestIndex);
+    }
+    return { team: entry, score, strongMatches };
+  }).filter(candidate => candidate.score > 0);
+
+  const strongCandidates = scored
+    .filter(candidate => candidate.strongMatches > 0)
+    .sort((left, right) => right.score - left.score);
+  if (strongCandidates.length) {
+    const best = strongCandidates[0];
+    const runnerUp = strongCandidates[1];
+    if (!runnerUp || best.score - runnerUp.score >= 1.5) {
+      return { status: 'partial', team: best.team, candidates: [best.team] };
+    }
+    const tied = strongCandidates.filter(candidate => best.score - candidate.score < 1.5);
+    return { status: 'ambiguous', candidates: tied.map(candidate => candidate.team) };
+  }
+
+  // Short shared codes such as "4S" are not enough to guess a team.
+  if (scored.length > 1) return { status: 'ambiguous', candidates: scored.map(candidate => candidate.team) };
+  if (scored.length === 1) {
+    return { status: 'partial', team: scored[0].team, candidates: [scored[0].team] };
+  }
   return { status: 'unmatched', candidates: [] };
 }
 
