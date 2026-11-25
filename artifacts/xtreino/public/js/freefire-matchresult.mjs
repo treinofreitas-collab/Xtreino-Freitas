@@ -382,9 +382,13 @@ export function parseMatchResultLog(text) {
     if (key) seenTeams.add(key);
 
     if (!Number.isSafeInteger(team.reportedKills) || team.reportedKills < 0) {
-      team.errors.push('KillScore inválido no cabeçalho.');
+      warnings.push(
+        `"${team.teamName}": KillScore inválido no cabeçalho; será usada a soma individual (${team.kills}).`,
+      );
     } else if (team.reportedKills !== team.kills) {
-      team.errors.push(`KillScore do cabeçalho (${team.reportedKills}) difere da soma individual (${team.kills}).`);
+      warnings.push(
+        `"${team.teamName}": KillScore do cabeçalho (${team.reportedKills}) difere da soma individual (${team.kills}); será usada a soma individual.`,
+      );
     }
     if (expectedRankPoints === undefined) {
       team.errors.push('Não foi possível calcular a pontuação de colocação.');
@@ -399,7 +403,9 @@ export function parseMatchResultLog(text) {
     }
     const expectedTotal = team.kills + team.rankPoints;
     if (team.reportedTotalPoints !== expectedTotal) {
-      team.errors.push(`TotalScore informado (${team.reportedTotalPoints}) difere do cálculo (${expectedTotal}).`);
+      warnings.push(
+        `"${team.teamName}": TotalScore informado (${team.reportedTotalPoints}) difere do cálculo com os abates individuais (${expectedTotal}); será usado ${expectedTotal}.`,
+      );
     }
   }
 

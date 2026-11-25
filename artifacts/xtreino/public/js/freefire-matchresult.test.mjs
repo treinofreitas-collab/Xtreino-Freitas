@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mapMatchResultTeamsToRoster,
+  calculateMatchResultStandings,
+  getMatchResultSetIssues,
+  parseMatchResultLog,
   parseMatchResultRoster,
   resolveMatchResultTeam,
 } from './freefire-matchresult.mjs';
@@ -110,6 +113,32 @@ test('keeps an organization-only name ambiguous when no sibling is identified', 
 
 test('keeps names that have no convincing candidate unmatched', () => {
   assert.equal(resolveMatchResultTeam('STG KILLERS', roster).status, 'unmatched');
+});
+
+test('uses summed individual kills when MatchResult header kill and total scores disagree', () => {
+  const parsed = parseMatchResultLog(`TeamName: REAL CRIA B Rank: 7 KillScore: 3 RankScore: 4 TotalScore: 7
+NAME: Oxzinn 23% ID: 1854436016 KILL: 0
+NAME: fancyffz ID: 0 KILL: 3
+NAME: fancyffz ID: 0 KILL: 3
+NAME: fancyffz ID: 0 KILL: 3`);
+  const team = parsed.teams[0];
+
+  assert.equal(team.kills, 9);
+  assert.equal(team.rankPoints, 4);
+  assert.deepEqual(team.errors, []);
+  assert.ok(parsed.warnings.some(warning => warning.includes('soma individual (9)')));
+  assert.ok(parsed.warnings.some(warning => warning.includes('abates individuais (13)')));
+  assert.deepEqual(getMatchResultSetIssues([{ index: 0, parsed }], 1), []);
+
+  const standings = calculateMatchResultStandings(
+    [{ index: 0, parsed }],
+    1,
+    [{ slot: 2, teamName: 'REAL CRIA B' }],
+  );
+  assert.deepEqual(
+    standings.map(({ teamName, kills, points }) => ({ teamName, kills, points })),
+    [{ teamName: 'REAL CRIA B', kills: 9, points: 13 }],
+  );
 });
 
 test('maps only the unique team and leaves ambiguous or unknown log names out', () => {
