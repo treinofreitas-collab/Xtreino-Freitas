@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const firebaseAdmin = require("../shared/firebase-admin");
+const firebaseAdmin = require("./firebase-admin");
 
 const removedPaths = [];
 const adminMock = {
@@ -38,7 +38,7 @@ const adminMock = {
 
 firebaseAdmin.getAdmin = () => adminMock;
 firebaseAdmin.verifyFirebaseUser = async () => ({ uid: "admin-test" });
-const { handler } = require("./spec-logo-delete");
+const { handler } = require("../functions/spec-logo-delete");
 
 async function deleteLogo({ path, hour, code }) {
   return handler({
