@@ -1294,33 +1294,137 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
   window.resolveUserIdByEmail = resolveUserIdByEmail;
 
-  // Toggle visual do tipo de vaga (Pago / Listagem Grátis)
-  window.selectAddPaidType = function(type) {
-    const isPaid = type === 'paid';
-    const paidLabel = document.getElementById('addPaidLabel');
-    const freeLabel = document.getElementById('addFreeLabel');
-    const dotPago   = document.getElementById('addDotPago');
-    const dotGratis = document.getElementById('addDotGratis');
-    const paidInput = document.getElementById('addPaidPago');
-    const freeInput = document.getElementById('addPaidGratis');
-    if (!paidLabel || !freeLabel) return;
-    if (isPaid) {
-      paidLabel.className = 'flex items-center gap-2 border-2 border-green-500 bg-green-50 rounded-xl px-4 py-3 cursor-pointer transition-all';
-      freeLabel.className = 'flex items-center gap-2 border-2 border-gray-200 bg-white rounded-xl px-4 py-3 cursor-pointer transition-all';
-      dotPago.className = 'w-4 h-4 rounded-full border-2 border-green-500 bg-green-500 flex items-center justify-center flex-shrink-0';
-      dotPago.innerHTML = '<div class="w-2 h-2 rounded-full bg-white"></div>';
-      dotGratis.className = 'w-4 h-4 rounded-full border-2 border-gray-300 flex items-center justify-center flex-shrink-0';
-      dotGratis.innerHTML = '';
-      if (paidInput) paidInput.checked = true;
-    } else {
-      freeLabel.className = 'flex items-center gap-2 border-2 border-orange-400 bg-orange-50 rounded-xl px-4 py-3 cursor-pointer transition-all';
-      paidLabel.className = 'flex items-center gap-2 border-2 border-gray-200 bg-white rounded-xl px-4 py-3 cursor-pointer transition-all';
-      dotGratis.className = 'w-4 h-4 rounded-full border-2 border-orange-400 bg-orange-400 flex items-center justify-center flex-shrink-0';
-      dotGratis.innerHTML = '<div class="w-2 h-2 rounded-full bg-white"></div>';
-      dotPago.className = 'w-4 h-4 rounded-full border-2 border-gray-300 flex items-center justify-center flex-shrink-0';
-      dotPago.innerHTML = '';
-      if (freeInput) freeInput.checked = true;
+  function setAddTeamSectionHidden(sectionId, hidden) {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    section.classList.toggle('hidden', hidden);
+    section.querySelectorAll('input, textarea, select').forEach(field => {
+      field.disabled = hidden;
+    });
+  }
+
+  function syncAddTeamTypeForm(selectedType) {
+    const isModoLiga = isAddModoLigaEvent();
+    const isManualPaid = isModoLiga && selectedType === 'manual';
+    const manualLabel = document.getElementById('addManualPaidLabel');
+    const manualInput = document.getElementById('addPaidManual');
+    const options = document.getElementById('addPaidTypeOptions');
+    const contactInput = document.getElementById('addContact');
+    const avatarSection = document.getElementById('addModoLigaSpecAvatarsSection');
+    const specHelp = document.getElementById('addModoLigaSpecHelp');
+    const subtitle = document.getElementById('addModalSubtitle');
+    const submitButton = document.getElementById('addTeamSaveBtn');
+
+    manualLabel?.classList.toggle('hidden', !isModoLiga);
+    if (manualInput) manualInput.disabled = !isModoLiga;
+    options?.classList.toggle('grid-cols-2', !isModoLiga);
+    options?.classList.toggle('grid-cols-1', isModoLiga);
+    options?.classList.toggle('sm:grid-cols-3', isModoLiga);
+
+    if (contactInput) {
+      contactInput.required = !isManualPaid;
+      contactInput.disabled = isManualPaid;
     }
+    setAddTeamSectionHidden('addContactField', isManualPaid);
+    setAddTeamSectionHidden('addClientAccountSection', isManualPaid);
+    setAddTeamSectionHidden('addOptionalFieldsSection', isManualPaid);
+    avatarSection?.classList.toggle('hidden', isManualPaid);
+    if (specHelp) {
+      specHelp.textContent = isManualPaid
+        ? 'Escolha uma letra se enviar a logo. A logo é opcional; sem ela, a reserva será salva sem identificação SPEC.'
+        : 'Escolha uma letra ou avatar se for enviar a logo. A logo é opcional; sem ela, a reserva será salva sem identificação SPEC.';
+    }
+    const specStatus = document.getElementById('addModoLigaSpecStatus');
+    if (specStatus && addModoLigaSpecOptionsReady) {
+      const lettersCount = [...addModoLigaSpecAvailable].filter(value => /^[A-Z]$/.test(value)).length;
+      const avatarsCount = [...addModoLigaSpecAvailable].filter(value => value.startsWith('avatar:')).length;
+      const rawHour = String(document.getElementById('addHour')?.value || '').trim();
+      const hourMatch = rawHour.match(/(\d{1,2})/);
+      const hour = hourMatch ? `${String(Number(hourMatch[1])).padStart(2, '0')}H` : '';
+      specStatus.textContent = isManualPaid
+        ? `${lettersCount} letra(s) disponíveis${hour ? ` para ${hour}` : ''}.`
+        : `${lettersCount} letra(s) e ${avatarsCount} avatar(es) disponíveis${hour ? ` para ${hour}` : ''}.`;
+    }
+
+    if (isManualPaid && addModoLigaSpecSelected.startsWith('avatar:')) {
+      addModoLigaSpecSelected = '';
+      const selection = document.getElementById('addModoLigaSpecSelection');
+      const code = document.getElementById('addModoLigaSpecCode');
+      if (selection) selection.textContent = 'Escolha uma letra para vincular à logo';
+      if (code) code.textContent = '';
+      document.querySelectorAll('[data-add-modo-liga-spec-selection]').forEach(button => {
+        button.setAttribute('aria-pressed', 'false');
+        button.classList.remove('border-teal-700', 'bg-teal-700', 'text-white');
+        button.classList.add('border-slate-300', 'bg-white', 'text-slate-800');
+      });
+    }
+
+    if (subtitle) {
+      subtitle.textContent = isManualPaid
+        ? 'Cadastro rápido de vaga paga manualmente'
+        : 'Preenchimento manual de vaga';
+    }
+    if (submitButton) {
+      submitButton.innerHTML = isManualPaid
+        ? '<i class="fas fa-check"></i> Confirmar Pago Manual'
+        : '<i class="fas fa-check"></i> Salvar';
+    }
+  }
+
+  // Toggle visual e campos do tipo de vaga.
+  window.selectAddPaidType = function(type) {
+    const selectedType = type === 'free'
+      ? 'free'
+      : type === 'manual' && isAddModoLigaEvent()
+        ? 'manual'
+        : 'paid';
+    const choices = [
+      {
+        type: 'paid',
+        labelId: 'addPaidLabel',
+        dotId: 'addDotPago',
+        inputId: 'addPaidPago',
+        activeLabel: 'flex items-center gap-2 border-2 border-green-500 bg-green-50 rounded-xl px-4 py-3 cursor-pointer transition-all',
+        activeDot: 'w-4 h-4 rounded-full border-2 border-green-500 bg-green-500 flex items-center justify-center flex-shrink-0',
+      },
+      {
+        type: 'free',
+        labelId: 'addFreeLabel',
+        dotId: 'addDotGratis',
+        inputId: 'addPaidGratis',
+        activeLabel: 'flex items-center gap-2 border-2 border-orange-400 bg-orange-50 rounded-xl px-4 py-3 cursor-pointer transition-all',
+        activeDot: 'w-4 h-4 rounded-full border-2 border-orange-400 bg-orange-400 flex items-center justify-center flex-shrink-0',
+      },
+      {
+        type: 'manual',
+        labelId: 'addManualPaidLabel',
+        dotId: 'addDotManualPaid',
+        inputId: 'addPaidManual',
+        activeLabel: 'flex items-center gap-2 border-2 border-teal-500 bg-teal-50 rounded-xl px-4 py-3 cursor-pointer transition-all',
+        activeDot: 'w-4 h-4 rounded-full border-2 border-teal-500 bg-teal-500 flex items-center justify-center flex-shrink-0',
+      },
+    ];
+
+    choices.forEach(choice => {
+      const label = document.getElementById(choice.labelId);
+      const dot = document.getElementById(choice.dotId);
+      const input = document.getElementById(choice.inputId);
+      const isSelected = choice.type === selectedType;
+      if (label) {
+        label.className = isSelected
+          ? choice.activeLabel
+          : 'flex items-center gap-2 border-2 border-gray-200 bg-white rounded-xl px-4 py-3 cursor-pointer transition-all';
+      }
+      if (dot) {
+        dot.className = isSelected
+          ? choice.activeDot
+          : 'w-4 h-4 rounded-full border-2 border-gray-300 flex items-center justify-center flex-shrink-0';
+        dot.innerHTML = isSelected ? '<div class="w-2 h-2 rounded-full bg-white"></div>' : '';
+      }
+      if (input) input.checked = isSelected;
+    });
+
+    syncAddTeamTypeForm(selectedType);
   };
 
   // Verificação ao sair do campo de e-mail — mostra se o usuário existe
@@ -1344,7 +1448,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
   window.onAddEmailBlur = onAddEmailBlur;
 
   const ADD_MODO_LIGA_AVATARS = new Set(['avatar:kelly', 'avatar:maxim', 'avatar:andrew']);
+  let addModoLigaEventContext = null;
   let addModoLigaSpecAvailable = new Set();
+  let addModoLigaSpecOptionsReady = false;
   let addModoLigaSpecSelected = '';
   let addModoLigaSpecRequestId = 0;
   let addModoLigaSpecPreviewUrl = '';
@@ -1376,6 +1482,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const eventEl = document.getElementById('boardEventType');
     const option = eventEl?.selectedOptions?.[0];
     const candidates = [
+      addModoLigaEventContext?.canonicalEventType,
+      addModoLigaEventContext?.rawEventType,
+      addModoLigaEventContext?.eventName,
+      addModoLigaEventContext?.selectedEventType,
       eventEl?.value,
       option?.dataset?.canonicalType,
       option?.dataset?.rawEventType,
@@ -1387,8 +1497,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
     });
   }
 
+  function isManualModoLigaAdd() {
+    return isAddModoLigaEvent()
+      && document.querySelector('input[name="addPaidType"]:checked')?.value === 'manual';
+  }
+
   function resetAddModoLigaSpecControls() {
     addModoLigaSpecAvailable = new Set();
+    addModoLigaSpecOptionsReady = false;
     addModoLigaSpecSelected = '';
     const fileInput = document.getElementById('addModoLigaSpecLogo');
     const section = document.getElementById('addModoLigaSpecSection');
@@ -1406,7 +1522,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (section) section.classList.toggle('hidden', !isAddModoLigaEvent());
     if (status) {
       status.textContent = isAddModoLigaEvent()
-        ? 'Consultando letras e avatares disponíveis para este horário…'
+        ? isManualModoLigaAdd()
+          ? 'Consultando letras disponíveis para este horário…'
+          : 'Consultando letras e avatares disponíveis para este horário…'
         : '';
       status.className = 'mt-3 text-xs text-slate-600';
     }
@@ -1469,10 +1587,13 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }
 
     const requestId = ++addModoLigaSpecRequestId;
+    addModoLigaSpecOptionsReady = false;
     section?.classList.remove('hidden');
     if (fileInput) fileInput.required = false;
     if (status) {
-      status.textContent = 'Consultando letras e avatares disponíveis para este horário…';
+      status.textContent = isManualModoLigaAdd()
+        ? 'Consultando letras disponíveis para este horário…'
+        : 'Consultando letras e avatares disponíveis para este horário…';
       status.className = 'mt-3 text-xs text-slate-600';
     }
     if (lettersEl) lettersEl.innerHTML = '';
@@ -1519,6 +1640,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         ...availableLetters,
         ...availableAvatars.map(avatar => avatar.selection),
       ]);
+      addModoLigaSpecOptionsReady = true;
 
       if (lettersEl) {
         lettersEl.innerHTML = availableLetters.length
@@ -1544,7 +1666,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
           : '<p class="col-span-full rounded-lg bg-white p-3 text-xs text-slate-500">Nenhum avatar disponível neste horário.</p>';
       }
       if (status) {
-        status.textContent = `${availableLetters.length} letra(s) e ${availableAvatars.length} avatar(es) disponíveis para ${hour}H.`;
+        status.textContent = isManualModoLigaAdd()
+          ? `${availableLetters.length} letra(s) disponíveis para ${hour}H.`
+          : `${availableLetters.length} letra(s) e ${availableAvatars.length} avatar(es) disponíveis para ${hour}H.`;
         status.className = 'mt-3 text-xs font-medium text-teal-800';
       }
       if (addModoLigaSpecSelected && !addModoLigaSpecAvailable.has(addModoLigaSpecSelected)) {
@@ -1705,10 +1829,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const rawHour = String(hourEl?.value || '').trim();
       const schedule = rawHour.replace(/^(\d{1,2}):(\d{2})$/, (_, hour) => `${hour}h`);
       const teamName = String(teamEl?.value || '').trim();
-      const contact = String(contactEl?.value || '').trim();
-      const clientEmail = String(emailEl?.value || '').trim().toLowerCase();
-      const person = String(personEl?.value || '').trim();
-      const notes = String(notesEl?.value || '').trim();
       const date = String(dateEl?.value || '').trim();
       const selectedOption = typeEl?.options?.[typeEl?.selectedIndex];
       const eventType = (
@@ -1718,8 +1838,16 @@ window.showWarningToast = function(message, title = 'Atenção') {
         || ''
       ).trim();
       const isModoLiga = isAddModoLigaEvent();
+      const paidTypeEl = document.querySelector('input[name="addPaidType"]:checked');
+      const isManualPaid = isModoLiga && paidTypeEl?.value === 'manual';
+      const contact = isManualPaid ? '' : String(contactEl?.value || '').trim();
+      const clientEmail = isManualPaid ? '' : String(emailEl?.value || '').trim().toLowerCase();
+      const person = isManualPaid ? '' : String(personEl?.value || '').trim();
+      const notes = isManualPaid ? '' : String(notesEl?.value || '').trim();
 
-      if (!teamName || !contact) throw new Error('Informe o nome do time e um contato.');
+      if (!teamName || (!isManualPaid && !contact)) {
+        throw new Error(isManualPaid ? 'Informe o nome do time.' : 'Informe o nome do time e um contato.');
+      }
       if (!eventType) throw new Error('Selecione o tipo de evento antes de adicionar o time.');
       if (!schedule || schedule === '—') throw new Error('Selecione o horário antes de adicionar o time.');
       if (!date) throw new Error('Selecione uma data antes de adicionar o time.');
@@ -1731,13 +1859,17 @@ window.showWarningToast = function(message, title = 'Atenção') {
         specLogoFile = document.getElementById('addModoLigaSpecLogo')?.files?.[0] || null;
         if (specLogoFile) {
           specSelection = addModoLigaSpecSelected;
-          if (!specSelection) {
-            throw new Error('Escolha uma letra ou avatar disponível para vincular à logo.');
+          if (!specSelection || (isManualPaid && !/^[A-Z]$/.test(specSelection))) {
+            throw new Error(isManualPaid
+              ? 'Escolha uma letra disponível para vincular à logo.'
+              : 'Escolha uma letra ou avatar disponível para vincular à logo.');
           }
           const latestOptions = await requestAddModoLigaSpecOptions();
           if (latestOptions?.error) throw latestOptions.error;
           if (!addModoLigaSpecAvailable.has(specSelection)) {
-            throw new Error('A letra ou avatar selecionado acabou de ficar indisponível. Atualize as opções e escolha outro.');
+            throw new Error(isManualPaid
+              ? 'A letra selecionada acabou de ficar indisponível. Atualize as opções e escolha outra.'
+              : 'A letra ou avatar selecionado acabou de ficar indisponível. Atualize as opções e escolha outro.');
           }
           specHour = String(latestOptions?.hours?.[0] || '').replace(/H$/i, '');
           if (!specHour) throw new Error('Não consegui confirmar o horário SPEC desta vaga.');
@@ -1749,8 +1881,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       let clientUserId = null;
       if (clientEmail) clientUserId = await resolveUserIdByEmail(clientEmail);
 
-      const paidTypeEl = document.querySelector('input[name="addPaidType"]:checked');
-      const isFreeSlot = (paidTypeEl?.value || 'paid') === 'free';
+      const isFreeSlot = !isManualPaid && (paidTypeEl?.value || 'paid') === 'free';
       const firestore = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
       const registrations = firestore.collection(window.firebaseDb, 'registrations');
 
@@ -1799,7 +1930,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
       const payload = {
         teamName,
-        contact,
+        contact: contact || null,
         email: clientEmail || null,
         person: person || null,
         notes: notes || null,
@@ -1813,6 +1944,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
         addedManually: true,
         freeSlot: isFreeSlot,
         listingType: isFreeSlot ? 'free' : 'paid',
+        ...(isManualPaid ? { manualPaid: true } : {}),
         slot: nextSlot,
         slotNumber: nextSlot,
         slotDisplay: nextSlotDisplay,
@@ -1852,7 +1984,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
       });
       registrationSaved = true;
 
-      const feedbackMessage = clientUserId
+      const feedbackMessage = isManualPaid
+        ? uploadedSpecLogo
+          ? `Pago manual cadastrado; logo vinculada à letra ${uploadedSpecLogo.letter}.`
+          : 'Pago manual cadastrado sem logo; nenhuma identificação SPEC foi vinculada.'
+        : clientUserId
         ? 'Time adicionado e reserva vinculada à conta do cliente.'
         : clientEmail
           ? 'Time adicionado. O e-mail informado não foi encontrado; a reserva ficou sem vínculo com uma conta.'
@@ -5314,9 +5450,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
           const h = btnAdd.getAttribute('data-add-hour');
           const modal = document.getElementById('modalAddTeam');
           const hourInput = document.getElementById('addHour');
+          addModoLigaEventContext = {
+            selectedEventType: eventType,
+            canonicalEventType: ovEventType,
+            rawEventType: rawEventType || evFieldType,
+            eventName,
+          };
+          const isModoLigaAdd = isAddModoLigaEvent();
           if (hourInput) hourInput.value = h;
-          // Resetar toggle para "Pago" a cada abertura
-          if (typeof window.selectAddPaidType === 'function') window.selectAddPaidType('paid');
           // Limpar campos do form
           ['addTeamName','addContact','addEmail','addPerson','addNotes'].forEach(id => {
             const el = document.getElementById(id); if (el) el.value = '';
@@ -5327,7 +5468,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
           if (msgEl) msgEl.textContent = '';
           resetAddModoLigaSpecControls();
           if (modal) modal.classList.remove('hidden');
-          if (isAddModoLigaEvent()) void requestAddModoLigaSpecOptions();
+          if (typeof window.selectAddPaidType === 'function') {
+            window.selectAddPaidType(isModoLigaAdd ? 'manual' : 'paid');
+          }
+          if (isModoLigaAdd) void requestAddModoLigaSpecOptions();
         } 
         else if (btnManage) {
           const h = btnManage.getAttribute('data-manage-hour');
@@ -5337,14 +5481,31 @@ window.showWarningToast = function(message, title = 'Atenção') {
           const h = btnExport.getAttribute('data-export-hour');
           try {
             const text = await buildExportList(date, ovEventType, h);
-            try {
-              if (!navigator.clipboard?.writeText) throw new Error('Clipboard API indisponível');
-              await navigator.clipboard.writeText(text);
-              alert('Lista copiada para a área de transferência.');
-            } catch (copyError) {
-              console.warn('Não foi possível copiar automaticamente; abrindo a lista para cópia manual:', copyError);
-              showExportListCopyModal(text);
+            let copied = false;
+            if (navigator.clipboard?.writeText) {
+              try {
+                await navigator.clipboard.writeText(text);
+                copied = true;
+              } catch (_) {}
             }
+            if (!copied) {
+              const textarea = document.createElement('textarea');
+              textarea.value = text;
+              textarea.setAttribute('readonly', '');
+              textarea.style.position = 'fixed';
+              textarea.style.left = '-9999px';
+              textarea.style.top = '0';
+              document.body.appendChild(textarea);
+              textarea.focus();
+              textarea.select();
+              try { copied = document.execCommand('copy'); } catch (_) {}
+              textarea.remove();
+            }
+            if (!copied) {
+              showToast('error', 'Não foi possível copiar a lista automaticamente. Tente novamente.', 'Falha ao copiar');
+              return;
+            }
+            showToast('success', 'Lista copiada para a área de transferência.', 'Exportar');
           } catch (err) {
             console.error('Falha ao gerar lista:', err);
             alert(err?.message || 'Falha ao gerar a lista. Verifique a conexão e tente novamente.');
@@ -6291,63 +6452,6 @@ function formatStandardSlotExport(hour, slots) {
     '',
     '⎾‣⏌FREITAS TV | @Xtreino_freitas'
   ].join('\n');
-}
-
-function showExportListCopyModal(text) {
-  document.getElementById('exportListCopyModal')?.remove();
-  const modal = document.createElement('div');
-  modal.id = 'exportListCopyModal';
-  modal.className = 'fixed inset-0 bg-black/60 z-[250] flex items-center justify-center p-4';
-  modal.innerHTML = `
-    <div class="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl">
-      <div class="flex items-center justify-between gap-3 mb-3">
-        <h3 class="text-lg font-bold text-gray-900">Lista pronta para copiar</h3>
-        <button type="button" data-close-export-list class="text-gray-500 hover:text-gray-900 text-2xl leading-none" aria-label="Fechar">&times;</button>
-      </div>
-      <p class="text-sm text-gray-600 mb-3">Se a cópia automática não funcionar, selecione o texto e copie manualmente.</p>
-      <textarea data-export-list-text readonly rows="14" class="w-full rounded-lg border border-gray-300 p-3 text-sm text-gray-800 font-mono"></textarea>
-      <div class="flex justify-end gap-2 mt-3">
-        <button type="button" data-close-export-list class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700">Fechar</button>
-        <button type="button" data-copy-export-list class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold">Copiar lista</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-
-  const textarea = modal.querySelector('[data-export-list-text]');
-  textarea.value = String(text || '');
-  textarea.focus();
-  textarea.select();
-
-  modal.querySelectorAll('[data-close-export-list]').forEach(button => {
-    button.addEventListener('click', () => modal.remove());
-  });
-  modal.addEventListener('click', event => {
-    if (event.target === modal) modal.remove();
-  });
-  modal.querySelector('[data-copy-export-list]').addEventListener('click', async () => {
-    let copied = false;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(textarea.value);
-        copied = true;
-      }
-    } catch (_) {}
-    if (!copied) {
-      textarea.focus();
-      textarea.select();
-      try { copied = document.execCommand('copy'); } catch (_) {}
-    }
-    if (copied) {
-      alert('Lista copiada para a área de transferência.');
-      modal.remove();
-    } else {
-      textarea.focus();
-      textarea.select();
-      if (typeof showToast === 'function') {
-        showToast('info', 'A lista está selecionada. Use Copiar para salvá-la.', 'Lista pronta');
-      }
-    }
-  });
 }
 
 // ===== Exportação de lista por horário =====

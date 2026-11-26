@@ -1725,7 +1725,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="js/admin-read-control.js"></script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-    <script src="admin.js?v=modo-liga-spec-position-15-v2"></script>
+    <script src="admin.js?v=admin-manual-paid-export-copy-v1"></script>
     <script type="module" src="js/admin-market-reports.mjs"></script>
 
     <!-- Sidebar / Page Router -->
@@ -2005,7 +2005,7 @@
                 <!-- Tipo de vaga -->
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tipo de Vaga</label>
-                    <div class="grid grid-cols-2 gap-2">
+                    <div id="addPaidTypeOptions" class="grid grid-cols-2 gap-2">
                         <label id="addPaidLabel" class="flex items-center gap-2 border-2 border-green-500 bg-green-50 rounded-xl px-4 py-3 cursor-pointer transition-all" onclick="selectAddPaidType('paid')">
                             <input type="radio" name="addPaidType" id="addPaidPago" value="paid" checked class="hidden" />
                             <div class="w-4 h-4 rounded-full border-2 border-green-500 bg-green-500 flex items-center justify-center flex-shrink-0" id="addDotPago">
@@ -2025,6 +2025,14 @@
                                 <div class="text-xs text-gray-400">Não concorre à premiação</div>
                             </div>
                         </label>
+                        <label id="addManualPaidLabel" class="hidden items-center gap-2 border-2 border-gray-200 bg-white rounded-xl px-4 py-3 cursor-pointer transition-all" onclick="selectAddPaidType('manual')">
+                            <input type="radio" name="addPaidType" id="addPaidManual" value="manual" class="hidden" disabled />
+                            <div class="w-4 h-4 rounded-full border-2 border-gray-300 flex items-center justify-center flex-shrink-0" id="addDotManualPaid"></div>
+                            <div>
+                                <div class="text-sm font-semibold text-gray-600">Pago Manual</div>
+                                <div class="text-xs text-gray-400">Time + letra SPEC; logo opcional</div>
+                            </div>
+                        </label>
                     </div>
                 </div>
 
@@ -2042,7 +2050,7 @@
                             </label>
                             <input id="addTeamName" class="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Ex: Team Freitas" required />
                         </div>
-                        <div>
+                        <div id="addContactField">
                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                 <i class="fas fa-phone text-blue-500 mr-1 text-xs"></i>Contato <span class="text-gray-400 font-normal">(celular ou e-mail)</span>
                                 <span class="text-red-500 ml-0.5">*</span>
@@ -2057,7 +2065,7 @@
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <h4 id="addModoLigaSpecTitle" class="text-sm font-bold text-teal-900">Identificação no Modo Liga</h4>
-                            <p class="mt-1 text-xs text-teal-800">Escolha uma letra ou avatar se for enviar a logo. A logo é opcional; sem ela, a reserva será salva sem identificação SPEC.</p>
+                            <p id="addModoLigaSpecHelp" class="mt-1 text-xs text-teal-800">Escolha uma letra ou avatar se for enviar a logo. A logo é opcional; sem ela, a reserva será salva sem identificação SPEC.</p>
                         </div>
                         <button id="addModoLigaSpecRefresh" type="button" class="shrink-0 rounded-lg border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-800 hover:bg-teal-50">
                             <i class="fas fa-sync-alt mr-1" aria-hidden="true"></i>Atualizar
@@ -2069,7 +2077,7 @@
                             <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Letras disponíveis</p>
                             <div id="addModoLigaSpecLetters" class="grid grid-cols-6 gap-2 sm:grid-cols-8"></div>
                         </div>
-                        <div>
+                        <div id="addModoLigaSpecAvatarsSection">
                             <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Avatares disponíveis</p>
                             <div id="addModoLigaSpecAvatars" class="grid grid-cols-1 gap-2 sm:grid-cols-3"></div>
                         </div>
@@ -2096,7 +2104,7 @@
                 </section>
 
                 <!-- Vincular reserva à conta do cliente -->
-                <div>
+                <div id="addClientAccountSection">
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Conta do cliente</label>
                     <div class="bg-blue-50 rounded-lg p-3 mb-2 flex items-start gap-2">
                         <i class="fas fa-info-circle text-blue-500 mt-0.5 text-xs flex-shrink-0"></i>
@@ -2112,7 +2120,7 @@
                 </div>
 
                 <!-- Opcionais -->
-                <div>
+                <div id="addOptionalFieldsSection">
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Opcional</label>
                     <div class="space-y-3">
                         <div>
