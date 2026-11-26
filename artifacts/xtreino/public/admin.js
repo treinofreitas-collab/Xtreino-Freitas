@@ -1454,6 +1454,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
   let addModoLigaSpecSelected = '';
   let addModoLigaSpecRequestId = 0;
   let addModoLigaSpecPreviewUrl = '';
+  let addModoLigaSpecLogoFile = null;
   let addModoLigaSpecModulePromise;
   let addModoLigaLastTextFieldId = 'addTeamName';
 
@@ -1506,6 +1507,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     addModoLigaSpecAvailable = new Set();
     addModoLigaSpecOptionsReady = false;
     addModoLigaSpecSelected = '';
+    addModoLigaSpecLogoFile = null;
     const fileInput = document.getElementById('addModoLigaSpecLogo');
     const section = document.getElementById('addModoLigaSpecSection');
     const status = document.getElementById('addModoLigaSpecStatus');
@@ -1547,6 +1549,35 @@ window.showWarningToast = function(message, title = 'Atenção') {
       wrap.classList.add('hidden');
       wrap.classList.remove('flex');
     }
+  }
+
+  function handleAddModoLigaSpecLogoFile(file) {
+    const fileInput = document.getElementById('addModoLigaSpecLogo');
+    const status = document.getElementById('addModoLigaSpecStatus');
+    clearAddModoLigaSpecLogoPreview();
+    addModoLigaSpecLogoFile = null;
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/i.test(file.type || '') || file.size > 10 * 1024 * 1024) {
+      if (status) {
+        status.textContent = 'Escolha PNG, JPG ou WebP com até 10 MB.';
+        status.className = 'mt-3 text-xs font-medium text-red-700';
+      }
+      if (fileInput) fileInput.value = '';
+      restoreAddModoLigaTextFieldFocus();
+      return;
+    }
+    addModoLigaSpecLogoFile = file;
+    addModoLigaSpecPreviewUrl = URL.createObjectURL(file);
+    const image = document.getElementById('addModoLigaSpecLogoPreview');
+    const name = document.getElementById('addModoLigaSpecLogoName');
+    const wrap = document.getElementById('addModoLigaSpecLogoPreviewWrap');
+    if (image) image.src = addModoLigaSpecPreviewUrl;
+    if (name) name.textContent = file.name;
+    if (wrap) {
+      wrap.classList.remove('hidden');
+      wrap.classList.add('flex');
+    }
+    restoreAddModoLigaTextFieldFocus();
   }
 
   async function updateAddModoLigaSpecSelection(selection) {
@@ -1727,33 +1758,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const fileInput = document.getElementById('addModoLigaSpecLogo');
     if (fileInput && !fileInput.dataset.bound) {
       fileInput.dataset.bound = 'true';
-      const handleFileChange = () => {
-        clearAddModoLigaSpecLogoPreview();
-        const file = fileInput.files?.[0];
-        if (!file) return;
-        if (!/^image\/(png|jpeg|webp)$/i.test(file.type || '') || file.size > 10 * 1024 * 1024) {
-          const status = document.getElementById('addModoLigaSpecStatus');
-          if (status) {
-            status.textContent = 'Escolha PNG, JPG ou WebP com até 10 MB.';
-            status.className = 'mt-3 text-xs font-medium text-red-700';
-          }
-          fileInput.value = '';
-          restoreAddModoLigaTextFieldFocus();
-          return;
-        }
-        addModoLigaSpecPreviewUrl = URL.createObjectURL(file);
-        const image = document.getElementById('addModoLigaSpecLogoPreview');
-        const name = document.getElementById('addModoLigaSpecLogoName');
-        const wrap = document.getElementById('addModoLigaSpecLogoPreviewWrap');
-        if (image) image.src = addModoLigaSpecPreviewUrl;
-        if (name) name.textContent = file.name;
-        if (wrap) {
-          wrap.classList.remove('hidden');
-          wrap.classList.add('flex');
-        }
-        restoreAddModoLigaTextFieldFocus();
-      };
-      fileInput.addEventListener('change', handleFileChange);
+      fileInput.addEventListener('change', () => handleAddModoLigaSpecLogoFile(fileInput.files?.[0] || null));
 
       const dropZone = document.getElementById('addModoLigaSpecDropZone');
       if (dropZone && !dropZone.dataset.bound) {
@@ -1764,15 +1769,17 @@ window.showWarningToast = function(message, title = 'Atenção') {
           'ring-2',
           'ring-teal-100',
         );
-        const hasFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files');
+        const hasFiles = event => Array.from(event.dataTransfer?.types || []).some(type =>
+          String(type).toLowerCase() === 'files',
+        ) || Boolean(event.dataTransfer?.files?.length);
 
         dropZone.addEventListener('dragenter', event => {
-          if (!hasFiles(event)) return;
+          if (!isManualModoLigaAdd() || !hasFiles(event)) return;
           event.preventDefault();
           dropZone.classList.add('border-teal-500', 'bg-teal-50', 'ring-2', 'ring-teal-100');
         });
         dropZone.addEventListener('dragover', event => {
-          if (!hasFiles(event)) return;
+          if (!isManualModoLigaAdd() || !hasFiles(event)) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = 'copy';
           dropZone.classList.add('border-teal-500', 'bg-teal-50', 'ring-2', 'ring-teal-100');
@@ -1781,14 +1788,19 @@ window.showWarningToast = function(message, title = 'Atenção') {
           if (!dropZone.contains(event.relatedTarget)) clearDragStyle();
         });
         dropZone.addEventListener('drop', event => {
+          if (!isManualModoLigaAdd()) return;
           event.preventDefault();
           clearDragStyle();
           const file = event.dataTransfer?.files?.[0];
           if (!file) return;
-          const transfer = new DataTransfer();
-          transfer.items.add(file);
-          fileInput.files = transfer.files;
-          fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+          try {
+            const transfer = new DataTransfer();
+            transfer.items.add(file);
+            fileInput.files = transfer.files;
+          } catch (_) {
+            // Keep the file in memory for browsers that reject DataTransfer assignment.
+          }
+          handleAddModoLigaSpecLogoFile(file);
         });
       }
     }
@@ -1856,7 +1868,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
       let specLogoFile = null;
       let specHour = '';
       if (isModoLiga) {
-        specLogoFile = document.getElementById('addModoLigaSpecLogo')?.files?.[0] || null;
+        specLogoFile = addModoLigaSpecLogoFile
+          || document.getElementById('addModoLigaSpecLogo')?.files?.[0]
+          || null;
         if (specLogoFile) {
           specSelection = addModoLigaSpecSelected;
           if (!specSelection || (isManualPaid && !/^[A-Z]$/.test(specSelection))) {

@@ -6758,6 +6758,32 @@ function modoLigaSpecHoursFromSelection() {
     return [...new Set(hours.filter(Boolean))];
 }
 
+function modoLigaSpecSelectionGroups() {
+    const groups = new Map();
+    for (const item of selectedTimes) {
+        const date = String(item.date || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return { groups: [], error: 'Selecione uma data válida para consultar as opções do SPEC.' };
+        }
+        const [year, month, day] = date.split('-').map(Number);
+        if (new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) !== date) {
+            return { groups: [], error: 'Selecione uma data válida para consultar as opções do SPEC.' };
+        }
+        const schedule = String(item.schedule || '');
+        const match = schedule.match(/(\d{1,2})\s*h/i) || schedule.match(/(\d{1,2})\s*:/);
+        if (!match) {
+            return { groups: [], error: 'Selecione um horário válido para consultar as opções do SPEC.' };
+        }
+        const hour = String(Number(match[1])).padStart(2, '0');
+        if (!groups.has(date)) groups.set(date, new Set());
+        groups.get(date).add(hour);
+    }
+    return {
+        groups: [...groups.entries()].map(([date, hours]) => ({ date, hours: [...hours] })),
+        error: '',
+    };
+}
+
 function hasModoLigaSpecLogo(team) {
     if (team?.logoBase64) return true;
     const input = document.getElementById(`teamLogoInput_${team?.id || ''}`);
@@ -6809,8 +6835,13 @@ async function updateModoLigaSpecLetterPickers() {
     renderModoLigaSpecLetterButtons([]);
     if (!modeLiga || !teams.some(hasModoLigaSpecLogo)) return;
 
-    const hours = modoLigaSpecHoursFromSelection();
-    if (hours.length === 0) {
+    const selection = modoLigaSpecSelectionGroups();
+    if (selection.error) {
+        for (const team of teams) team.modoLigaSpecLoadError = selection.error;
+        renderModoLigaSpecLetterButtons([]);
+        return;
+    }
+    if (selection.groups.length === 0) {
         for (const team of teams) {
             if (team.modoLigaSpecLetter) team.modoLigaSpecLetter = '';
             if (team.modoLigaSpecAvatar) team.modoLigaSpecAvatar = '';
@@ -6819,7 +6850,7 @@ async function updateModoLigaSpecLetterPickers() {
         return;
     }
     const supportedHours = new Set(['19', '20', '21', '22', '23', '00']);
-    if (hours.some(hour => !supportedHours.has(hour))) {
+    if (selection.groups.some(group => group.hours.some(hour => !supportedHours.has(hour)))) {
         for (const team of teams) {
             team.modoLigaSpecLoadError = 'Letras e avatares SPEC estão disponíveis para 19h, 20h, 21h, 22h, 23h e 00h.';
         }
@@ -6828,21 +6859,37 @@ async function updateModoLigaSpecLetterPickers() {
     }
 
     try {
-        const response = await authenticatedPaymentFetch('/.netlify/functions/modo-liga-spec-letters', {
-            method: 'POST',
-            body: JSON.stringify({ eventType: document.getElementById('scheduleModal')?.dataset?.eventType, hours }),
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.message || 'Não foi possível consultar as opções do SPEC.');
+        const eventType = document.getElementById('scheduleModal')?.dataset?.eventType;
+        const optionResults = await Promise.all(selection.groups.map(async group => {
+            const response = await authenticatedPaymentFetch('/.netlify/functions/modo-liga-spec-letters', {
+                method: 'POST',
+                body: JSON.stringify({ eventType, date: group.date, hours: group.hours }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.message || 'Não foi possível consultar as opções do SPEC.');
+            return result;
+        }));
         if (requestId !== window.__modoLigaSpecLettersRequestId) return;
-        const availableLetters = Array.isArray(result.availableLetters) ? result.availableLetters : [];
-        const catalogAvatars = Array.isArray(result.availableAvatars) ? result.availableAvatars : [];
+        const firstResult = optionResults[0] || {};
+        const availableLettersByDate = optionResults.map(result => new Set(
+            (Array.isArray(result.availableLetters) ? result.availableLetters : [])
+                .map(letter => String(letter || '').trim().toUpperCase()),
+        ));
+        const availableLetters = (Array.isArray(firstResult.availableLetters) ? firstResult.availableLetters : [])
+            .map(letter => String(letter || '').trim().toUpperCase())
+            .filter((letter, index, letters) => /^[A-Z]$/.test(letter)
+                && letters.indexOf(letter) === index
+                && availableLettersByDate.every(lettersForDate => lettersForDate.has(letter)));
+        const catalogAvatars = Array.isArray(firstResult.availableAvatars) ? firstResult.availableAvatars : [];
         const availableAvatars = catalogAvatars.map(item => {
             const known = MODO_LIGA_SPEC_AVATARS.find(avatar =>
                 avatar.selection === normalizeModoLigaSpecAvatar(item?.selection)
                 && avatar.code === String(item?.code || ''),
             );
-            return known || null;
+            return known && optionResults.every(result =>
+                (Array.isArray(result.availableAvatars) ? result.availableAvatars : [])
+                    .some(available => available?.selection === known.selection && String(available?.code || '') === known.code),
+            ) ? known : null;
         }).filter(Boolean);
         window.__modoLigaSpecAvailableLetters = availableLetters;
         window.__modoLigaSpecAvailableAvatars = availableAvatars;
@@ -6955,7 +7002,7 @@ function renderModoLigaSpecLetterButtons(availableLetters) {
             } else if (!team.modoLigaSpecOptionsReady) {
                 help.textContent = modoLigaSpecHoursFromSelection().length
                     ? 'Consultando letras livres…'
-                    : 'Selecione os horários para consultar as letras livres. A escolha é opcional.';
+                    : 'Selecione uma data e horário para consultar as letras livres. A escolha é opcional.';
             } else if (isAvatarPickerOpen && !avatarChoicesForTeam.length) {
                 help.textContent = 'Não há avatares disponíveis em todos os horários selecionados.';
             } else if (isAvatarPickerOpen) {
