@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildModoLigaExportAssignments,
   buildModoLigaExportSlots,
   formatModoLigaExport,
 } from './admin-modo-liga-export.mjs';
@@ -30,6 +31,24 @@ test('fills remaining letters with teams that have no selected letter', () => {
   assert.equal(slots.find(slot => slot.idx === 'B').team, 'TESTE');
   assert.equal(slots.find(slot => slot.idx === 'C').team, 'NIGHTMARE');
   assert.equal(slots.find(slot => slot.idx === 'Z').team, 'TESTE 2 - MANUAL');
+});
+
+test('exposes the same calculated letters to the manage roster', () => {
+  const teams = [
+    { id: 'rangers-a', name: 'Rangers Sport A' },
+    { id: 'rangers-b', name: 'Rangers Sports B' },
+    { id: 'rangers-c', name: 'Rangers Sports C' },
+    { id: 'xtrem', name: 'Xtrem' },
+    { id: 'vortex', name: 'Vortex', specLetter: 'E' },
+    { id: 'vortex-esports', name: 'VORTEX ESPORTS', specLetter: 'H' },
+    { id: 'havoc', name: 'HAVOC', specLetter: 'K' },
+  ];
+
+  const assignments = buildModoLigaExportAssignments(teams);
+
+  assert.equal(assignments.find(entry => entry.registration.id === 'xtrem')?.idx, 'D');
+  assert.equal(assignments.find(entry => entry.registration.id === 'vortex')?.idx, 'E');
+  assert.equal(assignments.find(entry => entry.registration.id === 'vortex-esports')?.idx, 'H');
 });
 
 test('treats avatar selections as unassigned roster positions', () => {

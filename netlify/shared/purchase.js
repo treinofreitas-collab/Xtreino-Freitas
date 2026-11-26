@@ -290,6 +290,16 @@ async function buildPurchase(uid, body, method) {
     if (source.data().status !== "pending") fail("Esta compra não está pendente.");
     if (source.data().type === "tokens_purchase") fail("Use o checkout de compra de tokens.");
   }
+  const logoMissingSpecChoice = kind === "event" && sources.some(source => {
+    const registration = source.data() || {};
+    return registration.modoLigaSpecLogoUploaded === true
+      && isModoLigaType(registration.eventType)
+      && !registration.modoLigaSpecLetter
+      && !registration.modoLigaSpecAvatar;
+  });
+  if (logoMissingSpecChoice) {
+    fail("Ao enviar uma logo no Modo Liga, selecione uma letra ou um avatar antes de continuar.", 400);
+  }
   const reads = new Map();
   const prices = kind === "product" ? [product] : await Promise.all(sources.map(s => eventPrice(db, s.data(), body.forcePay === true, reads)));
   const originalCents = prices.reduce((sum, p) => sum + p.cents, 0);
@@ -742,6 +752,16 @@ async function settlePurchase(transaction, reference, {
       const selectedLetter = normalizeSpecLetter(registration.modoLigaSpecLetter);
       const selectedAvatar = normalizeSpecAvatar(registration.modoLigaSpecAvatar);
       const selectedChoice = selectedLetter || selectedAvatar;
+      if (
+        registration.modoLigaSpecLogoUploaded === true
+        && isModoLigaType(registration.eventType)
+        && !selectedChoice
+      ) {
+        return review(
+          "spec_selection_required",
+          "Ao enviar uma logo no Modo Liga, selecione uma letra ou um avatar antes de continuar.",
+        );
+      }
       if (!selectedChoice && !claim) continue;
       if (
         !claim

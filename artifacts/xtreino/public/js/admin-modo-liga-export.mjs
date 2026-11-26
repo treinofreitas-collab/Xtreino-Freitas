@@ -14,7 +14,7 @@ function specLetter(team) {
   return /^[A-Z]$/.test(value) ? value : '';
 }
 
-export function buildModoLigaExportSlots(teams) {
+function buildModoLigaExportEntries(teams) {
   const registrations = Array.isArray(teams) ? teams : [];
   if (registrations.length > MAX_EXPORT_SLOTS) {
     throw new Error('A exportação do Modo Liga aceita até 15 times.');
@@ -57,7 +57,19 @@ export function buildModoLigaExportSlots(teams) {
 
   return outputLetters.map(letter => ({
     idx: letter,
-    team: teamName(teamsByLetter.get(letter)),
+    registration: teamsByLetter.get(letter) || null,
+  }));
+}
+
+export function buildModoLigaExportAssignments(teams) {
+  return buildModoLigaExportEntries(teams)
+    .filter(entry => entry.registration);
+}
+
+export function buildModoLigaExportSlots(teams) {
+  return buildModoLigaExportEntries(teams).map(({ idx, registration }) => ({
+    idx,
+    team: teamName(registration),
   }));
 }
 

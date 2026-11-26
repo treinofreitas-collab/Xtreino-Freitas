@@ -6510,7 +6510,7 @@ function addTeam() {
                 <div id="modoLigaSpecLetterChoices_${teamId}" role="group" aria-label="Letras disponíveis para a logo"
                      class="mt-2 grid grid-cols-5 gap-2"></div>
                 <p id="modoLigaSpecLetterHelp_${teamId}" class="mt-1 text-xs text-teal-800">
-                    Logo e identificação são opcionais. Envie uma logo para escolher uma letra ou selecione “Não tenho letra”.
+                    Ao enviar uma logo, escolha uma letra ou um avatar. Sem logo, essa escolha é opcional.
                 </p>
             </div>`}
             <!-- Email + WhatsApp -->
@@ -6801,6 +6801,32 @@ function normalizeModoLigaSpecAvatar(value) {
     return MODO_LIGA_SPEC_AVATARS.some(avatar => avatar.selection === selection) ? selection : '';
 }
 
+function hasValidModoLigaSpecChoice(team) {
+    const rawLetter = String(team?.modoLigaSpecLetter || '').trim().toUpperCase();
+    const hasLetter = /^[A-Z]$/.test(rawLetter);
+    const hasAvatar = Boolean(normalizeModoLigaSpecAvatar(team?.modoLigaSpecAvatar));
+    return hasLetter !== hasAvatar;
+}
+
+function validateModoLigaSpecLogoSelections(teamList = teams) {
+    if (!isModoLigaBooking()) return true;
+    const missingChoice = (Array.isArray(teamList) ? teamList : [])
+        .find(team => Boolean(team?.logoBase64) && !hasValidModoLigaSpecChoice(team));
+    if (!missingChoice) return true;
+
+    const message = 'Como você enviou uma logo, selecione uma letra ou um avatar antes de continuar.';
+    const wrap = document.getElementById(`modoLigaSpecLetterWrap_${missingChoice.id || ''}`);
+    const help = document.getElementById(`modoLigaSpecLetterHelp_${missingChoice.id || ''}`);
+    if (help) {
+        help.textContent = message;
+        help.classList.remove('text-teal-800');
+        help.classList.add('text-red-700');
+    }
+    wrap?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alert(message);
+    return false;
+}
+
 async function updateModoLigaSpecLetterPickers() {
     const requestId = (window.__modoLigaSpecLettersRequestId || 0) + 1;
     window.__modoLigaSpecLettersRequestId = requestId;
@@ -6919,6 +6945,8 @@ function renderModoLigaSpecLetterButtons(availableLetters) {
         const container = document.getElementById(`modoLigaSpecLetterChoices_${team.id}`);
         const help = document.getElementById(`modoLigaSpecLetterHelp_${team.id}`);
         if (!container) continue;
+        help?.classList.remove('text-red-700');
+        help?.classList.add('text-teal-800');
 
         const hasLogo = hasModoLigaSpecLogo(team);
         const wrap = document.getElementById(`modoLigaSpecLetterWrap_${team.id}`);
@@ -6992,7 +7020,8 @@ function renderModoLigaSpecLetterButtons(availableLetters) {
             container.innerHTML = `${letterButtons}<button id="modoLigaNoLetter_${team.id}" type="button"
                 class="col-span-5 flex min-h-11 items-center justify-center rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 ${avatarButtonClasses}"
                 aria-pressed="${Boolean(team.modoLigaAvatarPickerOpen || avatarSelected)}"
-                onclick="toggleModoLigaAvatarPicker('${team.id}')">Não tenho letra</button>`;
+                aria-label="Escolher um avatar"
+                onclick="toggleModoLigaAvatarPicker('${team.id}')">Escolher avatar</button>`;
             const avatarButton = document.getElementById(`modoLigaNoLetter_${team.id}`);
             if (avatarButton) avatarButton.disabled = !team.modoLigaSpecOptionsReady;
         }
@@ -7001,20 +7030,20 @@ function renderModoLigaSpecLetterButtons(availableLetters) {
                 help.textContent = team.modoLigaSpecLoadError;
             } else if (!team.modoLigaSpecOptionsReady) {
                 help.textContent = modoLigaSpecHoursFromSelection().length
-                    ? 'Consultando letras livres…'
-                    : 'Selecione uma data e horário para consultar as letras livres. A escolha é opcional.';
+                    ? 'Consultando letras e avatares livres…'
+                    : 'Selecione uma data e horário. Com logo, a escolha de letra ou avatar é obrigatória.';
             } else if (isAvatarPickerOpen && !avatarChoicesForTeam.length) {
                 help.textContent = 'Não há avatares disponíveis em todos os horários selecionados.';
             } else if (isAvatarPickerOpen) {
                 help.textContent = 'Escolha um avatar disponível em todos os horários selecionados.';
             } else if (!hasLogo) {
-                help.textContent = 'Envie a logo do time para escolher uma letra. Se preferir um avatar, toque em “Não tenho letra”.';
+                help.textContent = 'Ao enviar uma logo, escolha uma letra ou um avatar.';
             } else if (choices.length) {
-                help.textContent = `Toque em uma letra para selecionar; toque novamente para desmarcar. A mesma letra vale para todos os horários. Opcional.`;
+                help.textContent = 'Escolha uma letra ou um avatar. Essa escolha é obrigatória para continuar com a logo e vale para todos os horários.';
             } else if (available.length) {
-                help.textContent = 'As letras disponíveis já foram escolhidas por outro time deste pedido.';
+                help.textContent = 'As letras livres já foram escolhidas por outro time. Selecione um avatar.';
             } else {
-                help.textContent = 'Não há letras livres em comum. Aperte “Não tenho letra” para escolher um avatar cadastrado.';
+                help.textContent = 'Não há letras livres em comum. Selecione “Escolher avatar” para ver as opções.';
             }
         }
     }
@@ -8415,6 +8444,7 @@ async function submitSchedule(e, useTokens = false) {
 
             if (nameInput && emailInput && phoneInput) {
                 teamsData.push({
+                    id: teamDiv.id,
                     name: nameInput.value.trim(),
                     email: emailInput.value.trim(),
                     phone: phoneInput.value.trim(),
@@ -8450,6 +8480,12 @@ async function submitSchedule(e, useTokens = false) {
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
                 return;
             }
+        }
+
+        if (isModoLigaBooking() && !validateModoLigaSpecLogoSelections(teamsData)) {
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = oldText; }
+            if (tokenBtn) tokenBtn.disabled = false;
+            return;
         }
 
         // Fluxo de evento grátis: confirmar diretamente sem pagamento
@@ -8760,6 +8796,9 @@ async function submitSchedule(e, useTokens = false) {
                         teamName: team.name,
                         teamLogoUrl: isSoloPlayerEvent ? null : (_teamLogoDataMap[team.name]?.url || _equipeAtual?.logoOriginalUrl || null),
                         teamLogoThumb: isSoloPlayerEvent ? null : (_teamLogoDataMap[team.name]?.thumb || _equipeAtual?.logoUrl || null),
+                        ...(isModoLigaBooking() && team.logoBase64
+                            ? { modoLigaSpecLogoUploaded: true }
+                            : {}),
                         ...(isModoLigaBooking() && team.logoBase64 && team.modoLigaSpecLetter
                             ? { modoLigaSpecLetter: team.modoLigaSpecLetter }
                             : {}),
@@ -9174,6 +9213,7 @@ function _showFreeSlotChoiceModal(rawEventType, cfg, teamsData, datesToUse, sele
 
 async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesToUse, selectedTimesArg, overrideStatus) {
     try {
+        if (isModoLigaBooking() && !validateModoLigaSpecLogoSelections(teamsData)) return;
         if (!window.isLoggedIn || !window.firebaseAuth?.currentUser) {
             closeScheduleModal();
             if (typeof openLoginModal === 'function') openLoginModal();
@@ -9307,6 +9347,9 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
                             eventType: rawEventType,
                             ...getActiveEventRegistrationMetadata(),
                             title: isLiga ? `${cfg.label} - ${schedKey}` : `${cfg.label} - ${slotDisplay}`,
+                            ...(isModoLigaBooking() && team.logoBase64
+                                ? { modoLigaSpecLogoUploaded: true }
+                                : {}),
                             ...(isModoLigaBooking() && team.logoBase64 && team.modoLigaSpecLetter
                                 ? { modoLigaSpecLetter: team.modoLigaSpecLetter }
                                 : {}),
@@ -10100,6 +10143,9 @@ window.getWhatsAppLink = getWhatsAppLink;
 
 
 async function createRegistrationsForEvent(eventType, datesToUse, teamsData, timesByDate, externalRef, status = 'pending', couponInfo = null, allocationByDate = null) {
+    if (isModoLigaBooking() && !validateModoLigaSpecLogoSelections(teamsData)) {
+        throw new Error('Selecione uma letra ou um avatar para cada logo enviada no Modo Liga.');
+    }
     const cfg = getActiveScheduleConfig(eventType);
     const isSoloPlayerEvent = isSoloScheduleConfig(cfg);
     const isLiga = (cfg.modo || '').toUpperCase().includes('LIGA');
@@ -10231,6 +10277,9 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                     teamLogoUrl: teamLogoUrl,
                     teamLogoThumb: teamLogoThumb,
                     teamId: _equipeAtual?.id || null,
+                    ...(isModoLigaBooking() && team.logoBase64
+                        ? { modoLigaSpecLogoUploaded: true }
+                        : {}),
                     ...(isModoLigaBooking() && team.logoBase64 && team.modoLigaSpecLetter
                         ? { modoLigaSpecLetter: team.modoLigaSpecLetter }
                         : {}),

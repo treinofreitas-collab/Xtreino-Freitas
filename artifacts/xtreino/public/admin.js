@@ -6056,6 +6056,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
       let countConfirmed = 0, countPending = 0;
 
+      let modoLigaExportLetterByRegistration = new Map();
+
       // Função auxiliar para criar uma linha de time
       // posIdx: índice posicional (1-based) dentro do grupo ordenado — igual ao "ver detalhes > Inscritos"
       const makeRow = (d, r, isPending, isFreeManual, posIdx) => {
@@ -6088,8 +6090,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const _hasCurrentSpecLetter = _isLigaRow
           && /^[A-Z]$/.test(_storedSpecLetter)
           && (!_storedSpecHour || _storedSpecHour === targetHH);
+        const _exportAssignedLetter = _isLigaRow
+          ? (modoLigaExportLetterByRegistration.get(d.id) || '')
+          : '';
         const slotBadgeLabel = _isLigaRow
-          ? (_hasCurrentSpecAvatar ? `👤 ${_specAvatarName}` : (_hasCurrentSpecLetter ? _storedSpecLetter : (posIdx ? String.fromCharCode(64 + posIdx) : '')))
+          ? (_hasCurrentSpecAvatar ? `👤 ${_specAvatarName}` : (_hasCurrentSpecLetter ? _storedSpecLetter : (_exportAssignedLetter || (posIdx ? String.fromCharCode(64 + posIdx) : ''))))
           : `#${posIdx}`;
         const slotBadge = posIdx != null
           ? `<span class="text-xs font-bold ${_hasCurrentSpecAvatar ? 'text-teal-800 bg-teal-50 border-teal-200' : 'text-orange-600 bg-orange-50 border-orange-200'} border rounded px-1.5 py-0.5 flex-shrink-0">${slotBadgeLabel}</span>`
@@ -6098,7 +6103,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
           ? `<span class="px-2.5 py-1 bg-teal-50 border border-teal-200 text-teal-700 rounded-lg text-xs font-medium">👤 Avatar escolhido</span>`
           : `<button class="px-2.5 py-1 bg-orange-50 border border-orange-200 text-orange-600 rounded-lg text-xs hover:bg-orange-500 hover:text-white transition-colors font-medium"
                     data-edit-slot-reg-id="${d.id}" data-edit-slot-current="${posIdx || ''}"
-                    data-edit-slot-current-letter="${_hasCurrentSpecLetter ? _storedSpecLetter : (_isLigaRow && posIdx ? String.fromCharCode(64 + posIdx) : '')}"
+                    data-edit-slot-current-letter="${_hasCurrentSpecLetter ? _storedSpecLetter : (_isLigaRow ? (_exportAssignedLetter || (posIdx ? String.fromCharCode(64 + posIdx) : '')) : '')}"
                     title="${_isLigaRow ? 'Atribuir letra e cadastrar logo no SPEC para este horário' : 'Editar número da vaga'}">${_isLigaRow ? '🔠 LETRA SPEC' : '✏️ Editar vaga'}</button>`;
         // Botão de verificar pagamento — só para pendentes com external_reference
         const extRef = r.external_reference || null;
@@ -6185,6 +6190,34 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // Separar confirmados e pendentes antes de numerar — pendentes não ocupam slot
       const _confirmedDocs = _matchedDocs.filter(d => d.data().status !== 'pending');
       const _pendingDocs   = _matchedDocs.filter(d => d.data().status === 'pending');
+
+      const modoLigaConfirmedDocs = _confirmedDocs.filter(d => {
+        const registration = d.data();
+        return isModoLigaRegistration(registration)
+          && ['paid', 'confirmed', 'lisagem_gratis'].includes(String(registration.status || '').toLowerCase());
+      });
+      if (modoLigaConfirmedDocs.length) {
+        try {
+          const { buildModoLigaExportAssignments } = await import(
+            './js/admin-modo-liga-export.mjs?v=modo-liga-manage-export-assignments-v1'
+          );
+          const exportTeams = modoLigaConfirmedDocs.map(d => {
+            const registration = d.data();
+            return {
+              id: d.id,
+              name: registration.teamName || registration.name || registration.email || 'Time',
+              specLetter: registration.modoLigaSpecLetter || '',
+            };
+          });
+          modoLigaExportLetterByRegistration = new Map(
+            buildModoLigaExportAssignments(exportTeams)
+              .filter(entry => entry.registration?.id)
+              .map(entry => [entry.registration.id, entry.idx]),
+          );
+        } catch (error) {
+          console.error('[Gerenciar Modo Liga] Não foi possível calcular as letras da exportação.', error);
+        }
+      }
 
       // Confirmados recebem posição sequencial real (1, 2, 3...)
       _confirmedDocs.forEach((d, idx) => {

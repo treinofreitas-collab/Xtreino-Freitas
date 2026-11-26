@@ -444,6 +444,75 @@ test("Modo Liga keeps one SPEC letter across hours, reserves it, and uploads onl
   assert.deepEqual(repeated.modoLigaSpec, { uploadedCount: 2, failedCount: 0, conflictCount: 0 });
 });
 
+test("Modo Liga requires a letter or avatar when a customer uploads a logo", async () => {
+  const reference = "modo_liga_logo_requires_spec_choice";
+  currentDb = fakeDatabase({
+    "adminEvents/modo-liga": { name: "Modo Liga", eventType: "modo-liga", preco: 3, status: "Aberto" },
+    "registrations/logo-without-choice": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-11-26", schedule: "Quinta - 21h", hour: "21h",
+      external_reference: reference, teamName: "TIME SEM LETRA", email: "buyer@example.com",
+      teamLogoUrl: "https://storage.example/team.png",
+      modoLigaSpecLogoUploaded: true,
+    },
+  });
+
+  await assert.rejects(
+    preparePurchase("buyer", { external_reference: reference, unit_price: 3 }, "mercadopago"),
+    /selecione uma letra ou um avatar/i,
+  );
+  assert.equal(currentDb.read(`purchase_checkouts/${reference}`), undefined);
+});
+
+test("Modo Liga rechecks the logo choice when an existing checkout is paid", async () => {
+  const reference = "modo_liga_choice_rechecked_at_payment";
+  const logoPath = "teams/modo-liga/logos/recheck_123.png";
+  const logoUrl = `https://firebasestorage.googleapis.com/v0/b/test-bucket/o/${encodeURIComponent(logoPath)}?alt=media`;
+  currentBucket = fakeStorage({ [logoPath]: { contents: "original-png" } });
+  currentDb = fakeDatabase({
+    "adminEvents/modo-liga": { name: "Modo Liga", eventType: "modo-liga", preco: 3, status: "Aberto" },
+    "registrations/recheck-choice": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-11-26", schedule: "Quinta - 21h", hour: "21h",
+      external_reference: reference, teamName: "TIME COM LOGO", email: "buyer@example.com",
+      teamLogoUrl: logoUrl, modoLigaSpecLogoUploaded: true, modoLigaSpecLetter: "A",
+    },
+  });
+  await preparePurchase("buyer", { external_reference: reference, unit_price: 3 }, "mercadopago");
+  await currentDb.doc("registrations/recheck-choice").update({
+    modoLigaSpecLetter: "",
+    modoLigaSpecAvatar: "",
+  });
+
+  const result = await completePurchase(reference, {
+    payment: { ...payment(reference), transaction_amount: 3 },
+  });
+  assert.equal(result.status, "needs_review");
+  assert.equal(result.reason, "spec_selection_required");
+  assert.equal(currentDb.read("registrations/recheck-choice").status, "pending");
+  assert.equal(currentBucket.read("teams/modo-liga/logos/spec/21H/902000034.png"), undefined);
+});
+
+test("Modo Liga keeps selection optional when no logo was uploaded in the booking", async () => {
+  const reference = "modo_liga_existing_profile_logo";
+  currentDb = fakeDatabase({
+    "adminEvents/modo-liga": { name: "Modo Liga", eventType: "modo-liga", preco: 3, status: "Aberto" },
+    "registrations/profile-logo-no-choice": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-11-26", schedule: "Quinta - 21h", hour: "21h",
+      external_reference: reference, teamName: "TIME COM LOGO SALVA", email: "buyer@example.com",
+      teamLogoUrl: "https://storage.example/profile-logo.png",
+    },
+  });
+
+  const prepared = await preparePurchase(
+    "buyer",
+    { external_reference: reference, unit_price: 3 },
+    "mercadopago",
+  );
+  assert.equal(prepared.checkout.modoLigaSpecClaims, undefined);
+});
+
 test("Modo Liga SPEC logo is delivered after an atomic token payment", async () => {
   const reference = "tokens_modo_liga_spec";
   const logoPath = "teams/modo-liga/logos/team_tokens.png";
