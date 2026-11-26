@@ -3,7 +3,7 @@ const { getAdmin, verifyFirebaseUser } = require("../shared/firebase-admin");
 const ALLOWED_HOURS = new Set(["19", "20", "21", "22", "23", "00"]);
 const ALLOWED_ROLES = new Set(["ceo", "gerente"]);
 const STORAGE_ROOT = "teams/modo-liga/logos/spec";
-const SPEC_CODE_PATTERN = /^9020000(?:3[4-9]|[45][0-9])$/;
+const SPEC_CODE_PATTERN = /^9020000(?:3[4-9]|[45][0-9]|30|0[67])$/;
 
 function normalizeHour(value) {
   const hour = String(value || "").trim().toUpperCase().replace(/H$/, "");

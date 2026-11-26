@@ -5347,7 +5347,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
             }
           } catch (err) {
             console.error('Falha ao gerar lista:', err);
-            alert('Falha ao gerar a lista. Verifique a conexão e tente novamente.');
+            alert(err?.message || 'Falha ao gerar a lista. Verifique a conexão e tente novamente.');
           }
         } 
         else if (btnToggle) {
@@ -6293,28 +6293,6 @@ function formatStandardSlotExport(hour, slots) {
   ].join('\n');
 }
 
-function formatModoLigaExport(hour, slots) {
-  const namesBySlot = new Map((Array.isArray(slots) ? slots : [])
-    .map(slot => [Number(slot.idx), String(slot.team || '')]));
-  const teamLines = Array.from({ length: 15 }, (_, index) => {
-    const letter = String.fromCharCode(65 + index);
-    return `   ⃟🩵 𝑻𝑰𝑴𝑬 ${letter}: ${namesBySlot.get(index + 1) || ''}`;
-  });
-
-  return [
-    `ㅤㅤ 𝑴𝑶𝑫𝑶 𝑳𝑰𝑮𝑨 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 » ${hour}𝐇`,
-    'ㅤ┉────┉────┉────┉────┉',
-    '🔐➺ 𝑺𝑨𝑳𝑨 𝑬 𝑺𝑬𝑵𝑯𝑨 𝟏𝟎𝑴𝑰𝑵 𝑨𝑵𝑻𝑬𝑺',
-    '🏷️➺ 𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝑰𝑪̧𝑨̃𝑶!',
-    '',
-    ...teamLines,
-    '',
-    '⌞📽️⌝ 𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: SMITHZEIRA',
-    '',
-    '⎾‣⏌FREITAS TV | @Xtreino_freitas'
-  ].join('\n');
-}
-
 function showExportListCopyModal(text) {
   document.getElementById('exportListCopyModal')?.remove();
   const modal = document.createElement('div');
@@ -6405,7 +6383,12 @@ async function buildExportList(date, eventType, hour){
     if (!['paid','confirmed','lisagem_gratis'].includes(st)) return;
     const name = r.teamName || r.name || r.email || 'Time';
     const slotNum = r.slot != null ? Number(r.slot) : (r.slotNumber != null ? Number(r.slotNumber) : null);
-    teams.push({ name, slot: slotNum, createdAt: r.createdAt?.toDate?.() || new Date(0) });
+    teams.push({
+      name,
+      slot: slotNum,
+      createdAt: r.createdAt?.toDate?.() || new Date(0),
+      specLetter: r.modoLigaSpecLetter || '',
+    });
   });
   // Ordenar por createdAt (chegada) — slotNumber como fallback
   teams.sort((a, b) => {
@@ -6449,8 +6432,8 @@ async function buildExportList(date, eventType, hour){
     const footer = `\n\n🛡️•𝑪𝑳𝑨𝑺𝑺𝑰𝐅𝐈𝐂𝐀𝐌 𝟔 𝑬𝑸𝑼𝐈𝐏𝐄𝐒 𝑷𝑹𝑨 𝑷𝑹𝑶́𝑿𝐈𝐌𝐀 𝑭𝐀𝐒𝐄!\n\n𝐁𝐎𝐀 𝐒𝐎𝐑𝐓𝐄 𝐀 𝐓𝐎𝐃𝐎𝐒!`;
     return `${header}\n${lines}\n${footer}`;
   } else if (type.includes('liga')) {
-    // O botão de cada horário informa H, então cada exportação atualiza o cabeçalho.
-    return formatModoLigaExport(H, slots);
+    const { formatModoLigaExport } = await import('./js/admin-modo-liga-export.mjs?v=modo-liga-spec-position-15-v2');
+    return formatModoLigaExport(H, teams);
   } else {
     // XTreino normal (padrão)
     return formatStandardSlotExport(H, slots);
