@@ -4904,11 +4904,17 @@ window.showWarningToast = function(message, title = 'Atenção') {
           const h = btnExport.getAttribute('data-export-hour');
           try {
             const text = await buildExportList(date, ovEventType, h);
-            await navigator.clipboard.writeText(text);
-            alert('Lista copiada para a área de transferência.');
+            try {
+              if (!navigator.clipboard?.writeText) throw new Error('Clipboard API indisponível');
+              await navigator.clipboard.writeText(text);
+              alert('Lista copiada para a área de transferência.');
+            } catch (copyError) {
+              console.warn('Não foi possível copiar automaticamente; abrindo a lista para cópia manual:', copyError);
+              showExportListCopyModal(text);
+            }
           } catch (err) {
-            console.error('Falha ao exportar lista:', err);
-            alert('Falha ao exportar lista.');
+            console.error('Falha ao gerar lista:', err);
+            alert('Falha ao gerar a lista. Verifique a conexão e tente novamente.');
           }
         } 
         else if (btnToggle) {
@@ -5870,6 +5876,63 @@ function formatModoLigaExport(hour, slots) {
     '',
     '⎾‣⏌FREITAS TV | @Xtreino_freitas'
   ].join('\n');
+}
+
+function showExportListCopyModal(text) {
+  document.getElementById('exportListCopyModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'exportListCopyModal';
+  modal.className = 'fixed inset-0 bg-black/60 z-[250] flex items-center justify-center p-4';
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <h3 class="text-lg font-bold text-gray-900">Lista pronta para copiar</h3>
+        <button type="button" data-close-export-list class="text-gray-500 hover:text-gray-900 text-2xl leading-none" aria-label="Fechar">&times;</button>
+      </div>
+      <p class="text-sm text-gray-600 mb-3">Se a cópia automática não funcionar, selecione o texto e copie manualmente.</p>
+      <textarea data-export-list-text readonly rows="14" class="w-full rounded-lg border border-gray-300 p-3 text-sm text-gray-800 font-mono"></textarea>
+      <div class="flex justify-end gap-2 mt-3">
+        <button type="button" data-close-export-list class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700">Fechar</button>
+        <button type="button" data-copy-export-list class="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold">Copiar lista</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const textarea = modal.querySelector('[data-export-list-text]');
+  textarea.value = String(text || '');
+  textarea.focus();
+  textarea.select();
+
+  modal.querySelectorAll('[data-close-export-list]').forEach(button => {
+    button.addEventListener('click', () => modal.remove());
+  });
+  modal.addEventListener('click', event => {
+    if (event.target === modal) modal.remove();
+  });
+  modal.querySelector('[data-copy-export-list]').addEventListener('click', async () => {
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textarea.value);
+        copied = true;
+      }
+    } catch (_) {}
+    if (!copied) {
+      textarea.focus();
+      textarea.select();
+      try { copied = document.execCommand('copy'); } catch (_) {}
+    }
+    if (copied) {
+      alert('Lista copiada para a área de transferência.');
+      modal.remove();
+    } else {
+      textarea.focus();
+      textarea.select();
+      if (typeof showToast === 'function') {
+        showToast('info', 'A lista está selecionada. Use Copiar para salvá-la.', 'Lista pronta');
+      }
+    }
+  });
 }
 
 // ===== Exportação de lista por horário =====

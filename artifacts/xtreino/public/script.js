@@ -9344,6 +9344,12 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink,
     const existing = document.getElementById('slotConfirmModal');
     if (existing) existing.remove();
     playNotificationSound();
+    const isModoLigaConfirmation = [eventId, eventName].some(value => {
+        const text = String(value || '').trim().toLowerCase();
+        return normalizeEventType(text) === 'modo-liga'
+            || /modo[\s_-]*liga/.test(text)
+            || /^liga(?:$|[-_\s])/.test(text);
+    });
     const teamLabel = slot => String(slot.team || slot.teamName || slot.name || 'Seu time')
         .replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
     const escapeLabel = value => String(value).replace(/[&<>"']/g, character =>
