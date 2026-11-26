@@ -127,3 +127,75 @@ test("returns avatar codes that are free across every selected hour", async () =
     "avatar:andrew",
   ]);
 });
+
+test("blocks SPEC selections already assigned to Modo Liga registrations for the selected date and hour", async () => {
+  const date = "2026-11-26";
+  const hours = ["00"];
+  const registrations = [
+    {
+      date,
+      eventType: "modo-liga",
+      schedule: "Quinta - 00h",
+      status: "paid",
+      modoLigaSpecLetter: "C",
+    },
+    {
+      date,
+      eventType: "TREINO MODO LIGA",
+      schedule: "00h",
+      status: "confirmed",
+      modoLigaSpecLetter: "Z",
+    },
+    {
+      date: "2026-11-27",
+      eventType: "modo-liga",
+      schedule: "00h",
+      status: "confirmed",
+      modoLigaSpecLetter: "A",
+    },
+    {
+      date,
+      eventType: "modo-liga",
+      schedule: "00h",
+      status: "pending",
+      modoLigaSpecLetter: "B",
+    },
+    {
+      date,
+      eventType: "modo-liga",
+      schedule: "00h",
+      status: "confirmed",
+      modoLigaSpecAvatar: "avatar:maxim",
+    },
+  ];
+  const db = {
+    collection: name => ({
+      where: (field, operator, value) => ({
+        get: async () => {
+          if (name === "registrations") {
+            assert.equal(field, "date");
+            assert.equal(operator, "==");
+            assert.equal(value, date);
+            return { docs: registrations.map(data => ({ data: () => data })) };
+          }
+          assert.equal(name, "modo_liga_spec_letter_locks");
+          assert.equal(field, "hour");
+          assert.equal(operator, "in");
+          assert.deepEqual(value, hours);
+          return { docs: [] };
+        },
+      }),
+    }),
+  };
+  const bucket = {
+    getFiles: async () => [[]],
+  };
+
+  const options = await getAvailableModoLigaSpecOptions({ db, bucket, hours, date });
+  assert.equal(options.availableLetters.includes("C"), false);
+  assert.equal(options.availableLetters.includes("Z"), false);
+  assert.equal(options.availableLetters.includes("A"), true);
+  assert.equal(options.availableLetters.includes("B"), true);
+  assert.equal(options.availableLetters.length, 24);
+  assert.equal(options.availableAvatars.some(avatar => avatar.selection === "avatar:maxim"), false);
+});

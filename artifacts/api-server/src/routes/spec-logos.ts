@@ -2,6 +2,7 @@ import { cert, getApp, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { GetModoLigaRegistrationLogoOriginalParams } from "@workspace/api-zod";
 import { Router, type IRouter, type Request } from "express";
 
 const router: IRouter = Router();
@@ -120,6 +121,12 @@ function getStorageBucket(app: ReturnType<typeof getFirebaseApp>) {
   return getStorage(app).bucket(bucketName);
 }
 
+function normalizeIdentifier(value: unknown): string {
+  return typeof value === "string"
+    ? value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]/g, "")
+    : "";
+}
+
 function getSafeObjectPath(urlValue: unknown, bucketName: string): string | null {
   if (typeof urlValue !== "string" || !urlValue.trim()) return null;
   try {
@@ -151,6 +158,75 @@ function getSafeObjectPath(urlValue: unknown, bucketName: string): string | null
   } catch {
     return null;
   }
+}
+
+function getCreatedAtMs(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value < 1e12 ? value * 1000 : value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (isRecord(value)) {
+    const maybeTimestamp = value as { toMillis?: () => number; seconds?: unknown; nanoseconds?: unknown };
+    if (typeof maybeTimestamp.toMillis === "function") {
+      const parsed = maybeTimestamp.toMillis();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    const seconds = Number(maybeTimestamp.seconds);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return seconds * 1000 + (Number(maybeTimestamp.nanoseconds) || 0) / 1e6;
+    }
+  }
+  return 0;
+}
+
+function getStorageTeamKey(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+}
+
+function getSafeEventLogoPrefix(eventType: unknown): string {
+  const folder = typeof eventType === "string" ? eventType.trim() : "";
+  if (!folder || folder === "." || folder === ".." || /[\\/]/.test(folder)) return "";
+  return `teams/${folder}/logos/`;
+}
+
+function getSafeUserLogoPrefix(userId: unknown, eventType: unknown): string {
+  const uid = typeof userId === "string" ? userId.trim() : "";
+  const folder = typeof eventType === "string" ? eventType.trim() : "";
+  if (!uid || uid.length > 128 || uid === "." || uid === ".." || /[\\/]/.test(uid)) return "";
+  if (!folder || folder === "." || folder === ".." || /[\\/]/.test(folder)) return "";
+  const safeFolder = folder.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "evento";
+  return `profile-photos/${uid}/team-logos/${safeFolder}/`;
+}
+
+async function findLegacyOriginalLogo(
+  bucket: ReturnType<typeof getStorageBucket>,
+  prefixes: string[],
+  registration: Record<string, unknown>,
+  teamNames: string[],
+) {
+  const createdAtMs = getCreatedAtMs(registration.createdAt);
+  if (!createdAtMs) return null;
+  const rawName = typeof registration.teamName === "string" ? registration.teamName.trim() : "";
+  const candidateNames = [rawName, rawName.replace(/\s+[B-Z]$/i, ""), ...teamNames]
+    .filter(Boolean);
+  const teamKeys = new Set(candidateNames.map(getStorageTeamKey));
+  if (!teamKeys.size) return null;
+
+  const matches: ReturnType<typeof bucket.file>[] = [];
+  for (const prefix of [...new Set(prefixes.filter(Boolean))]) {
+    const [files] = await bucket.getFiles({ prefix, maxResults: 1000 });
+    for (const file of files) {
+      const relativeName = file.name.slice(prefix.length);
+      if (relativeName.includes("/")) continue;
+      const timestampMatch = relativeName.match(/_(\d{13})$/);
+      if (!timestampMatch || !teamKeys.has(relativeName.slice(0, timestampMatch.index))) continue;
+      const uploadedAtMs = Number(timestampMatch[1]);
+      if (Math.abs(uploadedAtMs - createdAtMs) <= 15 * 60 * 1000) matches.push(file);
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function getAllowedImageType(contentType: unknown, objectName: string): string | null {
@@ -280,11 +356,137 @@ router.post("/spec-logos/images", async (req, res): Promise<void> => {
   }
 });
 
+router.get("/spec-logos/registrations/:registrationId/original", async (req, res): Promise<void> => {
+  try {
+    const parsedParams = GetModoLigaRegistrationLogoOriginalParams.safeParse(req.params);
+    if (!parsedParams.success) {
+      throw new ApiError(400, "Inscrição inválida.");
+    }
+    const { registrationId } = parsedParams.data;
+
+    const app = await requireSpecLogoRole(
+      req,
+      ALLOWED_MANAGEMENT_ROLES,
+      "A logo original está disponível apenas para administradores.",
+    );
+    const firestore = getFirestore(app);
+    const registrationSnapshot = await firestore.collection("registrations").doc(registrationId).get();
+    if (!registrationSnapshot.exists) throw new ApiError(404, "Inscrição não encontrada.");
+    const registration = registrationSnapshot.data() || {};
+
+    const modeIdentity = [
+      registration.eventType,
+      registration.eventName,
+      registration.eventTitle,
+      registration.event,
+    ].map(normalizeIdentifier).join("");
+    if (!modeIdentity.includes("modoliga")) {
+      throw new ApiError(403, "Esta inscrição não pertence ao Modo Liga.");
+    }
+    const status = normalizeIdentifier(registration.status);
+    if (status.includes("pending") || status.includes("aguardandopagamento")) {
+      throw new ApiError(409, "Confirme o pagamento antes de usar a logo.");
+    }
+
+    const bucket = getStorageBucket(app);
+    const teamId = typeof registration.teamId === "string" ? registration.teamId.trim() : "";
+    const teamName = typeof registration.teamName === "string" ? registration.teamName.trim() : "";
+    let teamProfile: Record<string, unknown> | null = null;
+    if (teamId && /^[A-Za-z0-9_-]{1,128}$/.test(teamId)) {
+      const teamSnapshot = await firestore.collection("teams").doc(teamId).get();
+      if (teamSnapshot.exists) teamProfile = teamSnapshot.data() || null;
+    }
+    if (!teamProfile && teamName) {
+      const teamMatches = await firestore.collection("teams").where("nome", "==", teamName).limit(2).get();
+      if (teamMatches.size === 1) teamProfile = teamMatches.docs[0].data() || null;
+    }
+
+    const candidateUrls = [
+      registration.teamLogoUrl,
+      registration.logoOriginalUrl,
+      teamProfile?.logoOriginalUrl,
+    ];
+    let originalFile: ReturnType<typeof bucket.file> | null = null;
+    let originalMetadata: Record<string, unknown> | null = null;
+    for (const candidateUrl of candidateUrls) {
+      const objectPath = getSafeObjectPath(candidateUrl, bucket.name);
+      if (!objectPath) continue;
+      const candidateFile = bucket.file(objectPath);
+      try {
+        const [metadata] = await candidateFile.getMetadata();
+        originalFile = candidateFile;
+        originalMetadata = metadata as Record<string, unknown>;
+        break;
+      } catch (error) {
+        const code = isRecord(error) ? Number(error.code) : NaN;
+        if (code !== 404) throw error;
+      }
+    }
+
+    if (!originalFile) {
+      const eventType = typeof registration.eventType === "string" ? registration.eventType : "";
+      const teamNames = [
+        typeof teamProfile?.nome === "string" ? teamProfile.nome : "",
+        typeof teamProfile?.name === "string" ? teamProfile.name : "",
+      ];
+      const userIds = [
+        registration.userId,
+        teamProfile?.capitaoId,
+      ].filter((value): value is string => typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value));
+      const prefixes = [
+        getSafeEventLogoPrefix(eventType),
+        ...userIds.map((userId) => getSafeUserLogoPrefix(userId, eventType)),
+      ];
+      originalFile = await findLegacyOriginalLogo(bucket, prefixes, registration, teamNames);
+      if (originalFile) {
+        const [metadata] = await originalFile.getMetadata();
+        originalMetadata = metadata as Record<string, unknown>;
+      }
+    }
+
+    if (!originalFile || !originalMetadata) {
+      throw new ApiError(404, "Não encontrei o arquivo original desta inscrição. Peça ao cliente para reenviar a logo.");
+    }
+    const size = Number(originalMetadata.size);
+    if (Number.isFinite(size) && size > MAX_ORIGINAL_LOGO_BYTES) {
+      throw new ApiError(413, "A logo original ultrapassa o limite de 10 MB.");
+    }
+    const contentType = getAllowedImageType(originalMetadata.contentType, originalFile.name);
+    if (!contentType) throw new ApiError(415, "A logo original precisa estar em PNG, JPG ou WebP.");
+
+    const [contents] = await originalFile.download();
+    if (contents.byteLength > MAX_ORIGINAL_LOGO_BYTES) {
+      throw new ApiError(413, "A logo original ultrapassa o limite de 10 MB.");
+    }
+    res
+      .status(200)
+      .set({
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      })
+      .type(contentType)
+      .send(contents);
+  } catch (error) {
+    const apiError = error instanceof ApiError
+      ? error
+      : new ApiError(503, "Não foi possível carregar a logo original do Firebase Storage.");
+    if (apiError.statusCode >= 500) {
+      req.log.error({ statusCode: apiError.statusCode }, "Modo Liga original logo download failed");
+    }
+    res.status(apiError.statusCode).json({ error: apiError.message });
+  }
+});
+
 router.get("/spec-logos/:hour/export", async (req, res) => {
   try {
     const hour = normalizeHour(req.params.hour);
     if (!hour) {
       throw new ApiError(400, "Horário inválido para exportar logos.");
+    }
+    const fileIndex = parseNonNegativeInteger(req.query.fileIndex, 0);
+    const offset = parseNonNegativeInteger(req.query.offset, 0);
+    if (fileIndex === null || offset === null) {
+      throw new ApiError(400, "Posição inválida para continuar o download.");
     }
 
     const app = await requireSpecLogoRole(

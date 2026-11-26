@@ -110,7 +110,9 @@ function validOriginalLogoPath(url, { bucketName, userId, eventType }) {
 }
 
 function registrationHour(registration) {
-  return normalizeSpecHour(registration?.hour || registration?.schedule);
+  return normalizeSpecHour(
+    registration?.modoLigaSpecHour || registration?.hour || registration?.schedule,
+  );
 }
 
 function registrationTeamKey(registration) {
@@ -228,13 +230,42 @@ async function prepareModoLigaSpecClaims(sources, { reference, userId, bucket })
   return claims;
 }
 
-async function getAvailableModoLigaSpecOptions({ db, bucket, hours }) {
+async function getAvailableModoLigaSpecOptions({ db, bucket, hours, date = "" }) {
   const normalizedHours = [...new Set((hours || []).map(normalizeSpecHour).filter(Boolean))];
   if (!normalizedHours.length || normalizedHours.length !== new Set(hours || []).size) {
     fail("Selecione horários SPEC válidos.", 400);
   }
   const blockedByHour = new Map(normalizedHours.map(hour => [hour, new Set()]));
   const occupiedAvatarsByHour = new Map(normalizedHours.map(hour => [hour, new Set()]));
+  if (date) {
+    // SPEC storage is shared by hour/code across Modo Liga events, so a confirmed
+    // assignment reserves that code for this date even when its file is missing.
+    const registrationSnapshot = await db.collection("registrations")
+      .where("date", "==", date)
+      .get();
+    const reservingStatuses = new Set(["confirmed", "paid", "approved", "lisagem_gratis"]);
+    for (const registrationDoc of registrationSnapshot.docs || []) {
+      const registration = registrationDoc.data() || {};
+      if (
+        registration.date !== date
+        || !reservingStatuses.has(String(registration.status || "").trim().toLowerCase())
+        || !isModoLigaType(registration.eventType || registration.event_type || registration.eventName)
+      ) continue;
+
+      const hour = registrationHour(registration);
+      if (!hour || !blockedByHour.has(hour)) continue;
+      const selection = normalizeSpecSelection(
+        registration.modoLigaSpecLetter || registration.modoLigaSpecAvatar,
+      );
+      if (!selection) continue;
+      if (selection.startsWith("avatar:")) {
+        occupiedAvatarsByHour.get(hour).add(selection);
+      } else {
+        blockedByHour.get(hour).add(selection);
+      }
+    }
+  }
+
   const fileLists = await Promise.all(normalizedHours.map(hour =>
     bucket.getFiles({ prefix: `${SPEC_STORAGE_ROOT}/${hour}H/` })));
   for (let index = 0; index < normalizedHours.length; index++) {

@@ -24,11 +24,17 @@ exports.handler = async event => {
     if (hours.some(hour => !hour) || new Set(hours).size !== hours.length) {
       return jsonResponse(400, { availableLetters: [], availableAvatars: [], message: "As letras e os avatares do SPEC só estão disponíveis para os horários 19h, 20h, 21h, 22h, 23h e 00h." });
     }
+    const date = String(body.date || "").trim();
+    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00.000Z`) : null;
+    if (!parsedDate || !Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
+      return jsonResponse(400, { availableLetters: [], availableAvatars: [], message: "Selecione uma data válida para consultar as opções do SPEC." });
+    }
     const admin = getAdmin();
     const options = await getAvailableModoLigaSpecOptions({
       db: admin.firestore(),
       bucket: admin.storage(),
       hours,
+      date,
     });
     return jsonResponse(200, {
       availableLetters: options.availableLetters,

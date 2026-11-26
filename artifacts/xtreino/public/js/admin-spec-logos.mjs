@@ -70,6 +70,17 @@ export function normalizeModoLigaSpecLetter(value) {
   return MODO_LIGA_LETTERS.includes(letter) ? letter : '';
 }
 
+export function normalizeModoLigaSpecSelection(value) {
+  const letter = normalizeModoLigaSpecLetter(value);
+  if (letter) return letter;
+  const selection = String(value || '').trim().toLowerCase();
+  return AVATAR_CODES.find(avatar => avatar.selection === selection)?.selection || '';
+}
+
+export function specLogoLabelForSelection(value) {
+  return labelForSelection(normalizeModoLigaSpecSelection(value));
+}
+
 function letterForCode(code) {
   const index = Number(code) - FIRST_CODE;
   return Number.isInteger(index) && index >= 0 && index < LETTERS.length
@@ -981,6 +992,117 @@ export async function saveRegistrationLogoToSpec(file, {
     methodDescription,
     removedOldMapping,
   };
+}
+
+export async function saveManualModoLigaLogoToSpec(file, {
+  hour,
+  selection,
+  registrationId,
+  teamName,
+  onProgress,
+} = {}) {
+  if (!canUpload()) {
+    throw new Error('Seu perfil não pode cadastrar logos para o SPEC.');
+  }
+  ensureFirebaseAccess();
+
+  const normalizedHour = String(hour || '').trim().toUpperCase().replace(/H$/, '');
+  const normalizedSelection = normalizeModoLigaSpecSelection(selection);
+  if (!HOURS.includes(normalizedHour)) {
+    throw new Error('O horário selecionado não é válido para as logos Modo Liga.');
+  }
+  if (!normalizedSelection) {
+    throw new Error('Escolha uma letra ou avatar válido para o Modo Liga.');
+  }
+  if (!file || !/^image\/(png|jpeg|webp)$/i.test(file.type || '')) {
+    throw new Error('Envie a logo em PNG, JPG ou WebP.');
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    throw new Error('A logo do time ultrapassa o limite de 10 MB.');
+  }
+
+  const code = codeForSelection(normalizedSelection);
+  const path = storagePath(normalizedHour, code);
+  const { ref, uploadBytes, getMetadata, getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+  const target = ref(window.firebaseStorage, path);
+  try {
+    await getMetadata(target);
+    throw new Error(`${labelForSelection(normalizedSelection)} já está ocupada em ${normalizedHour}H. Atualize as opções e escolha outra.`);
+  } catch (error) {
+    if (error?.code !== 'storage/object-not-found') {
+      if (error?.code === 'storage/unauthorized') {
+        throw new Error('O Firebase não permitiu verificar se esta opção SPEC está livre.');
+      }
+      throw error;
+    }
+  }
+
+  onProgress?.('Preparando a logo para o código SPEC…');
+  const { blob, methodDescription } = await makeSpecLogoPng(file, onProgress, {
+    keepOriginalBackground: true,
+  });
+  const letter = normalizeModoLigaSpecLetter(normalizedSelection);
+  const avatar = letter ? '' : normalizedSelection;
+  const uploaded = await uploadBytes(target, blob, {
+    contentType: 'image/png',
+    cacheControl: 'public,max-age=60',
+    customMetadata: {
+      source: 'manual-modo-liga-admin',
+      sourceRegistrationId: String(registrationId || '').slice(0, 128),
+      teamName: String(teamName || '').slice(0, 100),
+      selection: normalizedSelection,
+      letter,
+      avatar,
+      hour: normalizedHour,
+      backgroundTreatment: methodDescription,
+    },
+  });
+  if (!uploaded.ref?.fullPath) {
+    throw new Error('O Firebase não confirmou o salvamento da logo SPEC.');
+  }
+
+  return {
+    cancelled: false,
+    hour: normalizedHour,
+    selection: normalizedSelection,
+    letter,
+    avatar,
+    code,
+    path,
+    downloadUrl: await getDownloadURL(uploaded.ref),
+    methodDescription,
+  };
+}
+
+export async function removeManualModoLigaLogoFromSpec({ hour, selection, registrationId } = {}) {
+  if (!canUpload()) {
+    throw new Error('Seu perfil não pode remover logos do SPEC.');
+  }
+  ensureFirebaseAccess();
+  const normalizedHour = String(hour || '').trim().toUpperCase().replace(/H$/, '');
+  const normalizedSelection = normalizeModoLigaSpecSelection(selection);
+  const normalizedRegistrationId = String(registrationId || '').trim();
+  if (!HOURS.includes(normalizedHour) || !normalizedSelection || !normalizedRegistrationId) {
+    throw new Error('Não foi possível validar a logo SPEC para desfazer o cadastro.');
+  }
+
+  const { ref, getMetadata, deleteObject } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
+  const target = ref(window.firebaseStorage, storagePath(normalizedHour, codeForSelection(normalizedSelection)));
+  let metadata;
+  try {
+    metadata = await getMetadata(target);
+  } catch (error) {
+    if (error?.code === 'storage/object-not-found') return false;
+    throw error;
+  }
+  if (
+    metadata.customMetadata?.source !== 'manual-modo-liga-admin'
+    || metadata.customMetadata?.sourceRegistrationId !== normalizedRegistrationId
+  ) {
+    return false;
+  }
+  await deleteObject(target);
+  return true;
 }
 
 async function listLogos(hour) {

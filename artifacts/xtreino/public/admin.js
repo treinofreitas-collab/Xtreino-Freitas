@@ -1343,149 +1343,579 @@ window.showWarningToast = function(message, title = 'Atenção') {
   }
   window.onAddEmailBlur = onAddEmailBlur;
 
+  const ADD_MODO_LIGA_AVATARS = new Set(['avatar:kelly', 'avatar:maxim', 'avatar:andrew']);
+  let addModoLigaSpecAvailable = new Set();
+  let addModoLigaSpecSelected = '';
+  let addModoLigaSpecRequestId = 0;
+  let addModoLigaSpecPreviewUrl = '';
+  let addModoLigaSpecModulePromise;
+  let addModoLigaLastTextFieldId = 'addTeamName';
+
+  function restoreAddModoLigaTextFieldFocus() {
+    const form = document.getElementById('formAddTeam');
+    let field = document.getElementById(addModoLigaLastTextFieldId);
+    if (!field || !form?.contains(field) || field.disabled || field.readOnly) {
+      field = document.getElementById('addTeamName');
+    }
+    if (!field || field.disabled || field.readOnly) return;
+    try {
+      field.focus({ preventScroll: true });
+    } catch (_) {
+      field.focus();
+    }
+  }
+
+  function getAdminSpecLogoModule() {
+    if (!addModoLigaSpecModulePromise) {
+      addModoLigaSpecModulePromise = import('./js/admin-spec-logos.mjs?v=manual-add-spec-team-v1');
+    }
+    return addModoLigaSpecModulePromise;
+  }
+
+  function isAddModoLigaEvent() {
+    const eventEl = document.getElementById('boardEventType');
+    const option = eventEl?.selectedOptions?.[0];
+    const candidates = [
+      eventEl?.value,
+      option?.dataset?.canonicalType,
+      option?.dataset?.rawEventType,
+      option?.textContent,
+    ];
+    return candidates.some(value => {
+      const normalized = canonicalType(String(value || ''));
+      return normalized === 'modo-liga' || /modo[\s_-]*liga|(^|\W)liga($|\W)/i.test(String(value || ''));
+    });
+  }
+
+  function resetAddModoLigaSpecControls() {
+    addModoLigaSpecAvailable = new Set();
+    addModoLigaSpecSelected = '';
+    const fileInput = document.getElementById('addModoLigaSpecLogo');
+    const section = document.getElementById('addModoLigaSpecSection');
+    const status = document.getElementById('addModoLigaSpecStatus');
+    const letters = document.getElementById('addModoLigaSpecLetters');
+    const avatars = document.getElementById('addModoLigaSpecAvatars');
+    const selection = document.getElementById('addModoLigaSpecSelection');
+    const code = document.getElementById('addModoLigaSpecCode');
+    const dropZone = document.getElementById('addModoLigaSpecDropZone');
+    if (fileInput) {
+      fileInput.value = '';
+      fileInput.required = false;
+    }
+    dropZone?.classList.remove('border-teal-500', 'bg-teal-50', 'ring-2', 'ring-teal-100');
+    if (section) section.classList.toggle('hidden', !isAddModoLigaEvent());
+    if (status) {
+      status.textContent = isAddModoLigaEvent()
+        ? 'Consultando letras e avatares disponíveis para este horário…'
+        : '';
+      status.className = 'mt-3 text-xs text-slate-600';
+    }
+    if (letters) letters.innerHTML = '';
+    if (avatars) avatars.innerHTML = '';
+    if (selection) selection.textContent = 'Nenhuma opção selecionada';
+    if (code) code.textContent = '';
+    clearAddModoLigaSpecLogoPreview();
+  }
+
+  function clearAddModoLigaSpecLogoPreview() {
+    if (addModoLigaSpecPreviewUrl) URL.revokeObjectURL(addModoLigaSpecPreviewUrl);
+    addModoLigaSpecPreviewUrl = '';
+    const wrap = document.getElementById('addModoLigaSpecLogoPreviewWrap');
+    const image = document.getElementById('addModoLigaSpecLogoPreview');
+    const name = document.getElementById('addModoLigaSpecLogoName');
+    if (image) image.removeAttribute('src');
+    if (name) name.textContent = '';
+    if (wrap) {
+      wrap.classList.add('hidden');
+      wrap.classList.remove('flex');
+    }
+  }
+
+  async function updateAddModoLigaSpecSelection(selection) {
+    const value = String(selection || '').trim().toUpperCase().startsWith('AVATAR:')
+      ? String(selection).trim().toLowerCase()
+      : String(selection || '').trim().toUpperCase();
+    if (!addModoLigaSpecAvailable.has(value)) return;
+    addModoLigaSpecSelected = value;
+    const module = await getAdminSpecLogoModule();
+    const label = module.specLogoLabelForSelection(value);
+    const specCode = module.specLogoCodeForSelection(value);
+    const selectionEl = document.getElementById('addModoLigaSpecSelection');
+    const codeEl = document.getElementById('addModoLigaSpecCode');
+    if (selectionEl) selectionEl.textContent = label || value;
+    if (codeEl) codeEl.textContent = specCode;
+    document.querySelectorAll('[data-add-modo-liga-spec-selection]').forEach(button => {
+      const selected = button.dataset.addModoLigaSpecSelection === value;
+      button.setAttribute('aria-pressed', String(selected));
+      button.classList.toggle('border-teal-700', selected);
+      button.classList.toggle('bg-teal-700', selected);
+      button.classList.toggle('text-white', selected);
+      button.classList.toggle('border-slate-300', !selected);
+      button.classList.toggle('bg-white', !selected);
+      button.classList.toggle('text-slate-800', !selected);
+    });
+  }
+
+  async function requestAddModoLigaSpecOptions() {
+    const section = document.getElementById('addModoLigaSpecSection');
+    const status = document.getElementById('addModoLigaSpecStatus');
+    const lettersEl = document.getElementById('addModoLigaSpecLetters');
+    const avatarsEl = document.getElementById('addModoLigaSpecAvatars');
+    const fileInput = document.getElementById('addModoLigaSpecLogo');
+    if (!isAddModoLigaEvent()) {
+      section?.classList.add('hidden');
+      if (fileInput) fileInput.required = false;
+      return { availableLetters: [], availableAvatars: [], hours: [] };
+    }
+
+    const requestId = ++addModoLigaSpecRequestId;
+    section?.classList.remove('hidden');
+    if (fileInput) fileInput.required = false;
+    if (status) {
+      status.textContent = 'Consultando letras e avatares disponíveis para este horário…';
+      status.className = 'mt-3 text-xs text-slate-600';
+    }
+    if (lettersEl) lettersEl.innerHTML = '';
+    if (avatarsEl) avatarsEl.innerHTML = '';
+
+    try {
+      const hourInput = document.getElementById('addHour');
+      const rawHour = String(hourInput?.value || '').trim();
+      const hourMatch = rawHour.match(/(\d{1,2})(?=\s*(?:h|:|$))/i);
+      if (!hourMatch) throw new Error('Não consegui identificar o horário da vaga. Feche e abra o formulário novamente.');
+      const hour = String(Number(hourMatch[1])).padStart(2, '0');
+      const user = window.firebaseAuth?.currentUser;
+      if (!user) throw new Error('Sua sessão expirou. Entre novamente no painel.');
+      const eventEl = document.getElementById('boardEventType');
+      const option = eventEl?.selectedOptions?.[0];
+      const eventType = option?.dataset?.rawEventType || option?.dataset?.canonicalType || eventEl?.value || option?.textContent || '';
+      const date = String(document.getElementById('boardDate')?.value || '').trim();
+      if (!date) throw new Error('Selecione uma data antes de consultar as opções do SPEC.');
+      const token = await user.getIdToken();
+      const response = await fetch('/.netlify/functions/modo-liga-spec-letters', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ eventType, hours: [hour], date }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || 'Não foi possível consultar as opções do SPEC.');
+      if (requestId !== addModoLigaSpecRequestId) return null;
+
+      const module = await getAdminSpecLogoModule();
+      const availableLetters = [...new Set((Array.isArray(result.availableLetters) ? result.availableLetters : [])
+        .map(letter => String(letter || '').trim().toUpperCase())
+        .filter(letter => /^[A-Z]$/.test(letter)))];
+      const availableAvatars = (Array.isArray(result.availableAvatars) ? result.availableAvatars : [])
+        .map(item => ({
+          selection: String(item?.selection || '').trim().toLowerCase(),
+          code: String(item?.code || '').trim(),
+        }))
+        .filter(item => ADD_MODO_LIGA_AVATARS.has(item.selection)
+          && module.specLogoCodeForSelection(item.selection) === item.code);
+      addModoLigaSpecAvailable = new Set([
+        ...availableLetters,
+        ...availableAvatars.map(avatar => avatar.selection),
+      ]);
+
+      if (lettersEl) {
+        lettersEl.innerHTML = availableLetters.length
+          ? availableLetters.map(letter => `
+              <button type="button" data-add-modo-liga-spec-selection="${letter}" aria-pressed="false"
+                class="flex aspect-square min-h-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-base font-extrabold text-slate-800 transition hover:border-teal-600 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">
+                ${letter}
+              </button>
+            `).join('')
+          : '<p class="col-span-full rounded-lg bg-white p-3 text-xs text-slate-500">Nenhuma letra disponível neste horário.</p>';
+      }
+      if (avatarsEl) {
+        avatarsEl.innerHTML = availableAvatars.length
+          ? availableAvatars.map(avatar => {
+              const label = module.specLogoLabelForSelection(avatar.selection);
+              return `
+                <button type="button" data-add-modo-liga-spec-selection="${avatar.selection}" aria-pressed="false"
+                  class="flex min-h-11 items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-800 transition hover:border-teal-600 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">
+                  <span>${label}</span><span class="font-mono text-xs text-slate-500">${avatar.code}</span>
+                </button>
+              `;
+            }).join('')
+          : '<p class="col-span-full rounded-lg bg-white p-3 text-xs text-slate-500">Nenhum avatar disponível neste horário.</p>';
+      }
+      if (status) {
+        status.textContent = `${availableLetters.length} letra(s) e ${availableAvatars.length} avatar(es) disponíveis para ${hour}H.`;
+        status.className = 'mt-3 text-xs font-medium text-teal-800';
+      }
+      if (addModoLigaSpecSelected && !addModoLigaSpecAvailable.has(addModoLigaSpecSelected)) {
+        addModoLigaSpecSelected = '';
+        const selectionEl = document.getElementById('addModoLigaSpecSelection');
+        const codeEl = document.getElementById('addModoLigaSpecCode');
+        if (selectionEl) selectionEl.textContent = 'A opção escolhida não está mais disponível. Selecione outra.';
+        if (codeEl) codeEl.textContent = '';
+      } else if (addModoLigaSpecSelected) {
+        await updateAddModoLigaSpecSelection(addModoLigaSpecSelected);
+      }
+      return { availableLetters, availableAvatars, hours: Array.isArray(result.hours) ? result.hours : [hour] };
+    } catch (error) {
+      if (requestId === addModoLigaSpecRequestId) {
+        addModoLigaSpecAvailable = new Set();
+        if (status) {
+          status.textContent = error?.message || 'Não foi possível consultar as opções do SPEC.';
+          status.className = 'mt-3 text-xs font-medium text-red-700';
+        }
+        if (lettersEl) lettersEl.innerHTML = '';
+        if (avatarsEl) avatarsEl.innerHTML = '';
+      }
+      return { error };
+    }
+  }
+
+  function bindAddModoLigaSpecControls() {
+    const form = document.getElementById('formAddTeam');
+    if (form && !form.dataset.textFieldFocusBound) {
+      form.dataset.textFieldFocusBound = 'true';
+      form.addEventListener('focusin', event => {
+        const target = event.target;
+        if (target instanceof HTMLInputElement
+          && target.type !== 'file'
+          && target.type !== 'hidden') {
+          addModoLigaLastTextFieldId = target.id || 'addTeamName';
+        } else if (target instanceof HTMLTextAreaElement) {
+          addModoLigaLastTextFieldId = target.id || 'addTeamName';
+        }
+      });
+    }
+
+    const choices = document.getElementById('addModoLigaSpecChoices');
+    if (choices && !choices.dataset.bound) {
+      choices.dataset.bound = 'true';
+      choices.addEventListener('click', event => {
+        const button = event.target.closest('[data-add-modo-liga-spec-selection]');
+        if (button) void updateAddModoLigaSpecSelection(button.dataset.addModoLigaSpecSelection);
+      });
+    }
+    const refresh = document.getElementById('addModoLigaSpecRefresh');
+    if (refresh && !refresh.dataset.bound) {
+      refresh.dataset.bound = 'true';
+      refresh.addEventListener('click', () => void requestAddModoLigaSpecOptions());
+    }
+    const fileInput = document.getElementById('addModoLigaSpecLogo');
+    if (fileInput && !fileInput.dataset.bound) {
+      fileInput.dataset.bound = 'true';
+      const handleFileChange = () => {
+        clearAddModoLigaSpecLogoPreview();
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        if (!/^image\/(png|jpeg|webp)$/i.test(file.type || '') || file.size > 10 * 1024 * 1024) {
+          const status = document.getElementById('addModoLigaSpecStatus');
+          if (status) {
+            status.textContent = 'Escolha PNG, JPG ou WebP com até 10 MB.';
+            status.className = 'mt-3 text-xs font-medium text-red-700';
+          }
+          fileInput.value = '';
+          restoreAddModoLigaTextFieldFocus();
+          return;
+        }
+        addModoLigaSpecPreviewUrl = URL.createObjectURL(file);
+        const image = document.getElementById('addModoLigaSpecLogoPreview');
+        const name = document.getElementById('addModoLigaSpecLogoName');
+        const wrap = document.getElementById('addModoLigaSpecLogoPreviewWrap');
+        if (image) image.src = addModoLigaSpecPreviewUrl;
+        if (name) name.textContent = file.name;
+        if (wrap) {
+          wrap.classList.remove('hidden');
+          wrap.classList.add('flex');
+        }
+        restoreAddModoLigaTextFieldFocus();
+      };
+      fileInput.addEventListener('change', handleFileChange);
+
+      const dropZone = document.getElementById('addModoLigaSpecDropZone');
+      if (dropZone && !dropZone.dataset.bound) {
+        dropZone.dataset.bound = 'true';
+        const clearDragStyle = () => dropZone.classList.remove(
+          'border-teal-500',
+          'bg-teal-50',
+          'ring-2',
+          'ring-teal-100',
+        );
+        const hasFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files');
+
+        dropZone.addEventListener('dragenter', event => {
+          if (!hasFiles(event)) return;
+          event.preventDefault();
+          dropZone.classList.add('border-teal-500', 'bg-teal-50', 'ring-2', 'ring-teal-100');
+        });
+        dropZone.addEventListener('dragover', event => {
+          if (!hasFiles(event)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          dropZone.classList.add('border-teal-500', 'bg-teal-50', 'ring-2', 'ring-teal-100');
+        });
+        dropZone.addEventListener('dragleave', event => {
+          if (!dropZone.contains(event.relatedTarget)) clearDragStyle();
+        });
+        dropZone.addEventListener('drop', event => {
+          event.preventDefault();
+          clearDragStyle();
+          const file = event.dataTransfer?.files?.[0];
+          if (!file) return;
+          const transfer = new DataTransfer();
+          transfer.items.add(file);
+          fileInput.files = transfer.files;
+          fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      }
+    }
+  }
+
   async function submitAddTeam(e){
-    if (_isSavingTeam) { e?.preventDefault(); return; }
-    try{
-      e?.preventDefault();
-          const hourEl = document.getElementById('addHour');
-          const teamEl = document.getElementById('addTeamName');
-          const contactEl = document.getElementById('addContact');
-          const emailEl = document.getElementById('addEmail');
-          const personEl = document.getElementById('addPerson');
-          const notesEl = document.getElementById('addNotes');
-          const msgEl = document.getElementById('addTeamMsg');
-          const dateEl = document.getElementById('boardDate');
-          const typeEl = document.getElementById('boardEventType');
-          const _rawHour = (hourEl?.value || '').trim();
-          // Normaliza "21:00" → "21h" para ficar consistente com inscrições normais
-          const schedule = _rawHour.replace(/^(\d{1,2}):(\d{2})$/, (_, h) => h + 'h');
-          const teamName = (teamEl?.value || '').trim();
-          const contact = (contactEl?.value || '').trim();
-          const clientEmail = (emailEl?.value || '').trim().toLowerCase();
-          const person = (personEl?.value || '').trim();
-          const notes = (notesEl?.value || '').trim();
-          const date = (dateEl?.value || '').trim();
-          // Usar tipo canônico (ex: 'xtreino-tokens') em vez do ID do doc Firestore
-          const _selectedOpt = typeEl?.options?.[typeEl?.selectedIndex];
-          const eventType = (_selectedOpt?.dataset?.canonicalType || canonicalType(typeEl?.value) || typeEl?.value || '').trim();
-          if (!teamName || !contact){
-            alert('Informe ao menos Time/Org e Contato.');
-            return;
-          }
-          if (!eventType){
-            alert('Selecione o tipo de evento no painel de horários antes de adicionar um time.\n\nSem o tipo de evento, o time não aparecerá na lista de Inscritos.');
-            return;
-          }
-          if (!schedule || schedule === '—'){
-            alert('Selecione o horário no painel de horários antes de adicionar um time.');
-            return;
-          }
-          if (!date){
-            alert('Selecione uma data no painel de horários.');
-            return;
-          }
-          const submitBtn = document.querySelector('#formAddTeam button[type="submit"], #formAddTeam button:not([type="button"])');
-          const originalBtnText = submitBtn ? submitBtn.textContent : null;
-          _isSavingTeam = true;
-          if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Salvando...'; }
-          if (msgEl) msgEl.textContent = '';
+    e?.preventDefault();
+    if (_isSavingTeam) return;
 
-          // Resolve o userId real do cliente pelo e-mail
-          let clientUserId = null;
-          if (clientEmail) {
-            clientUserId = await resolveUserIdByEmail(clientEmail);
+    const hourEl = document.getElementById('addHour');
+    const teamEl = document.getElementById('addTeamName');
+    const contactEl = document.getElementById('addContact');
+    const emailEl = document.getElementById('addEmail');
+    const personEl = document.getElementById('addPerson');
+    const notesEl = document.getElementById('addNotes');
+    const msgEl = document.getElementById('addTeamMsg');
+    const modal = document.getElementById('modalAddTeam');
+    const submitBtn = document.getElementById('addTeamSaveBtn');
+    const originalBtnHtml = submitBtn?.innerHTML || '<i class="fas fa-check"></i> Salvar';
+    let specLogoModule = null;
+    let uploadedSpecLogo = null;
+    let registrationRef = null;
+    let registrationSaved = false;
+
+    _isSavingTeam = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Salvando...';
+    }
+    if (msgEl) {
+      msgEl.textContent = '';
+      msgEl.className = 'text-sm text-gray-500 flex-1 mr-3';
+    }
+
+    try {
+      const dateEl = document.getElementById('boardDate');
+      const typeEl = document.getElementById('boardEventType');
+      const rawHour = String(hourEl?.value || '').trim();
+      const schedule = rawHour.replace(/^(\d{1,2}):(\d{2})$/, (_, hour) => `${hour}h`);
+      const teamName = String(teamEl?.value || '').trim();
+      const contact = String(contactEl?.value || '').trim();
+      const clientEmail = String(emailEl?.value || '').trim().toLowerCase();
+      const person = String(personEl?.value || '').trim();
+      const notes = String(notesEl?.value || '').trim();
+      const date = String(dateEl?.value || '').trim();
+      const selectedOption = typeEl?.options?.[typeEl?.selectedIndex];
+      const eventType = (
+        selectedOption?.dataset?.canonicalType
+        || canonicalType(typeEl?.value)
+        || typeEl?.value
+        || ''
+      ).trim();
+      const isModoLiga = isAddModoLigaEvent();
+
+      if (!teamName || !contact) throw new Error('Informe o nome do time e um contato.');
+      if (!eventType) throw new Error('Selecione o tipo de evento antes de adicionar o time.');
+      if (!schedule || schedule === '—') throw new Error('Selecione o horário antes de adicionar o time.');
+      if (!date) throw new Error('Selecione uma data antes de adicionar o time.');
+
+      let specSelection = '';
+      let specLogoFile = null;
+      let specHour = '';
+      if (isModoLiga) {
+        specLogoFile = document.getElementById('addModoLigaSpecLogo')?.files?.[0] || null;
+        if (specLogoFile) {
+          specSelection = addModoLigaSpecSelected;
+          if (!specSelection) {
+            throw new Error('Escolha uma letra ou avatar disponível para vincular à logo.');
           }
-
-          const _paidTypeEl = document.querySelector('input[name="addPaidType"]:checked');
-          const isFreeSlot = (_paidTypeEl?.value || 'paid') === 'free';
-
-          const payload = {
-            teamName,
-            contact,
-            email: clientEmail || null,
-            person: person || null,
-            notes: notes || null,
-            date,
-            schedule: schedule || '—',
-            eventType: eventType || null,
-            status: 'confirmed',
-            userId: clientUserId || null,
-            addedManually: true,
-            freeSlot: isFreeSlot,
-            listingType: isFreeSlot ? 'free' : 'paid'
-          };
-          try{
-            const { collection, addDoc, serverTimestamp, query: _q, where: _w, getDocs: _gd, getDoc: _gd1, doc: _doc, runTransaction: _runTx } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-            // Calcular próximo slot sequencial (unificado com PIX/tokens via transação atômica)
-            const _normH = s => {
-                const str = String(s||'').trim();
-                const mColon = str.match(/(\d{1,2}):(\d{2})/);
-                if (mColon) return parseInt(mColon[1],10)+'h';
-                const mH = str.match(/(\d{1,2})\s*h/i);
-                if (mH) return parseInt(mH[1],10)+'h';
-                return str;
-            };
-            // rawEvType para consistência com MP
-            const _rawDocId = (typeEl?.selectedOptions?.[0]?.dataset?.rawEventId || typeEl?.value || '').trim();
-            let _rawEvType = _rawDocId;
-            try {
-                const _evSnap = await _gd1(_doc(window.firebaseDb, 'adminEvents', _rawDocId));
-                if (_evSnap.exists() && _evSnap.data().eventType) _rawEvType = _evSnap.data().eventType;
-            } catch(_) {}
-            payload.eventType = _rawEvType || eventType || null;
-            payload.teamName = teamName;
-
-            // Calcular próximo slot sequencial real (total de inscritos no horário + 1)
-            // Assim o time aparece na lista bônus com número correto em vez de "—"
-            let _nextSlot = Math.floor(Date.now() / 1000); // fallback timestamp (links sem bonus)
-            let _nextSlotDisplay = null;
-            try {
-                const _allSnap = await _gd(_q(
-                    collection(window.firebaseDb, 'registrations'),
-                    _w('eventType', '==', payload.eventType || eventType),
-                    _w('date', '==', date)
-                ));
-                let _count = 0;
-                const _normSchedLink = _normH(schedule);
-                _allSnap.forEach(d => {
-                    const r = d.data();
-                    if (r.status === 'pending') return; // pendentes não ocupam slot
-                    if (_normH(r.schedule || r.hour || '') === _normSchedLink) _count++;
-                });
-                _nextSlot = _count + 1;
-                // Modo Liga usa letras (A, B, C...) — demais eventos usam #número
-                const _isLigaManual = (() => { const _t = String(_rawEvType || '').toLowerCase(); return _t === 'modo-liga' || _t.includes('liga'); })();
-                _nextSlotDisplay = _isLigaManual ? `Vaga ${String.fromCharCode(64 + _nextSlot)}` : `Vaga #${_nextSlot}`;
-            } catch (_) {}
-
-            payload.slot = _nextSlot;
-            payload.slotNumber = _nextSlot;
-            payload.slotDisplay = _nextSlotDisplay;
-            await addDoc(collection(window.firebaseDb,'registrations'), { ...payload, createdAt: serverTimestamp() });
-            const feedbackMsg = clientUserId
-              ? 'Time adicionado e reserva vinculada à conta do cliente.'
-              : clientEmail
-                ? 'Time adicionado. ⚠️ E-mail não encontrado — reserva sem vínculo com uma conta.'
-                : 'Time adicionado com sucesso!';
-            if (msgEl) msgEl.textContent = feedbackMsg;
-            // limpar campos
-            if (teamEl) teamEl.value = '';
-            if (contactEl) contactEl.value = '';
-            if (emailEl) { emailEl.value = ''; }
-            const statusEl = document.getElementById('addEmailStatus');
-            if (statusEl) statusEl.textContent = '';
-            if (personEl) personEl.value = '';
-            if (notesEl) notesEl.value = '';
-            // Atualiza quadro e pendências
-            try { await loadBoard(); } catch(_){}
-            try { await loadPending(true); } catch(_){}
-          }catch(err){
-            alert('Falha ao salvar time.');
-          } finally {
-            _isSavingTeam = false;
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = originalBtnText || 'Adicionar'; }
+          const latestOptions = await requestAddModoLigaSpecOptions();
+          if (latestOptions?.error) throw latestOptions.error;
+          if (!addModoLigaSpecAvailable.has(specSelection)) {
+            throw new Error('A letra ou avatar selecionado acabou de ficar indisponível. Atualize as opções e escolha outro.');
           }
-    }catch(_){ _isSavingTeam = false; }
+          specHour = String(latestOptions?.hours?.[0] || '').replace(/H$/i, '');
+          if (!specHour) throw new Error('Não consegui confirmar o horário SPEC desta vaga.');
+        }
+      }
+
+      // Resolve o userId real do cliente pelo e-mail, sem bloquear o cadastro
+      // quando o e-mail não corresponde a uma conta existente.
+      let clientUserId = null;
+      if (clientEmail) clientUserId = await resolveUserIdByEmail(clientEmail);
+
+      const paidTypeEl = document.querySelector('input[name="addPaidType"]:checked');
+      const isFreeSlot = (paidTypeEl?.value || 'paid') === 'free';
+      const firestore = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+      const registrations = firestore.collection(window.firebaseDb, 'registrations');
+
+      const normalizeHour = value => {
+        const text = String(value || '').trim();
+        const match = text.match(/(\d{1,2}):(\d{2})/) || text.match(/(\d{1,2})\s*h/i);
+        return match ? `${parseInt(match[1], 10)}h` : text;
+      };
+      const rawEventId = String(selectedOption?.dataset?.rawEventId || typeEl?.value || '').trim();
+      const eventName = String(selectedOption?.textContent || '').trim();
+      let rawEventType = String(selectedOption?.dataset?.rawEventType || rawEventId).trim();
+      if (rawEventId) {
+        try {
+          const eventSnapshot = await firestore.getDoc(
+            firestore.doc(window.firebaseDb, 'adminEvents', rawEventId),
+          );
+          if (eventSnapshot.exists() && eventSnapshot.data().eventType) {
+            rawEventType = eventSnapshot.data().eventType;
+          }
+        } catch (error) {
+          console.warn('[Admin] Não foi possível ler o tipo bruto do evento; usando a opção selecionada.', error?.code || 'erro');
+        }
+      }
+
+      let nextSlot = Math.floor(Date.now() / 1000);
+      let nextSlotDisplay = null;
+      try {
+        const registrationsSnapshot = await firestore.getDocs(firestore.query(
+          registrations,
+          firestore.where('eventType', '==', rawEventType || eventType),
+          firestore.where('date', '==', date),
+        ));
+        let count = 0;
+        const normalizedSchedule = normalizeHour(schedule);
+        registrationsSnapshot.forEach(snapshot => {
+          const registration = snapshot.data();
+          if (registration.status === 'pending') return;
+          if (normalizeHour(registration.schedule || registration.hour || '') === normalizedSchedule) count += 1;
+        });
+        nextSlot = count + 1;
+        const isLiga = String(rawEventType || '').toLowerCase().includes('liga');
+        nextSlotDisplay = isLiga ? `Vaga ${String.fromCharCode(64 + nextSlot)}` : `Vaga #${nextSlot}`;
+      } catch (error) {
+        console.warn('[Admin] Não foi possível calcular a posição do time; será usada uma posição temporária.', error?.code || 'erro');
+      }
+
+      const payload = {
+        teamName,
+        contact,
+        email: clientEmail || null,
+        person: person || null,
+        notes: notes || null,
+        date,
+        schedule,
+        eventType: rawEventType || eventType,
+        adminEventId: rawEventId || null,
+        eventName: eventName || null,
+        status: 'confirmed',
+        userId: clientUserId || null,
+        addedManually: true,
+        freeSlot: isFreeSlot,
+        listingType: isFreeSlot ? 'free' : 'paid',
+        slot: nextSlot,
+        slotNumber: nextSlot,
+        slotDisplay: nextSlotDisplay,
+      };
+
+      registrationRef = firestore.doc(registrations);
+      if (isModoLiga && specLogoFile) {
+        specLogoModule = await getAdminSpecLogoModule();
+        if (msgEl) {
+          msgEl.textContent = 'Preparando e enviando a logo ao SPEC…';
+          msgEl.className = 'text-sm text-teal-700 flex-1 mr-3';
+        }
+        uploadedSpecLogo = await specLogoModule.saveManualModoLigaLogoToSpec(specLogoFile, {
+          hour: specHour,
+          selection: specSelection,
+          registrationId: registrationRef.id,
+          teamName,
+          onProgress: message => {
+            if (msgEl) msgEl.textContent = message;
+          },
+        });
+        payload.modoLigaSpecSelection = uploadedSpecLogo.selection;
+        payload.modoLigaSpecLetter = uploadedSpecLogo.letter || null;
+        payload.modoLigaSpecAvatar = uploadedSpecLogo.avatar || null;
+        payload.modoLigaSpecCode = uploadedSpecLogo.code;
+        payload.modoLigaSpecHour = uploadedSpecLogo.hour;
+        payload.modoLigaSpecStoragePath = uploadedSpecLogo.path;
+        payload.modoLigaSpecStatus = 'uploaded';
+        payload.modoLigaSpecAssignedAt = Date.now();
+        payload.teamLogoUrl = uploadedSpecLogo.downloadUrl;
+        payload.logoOriginalUrl = uploadedSpecLogo.downloadUrl;
+      }
+
+      await firestore.setDoc(registrationRef, {
+        ...payload,
+        createdAt: firestore.serverTimestamp(),
+      });
+      registrationSaved = true;
+
+      const feedbackMessage = clientUserId
+        ? 'Time adicionado e reserva vinculada à conta do cliente.'
+        : clientEmail
+          ? 'Time adicionado. O e-mail informado não foi encontrado; a reserva ficou sem vínculo com uma conta.'
+          : isModoLiga && uploadedSpecLogo
+            ? `Time adicionado e logo salva no SPEC como ${uploadedSpecLogo.code}.png (${uploadedSpecLogo.hour}H).`
+            : isModoLiga
+              ? 'Time adicionado sem logo; nenhuma identificação SPEC foi vinculada.'
+            : 'Time adicionado com sucesso!';
+
+      if (teamEl) teamEl.value = '';
+      if (contactEl) contactEl.value = '';
+      if (emailEl) emailEl.value = '';
+      if (personEl) personEl.value = '';
+      if (notesEl) notesEl.value = '';
+      const emailStatus = document.getElementById('addEmailStatus');
+      if (emailStatus) emailStatus.textContent = '';
+      const specFileInput = document.getElementById('addModoLigaSpecLogo');
+      if (specFileInput) specFileInput.value = '';
+      resetAddModoLigaSpecControls();
+      modal?.classList.add('hidden');
+      showToast('success', feedbackMessage, 'Time adicionado');
+
+      try { await loadBoard(); } catch (error) {
+        console.warn('[Admin] O time foi salvo, mas o quadro não atualizou automaticamente.', error?.code || 'erro');
+      }
+      try { await loadPending(true); } catch (error) {
+        console.warn('[Admin] O time foi salvo, mas a lista de inscrições não atualizou automaticamente.', error?.code || 'erro');
+      }
+    } catch (error) {
+      if (uploadedSpecLogo && specLogoModule && registrationRef && !registrationSaved) {
+        try {
+          await specLogoModule.removeManualModoLigaLogoFromSpec({
+            hour: uploadedSpecLogo.hour,
+            selection: uploadedSpecLogo.selection,
+            registrationId: registrationRef.id,
+          });
+        } catch (cleanupError) {
+          console.error('[Admin] Não foi possível desfazer a logo SPEC após a falha do cadastro.', {
+            code: cleanupError?.code,
+            message: cleanupError?.message,
+          });
+        }
+      }
+      const errorMessage = error?.code === 'permission-denied'
+        ? 'O Firebase recusou o salvamento por falta de permissão para este perfil.'
+        : (error?.message || 'Não foi possível salvar o time. Tente novamente.');
+      if (msgEl) {
+        msgEl.textContent = errorMessage;
+        msgEl.className = 'text-sm text-red-600 flex-1 mr-3';
+      }
+      console.error('[Admin] Falha ao adicionar time manualmente:', {
+        code: error?.code,
+        message: error?.message,
+        error,
+      });
+      showToast('error', errorMessage, 'Falha ao salvar');
+    } finally {
+      _isSavingTeam = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnHtml;
+      }
+    }
   }
   // Expor submitAddTeam globalmente
   window.submitAddTeam = submitAddTeam;
@@ -1679,6 +2109,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (btnLoadBoard) btnLoadBoard.onclick = loadBoard;
     const formAddTeam = document.getElementById('formAddTeam');
     if (formAddTeam) formAddTeam.onsubmit = submitAddTeam;
+    bindAddModoLigaSpecControls();
 
     // Inicializa período como "hoje" (sincroniza com botão Hoje ativo por padrão)
     parsePeriodFromValue('today');
@@ -4894,7 +5325,9 @@ window.showWarningToast = function(message, title = 'Atenção') {
           if (statusEl) statusEl.textContent = '';
           const msgEl = document.getElementById('addTeamMsg');
           if (msgEl) msgEl.textContent = '';
+          resetAddModoLigaSpecControls();
           if (modal) modal.classList.remove('hidden');
+          if (isAddModoLigaEvent()) void requestAddModoLigaSpecOptions();
         } 
         else if (btnManage) {
           const h = btnManage.getAttribute('data-manage-hour');
@@ -5534,7 +5967,11 @@ window.showWarningToast = function(message, title = 'Atenção') {
           logoDownloadBtn.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            downloadOriginalTeamLogo(r, logoDownloadBtn);
+            downloadOriginalTeamLogo({
+              ...r,
+              id: d.id,
+              _modoLigaLogoDownload: isModoLigaRegistration(r),
+            }, logoDownloadBtn);
           });
         }
         return row;
@@ -12967,15 +13404,37 @@ async function downloadOriginalTeamLogo(registration, button) {
     }
 
     try {
-        const logoUrl = await resolveSpecOriginalLogoUrl(registration);
-        if (!logoUrl) {
-            showToast('warning', 'Não encontrei um arquivo original vinculado a esta inscrição. Se a logo foi enviada antes da correção, peça ao capitão para reenviá-la. Não baixei a miniatura para evitar perda de qualidade.', 'Logo original ausente');
-            return;
+        let logoUrl = '';
+        let blob;
+        if (registration?._modoLigaLogoDownload) {
+            const registrationId = String(registration.id || registration.registrationId || '').trim();
+            if (!/^[A-Za-z0-9_-]{1,128}$/.test(registrationId)) {
+                throw new Error('Não consegui identificar a inscrição para buscar a logo original.');
+            }
+            const currentUser = window.firebaseAuth?.currentUser;
+            if (!currentUser) throw new Error('Entre novamente no painel para baixar a logo original.');
+            const token = await currentUser.getIdToken();
+            const response = await fetch(
+                `/api/spec-logos/registrations/${encodeURIComponent(registrationId)}/original`,
+                { headers: { Authorization: `Bearer ${token}` } },
+            );
+            if (!response.ok) {
+                let payload = null;
+                try { payload = await response.json(); } catch (_) {}
+                throw new Error(payload?.error || `Não foi possível baixar a logo original (HTTP ${response.status}).`);
+            }
+            blob = await response.blob();
+            logoUrl = response.url;
+        } else {
+            logoUrl = await resolveSpecOriginalLogoUrl(registration);
+            if (!logoUrl) {
+                showToast('warning', 'Não encontrei um arquivo original vinculado a esta inscrição. Se a logo foi enviada antes da correção, peça ao capitão para reenviá-la. Não baixei a miniatura para evitar perda de qualidade.', 'Logo original ausente');
+                return;
+            }
+            const response = await fetch(logoUrl, { mode: 'cors' });
+            if (!response.ok) throw new Error('Não foi possível carregar a imagem original.');
+            blob = await response.blob();
         }
-
-        const response = await fetch(logoUrl, { mode: 'cors' });
-        if (!response.ok) throw new Error('Não foi possível carregar a imagem original.');
-        const blob = await response.blob();
         if (/^(text\/|application\/json)/i.test(blob.type || '')) {
             throw new Error('O endereço não retornou um arquivo de imagem.');
         }
