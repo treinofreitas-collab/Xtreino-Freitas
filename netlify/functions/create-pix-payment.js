@@ -1,6 +1,10 @@
 const crypto = require("node:crypto");
 const { verifyFirebaseUser } = require("../shared/firebase-admin");
-const { preparePurchase, siteBaseUrl } = require("../shared/purchase");
+const {
+  preparePurchase,
+  siteBaseUrl,
+  syncPendingModoLigaSpecHoldExpiry,
+} = require("../shared/purchase");
 const { fetchPaymentById } = require("../shared/credit-token-order");
 const { jsonResponse, parseJsonBody } = require("../shared/token-purchase");
 
@@ -43,6 +47,11 @@ async function persistPixExpiry(db, checkoutRef, checkout, payment, fallbackExpi
   );
   if (results.some(result => result.status === "rejected")) {
     console.error("Unable to persist Pix expiry to every purchase record");
+  }
+  try {
+    await syncPendingModoLigaSpecHoldExpiry(db, checkout, expiresAt);
+  } catch (_) {
+    console.error("Unable to sync Modo Liga selection hold with Pix expiry");
   }
 }
 

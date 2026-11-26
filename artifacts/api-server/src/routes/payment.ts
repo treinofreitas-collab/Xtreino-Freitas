@@ -16,6 +16,7 @@ while (!existsSync(join(workspaceRoot, "pnpm-workspace.yaml")) &&
 // Preview and Netlify execute the same authenticated payment handlers.
 const routes: Record<string, string> = {
   "check-availability": "check-availability",
+  "modo-liga-spec-letters": "modo-liga-spec-letters",
   "event-access-links": "event-access-links",
   "create-preference": "create-preference",
   "create-pix-payment": "create-pix-payment",

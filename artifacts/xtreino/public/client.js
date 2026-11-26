@@ -1387,14 +1387,23 @@ async function loadTodayRegistrations() {
                 && /^[a-zA-Z0-9_-]{1,160}$/.test(externalReference)
                 && !renderedPendingReferences.has(externalReference);
             if (canResumePayment) renderedPendingReferences.add(externalReference);
-            // Slot and league letters are internal; show only the customer's event/hour.
+            // Use only the letter explicitly saved from the customer's Modo Liga choice.
             const name = (r.title || r.eventType || r.teamName || 'Evento')
                 .replace(/\s*[-–]\s*(Slot\s*\d+|Letra\s*[A-Za-z]|Vaga\s*#?\d+|Vaga\s*[A-Za-z]|Grupo\s+\d+\s*[•·]\s*Slot\s*\d+)$/i, '');
+            const isModoLigaRegistration = Boolean(r.modoLigaSpecLetter)
+                || Boolean(r.modoLigaSpecAvatar)
+                || /modo[\s_-]*liga/i.test(`${r.eventType || ''} ${r.title || ''}`);
+            const letterBadge = isModoLigaRegistration
+                ? renderModoLigaLetterBadge(r.modoLigaSpecLetter, r.modoLigaSpecAvatar)
+                : '';
             return `
             <article ${canResumePayment ? 'data-pending-payment-card' : ''} style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f3f4f6;last-child:border-bottom:none;flex-wrap:wrap">
                 <div style="width:38px;height:38px;background:linear-gradient(135deg,#ede9fe,#dbeafe);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${icon}</div>
                 <div style="flex:1;min-width:0">
-                    <div style="font-size:13px;font-weight:800;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+                    <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                        <div style="flex:1;min-width:0;font-size:13px;font-weight:800;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+                        ${letterBadge}
+                    </div>
                     <div style="font-size:11px;color:#6b7280;margin-top:2px">${r.date !== hoje ? String(r.date).split('-').reverse().join('/') + ' &bull; ' : ''}${schedule}</div>
                     ${status !== 'pending' ? eventAccessPlaceholder(r.id) : ''}
                     ${canResumePayment ? `
@@ -1655,7 +1664,9 @@ async function loadRecentOrders() {
                 schedule: d.data.schedule || d.data.hour || d.data.time || '',
                 eventType: d.data.eventType || '',
                 paidWithTokens: d.data.paidWithTokens === true,
-                tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0
+                tokensUsed: d.data.tokensUsed || d.data.tokenCost || 0,
+                modoLigaSpecLetter: d.data.modoLigaSpecLetter || '',
+                modoLigaSpecAvatar: d.data.modoLigaSpecAvatar || ''
             }));
 
         const merged = [...regEvents]
@@ -1672,6 +1683,22 @@ async function loadRecentOrders() {
     }
 }
 
+function renderModoLigaLetterBadge(letter, avatarSelection = '') {
+    const normalized = String(letter || '').trim().toUpperCase();
+    const baseStyle = 'display:inline-flex;align-items:center;justify-content:center;height:38px;flex-shrink:0;border:2px solid #67e8f9;border-radius:12px;background:linear-gradient(135deg,#0f766e,#0d9488);color:#fff;font-weight:900;line-height:1;box-shadow:0 0 0 3px rgba(20,184,166,.14),0 3px 8px rgba(15,118,110,.22)';
+    if (/^[A-Z]$/.test(normalized)) {
+        return `<span style="${baseStyle};width:38px;flex-basis:38px;font-size:18px" aria-label="Letra escolhida: ${normalized}" title="Letra ${normalized}">${normalized}</span>`;
+    }
+    const avatarNames = {
+        'avatar:kelly': 'Kelly',
+        'avatar:maxim': 'Maxim',
+        'avatar:andrew': 'Andrew',
+    };
+    const avatarName = avatarNames[String(avatarSelection || '').trim().toLowerCase()];
+    if (!avatarName) return '';
+    return `<span style="${baseStyle};gap:6px;padding:0 10px;font-size:13px" aria-label="Avatar escolhido: ${avatarName}" title="Avatar ${avatarName}">👤 ${avatarName}</span>`;
+}
+
 // Display recent orders
 function displayRecentOrders(orders) {
     const container = document.getElementById('recentOrders');
@@ -1686,11 +1713,20 @@ function displayRecentOrders(orders) {
         const valorDisplay = order.paidWithTokens
             ? `${order.tokensUsed} token${order.tokensUsed !== 1 ? 's' : ''}`
             : `R$ ${order.price?.toFixed(2) || '0,00'}`;
+        const isModoLigaOrder = Boolean(order.modoLigaSpecLetter)
+            || Boolean(order.modoLigaSpecAvatar)
+            || /modo[\s_-]*liga/i.test(`${order.eventType || ''} ${order.title || ''}`);
+        const letterBadge = isModoLigaOrder
+            ? renderModoLigaLetterBadge(order.modoLigaSpecLetter, order.modoLigaSpecAvatar)
+            : '';
 
         return `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(255,255,255,0.07)" class="last:border-b-0">
-                <div>
+                <div style="min-width:0;flex:1">
+                    <div style="display:flex;align-items:center;gap:10px">
                     <p style="font-size:13px;font-weight:700;color:#fff;margin:0">${order.title || 'Reserva'}</p>
+                    ${letterBadge}
+                    </div>
                     <p style="font-size:11px;color:rgba(255,255,255,0.45);margin:3px 0 0">${formatDate(order.date)}</p>
                 </div>
                 <div style="text-align:right;flex-shrink:0;margin-left:12px">
@@ -1740,7 +1776,9 @@ async function loadOrders() {
                 teamName: d.data.teamName || d.data.team || d.data.name || '',
                 email: d.data.email || null,
                 contact: d.data.contact || d.data.phone || null,
-                whatsappLink: d.data.whatsappLink || d.data.groupLink || d.data.group_link || null
+                whatsappLink: d.data.whatsappLink || d.data.groupLink || d.data.group_link || null,
+                modoLigaSpecLetter: d.data.modoLigaSpecLetter || '',
+                modoLigaSpecAvatar: d.data.modoLigaSpecAvatar || ''
             }));
         
 
@@ -1888,7 +1926,9 @@ async function displayAllOrdersPaginated() {
             eventType: order.eventType,
             title: order.title,
             id: order.id,
-            tokensUsed: order.tokensUsed || 0
+            tokensUsed: order.tokensUsed || 0,
+            modoLigaSpecLetter: order.modoLigaSpecLetter || '',
+            modoLigaSpecAvatar: order.modoLigaSpecAvatar || ''
         });
     });
 
@@ -1915,10 +1955,17 @@ async function displayAllOrdersPaginated() {
         const itemsHTML = await Promise.all(group.items.map(async item => {
             const whatsappButton = eventAccessPlaceholder(item.id);
             const hourDisplay = item.schedule ? (item.schedule.split(' - ')[1] || item.schedule) : (item.hour || '');
+            const isModoLigaItem = Boolean(item.modoLigaSpecLetter)
+                || Boolean(item.modoLigaSpecAvatar)
+                || /modo[\s_-]*liga/i.test(`${item.eventType || ''} ${item.title || ''}`);
+            const letter = isModoLigaItem
+                ? String(item.modoLigaSpecLetter || '').trim().toUpperCase()
+                : '';
+            const letterBadge = renderModoLigaLetterBadge(letter, item.modoLigaSpecAvatar);
             return `
                 <div class="border-t border-gray-200 pt-2 mt-2 first:border-t-0 first:pt-0 first:mt-0">
                     <div class="flex items-center justify-between">
-                        <span class="text-sm font-medium text-gray-700">${hourDisplay}</span>
+                        <span class="flex items-center gap-2 text-sm font-medium text-gray-700">${hourDisplay}${letterBadge}</span>
                         ${whatsappButton}
                     </div>
                 </div>

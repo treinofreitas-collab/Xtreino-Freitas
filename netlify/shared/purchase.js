@@ -10,6 +10,21 @@ const {
   normalizeTeamName: normalizeRankingTeamName,
   teamDocumentId: rankingTeamDocumentId,
 } = require("./ranking-team-identity");
+const {
+  SPEC_HOLD_MS,
+  SPEC_LOCK_COLLECTION,
+  getAvailableModoLigaSpecLetters,
+  isModoLigaType,
+  normalizeSpecAvatar,
+  normalizeSpecHour,
+  normalizeSpecLetter,
+  normalizeSpecSelection,
+  objectPathFromUrl,
+  prepareModoLigaSpecClaims,
+  registrationTeamKeyForSpec,
+  specLockId,
+  specPathForSelection,
+} = require("./modo-liga-spec");
 const { isDeepStrictEqual } = require("node:util");
 const CAMP_SEASON_7_START_DATE = "2026-11-18";
 
@@ -24,6 +39,42 @@ function validReference(value) {
     fail("Referência de compra inválida.", 400);
   }
   return value;
+}
+
+function specClaimsForCheckout(checkout) {
+  return Array.isArray(checkout?.modoLigaSpecClaims) ? checkout.modoLigaSpecClaims : [];
+}
+
+function getSpecLockRef(db, claim) {
+  return db.collection(SPEC_LOCK_COLLECTION).doc(specLockId(claim.hour, claim.selection || claim.letter));
+}
+
+async function syncPendingModoLigaSpecHoldExpiry(db, checkout, expiresAt) {
+  const expiryMs = timestampMillis(expiresAt);
+  const claims = specClaimsForCheckout(checkout);
+  if (!expiryMs || !claims.length) return;
+
+  const lockRefs = [...new Map(claims.map(claim => {
+    const ref = getSpecLockRef(db, claim);
+    return [ref.path, ref];
+  })).values()];
+
+  await db.runTransaction(async transaction => {
+    const snapshots = await Promise.all(lockRefs.map(ref => transaction.get(ref)));
+    snapshots.forEach((snapshot, index) => {
+      if (!snapshot.exists) return;
+      const data = snapshot.data() || {};
+      if (data.status !== "pending" || data.externalReference !== checkout.externalReference) return;
+      transaction.update(lockRefs[index], { expiresAt: new Date(expiryMs) });
+    });
+  });
+}
+
+function timestampMillis(value) {
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  const parsed = new Date(value || 0).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function normalizeEventType(value) {
@@ -255,10 +306,20 @@ async function buildPurchase(uid, body, method) {
     ? await findAffiliateRef(db, affiliateCodes[0])
     : null;
   const firstSource = sources[0].data();
+  const modoLigaSpecClaims = kind === "event" && sources.some(source =>
+    Boolean(source.data()?.modoLigaSpecLetter || source.data()?.modoLigaSpecAvatar),
+  )
+    ? await prepareModoLigaSpecClaims(sources, {
+      reference,
+      userId: uid,
+      bucket: admin.storage(),
+    })
+    : [];
   const eventTitle = kind === "event" ? prices[0].title : null;
   const checkout = {
     userId: uid, kind, method, externalReference: reference, orderId: reference,
     sourcePaths: sources.map(s => s.ref.path), sourceAmountCents: prices.map(p => p.cents),
+    ...(modoLigaSpecClaims.length ? { modoLigaSpecClaims } : {}),
     title: kind === "product" ? product.title : `${prices[0].title} (${sources.length} reserva(s))`,
     providerDescription: kind === "event" ? eventProviderDescription(eventTitle, sources) : product.title,
     originalCents, ...discount, status: "pending", currency: "BRL",
@@ -275,11 +336,17 @@ async function preparePurchase(uid, body, method) {
   const { db, checkoutRef, checkout, sources } = prepared;
   if (prepared.existing) return { db, checkoutRef, checkout };
   const admin = getAdmin();
+  const specClaims = specClaimsForCheckout(checkout);
+  const specLockRefs = [...new Map(specClaims.map(claim => {
+    const ref = getSpecLockRef(db, claim);
+    return [ref.path, ref];
+  })).values()];
   // Serialize concurrent attempts for the same reference.
   const saved = await db.runTransaction(async transaction => {
-    const [current, freshSources] = await Promise.all([
+    const [current, freshSources, existingSpecLocks] = await Promise.all([
       transaction.get(checkoutRef),
       Promise.all(sources.map(s => transaction.get(s.ref))),
+      Promise.all(specLockRefs.map(ref => transaction.get(ref))),
     ]);
     if (current.exists) {
       if (current.data().userId !== uid || current.data().method !== method) fail("Referência já utilizada.");
@@ -288,7 +355,38 @@ async function preparePurchase(uid, body, method) {
     if (freshSources.some(s => !s.exists || s.data().userId !== uid || s.data().status !== "pending")) {
       fail("O pedido mudou. Tente novamente.");
     }
+    if (freshSources.some((source, index) =>
+      !isDeepStrictEqual(sourcePricingFields(source.data()), sourcePricingFields(sources[index].data())))) {
+      fail("O pedido mudou. Tente novamente.");
+    }
+    const now = Date.now();
+    for (let index = 0; index < specLockRefs.length; index++) {
+      const lock = existingSpecLocks[index];
+      if (!lock.exists) continue;
+      const data = lock.data() || {};
+      const stillHeld = data.status === "paid" || timestampMillis(data.expiresAt) > now;
+      if (data.externalReference !== checkout.externalReference && stillHeld) {
+        fail("A opção escolhida para a vaga acabou de ficar ocupada neste horário. Atualize as opções e escolha outra.");
+      }
+    }
     transaction.create(checkoutRef, { ...checkout, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    specLockRefs.forEach((ref, index) => {
+      const claim = specClaims.find(item =>
+        specLockId(item.hour, item.selection || item.letter) === ref.id);
+      const existingLock = existingSpecLocks[index];
+      transaction.set(ref, {
+        hour: claim.hour,
+        selection: claim.selection || claim.letter,
+        ...(claim.letter ? { letter: claim.letter } : {}),
+        ...(claim.avatar ? { avatar: claim.avatar } : {}),
+        status: "pending",
+        externalReference: checkout.externalReference,
+        userId: uid,
+        teamName: claim.teamName,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: new Date(now + SPEC_HOLD_MS),
+      });
+    });
     return checkout;
   });
   return { db, checkoutRef, checkout: saved };
@@ -307,7 +405,15 @@ async function completePurchase(reference, { payment = null, uid = null } = {}) 
     payment, uid, admin, db, checkoutRef, affiliateRef,
   }));
   if (["paid", "already_paid"].includes(result.status) && existingCheckout.exists) {
-    await syncPaidPurchaseLogosSafely(db, existingCheckout.data());
+    const settledCheckoutSnapshot = await checkoutRef.get();
+    const settledCheckout = settledCheckoutSnapshot.exists
+      ? settledCheckoutSnapshot.data()
+      : existingCheckout.data();
+    await syncPaidPurchaseLogosSafely(db, settledCheckout);
+    const modoLigaSpec = await syncPaidModoLigaSpecLogosSafely(db, settledCheckout);
+    return specClaimsForCheckout(settledCheckout).length
+      ? { ...result, modoLigaSpec }
+      : result;
   }
   return result;
 }
@@ -323,7 +429,13 @@ async function payPurchaseWithTokens(uid, body) {
     preparedSources: sources, expectedTotal: body.unit_price, affiliateRef,
   }));
   if (["paid", "already_paid"].includes(result.status)) {
-    await syncPaidPurchaseLogosSafely(db, checkout);
+    const settledCheckoutSnapshot = await checkoutRef.get();
+    const settledCheckout = settledCheckoutSnapshot.exists ? settledCheckoutSnapshot.data() : checkout;
+    await syncPaidPurchaseLogosSafely(db, settledCheckout);
+    const modoLigaSpec = await syncPaidModoLigaSpecLogosSafely(db, settledCheckout);
+    return specClaimsForCheckout(settledCheckout).length
+      ? { ...result, modoLigaSpec }
+      : result;
   }
   return result;
 }
@@ -341,10 +453,121 @@ async function syncPaidPurchaseLogosSafely(db, checkout) {
   }
 }
 
+async function syncPaidModoLigaSpecLogos(db, checkout) {
+  const claims = specClaimsForCheckout(checkout);
+  if (checkout?.status !== "paid" || checkout?.kind !== "event" || !claims.length) {
+    return { uploadedCount: 0, failedCount: 0, conflictCount: 0 };
+  }
+  const bucket = getAdmin().storage();
+  const summary = { uploadedCount: 0, failedCount: 0, conflictCount: 0 };
+  for (const claim of claims) {
+    const selection = normalizeSpecSelection(claim.selection || claim.letter);
+    const expectedStoragePath = specPathForSelection(claim.hour, selection);
+    const registrationPaths = [...new Set(claim.registrationPaths || [])]
+      .filter(path => checkout.sourcePaths?.includes(path) && /^registrations\/[^/]+$/.test(path));
+    let failureKind = "failed";
+    try {
+      if (!expectedStoragePath || claim.storagePath !== expectedStoragePath || !registrationPaths.length) {
+        throw new Error("invalid_claim");
+      }
+      const snapshots = await Promise.all(registrationPaths.map(path => db.doc(path).get()));
+      const registrations = snapshots.map(snapshot => snapshot.data() || {});
+      if (registrations.some(registration => registration.modoLigaSpecStatus === "conflict")) {
+        failureKind = "conflict";
+        throw new Error("spec_reservation_conflict");
+      }
+      if (snapshots.some((snapshot, index) => !snapshot.exists
+          || registrations[index].status !== "paid"
+          || normalizeSpecSelection(
+            registrations[index].modoLigaSpecLetter || registrations[index].modoLigaSpecAvatar,
+          ) !== selection
+          || normalizeSpecHour(registrations[index].hour || registrations[index].schedule) !== claim.hour)) {
+        throw new Error("registration_mismatch");
+      }
+      const sourceFile = bucket.file(claim.logoObjectPath);
+      const [sourceMetadata] = await sourceFile.getMetadata();
+      if (!String(claim.logoObjectPath || "").startsWith("teams/")
+          || !String(sourceMetadata?.contentType || "").toLowerCase().startsWith("image/png")) {
+        throw new Error("source_unavailable");
+      }
+      const [[contents], targetExists] = await Promise.all([
+        sourceFile.download(),
+        bucket.file(expectedStoragePath).exists(),
+      ]);
+      const targetFile = bucket.file(expectedStoragePath);
+      let alreadyUploaded = false;
+      if (targetExists[0]) {
+        const [targetMetadata] = await targetFile.getMetadata();
+        const customMetadata = targetMetadata?.metadata || {};
+        alreadyUploaded = String(customMetadata.modoLigaSpecReference || "") === String(checkout.externalReference)
+          && String(customMetadata.sourceObjectPath || "") === claim.logoObjectPath;
+        if (!alreadyUploaded) {
+          failureKind = "conflict";
+          throw new Error("spec_target_occupied");
+        }
+      } else {
+        try {
+          await targetFile.save(contents, {
+            resumable: false,
+            preconditionOpts: { ifGenerationMatch: 0 },
+            metadata: {
+              contentType: "image/png",
+              cacheControl: "public, max-age=3600",
+              metadata: {
+                modoLigaSpecReference: String(checkout.externalReference),
+                sourceObjectPath: claim.logoObjectPath,
+                teamName: String(claim.teamName || ""),
+                hour: String(claim.hour),
+                selection: String(selection),
+                ...(claim.letter ? { letter: String(claim.letter) } : {}),
+                ...(claim.avatar ? { avatar: String(claim.avatar) } : {}),
+              },
+            },
+          });
+        } catch (uploadError) {
+          if (![409, 412].includes(Number(uploadError?.code))) throw uploadError;
+          const [concurrentMetadata] = await targetFile.getMetadata();
+          const customMetadata = concurrentMetadata?.metadata || {};
+          alreadyUploaded = String(customMetadata.modoLigaSpecReference || "") === String(checkout.externalReference)
+            && String(customMetadata.sourceObjectPath || "") === claim.logoObjectPath;
+          if (!alreadyUploaded) throw uploadError;
+        }
+      }
+      await Promise.all(registrationPaths.map(path => db.doc(path).update({
+        modoLigaSpecStatus: "uploaded",
+        modoLigaSpecStoragePath: expectedStoragePath,
+        modoLigaSpecUploadedAt: getAdmin().firestore.FieldValue.serverTimestamp(),
+      })));
+      summary.uploadedCount += 1;
+      if (claim.avatar) summary.avatarCount = (summary.avatarCount || 0) + 1;
+    } catch (error) {
+      if (error?.code === 412 || error?.code === 409) failureKind = "conflict";
+      await Promise.all(registrationPaths.map(path => db.doc(path).update({
+        modoLigaSpecStatus: failureKind,
+      }).catch(() => {})));
+      if (failureKind === "conflict") summary.conflictCount += 1;
+      else summary.failedCount += 1;
+      console.warn("[Modo Liga SPEC] Falha ao enviar logo:", error?.code || error?.name || "unknown");
+    }
+  }
+  return summary;
+}
+
+async function syncPaidModoLigaSpecLogosSafely(db, checkout) {
+  try {
+    return await syncPaidModoLigaSpecLogos(db, checkout);
+  } catch (error) {
+    console.warn("[Modo Liga SPEC] Falha ao concluir envio:", error?.code || error?.name || "unknown");
+    const claims = specClaimsForCheckout(checkout);
+    return { uploadedCount: 0, failedCount: claims.length, conflictCount: 0 };
+  }
+}
+
 function sourcePricingFields(source) {
   const fields = ["userId", "type", "productId", "productOptions", "eventType",
     "adminEventId", "eventLinkDateScoped", "date", "eventDate", "hour", "schedule",
-    "couponCode", "isFreeEvent", "freeParticipationStatus"];
+    "couponCode", "isFreeEvent", "freeParticipationStatus", "modoLigaSpecLetter", "modoLigaSpecAvatar",
+    "teamLogoUrl", "logoOriginalUrl"];
   return Object.fromEntries(fields.map(field => [field, source[field]]));
 }
 
@@ -482,12 +705,15 @@ async function settlePurchase(transaction, reference, {
       }
     } else if (!uid || checkout.method !== "tokens") fail("Forma de pagamento inválida.", 403);
     const refs = checkout.sourcePaths.map(path => db.doc(path));
+    const specClaims = specClaimsForCheckout(checkout);
+    const specLockRefs = specClaims.map(claim => getSpecLockRef(db, claim));
     const userRef = db.collection("users").doc(checkout.userId);
     const receiptRef = db.collection("purchase_receipts").doc(payment ? `mp_${payment.id}` : `tokens_${reference}`);
-    const [sources, user, receipt] = await Promise.all([
+    const [sources, user, receipt, specLockSnapshots] = await Promise.all([
       Promise.all(refs.map(ref => transaction.get(ref))),
       transaction.get(userRef),
       transaction.get(receiptRef),
+      Promise.all(specLockRefs.map(ref => transaction.get(ref))),
     ]);
     const affiliateSaleRef = db.collection("affiliate_sales").doc(`purchase_${reference}`);
     const managerSaleRef = db.collection("affiliate_sales").doc(`manager_purchase_${reference}`);
@@ -505,6 +731,44 @@ async function settlePurchase(transaction, reference, {
     }
     if (receipt.exists) {
       return review("receipt_already_exists", "Já existe um comprovante desta transação, mas o checkout ainda não está conciliado.");
+    }
+    const claimsByRegistration = new Map();
+    specClaims.forEach(claim => {
+      for (const path of claim.registrationPaths || []) claimsByRegistration.set(path, claim);
+    });
+    for (let index = 0; index < sources.length; index++) {
+      const registration = sources[index].data() || {};
+      const claim = claimsByRegistration.get(refs[index].path);
+      const selectedLetter = normalizeSpecLetter(registration.modoLigaSpecLetter);
+      const selectedAvatar = normalizeSpecAvatar(registration.modoLigaSpecAvatar);
+      const selectedChoice = selectedLetter || selectedAvatar;
+      if (!selectedChoice && !claim) continue;
+      if (
+        !claim
+        || selectedChoice !== normalizeSpecSelection(claim.selection || claim.letter)
+        || !isModoLigaType(registration.eventType)
+        || normalizeSpecHour(registration.hour || registration.schedule) !== claim.hour
+        || registrationTeamKeyForSpec(registration) !== claim.teamKey
+        || (objectPathFromUrl(
+          registration.teamLogoUrl || registration.logoOriginalUrl,
+          String(claim.bucketName || ""),
+        ) !== claim.logoObjectPath)
+      ) {
+        return review("spec_letter_selection_changed", "A escolha de letra/avatar ou a logo foi alterada depois da criação do checkout.");
+      }
+    }
+    const specConflicts = new Set();
+    for (let index = 0; index < specClaims.length; index++) {
+      const lock = specLockSnapshots[index];
+      if (!lock.exists) continue;
+      const lockData = lock.data() || {};
+      const stillHeld = lockData.status === "paid" || timestampMillis(lockData.expiresAt) > Date.now();
+      if (lockData.externalReference !== reference && stillHeld) {
+        if (!payment) {
+          fail("A opção escolhida para a vaga foi ocupada por outra compra. Atualize as opções e tente novamente.");
+        }
+        specConflicts.add(specLockRefs[index].path);
+      }
     }
     // A users document is a profile, not proof of an approved event payment.
     // Token debits still require that document; MP events use the trusted
@@ -605,13 +869,32 @@ async function settlePurchase(transaction, reference, {
       external_reference: reference, verifiedOnServer: true,
       ...(payment ? { paymentId: String(payment.id) } : { paidWithTokens: true, tokensUsed: debit }),
     };
+    specClaims.forEach((claim, index) => {
+      const lockRef = specLockRefs[index];
+      if (specConflicts.has(lockRef.path)) return;
+      transaction.set(lockRef, {
+        hour: claim.hour,
+        selection: claim.selection || claim.letter,
+        ...(claim.letter ? { letter: claim.letter } : {}),
+        ...(claim.avatar ? { avatar: claim.avatar } : {}),
+        status: "paid",
+        externalReference: reference,
+        userId: checkout.userId,
+        teamName: claim.teamName,
+        createdAt: timestamp,
+        expiresAt: null,
+      });
+    });
     let allocatedCents = 0;
     sources.forEach((source, index) => {
       const cents = index === sources.length - 1 ? checkout.amountCents - allocatedCents
         : Math.floor(checkout.amountCents * checkout.sourceAmountCents[index] / (checkout.originalCents || 1));
       allocatedCents += cents;
+      const claim = claimsByRegistration.get(refs[index].path);
+      const claimLockPath = claim ? getSpecLockRef(db, claim).path : "";
       transaction.update(refs[index], {
       ...patch,
+      ...(claim ? { modoLigaSpecStatus: specConflicts.has(claimLockPath) ? "conflict" : "reserved" } : {}),
       ...(rankingIdentityPlans.get(refs[index].path) ? {
         rankingTeamId: rankingIdentityPlans.get(refs[index].path).rankingTeamId,
       } : {}),
@@ -701,9 +984,11 @@ async function settlePurchase(transaction, reference, {
 
 module.exports = {
   preparePurchase,
+  syncPendingModoLigaSpecHoldExpiry,
   completePurchase,
   payPurchaseWithTokens,
   syncPaidPurchaseLogosSafely,
+  syncPaidModoLigaSpecLogosSafely,
   safeBackUrl,
   siteBaseUrl,
   productPrice,

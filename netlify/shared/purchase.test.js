@@ -71,12 +71,49 @@ function fakeDatabase(seed, reads = []) {
 }
 
 let currentDb;
+let currentBucket;
 const firestore = () => currentDb;
 firestore.FieldValue = { serverTimestamp: () => 1234 };
-firebase.getAdmin = () => ({ firestore });
+firebase.getAdmin = () => ({ firestore, storage: () => currentBucket });
 const { preparePurchase, completePurchase, payPurchaseWithTokens, eventPrice, safeBackUrl, assertCanConfirm } = require("./purchase");
 const { handler: webhook } = require("../functions/mp-webhook");
 const crypto = require("node:crypto");
+
+function fakeStorage(seed = {}) {
+  const files = new Map(Object.entries(seed).map(([name, value]) => [name, {
+    contents: Buffer.from(value.contents || "logo"),
+    metadata: { contentType: "image/png", ...(value.metadata || {}) },
+  }]));
+  return {
+    name: "test-bucket",
+    file: name => ({
+      name,
+      getMetadata: async () => {
+        const record = files.get(name);
+        if (!record) throw Object.assign(new Error("not found"), { code: 404 });
+        return [{ ...record.metadata, metadata: { ...(record.metadata.metadata || {}) } }];
+      },
+      exists: async () => [files.has(name)],
+      download: async () => {
+        const record = files.get(name);
+        if (!record) throw Object.assign(new Error("not found"), { code: 404 });
+        return [Buffer.from(record.contents)];
+      },
+      save: async (contents, options) => {
+        assert.equal(options.preconditionOpts.ifGenerationMatch, 0);
+        if (files.has(name)) throw Object.assign(new Error("already exists"), { code: 412 });
+        files.set(name, {
+          contents: Buffer.from(contents),
+          metadata: { ...options.metadata, metadata: { ...options.metadata.metadata } },
+        });
+      },
+    }),
+    getFiles: async ({ prefix }) => [[...files.keys()]
+      .filter(name => name.startsWith(prefix))
+      .map(name => ({ name }))],
+    read: name => files.get(name),
+  };
+}
 
 function productSeed(balance = 20) {
   return {
@@ -340,6 +377,165 @@ test("approved event purchases sync the newest logo to an existing ranking row w
   assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").logoUpdatedAt, logoTimestamp);
   assert.equal(currentDb.read("freefire_general_ranking/team_foltest_pro").totalPoints, 1258);
   assert.equal(currentDb.read("freefire_general_ranking/team_equipe_nova"), undefined);
+});
+
+test("Modo Liga keeps one SPEC letter across hours, reserves it, and uploads only after payment", async () => {
+  const reference = "modo_liga_spec_auto";
+  const logoPath = "teams/modo-liga/logos/fox_123.png";
+  const logoUrl = `https://firebasestorage.googleapis.com/v0/b/test-bucket/o/${encodeURIComponent(logoPath)}?alt=media`;
+  currentBucket = fakeStorage({ [logoPath]: { contents: "original-png" } });
+  currentDb = fakeDatabase({
+    "adminEvents/modo-liga": { name: "Modo Liga", eventType: "modo-liga", preco: 3, status: "Aberto" },
+    "registrations/fox-20": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-10-14", schedule: "Quarta - 20h", hour: "20h",
+      external_reference: reference, teamName: "FOX", email: "fox@example.com",
+      teamLogoUrl: logoUrl, modoLigaSpecLetter: "A",
+    },
+    "registrations/fox-21": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-10-14", schedule: "Quarta - 21h", hour: "21h",
+      external_reference: reference, teamName: "FOX", email: "fox@example.com",
+      teamLogoUrl: logoUrl, modoLigaSpecLetter: "A",
+    },
+    "registrations/other-buyer": {
+      userId: "other", status: "pending", eventType: "modo-liga",
+      date: "2026-10-14", schedule: "Quarta - 20h", hour: "20h",
+      external_reference: "other_spec_purchase", teamName: "OTHER", email: "other@example.com",
+      teamLogoUrl: logoUrl, modoLigaSpecLetter: "A",
+    },
+  });
+
+  const prepared = await preparePurchase("buyer", { external_reference: reference, unit_price: 6 }, "mercadopago");
+  const specHoldExpiry = currentDb.read("modo_liga_spec_letter_locks/20_A").expiresAt.getTime();
+  assert.ok(specHoldExpiry - Date.now() > 29 * 60 * 1000);
+  assert.ok(specHoldExpiry - Date.now() <= 30 * 60 * 1000);
+  assert.deepEqual(prepared.checkout.modoLigaSpecClaims.map(claim => [claim.hour, claim.letter]), [
+    ["20", "A"],
+    ["21", "A"],
+  ]);
+  assert.equal(currentDb.read("modo_liga_spec_letter_locks/20_A").status, "pending");
+  await assert.rejects(
+    preparePurchase("other", { external_reference: "other_spec_purchase", unit_price: 3 }, "mercadopago"),
+    /ocupada/,
+  );
+  assert.equal(currentDb.read("purchase_checkouts/other_spec_purchase"), undefined);
+
+  const pendingResult = await completePurchase(reference, {
+    payment: { ...payment(reference), status: "pending", transaction_amount: 6 },
+  });
+  assert.equal(pendingResult.status, "needs_review");
+  assert.equal(currentBucket.read("teams/modo-liga/logos/spec/20H/902000034.png"), undefined);
+
+  const paidResult = await completePurchase(reference, {
+    payment: { ...payment(reference), transaction_amount: 6 },
+  });
+  assert.equal(paidResult.status, "paid");
+  assert.deepEqual(paidResult.modoLigaSpec, { uploadedCount: 2, failedCount: 0, conflictCount: 0 });
+  assert.equal(currentBucket.read("teams/modo-liga/logos/spec/20H/902000034.png").contents.toString(), "original-png");
+  assert.equal(currentDb.read("registrations/fox-20").modoLigaSpecStatus, "uploaded");
+  assert.equal(currentDb.read("registrations/fox-21").modoLigaSpecStoragePath, "teams/modo-liga/logos/spec/21H/902000034.png");
+  assert.equal(currentDb.read("modo_liga_spec_letter_locks/20_A").status, "paid");
+
+  const repeated = await completePurchase(reference, {
+    payment: { ...payment(reference), transaction_amount: 6 },
+  });
+  assert.equal(repeated.status, "already_paid");
+  assert.deepEqual(repeated.modoLigaSpec, { uploadedCount: 2, failedCount: 0, conflictCount: 0 });
+});
+
+test("Modo Liga SPEC logo is delivered after an atomic token payment", async () => {
+  const reference = "tokens_modo_liga_spec";
+  const logoPath = "teams/modo-liga/logos/team_tokens.png";
+  const logoUrl = `https://firebasestorage.googleapis.com/v0/b/test-bucket/o/${encodeURIComponent(logoPath)}?alt=media`;
+  currentBucket = fakeStorage({ [logoPath]: { contents: "token-logo" } });
+  currentDb = fakeDatabase({
+    "users/buyer": { tokens: 3 },
+    "adminEvents/modo-liga": { name: "Modo Liga", eventType: "modo-liga", preco: 3, status: "Aberto" },
+    "registrations/token-team": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-10-14", schedule: "Quarta - 22h", hour: "22h",
+      external_reference: reference, teamName: "TOKEN TEAM", email: "token@example.com",
+      teamLogoUrl: logoUrl, modoLigaSpecLetter: "E",
+    },
+  });
+
+  const result = await payPurchaseWithTokens("buyer", {
+    external_reference: reference,
+    unit_price: 3,
+  });
+  assert.equal(result.status, "paid");
+  assert.deepEqual(result.modoLigaSpec, { uploadedCount: 1, failedCount: 0, conflictCount: 0 });
+  assert.equal(currentDb.read("users/buyer").tokens, 0);
+  assert.equal(currentDb.read("registrations/token-team").modoLigaSpecStatus, "uploaded");
+  assert.equal(currentBucket.read("teams/modo-liga/logos/spec/22H/902000038.png").contents.toString(), "token-logo");
+});
+
+test("Modo Liga avatar choice uploads the team logo to the selected SPEC code", async () => {
+  const reference = "modo_liga_avatar_auto";
+  const logoPath = "teams/modo-liga/logos/avatar_team.png";
+  const logoUrl = `https://firebasestorage.googleapis.com/v0/b/test-bucket/o/${encodeURIComponent(logoPath)}?alt=media`;
+  const avatar20Path = "teams/modo-liga/logos/spec/20H/902000007.png";
+  const avatar21Path = "teams/modo-liga/logos/spec/21H/902000007.png";
+  currentBucket = fakeStorage({ [logoPath]: { contents: "avatar-team-logo" } });
+  currentDb = fakeDatabase({
+    "adminEvents/modo-liga": { name: "Modo Liga", eventType: "modo-liga", preco: 3, status: "Aberto" },
+    "registrations/avatar-20": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-10-14", schedule: "Quarta - 20h", hour: "20h",
+      external_reference: reference, teamName: "AVATAR TEAM", email: "avatar@example.com",
+      teamLogoUrl: logoUrl, modoLigaSpecAvatar: "avatar:kelly",
+    },
+    "registrations/avatar-21": {
+      userId: "buyer", status: "pending", eventType: "modo-liga",
+      date: "2026-10-14", schedule: "Quarta - 21h", hour: "21h",
+      external_reference: reference, teamName: "AVATAR TEAM", email: "avatar@example.com",
+      teamLogoUrl: logoUrl, modoLigaSpecAvatar: "avatar:kelly",
+    },
+    "registrations/avatar-other": {
+      userId: "other", status: "pending", eventType: "modo-liga",
+      date: "2026-10-14", schedule: "Quarta - 20h", hour: "20h",
+      external_reference: "other_avatar_purchase", teamName: "OTHER AVATAR TEAM",
+      email: "other-avatar@example.com", teamLogoUrl: logoUrl,
+      modoLigaSpecAvatar: "avatar:kelly",
+    },
+  });
+
+  const prepared = await preparePurchase("buyer", {
+    external_reference: reference,
+    unit_price: 6,
+  }, "mercadopago");
+  assert.deepEqual(prepared.checkout.modoLigaSpecClaims.map(claim => [
+    claim.hour,
+    claim.selection,
+    claim.avatar,
+  ]), [
+    ["20", "avatar:kelly", "avatar:kelly"],
+    ["21", "avatar:kelly", "avatar:kelly"],
+  ]);
+  assert.equal(currentDb.read("modo_liga_spec_letter_locks/20_avatar-kelly").status, "pending");
+  await assert.rejects(
+    preparePurchase("other", { external_reference: "other_avatar_purchase", unit_price: 3 }, "mercadopago"),
+    /ocupada/,
+  );
+
+  const result = await completePurchase(reference, {
+    payment: { ...payment(reference), transaction_amount: 6 },
+  });
+  assert.equal(result.status, "paid");
+  assert.deepEqual(result.modoLigaSpec, {
+    uploadedCount: 2,
+    failedCount: 0,
+    conflictCount: 0,
+    avatarCount: 2,
+  });
+  assert.equal(currentDb.read("registrations/avatar-20").modoLigaSpecStatus, "uploaded");
+  assert.equal(currentDb.read("registrations/avatar-21").modoLigaSpecStoragePath, avatar21Path);
+  assert.equal(currentDb.read("modo_liga_spec_letter_locks/20_avatar-kelly").status, "paid");
+  assert.equal(currentBucket.read(avatar20Path).contents.toString(), "avatar-team-logo");
+  assert.equal(currentBucket.read(avatar21Path).contents.toString(), "avatar-team-logo");
+  assert.equal(currentBucket.read(avatar20Path).metadata.metadata.selection, "avatar:kelly");
+  assert.equal(currentBucket.read(avatar21Path).metadata.metadata.avatar, "avatar:kelly");
 });
 
 test("a later buyer with the same exact name receives a separate identity without taking the legacy points", async () => {
@@ -828,15 +1024,19 @@ test("Pix checkout labels the sale and includes all purchased event dates and ho
   try {
     currentDb = fakeDatabase({
       "adminEvents/modo-liga": { name: "Treino Modo Liga", preco: 3, status: "Aberto" },
-      "registrations/r": {
+      "registrations/r1": {
         userId: "buyer", status: "pending", eventType: "modo-liga",
         date: "2026-10-21", schedule: "Quarta - 20h", external_reference: reference,
+        teamName: "TEAM", email: "buyer@example.com",
+        teamLogoUrl: `https://firebasestorage.googleapis.com/v0/b/test-bucket/o/${encodeURIComponent("teams/modo-liga/logos/pix-team.png")}?alt=media`,
+        modoLigaSpecLetter: "A",
       },
       "registrations/r2": {
         userId: "buyer", status: "pending", eventType: "modo-liga",
         date: "2026-10-22", schedule: "Quinta - 21h", external_reference: reference,
       },
     });
+    currentBucket = fakeStorage({ "teams/modo-liga/logos/pix-team.png": { contents: "pix-team-logo" } });
     const { handler } = require(path);
     const event = {
       httpMethod: "POST",

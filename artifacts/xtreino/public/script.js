@@ -6467,7 +6467,15 @@ function addTeam() {
             <input type="file" id="teamLogoInput_${teamId}" accept="image/*" class="hidden" onchange="previewTeamLogo('${teamId}', this)">
             <p class="text-center text-xs text-gray-400 mt-1">Opcional</p>
         </label>`;
-    const teamData = { id: teamId, name: '', email: '', phone: '', logoBase64: null };
+    const teamData = {
+        id: teamId,
+        name: '',
+        email: '',
+        phone: '',
+        logoBase64: null,
+        modoLigaSpecLetter: '',
+        modoLigaSpecAvatar: '',
+    };
     teams.push(teamData);
 
     const container = document.getElementById('teamsContainer');
@@ -6494,6 +6502,17 @@ function addTeam() {
                     </div>
                 </div>
             </div>
+            ${isSoloPlayerEvent ? '' : `
+            <div id="modoLigaSpecLetterWrap_${teamId}" class="hidden mb-3 rounded-xl border border-teal-200 bg-teal-50 p-3">
+                <p class="block text-xs font-bold text-teal-900">
+                    Identificação da equipe no Modo Liga
+                </p>
+                <div id="modoLigaSpecLetterChoices_${teamId}" role="group" aria-label="Letras disponíveis para a logo"
+                     class="mt-2 grid grid-cols-5 gap-2"></div>
+                <p id="modoLigaSpecLetterHelp_${teamId}" class="mt-1 text-xs text-teal-800">
+                    Logo e identificação são opcionais. Envie uma logo para escolher uma letra ou selecione “Não tenho letra”.
+                </p>
+            </div>`}
             <!-- Email + WhatsApp -->
             <div class="grid grid-cols-2 gap-2">
                 <div>
@@ -6512,6 +6531,7 @@ function addTeam() {
         </div>
     `;
     container.appendChild(teamDiv);
+    updateModoLigaSpecLetterPickers();
     updateReservationsSummary();
 }
 
@@ -6523,13 +6543,60 @@ function previewTeamLogo(teamId, input) {
         input.value = '';
         return;
     }
+    const teamState = teams.find(team => team.id === teamId);
+    if (teamState) teamState.logoPending = true;
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         const preview = document.getElementById(`teamLogoPreview_${teamId}`);
         if (preview) preview.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`;
-        updateTeam(teamId, 'logoBase64', e.target.result);
+        try {
+            const logoDataUrl = isModoLigaBooking()
+                ? await imageDataUrlToPng(e.target.result)
+                : e.target.result;
+            const currentTeam = teams.find(team => team.id === teamId);
+            if (currentTeam) currentTeam.logoPending = false;
+            updateTeam(teamId, 'logoBase64', logoDataUrl);
+        } catch (error) {
+            input.value = '';
+            const currentTeam = teams.find(team => team.id === teamId);
+            if (currentTeam) currentTeam.logoPending = false;
+            if (preview) preview.innerHTML = '<i class="fas fa-camera text-purple-300 text-lg"></i><span class="text-xs text-purple-300 mt-0.5 font-medium">Logo</span>';
+            updateTeam(teamId, 'logoBase64', null);
+            alert(error.message || 'Não foi possível preparar a logo. Escolha outra imagem.');
+        }
+    };
+    reader.onerror = () => {
+        const currentTeam = teams.find(team => team.id === teamId);
+        if (currentTeam) currentTeam.logoPending = false;
+        input.value = '';
+        updateTeam(teamId, 'logoBase64', null);
+        alert('Não foi possível ler a logo. Tente selecionar o arquivo novamente.');
     };
     reader.readAsDataURL(file);
+    updateModoLigaSpecLetterPickers();
+}
+
+function imageDataUrlToPng(dataUrl) {
+    if (/^data:image\/png(?:;|,)/i.test(String(dataUrl || ''))) return Promise.resolve(dataUrl);
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+            try {
+                if (!image.naturalWidth || !image.naturalHeight) throw new Error('A imagem não tem dimensões válidas.');
+                const canvas = document.createElement('canvas');
+                canvas.width = image.naturalWidth;
+                canvas.height = image.naturalHeight;
+                const context = canvas.getContext('2d');
+                if (!context) throw new Error('O navegador não conseguiu preparar a logo.');
+                context.drawImage(image, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            } catch (error) {
+                reject(error);
+            }
+        };
+        image.onerror = () => reject(new Error('Não foi possível ler essa imagem.'));
+        image.src = String(dataUrl || '');
+    });
 }
 
 // Redimensiona base64 data URL para thumbnail 128px JPEG — salvo no Firestore como fallback
@@ -6639,6 +6706,7 @@ function removeTeam(teamId) {
     if (teamElement) {
         teamElement.remove();
     }
+    updateModoLigaSpecLetterPickers();
     updateReservationsSummary();
 }
 
@@ -6647,8 +6715,309 @@ function updateTeam(teamId, field, value) {
     const team = teams.find(t => t.id === teamId);
     if (team) {
         team[field] = value;
-        updateReservationsSummary();
+        if (field === 'logoBase64') updateModoLigaSpecLetterPickers();
+        if (field === 'modoLigaSpecLetter') {
+            team.modoLigaSpecAvatar = '';
+            renderModoLigaSpecLetterButtons(window.__modoLigaSpecAvailableLetters || []);
+        }
+        if (field === 'modoLigaSpecAvatar') {
+            team.modoLigaSpecLetter = '';
+            renderModoLigaSpecLetterButtons(window.__modoLigaSpecAvailableLetters || []);
+        }
     }
+}
+
+function isModoLigaBooking() {
+    const modal = document.getElementById('scheduleModal');
+    const eventType = modal?.dataset?.eventType || '';
+    const config = getActiveScheduleConfig(eventType);
+    const labels = [
+        eventType,
+        modal?.dataset?.adminEventId,
+        config.eventType,
+        config.label,
+        config.modo,
+        config.urlSlug,
+        document.getElementById('schedEventType')?.textContent,
+    ];
+    return labels.some(value => {
+        const text = String(value || '').trim().toLowerCase();
+        return normalizeEventType(text) === 'modo-liga'
+            || /(?:^|[^a-z])modo[\s_-]*liga(?:$|[^a-z])/.test(text)
+            || /^liga(?:$|[-_\s])/.test(text);
+    });
+}
+
+function modoLigaSpecHoursFromSelection() {
+    const hours = selectedTimes.map(item => {
+        const schedule = String(item.schedule || '');
+        const match = schedule.match(/(\d{1,2})\s*h/i) || schedule.match(/(\d{1,2})\s*:/);
+        if (!match) return '';
+        return String(Number(match[1])).padStart(2, '0');
+    });
+    return [...new Set(hours.filter(Boolean))];
+}
+
+function hasModoLigaSpecLogo(team) {
+    if (team?.logoBase64) return true;
+    const input = document.getElementById(`teamLogoInput_${team?.id || ''}`);
+    return Boolean(input?.files?.length);
+}
+
+const MODO_LIGA_SPEC_AVATARS = [
+    { selection: 'avatar:kelly', name: 'Kelly', code: '902000007' },
+    { selection: 'avatar:maxim', name: 'Maxim', code: '902000030' },
+    { selection: 'avatar:andrew', name: 'Andrew', code: '902000006' },
+];
+
+function normalizeModoLigaSpecAvatar(value) {
+    const selection = String(value || '').trim().toLowerCase();
+    return MODO_LIGA_SPEC_AVATARS.some(avatar => avatar.selection === selection) ? selection : '';
+}
+
+async function updateModoLigaSpecLetterPickers() {
+    const requestId = (window.__modoLigaSpecLettersRequestId || 0) + 1;
+    window.__modoLigaSpecLettersRequestId = requestId;
+    window.__modoLigaSpecAvailableLetters = [];
+    window.__modoLigaSpecAvailableAvatars = [];
+    const modeLiga = isModoLigaBooking();
+    for (const team of teams) {
+        const wrap = document.getElementById(`modoLigaSpecLetterWrap_${team.id}`);
+        const choices = document.getElementById(`modoLigaSpecLetterChoices_${team.id}`);
+        const help = document.getElementById(`modoLigaSpecLetterHelp_${team.id}`);
+        if (!wrap || !choices) continue;
+        team.modoLigaSpecOptionsReady = false;
+        team.modoLigaSpecLoadError = '';
+        choices.innerHTML = '';
+        if (!modeLiga) {
+            wrap.classList.add('hidden');
+            team.modoLigaSpecLetter = '';
+            team.modoLigaSpecAvatar = '';
+            team.modoLigaAvatarPickerOpen = false;
+            continue;
+        }
+        if (!hasModoLigaSpecLogo(team)) {
+            wrap.classList.add('hidden');
+            team.modoLigaSpecLetter = '';
+            team.modoLigaSpecAvatar = '';
+            team.modoLigaAvatarPickerOpen = false;
+            continue;
+        }
+        wrap.classList.remove('hidden');
+        if (help) help.textContent = 'Carregando letras e avatares cadastrados…';
+    }
+    renderModoLigaSpecLetterButtons([]);
+    if (!modeLiga || !teams.some(hasModoLigaSpecLogo)) return;
+
+    const hours = modoLigaSpecHoursFromSelection();
+    if (hours.length === 0) {
+        for (const team of teams) {
+            if (team.modoLigaSpecLetter) team.modoLigaSpecLetter = '';
+            if (team.modoLigaSpecAvatar) team.modoLigaSpecAvatar = '';
+        }
+        renderModoLigaSpecLetterButtons([]);
+        return;
+    }
+    const supportedHours = new Set(['19', '20', '21', '22', '23', '00']);
+    if (hours.some(hour => !supportedHours.has(hour))) {
+        for (const team of teams) {
+            team.modoLigaSpecLoadError = 'Letras e avatares SPEC estão disponíveis para 19h, 20h, 21h, 22h, 23h e 00h.';
+        }
+        renderModoLigaSpecLetterButtons([]);
+        return;
+    }
+
+    try {
+        const response = await authenticatedPaymentFetch('/.netlify/functions/modo-liga-spec-letters', {
+            method: 'POST',
+            body: JSON.stringify({ eventType: document.getElementById('scheduleModal')?.dataset?.eventType, hours }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || 'Não foi possível consultar as opções do SPEC.');
+        if (requestId !== window.__modoLigaSpecLettersRequestId) return;
+        const availableLetters = Array.isArray(result.availableLetters) ? result.availableLetters : [];
+        const catalogAvatars = Array.isArray(result.availableAvatars) ? result.availableAvatars : [];
+        const availableAvatars = catalogAvatars.map(item => {
+            const known = MODO_LIGA_SPEC_AVATARS.find(avatar =>
+                avatar.selection === normalizeModoLigaSpecAvatar(item?.selection)
+                && avatar.code === String(item?.code || ''),
+            );
+            return known || null;
+        }).filter(Boolean);
+        window.__modoLigaSpecAvailableLetters = availableLetters;
+        window.__modoLigaSpecAvailableAvatars = availableAvatars;
+        teams.forEach(team => { team.modoLigaSpecOptionsReady = true; });
+        renderModoLigaSpecLetterButtons(availableLetters);
+    } catch (error) {
+        if (requestId !== window.__modoLigaSpecLettersRequestId) return;
+        const message = error?.name === 'TypeError' && /fetch/i.test(error?.message || '')
+            ? 'Não foi possível conectar ao servidor de opções. Atualize os horários e tente novamente.'
+            : (error.message || 'Não foi possível verificar as opções do SPEC. Tente novamente.');
+        for (const team of teams) {
+            team.modoLigaSpecLoadError = message;
+            team.modoLigaSpecOptionsReady = false;
+        }
+        renderModoLigaSpecLetterButtons([]);
+    }
+}
+
+function renderModoLigaSpecLetterButtons(availableLetters) {
+    const available = [...new Set((Array.isArray(availableLetters) ? availableLetters : [])
+        .map(letter => String(letter || '').trim().toUpperCase())
+        .filter(letter => /^[A-Z]$/.test(letter)))];
+    const avatarList = Array.isArray(window.__modoLigaSpecAvailableAvatars)
+        ? window.__modoLigaSpecAvailableAvatars
+        : [];
+    for (const team of teams) {
+        const container = document.getElementById(`modoLigaSpecLetterChoices_${team.id}`);
+        const help = document.getElementById(`modoLigaSpecLetterHelp_${team.id}`);
+        if (!container) continue;
+
+        const hasLogo = hasModoLigaSpecLogo(team);
+        const wrap = document.getElementById(`modoLigaSpecLetterWrap_${team.id}`);
+        wrap?.classList.toggle('hidden', !isModoLigaBooking() || !hasLogo);
+        if (!hasLogo) {
+            team.modoLigaSpecLetter = '';
+            team.modoLigaSpecAvatar = '';
+            team.modoLigaAvatarPickerOpen = false;
+            container.innerHTML = '';
+            continue;
+        }
+        const chosenByOthers = new Set(teams
+            .filter(other => other.id !== team.id && other.modoLigaSpecLetter)
+            .map(other => other.modoLigaSpecLetter));
+        const choices = hasLogo
+            ? available.filter(letter => !chosenByOthers.has(letter) || letter === team.modoLigaSpecLetter)
+            : [];
+        if (team.modoLigaSpecLetter && !choices.includes(team.modoLigaSpecLetter)) {
+            team.modoLigaSpecLetter = '';
+        }
+
+        const letterButtons = choices.map(letter => {
+            const selected = team.modoLigaSpecLetter === letter;
+            const stateClasses = selected
+                ? 'border-teal-700 bg-teal-700 text-white shadow-md'
+                : 'border-gray-300 bg-white text-gray-800 hover:border-teal-600 hover:bg-teal-50';
+            const action = selected ? 'Desmarcar' : 'Selecionar';
+            return `<button type="button"
+                class="flex aspect-square min-h-12 items-center justify-center rounded-xl border-2 text-lg font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 ${stateClasses}"
+                aria-label="${action} letra ${letter}" aria-pressed="${selected}"
+                onclick="updateModoLigaSpecLetter('${team.id}', '${letter}')">${letter}</button>`;
+        }).join('');
+        const avatarSelected = Boolean(team.modoLigaSpecAvatar);
+        const avatarButtonClasses = avatarSelected
+            ? 'border-teal-700 bg-teal-700 text-white shadow-md'
+            : 'border-teal-300 bg-white text-teal-800 hover:border-teal-600 hover:bg-teal-50';
+        const selectedAvatarsByOthers = new Set(teams
+            .filter(other => other.id !== team.id && other.modoLigaSpecAvatar)
+            .map(other => other.modoLigaSpecAvatar));
+        const avatarChoicesForTeam = avatarList.filter(avatar =>
+            !selectedAvatarsByOthers.has(avatar.selection)
+            || avatar.selection === team.modoLigaSpecAvatar,
+        );
+        if (team.modoLigaSpecAvatar && !avatarChoicesForTeam.some(item => item.selection === team.modoLigaSpecAvatar)) {
+            team.modoLigaSpecAvatar = '';
+        }
+        const isAvatarPickerOpen = Boolean(team.modoLigaAvatarPickerOpen);
+        if (isAvatarPickerOpen) {
+            const avatarButtons = MODO_LIGA_SPEC_AVATARS.map(avatar => {
+                const isAvailable = avatarChoicesForTeam.some(item => item.selection === avatar.selection);
+                const selected = team.modoLigaSpecAvatar === avatar.selection;
+                const stateClasses = selected
+                    ? 'border-teal-700 bg-teal-700 text-white shadow-md'
+                    : (isAvailable
+                        ? 'border-gray-300 bg-white text-gray-800 hover:border-teal-600 hover:bg-teal-50'
+                        : 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400');
+                return `<button type="button"
+                    class="flex min-h-12 items-center justify-center rounded-xl border-2 px-2 py-2 text-sm font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-2 ${stateClasses}"
+                    aria-label="Selecionar avatar ${avatar.name}" aria-pressed="${selected}"
+                    title="${isAvailable ? `Selecionar ${avatar.name}` : `${avatar.name} indisponível nos horários selecionados`}"
+                    onclick="updateModoLigaSpecAvatar('${team.id}', '${avatar.selection}')"
+                    ${!isAvailable ? 'disabled' : ''}>${avatar.name}</button>`;
+            }).join('');
+            container.innerHTML = `<div class="col-span-5 grid grid-cols-3 gap-2">
+                ${avatarButtons}
+                <button type="button" class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                    style="grid-column: 1 / -1; width: 100%;"
+                    onclick="toggleModoLigaAvatarPicker('${team.id}')">Voltar para as letras</button>
+            </div>`;
+        } else {
+            container.innerHTML = `${letterButtons}<button id="modoLigaNoLetter_${team.id}" type="button"
+                class="col-span-5 flex min-h-11 items-center justify-center rounded-xl border-2 px-3 py-2 text-sm font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 ${avatarButtonClasses}"
+                aria-pressed="${Boolean(team.modoLigaAvatarPickerOpen || avatarSelected)}"
+                onclick="toggleModoLigaAvatarPicker('${team.id}')">Não tenho letra</button>`;
+            const avatarButton = document.getElementById(`modoLigaNoLetter_${team.id}`);
+            if (avatarButton) avatarButton.disabled = !team.modoLigaSpecOptionsReady;
+        }
+        if (help) {
+            if (team.modoLigaSpecLoadError) {
+                help.textContent = team.modoLigaSpecLoadError;
+            } else if (!team.modoLigaSpecOptionsReady) {
+                help.textContent = modoLigaSpecHoursFromSelection().length
+                    ? 'Consultando letras livres…'
+                    : 'Selecione os horários para consultar as letras livres. A escolha é opcional.';
+            } else if (isAvatarPickerOpen && !avatarChoicesForTeam.length) {
+                help.textContent = 'Não há avatares disponíveis em todos os horários selecionados.';
+            } else if (isAvatarPickerOpen) {
+                help.textContent = 'Escolha um avatar disponível em todos os horários selecionados.';
+            } else if (!hasLogo) {
+                help.textContent = 'Envie a logo do time para escolher uma letra. Se preferir um avatar, toque em “Não tenho letra”.';
+            } else if (choices.length) {
+                help.textContent = `Toque em uma letra para selecionar; toque novamente para desmarcar. A mesma letra vale para todos os horários. Opcional.`;
+            } else if (available.length) {
+                help.textContent = 'As letras disponíveis já foram escolhidas por outro time deste pedido.';
+            } else {
+                help.textContent = 'Não há letras livres em comum. Aperte “Não tenho letra” para escolher um avatar cadastrado.';
+            }
+        }
+    }
+}
+
+function updateModoLigaSpecLetter(teamId, value) {
+    const letter = String(value || '').trim().toUpperCase();
+    const team = teams.find(item => item.id === teamId);
+    if (!team) return;
+    const available = window.__modoLigaSpecAvailableLetters || [];
+    if (letter && !available.includes(letter)) return;
+    if (letter && teams.some(item => item.id !== teamId && item.modoLigaSpecLetter === letter)) {
+        alert(`A letra ${letter} já foi escolhida por outro time neste pedido.`);
+        return;
+    }
+    team.modoLigaSpecLetter = team.modoLigaSpecLetter === letter ? '' : letter;
+    team.modoLigaSpecAvatar = '';
+    team.modoLigaAvatarPickerOpen = false;
+    renderModoLigaSpecLetterButtons(available);
+}
+
+function toggleModoLigaAvatarPicker(teamId) {
+    const team = teams.find(item => item.id === teamId);
+    if (!team || !isModoLigaBooking()) return;
+    team.modoLigaSpecLetter = '';
+    team.modoLigaAvatarPickerOpen = !team.modoLigaAvatarPickerOpen;
+    renderModoLigaSpecLetterButtons(window.__modoLigaSpecAvailableLetters || []);
+}
+
+function updateModoLigaSpecAvatar(teamId, selection) {
+    const team = teams.find(item => item.id === teamId);
+    if (!team) return;
+    if (!selection) {
+        team.modoLigaSpecAvatar = '';
+        team.modoLigaAvatarPickerOpen = true;
+        renderModoLigaSpecLetterButtons(window.__modoLigaSpecAvailableLetters || []);
+        return;
+    }
+    const avatar = normalizeModoLigaSpecAvatar(selection);
+    if (!avatar) return;
+    const available = window.__modoLigaSpecAvailableAvatars || [];
+    if (!available.some(item => item.selection === avatar)) return;
+    if (teams.some(item => item.id !== teamId && item.modoLigaSpecAvatar === avatar)) {
+        alert('Esse avatar já foi escolhido por outro time neste pedido.');
+        return;
+    }
+    team.modoLigaSpecAvatar = team.modoLigaSpecAvatar === avatar ? '' : avatar;
+    team.modoLigaSpecLetter = '';
+    team.modoLigaAvatarPickerOpen = Boolean(team.modoLigaSpecAvatar);
+    renderModoLigaSpecLetterButtons(window.__modoLigaSpecAvailableLetters || []);
 }
 
 async function updateReservationsSummary() {
@@ -6766,6 +7135,7 @@ function selectTime(schedule, element) {
     handleSchedulePixSelectionChange();
 
     updateSelectedTimeDisplay();
+    updateModoLigaSpecLetterPickers();
 
     updateReservationsSummary();
 
@@ -7761,7 +8131,12 @@ async function handleProductPurchaseWithTokens(productId, cfg) {
 
 function buildSchedulePixSelectionKey(rawEventType, dates, times, teamsData, adminEventId = '') {
     const teamsKey = (teamsData || [])
-        .map(team => String(team?.name || '').trim().toLowerCase())
+        .map(team => [
+            String(team?.name || '').trim().toLowerCase(),
+            String(team?.email || '').trim().toLowerCase(),
+            String(team?.modoLigaSpecLetter || '').trim().toUpperCase(),
+            String(team?.modoLigaSpecAvatar || '').trim().toLowerCase()
+        ])
         .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     const selectedTimesKey = (times || [])
         .map(item => [String(item?.date || ''), String(item?.schedule || '')])
@@ -7786,7 +8161,9 @@ function getCurrentSchedulePixSelectionKey() {
     const teamsData = Array.from(document.querySelectorAll('#teamsContainer > div')).map(teamDiv => ({
         name: teamDiv.querySelector('input[data-field="name"], input[placeholder="Nome do time"]')?.value?.trim() || '',
         email: teamDiv.querySelector('input[data-field="email"], input[placeholder="Email"]')?.value?.trim() || '',
-        phone: teamDiv.querySelector('input[data-field="phone"], input[placeholder="WhatsApp (11) 99999-9999"]')?.value?.trim() || ''
+        phone: teamDiv.querySelector('input[data-field="phone"], input[placeholder="WhatsApp (11) 99999-9999"]')?.value?.trim() || '',
+        modoLigaSpecLetter: teams.find(team => team.id === teamDiv.id)?.modoLigaSpecLetter || '',
+        modoLigaSpecAvatar: teams.find(team => team.id === teamDiv.id)?.modoLigaSpecAvatar || ''
     }));
     if (
         teamsData.length === 0
@@ -7994,7 +8371,9 @@ async function submitSchedule(e, useTokens = false) {
                     name: nameInput.value.trim(),
                     email: emailInput.value.trim(),
                     phone: phoneInput.value.trim(),
-                    logoBase64: teamRecord?.logoBase64 || null
+                    logoBase64: teamRecord?.logoBase64 || null,
+                    modoLigaSpecLetter: teamRecord?.modoLigaSpecLetter || '',
+                    modoLigaSpecAvatar: teamRecord?.modoLigaSpecAvatar || ''
                 });
             }
         });
@@ -8320,11 +8699,26 @@ async function submitSchedule(e, useTokens = false) {
                     const slotNum = mpSlotCount[p.schedule];
                     const slotDisplay = computeSlotDisplay(slotNum, mpVagas, mpGrupos, mpIsLiga, rawEventType);
                     _regPayloads.push({
-                        _meta: { team: team.name, slotNum, slotDisplay, schedule: p.schedule, date: p.d, whatsappLink: p.whatsappLink },
+                        _meta: {
+                            team: team.name,
+                            slotNum,
+                            slotDisplay,
+                            schedule: p.schedule,
+                            date: p.d,
+                            whatsappLink: p.whatsappLink,
+                            modoLigaSpecLetter: team.modoLigaSpecLetter || '',
+                            modoLigaSpecAvatar: team.modoLigaSpecAvatar || '',
+                        },
                         userId: window.firebaseAuth.currentUser.uid,
                         teamName: team.name,
                         teamLogoUrl: isSoloPlayerEvent ? null : (_teamLogoDataMap[team.name]?.url || _equipeAtual?.logoOriginalUrl || null),
                         teamLogoThumb: isSoloPlayerEvent ? null : (_teamLogoDataMap[team.name]?.thumb || _equipeAtual?.logoUrl || null),
+                        ...(isModoLigaBooking() && team.logoBase64 && team.modoLigaSpecLetter
+                            ? { modoLigaSpecLetter: team.modoLigaSpecLetter }
+                            : {}),
+                        ...(isModoLigaBooking() && team.modoLigaSpecAvatar
+                            ? { modoLigaSpecAvatar: team.modoLigaSpecAvatar }
+                            : {}),
                         teamId: _equipeAtual?.id || null,
                         membrosUids: _equipeAtual?.membrosUids || null,
                         email: team.email,
@@ -8390,7 +8784,17 @@ async function submitSchedule(e, useTokens = false) {
             _docRefs.forEach((docRef, i) => {
                 const m = _regPayloads[i]._meta;
                 regIds.push(docRef.id);
-                assignedSlotsData.push({ regId: docRef.id, team: m.team, slotNum: m.slotNum, slotDisplay: m.slotDisplay, schedule: m.schedule, date: m.date, whatsappLink: m.whatsappLink });
+                assignedSlotsData.push({
+                    regId: docRef.id,
+                    team: m.team,
+                    slotNum: m.slotNum,
+                    slotDisplay: m.slotDisplay,
+                    schedule: m.schedule,
+                    date: m.date,
+                    whatsappLink: m.whatsappLink,
+                    modoLigaSpecLetter: m.modoLigaSpecLetter,
+                    modoLigaSpecAvatar: m.modoLigaSpecAvatar,
+                });
             });
 
             if (regIds.length > 0) {
@@ -8856,6 +9260,12 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
                             eventType: rawEventType,
                             ...getActiveEventRegistrationMetadata(),
                             title: isLiga ? `${cfg.label} - ${schedKey}` : `${cfg.label} - ${slotDisplay}`,
+                            ...(isModoLigaBooking() && team.logoBase64 && team.modoLigaSpecLetter
+                                ? { modoLigaSpecLetter: team.modoLigaSpecLetter }
+                                : {}),
+                            ...(isModoLigaBooking() && team.modoLigaSpecAvatar
+                                ? { modoLigaSpecAvatar: team.modoLigaSpecAvatar }
+                                : {}),
                             price: 0,
                             slot: slotNumber,
                             slotNumber: slotNumber,
@@ -8876,7 +9286,14 @@ async function handleFreeEventRegistration(rawEventType, cfg, teamsData, datesTo
                         throw addErr;
                     }
 
-                    assignedSlots.push({ team: team.name, slot: slotDisplay, schedule: schedKey, isLiga });
+                    assignedSlots.push({
+                        team: team.name,
+                        slot: slotDisplay,
+                        schedule: schedKey,
+                        isLiga,
+                        modoLigaSpecLetter: team.modoLigaSpecLetter || '',
+                        modoLigaSpecAvatar: team.modoLigaSpecAvatar || '',
+                    });
                 }
             }
         }
@@ -8943,9 +9360,22 @@ function showSlotConfirmationModal(slots, eventName, isLiga, eventId, groupLink,
     const schedules = Object.keys(bySchedule);
 
     const slotsHtml = schedules.map(sched => {
-        const rows = bySchedule[sched].map(s =>
-            `<div class="flex items-center gap-3 p-2 bg-green-50 border border-green-200 rounded-lg mb-1"><span class="text-xl">✅</span><div class="flex-1 font-semibold text-gray-800 text-sm">${teamLabel(s)}</div></div>`
-        ).join('');
+        const rows = bySchedule[sched].map(s => {
+            const letter = isModoLigaConfirmation
+                ? String(s.modoLigaSpecLetter || '').trim().toUpperCase()
+                : '';
+            const letterBadge = /^[A-Z]$/.test(letter)
+                ? `<span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-base font-extrabold text-teal-800" aria-label="Letra ${letter}" title="Letra ${letter}">${letter}</span>`
+                : '';
+            const avatarSelection = isModoLigaConfirmation
+                ? normalizeModoLigaSpecAvatar(s.modoLigaSpecAvatar)
+                : '';
+            const avatar = MODO_LIGA_SPEC_AVATARS.find(item => item.selection === avatarSelection);
+            const avatarBadge = avatar
+                ? `<span class="inline-flex shrink-0 items-center gap-1 rounded-lg border-2 border-cyan-300 bg-teal-700 px-2 py-1 text-xs font-extrabold text-white shadow-sm" aria-label="Avatar ${escapeLabel(avatar.name)}" title="Avatar ${escapeLabel(avatar.name)}">👤 ${escapeLabel(avatar.name)}</span>`
+                : '';
+            return `<div class="flex items-center gap-3 p-2 bg-green-50 border border-green-200 rounded-lg mb-1"><span class="text-xl">✅</span><div class="flex-1 font-semibold text-gray-800 text-sm">${teamLabel(s)}</div>${letterBadge || avatarBadge}</div>`;
+        }).join('');
         return `<div class="p-3 bg-gray-50 border border-gray-200 rounded-xl"><div class="text-xs font-bold text-blue-600 uppercase mb-2 flex items-center justify-center gap-1 text-center">⏰ Horário: <span class="text-blue-800">${escapeLabel(sched)}</span></div>${rows}</div>`;
     }).join('');
 
@@ -9362,7 +9792,9 @@ async function processSuccessfulPayment(externalRef = null) {
             team:     data.teamName || data.email || 'Time',
             slot:     data.slotDisplay || null,
             schedule: data.schedule || '',
-            isLiga:   data.isLiga || false
+            isLiga:   data.isLiga || false,
+            modoLigaSpecLetter: data.modoLigaSpecLetter || '',
+            modoLigaSpecAvatar: data.modoLigaSpecAvatar || '',
         });
         if (!groupLink && data.groupLink) groupLink = data.groupLink;
     });
@@ -9379,7 +9811,14 @@ async function processSuccessfulPayment(externalRef = null) {
         }, 400);
     }
 
-    showToast('success', 'Pagamento confirmado no servidor. Confira Meus Pedidos.', 'Compra confirmada');
+    const specSync = result.modoLigaSpec || {};
+    if (specSync.uploadedCount > 0) {
+        showToast('success', 'Pagamento confirmado. A logo foi enviada automaticamente para Logos para SPEC nos horários comprados.', 'Compra confirmada');
+    } else if (specSync.failedCount > 0 || specSync.conflictCount > 0) {
+        showToast('warning', 'Pagamento confirmado, mas não foi possível concluir o envio automático da logo ao SPEC. A equipe poderá verificar a inscrição.', 'Logo em verificação', 9000);
+    } else {
+        showToast('success', 'Pagamento confirmado no servidor. Confira Meus Pedidos.', 'Compra confirmada');
+    }
 }
 
 function closeTokensModal() {
@@ -9468,6 +9907,7 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
         } else {
             showSuccessToast('Pagamento com tokens confirmado! Verifique seus pedidos.', 'Sucesso');
         }
+        showModoLigaSpecStatusToast(tokenPaymentResult?.modoLigaSpec);
     } catch (error) {
         showErrorToast(error.message || 'Não foi possível concluir. Confira Meus Pedidos antes de tentar novamente.', 'ERRO');
     }
@@ -9738,6 +10178,12 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                     teamLogoUrl: teamLogoUrl,
                     teamLogoThumb: teamLogoThumb,
                     teamId: _equipeAtual?.id || null,
+                    ...(isModoLigaBooking() && team.logoBase64 && team.modoLigaSpecLetter
+                        ? { modoLigaSpecLetter: team.modoLigaSpecLetter }
+                        : {}),
+                    ...(isModoLigaBooking() && team.modoLigaSpecAvatar
+                        ? { modoLigaSpecAvatar: team.modoLigaSpecAvatar }
+                        : {}),
                     membrosUids: _equipeAtual?.membrosUids || null,
                     leaderName: window.currentUserProfile?.name || team.name,
                     email: team.email,
@@ -9760,7 +10206,14 @@ async function createRegistrationsForEvent(eventType, datesToUse, teamsData, tim
                     affiliateCode: getActiveAffiliateCode(couponInfo?.affiliateId || null),
                     // Dados de pagamento são gravados somente pelo servidor.
                 };
-                assignedSlots.push({ team: finalTeamName, slot: slotDisplay, schedule, isLiga });
+                assignedSlots.push({
+                    team: finalTeamName,
+                    slot: slotDisplay,
+                    schedule,
+                    isLiga,
+                    modoLigaSpecLetter: team.modoLigaSpecLetter || '',
+                    modoLigaSpecAvatar: team.modoLigaSpecAvatar || '',
+                });
                 pendingWrites.push({ payload, affiliate: {
                     amount: price,
                     title: `${cfg.label} - ${schedule}`,
@@ -11006,6 +11459,18 @@ function renderSchedulePixFallback(pixData, cfg, finalPrice) {
     return true;
 }
 
+function showModoLigaSpecStatusToast(summary) {
+    if (summary?.avatarCount > 0 && summary?.uploadedCount === 0 && summary?.failedCount === 0) {
+        showToast('success', 'O código do avatar foi reservado para os horários comprados.', 'Avatar selecionado');
+    } else if (summary?.avatarCount > 0 && summary?.uploadedCount > 0) {
+        showToast('success', 'A logo foi enviada ao SPEC pelo código do avatar escolhido.', 'Identificação confirmada');
+    } else if (summary?.uploadedCount > 0) {
+        showToast('success', 'A logo foi enviada automaticamente para Logos para SPEC nos horários comprados.', 'Logo enviada');
+    } else if (summary?.failedCount > 0 || summary?.conflictCount > 0) {
+        showToast('warning', 'O pagamento foi confirmado, mas o envio da logo ao SPEC ficou pendente para verificação da equipe.', 'Logo em verificação', 9000);
+    }
+}
+
 function showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef) {
     if (typeof showSlotConfirmationModal !== 'function') return false;
 
@@ -11097,7 +11562,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
     };
 
-    _pixConfirmFn = async () => {
+    _pixConfirmFn = async (confirmationResult = null) => {
         if (pixConfirmationHandled) return;
         pixConfirmationHandled = true;
         clearSchedulePixStatusPolling();
@@ -11106,7 +11571,10 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         setSchedulePixCheckoutState('paid');
 
         try {
-            if (showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef)) return;
+            if (showPaidScheduleConfirmation(assignedSlotsData, cfg, externalRef)) {
+                showModoLigaSpecStatusToast(confirmationResult?.modoLigaSpec);
+                return;
+            }
         } catch (confirmationError) {
             console.error('Pagamento confirmado, mas não foi possível abrir a confirmação da vaga:', confirmationError);
         }
@@ -11119,22 +11587,20 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         const slotInfoEl = document.getElementById('pixSlotInfo');
         if (slotInfoEl && assignedSlotsData && assignedSlotsData.length) {
             slotInfoEl.innerHTML = assignedSlotsData.map(function(s) {
-                // Para modo-liga: exibir letra no círculo em vez do número
                 var _isModoLiga = (cfg?.eventType || '') === 'modo-liga';
-                var _slotRaw = s.slotDisplay ? s.slotDisplay.replace(/^(Letra\s*|Slot\s*#?|Vaga\s*#?)/i, '').trim() : '';
                 var _slotBadge;
+                var _avatarSelection = _isModoLiga
+                    ? normalizeModoLigaSpecAvatar(s.modoLigaSpecAvatar)
+                    : '';
+                var _avatar = MODO_LIGA_SPEC_AVATARS.find(item => item.selection === _avatarSelection);
                 if (_isModoLiga) {
-                    if (/^[A-Za-z]$/.test(_slotRaw)) {
-                        _slotBadge = _slotRaw.toUpperCase();
-                    } else {
-                        var _n = parseInt(_slotRaw, 10);
-                        _slotBadge = (!isNaN(_n) && _n > 0) ? String.fromCharCode(64 + _n) : '✓';
-                    }
+                    var _chosenLetter = String(s.modoLigaSpecLetter || '').trim().toUpperCase();
+                    _slotBadge = /^[A-Z]$/.test(_chosenLetter) ? _chosenLetter : (_avatar ? '👤' : '✓');
                 } else {
                     _slotBadge = s.slotNum || '✓';
                 }
                 var _slotLabel = _isModoLiga
-                    ? (s.slotDisplay || '')
+                    ? (_avatar ? 'Avatar ' + _avatar.name : '')
                     : (s.slotNum ? 'Seu Slot é Slot ' + s.slotNum : (s.slotDisplay || ''));
                 return '<div class="flex items-start gap-3 py-1 border-b border-green-100 last:border-0">' +
                     '<div class="w-8 h-8 rounded-full bg-green-600 text-white text-xs font-black flex items-center justify-center flex-shrink-0">' + _slotBadge + '</div>' +
@@ -11147,6 +11613,7 @@ window.openPixModal = function(pixData, regIds, externalRef, assignedSlotsData, 
         } else if (slotInfoEl) {
             slotInfoEl.innerHTML = '<p class="text-green-700 text-sm text-center font-medium">Inscrição confirmada com sucesso!</p>';
         }
+        showModoLigaSpecStatusToast(confirmationResult?.modoLigaSpec);
 
     };
 

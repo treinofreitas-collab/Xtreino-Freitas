@@ -5462,16 +5462,30 @@ window.showWarningToast = function(message, title = 'Atenção') {
         // Modo Liga: mantém a letra SPEC atribuída; sem atribuição, mostra a posição atual.
         const _isLigaRow = isModoLigaRegistration(r);
         const _storedSpecLetter = String(r.modoLigaSpecLetter || '').trim().toUpperCase();
+        const _storedSpecAvatar = String(r.modoLigaSpecAvatar || '').trim().toLowerCase();
+        const _specAvatarNames = {
+          'avatar:kelly': 'Kelly',
+          'avatar:maxim': 'Maxim',
+          'avatar:andrew': 'Andrew',
+        };
+        const _specAvatarName = _specAvatarNames[_storedSpecAvatar] || '';
+        const _hasCurrentSpecAvatar = _isLigaRow && Boolean(_specAvatarName);
         const _storedSpecHour = normalizeHour(r.modoLigaSpecHour || '');
         const _hasCurrentSpecLetter = _isLigaRow
           && /^[A-Z]$/.test(_storedSpecLetter)
           && (!_storedSpecHour || _storedSpecHour === targetHH);
         const slotBadgeLabel = _isLigaRow
-          ? (_hasCurrentSpecLetter ? _storedSpecLetter : (posIdx ? String.fromCharCode(64 + posIdx) : ''))
+          ? (_hasCurrentSpecAvatar ? `👤 ${_specAvatarName}` : (_hasCurrentSpecLetter ? _storedSpecLetter : (posIdx ? String.fromCharCode(64 + posIdx) : '')))
           : `#${posIdx}`;
         const slotBadge = posIdx != null
-          ? `<span class="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 flex-shrink-0">${slotBadgeLabel}</span>`
+          ? `<span class="text-xs font-bold ${_hasCurrentSpecAvatar ? 'text-teal-800 bg-teal-50 border-teal-200' : 'text-orange-600 bg-orange-50 border-orange-200'} border rounded px-1.5 py-0.5 flex-shrink-0">${slotBadgeLabel}</span>`
           : '';
+        const editSlotButton = _hasCurrentSpecAvatar
+          ? `<span class="px-2.5 py-1 bg-teal-50 border border-teal-200 text-teal-700 rounded-lg text-xs font-medium">👤 Avatar escolhido</span>`
+          : `<button class="px-2.5 py-1 bg-orange-50 border border-orange-200 text-orange-600 rounded-lg text-xs hover:bg-orange-500 hover:text-white transition-colors font-medium"
+                    data-edit-slot-reg-id="${d.id}" data-edit-slot-current="${posIdx || ''}"
+                    data-edit-slot-current-letter="${_hasCurrentSpecLetter ? _storedSpecLetter : (_isLigaRow && posIdx ? String.fromCharCode(64 + posIdx) : '')}"
+                    title="${_isLigaRow ? 'Atribuir letra e cadastrar logo no SPEC para este horário' : 'Editar número da vaga'}">${_isLigaRow ? '🔠 LETRA SPEC' : '✏️ Editar vaga'}</button>`;
         // Botão de verificar pagamento — só para pendentes com external_reference
         const extRef = r.external_reference || null;
         const verifyBtn = isPending
@@ -5836,6 +5850,28 @@ function formatStandardSlotExport(hour, slots) {
   ].join('\n');
 }
 
+function formatModoLigaExport(hour, slots) {
+  const namesBySlot = new Map((Array.isArray(slots) ? slots : [])
+    .map(slot => [Number(slot.idx), String(slot.team || '')]));
+  const teamLines = Array.from({ length: 15 }, (_, index) => {
+    const letter = String.fromCharCode(65 + index);
+    return `   ⃟🩵 𝑻𝑰𝑴𝑬 ${letter}: ${namesBySlot.get(index + 1) || ''}`;
+  });
+
+  return [
+    `ㅤㅤ 𝑴𝑶𝑫𝑶 𝑳𝑰𝑮𝑨 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 » ${hour}𝐇`,
+    'ㅤ┉────┉────┉────┉────┉',
+    '🔐➺ 𝑺𝑨𝑳𝑨 𝑬 𝑺𝑬𝑵𝑯𝑨 𝟏𝟎𝑴𝑰𝑵 𝑨𝑵𝑻𝑬𝑺',
+    '🏷️➺ 𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝑰𝑪̧𝑨̃𝑶!',
+    '',
+    ...teamLines,
+    '',
+    '⌞📽️⌝ 𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: SMITHZEIRA',
+    '',
+    '⎾‣⏌FREITAS TV | @Xtreino_freitas'
+  ].join('\n');
+}
+
 // ===== Exportação de lista por horário =====
 async function buildExportList(date, eventType, hour){
   const hh = String(hour).match(/(\d{1,2})/)?.[1] || '';
@@ -5913,16 +5949,8 @@ async function buildExportList(date, eventType, hour){
     const footer = `\n\n🛡️•𝑪𝑳𝑨𝑺𝑺𝑰𝐅𝐈𝐂𝐀𝐌 𝟔 𝑬𝑸𝑼𝐈𝐏𝐄𝐒 𝑷𝑹𝑨 𝑷𝑹𝑶́𝑿𝐈𝐌𝐀 𝑭𝐀𝐒𝐄!\n\n𝐁𝐎𝐀 𝐒𝐎𝐑𝐓𝐄 𝐀 𝐓𝐎𝐃𝐎𝐒!`;
     return `${header}\n${lines}\n${footer}`;
   } else if (type.includes('liga')) {
-    // Modo Liga: formato conforme exemplo enviado
-    const header = `:::𝑳𝑰𝑺𝑻𝑨 𝑴𝑶𝑫𝑶 𝑳𝑰𝑮𝑨 ⋮ 𝑿𝑻 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 ${H}H:::\n\n\n\n➺🆔 𝑬  𝑺𝑬𝑵𝐇𝑨: 𝟏𝟎 𝑴𝐈𝑵𝑼𝑻𝑶𝑺 𝑨𝑵𝑻𝑬𝑺\n\n➺🏷️𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝐈ÇÃ𝐎\n`;
-    // Garantir que todos os slots sejam incluídos, mesmo vazios, sem pular linhas
-    const lines = slots.map(s=>{
-      const letra = String.fromCharCode(64 + s.idx); // A, B, C...
-      const teamName = s.team || ''; // Slot vazio fica sem nome, mas linha é criada
-      return `   ⃟🩵 ${letra}: ${teamName}`;
-    }).filter(line => line.trim()).join('\n\n'); // Filtrar linhas completamente vazias
-    const footer = `\n\n「📽️」𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: \n\n「🧑🏻‍🏫」𝑪𝑶𝑨𝑪𝑯:`;
-    return `${header}\n${lines}\n\n${footer}`;
+    // O botão de cada horário informa H, então cada exportação atualiza o cabeçalho.
+    return formatModoLigaExport(H, slots);
   } else {
     // XTreino normal (padrão)
     return formatStandardSlotExport(H, slots);
