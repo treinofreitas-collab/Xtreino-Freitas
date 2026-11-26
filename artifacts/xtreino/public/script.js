@@ -9879,7 +9879,7 @@ async function useTokensForEvent(eventType, totalReservations, finalPrice, teams
         const { regIds, assignedSlots: assignedSlotsTokens } = await createRegistrationsForEvent(
             eventType, datesToUse, teamsData, timesByDate, externalRef, 'pending', appliedScheduleCoupon, allocationByDate
         );
-        await payOrderWithTokens(externalRef, _capturedTokenCoupon?.code || null, finalPrice);
+        const tokenPaymentResult = await payOrderWithTokens(externalRef, _capturedTokenCoupon?.code || null, finalPrice);
 
         // Coupon reporting must not delay an already committed payment.
         if (_capturedTokenCoupon) {
