@@ -2340,8 +2340,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (roleLower==='ceo' || roleLower==='gerente' || roleLower==='socio'){
         try{
           const { getCountFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-          const weekAgo = Date.now() - 7*24*60*60*1000;
-          const usersCount = await getCountFromServer(query(collection(window.firebaseDb,'users'), where('lastLogin', '>=', weekAgo)));
+          const thirtyDaysAgo = Date.now() - 30*24*60*60*1000;
+          const usersCount = await getCountFromServer(query(collection(window.firebaseDb,'users'), where('lastLogin', '>=', thirtyDaysAgo)));
           kpiActiveEl.textContent = String(usersCount.data().count);
         }catch(_){ kpiActiveEl.textContent = '—'; }
       } else {
@@ -8077,7 +8077,7 @@ function renderActiveUsersTable(users) {
         
         if (!isNaN(date.getTime())) {
           lastLogin = date.toLocaleDateString('pt-BR');
-          isActive = (Date.now() - date.getTime()) < (7 * 24 * 60 * 60 * 1000);
+          isActive = (Date.now() - date.getTime()) <= (30 * 24 * 60 * 60 * 1000);
         }
       } catch (error) {
         console.error('Erro ao processar data de login:', error);
@@ -8337,7 +8337,7 @@ function updateActiveUsersStats(users) {
     } else {
       date = new Date(user.lastLogin);
     }
-    return (Date.now() - date.getTime()) <= (7 * 24 * 60 * 60 * 1000);
+    return (Date.now() - date.getTime()) <= (30 * 24 * 60 * 60 * 1000);
   }).length;
   const inactive = total - active;
   
