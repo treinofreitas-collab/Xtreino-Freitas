@@ -2,6 +2,31 @@ const SPEC_LETTERS = Array.from({ length: 26 }, (_, index) =>
   String.fromCharCode(65 + index)
 );
 const MAX_EXPORT_SLOTS = 15;
+const AVATAR_LABELS = {
+  kelly: '𝑲𝑬𝑳𝑳𝒀',
+  maxim: '𝑴𝑨𝑿𝑰𝑴',
+  andrew: '𝑨𝑵𝑫𝑹𝑬𝑾',
+};
+
+function normalizeModoLigaExportEventType(value) {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLocaleLowerCase('pt-BR')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export function matchesModoLigaExportEventType(selectedEventType, registrationEventType) {
+  const getFamily = value => {
+    const normalized = normalizeModoLigaExportEventType(value);
+    if (normalized.includes('acesso')) return 'acesso';
+    if (normalized.includes('liga')) return 'liga';
+    return '';
+  };
+  const selectedFamily = getFamily(selectedEventType);
+  return Boolean(selectedFamily) && selectedFamily === getFamily(registrationEventType);
+}
 
 function teamName(team) {
   return String(team?.name ?? team?.team ?? '');
@@ -12,6 +37,14 @@ function specLetter(team) {
     .trim()
     .toUpperCase();
   return /^[A-Z]$/.test(value) ? value : '';
+}
+
+function specAvatar(team) {
+  const value = String(team?.specAvatar ?? team?.modoLigaSpecAvatar ?? team?.avatar ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^avatar:/u, '');
+  return Object.hasOwn(AVATAR_LABELS, value) ? value : '';
 }
 
 function buildModoLigaExportEntries(teams) {
@@ -70,15 +103,18 @@ export function buildModoLigaExportSlots(teams) {
   return buildModoLigaExportEntries(teams).map(({ idx, registration }) => ({
     idx,
     team: teamName(registration),
+    avatar: specAvatar(registration),
   }));
 }
 
 export function formatModoLigaExport(hour, teams) {
   const slots = buildModoLigaExportSlots(teams);
-  const namesByLetter = new Map(slots.map(slot => [slot.idx, slot.team]));
-  const teamLines = slots.map(slot =>
-    `   ⃟🩵 𝑻𝑰𝑴𝑬 ${slot.idx}: ${namesByLetter.get(slot.idx) || ''}`
-  );
+  const teamLines = slots.map(slot => {
+    const label = slot.avatar
+      ? `𝑨𝑽𝑻 ${AVATAR_LABELS[slot.avatar]}`
+      : `𝑻𝑰𝑴𝑬 ${slot.idx}`;
+    return `   ⃟🩵 ${label}: ${slot.team}`;
+  });
 
   return [
     `ㅤㅤ 𝑴𝑶𝑫𝑶 𝑳𝑰𝑮𝑨 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 » ${hour}𝐇`,

@@ -4,7 +4,15 @@ import {
   buildModoLigaExportAssignments,
   buildModoLigaExportSlots,
   formatModoLigaExport,
+  matchesModoLigaExportEventType,
 } from './admin-modo-liga-export.mjs';
+
+test('keeps Modo Liga and Acesso exports separate', () => {
+  assert.equal(matchesModoLigaExportEventType('TREINO MODO LIGA', 'modo-liga'), true);
+  assert.equal(matchesModoLigaExportEventType('TREINO MODO LIGA', 'Acesso'), false);
+  assert.equal(matchesModoLigaExportEventType('Acesso', 'TREINO ACESSO'), true);
+  assert.equal(matchesModoLigaExportEventType('Acesso', 'Modo Liga Freitas'), false);
+});
 
 test('places teams in their selected SPEC letter positions, including Z', () => {
   const slots = buildModoLigaExportSlots([
@@ -53,11 +61,27 @@ test('exposes the same calculated letters to the manage roster', () => {
 
 test('treats avatar selections as unassigned roster positions', () => {
   const slots = buildModoLigaExportSlots([
-    { name: 'AVATAR TEAM', specLetter: 'avatar:kelly' },
+    { name: 'AVATAR TEAM', modoLigaSpecAvatar: 'avatar:kelly' },
   ]);
 
   assert.equal(slots[0].idx, 'A');
   assert.equal(slots[0].team, 'AVATAR TEAM');
+  assert.equal(slots[0].avatar, 'kelly');
+});
+
+test('prints selected avatars as AVT names instead of TIME letters', () => {
+  const output = formatModoLigaExport('21', [
+    { name: 'THEFOXYSGG', specLetter: 'X' },
+    { name: 'TEAM KELLY', modoLigaSpecAvatar: 'avatar:kelly' },
+    { name: 'TEAM ANDREW', modoLigaSpecAvatar: 'avatar:andrew' },
+    { name: 'TEAM MAXIM', specAvatar: 'maxim' },
+  ]);
+
+  assert.match(output, /𝑨𝑽𝑻 𝑲𝑬𝑳𝑳𝒀: TEAM KELLY/);
+  assert.match(output, /𝑨𝑽𝑻 𝑨𝑵𝑫𝑹𝑬𝑾: TEAM ANDREW/);
+  assert.match(output, /𝑨𝑽𝑻 𝑴𝑨𝑿𝑰𝑴: TEAM MAXIM/);
+  assert.match(output, /𝑻𝑰𝑴𝑬 X: THEFOXYSGG/);
+  assert.equal((output.match(/⃟🩵 𝑻𝑰𝑴𝑬 [A-Z]:/g) || []).length, 12);
 });
 
 test('rejects duplicate SPEC letters instead of silently replacing a team', () => {

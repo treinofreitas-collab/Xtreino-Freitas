@@ -9,7 +9,7 @@ import {
   parseMatchResultLog,
   matchResultTeamKey,
   resolveMatchResultTeam,
-} from './freefire-matchresult.mjs?v=individual-kills-authoritative-3';
+} from './freefire-matchresult.mjs?v=matchresult-avatar-announcement-2';
 import {
   SPEC_LOGO_HOURS,
   loadModoLigaSpecLogoCatalog,

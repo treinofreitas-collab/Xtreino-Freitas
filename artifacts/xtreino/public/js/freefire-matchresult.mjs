@@ -37,11 +37,40 @@ function cleanRosterTeamName(name) {
     .trim();
 }
 
+function normalizeRosterLabel(label) {
+  return String(label ?? '')
+    .normalize('NFKC')
+    .replace(/[\u200b-\u200f\uFEFF\uFE0E\uFE0F]/gu, '')
+    .replace(/\p{M}/gu, '')
+    .replace(/\p{Extended_Pictographic}/gu, ' ')
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 function slotNumberFromLabel(label) {
-  const token = String(label ?? '').normalize('NFKC').trim().match(/(?:slot|time|team)?\s*(\d{1,2}|[a-o])\s*$/iu)?.[1];
+  const token = normalizeRosterLabel(label).match(/^(?:(?:slot|time|team)\s*)?(\d{1,2}|[a-z])$/iu)?.[1];
   if (!token) return null;
   if (/^\d{1,2}$/u.test(token)) return Number(token);
   return token.toLocaleUpperCase('en-US').charCodeAt(0) - 64;
+}
+
+function extendedLetterSlotLabelFromText(label) {
+  const letter = normalizeRosterLabel(label).match(/^TIME\s+([p-z])$/iu)?.[1];
+  return letter ? `TIME ${letter.toLocaleUpperCase('en-US')}` : null;
+}
+
+function avatarSlotLabelFromText(label) {
+  const normalizedLabel = normalizeRosterLabel(label);
+  const avatar = normalizedLabel.match(/^AVT\s+(KELLY|MAXIM|ANDREW)$/iu)?.[1];
+  return avatar ? `AVT ${avatar.toLocaleUpperCase('pt-BR')}` : null;
+}
+
+function isStructuredRosterAssignment(line) {
+  const separator = String(line ?? '').indexOf(':');
+  if (separator < 0) return false;
+  const label = String(line).slice(0, separator);
+  return slotNumberFromLabel(label) !== null || avatarSlotLabelFromText(label) !== null;
 }
 
 function extractMatchResultRosterEntry(line, fallbackSlot) {
@@ -52,8 +81,13 @@ function extractMatchResultRosterEntry(line, fallbackSlot) {
   const separator = normalizedLine.indexOf(':');
   if (separator >= 0) {
     const label = normalizedLine.slice(0, separator);
+    const avatarLabel = avatarSlotLabelFromText(label);
+    const extendedLetterLabel = extendedLetterSlotLabelFromText(label);
     return {
-      slot: slotNumberFromLabel(label) ?? fallbackSlot,
+      slot: avatarLabel || extendedLetterLabel
+        ? fallbackSlot
+        : slotNumberFromLabel(label) ?? fallbackSlot,
+      label: avatarLabel || extendedLetterLabel,
       teamName: cleanRosterTeamName(normalizedLine.slice(separator + 1)),
     };
   }
@@ -71,7 +105,7 @@ function extractMatchResultRosterEntry(line, fallbackSlot) {
 }
 
 export function parseMatchResultRoster(text) {
-  const lines = String(text ?? '')
+  const inputLines = String(text ?? '')
     .replace(/^\uFEFF/, '')
     .split(/\r?\n/)
     .map(line => line.normalize('NFKC').trim())
@@ -79,6 +113,15 @@ export function parseMatchResultRoster(text) {
       if (!line) return false;
       return !/^(?:slot|time|team|position|posi[cç][aã]o|rank)\s*[,;|]\s*(?:equipe|team|nome(?:\s+da\s+equipe)?|name)\b/iu.test(line);
     });
+  const structuredLines = inputLines.filter(isStructuredRosterAssignment);
+  const announcementText = inputLines.join(' ')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLocaleUpperCase('pt-BR');
+  const hasEventAnnouncement = /\bMODO LIGA\b|\bSALA E SENHA\b|\bREGRAS NA DESCRICAO\b|\bSTREAMER\s*:|\bFREITAS TV\b/u.test(announcementText);
+  const lines = hasEventAnnouncement || structuredLines.length >= 12
+    ? structuredLines
+    : inputLines;
   const errors = [];
   const roster = Array.from({ length: MATCHRESULT_TEAM_LIMIT }, (_, index) => ({
     slot: index + 1,
@@ -98,6 +141,7 @@ export function parseMatchResultRoster(text) {
     }
     seenSlots.add(entry.slot);
     const team = roster[entry.slot - 1];
+    if (entry.label) team.label = entry.label;
     team.teamName = entry.teamName;
     if (!team.teamName) errors.push(`${team.label}: informe o nome da equipe.`);
   });

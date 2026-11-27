@@ -47,6 +47,107 @@ test('parses the 15 styled team slots and removes decorative emojis', () => {
   assert.equal(parsed.roster[6].teamName, 'NOX SPORTS');
 });
 
+test('recognizes AVT Kelly, Maxim, and Andrew labels in official roster lists', () => {
+  const avatarSlots = new Map([
+    [3, ['AVT Kelly', 'KELLY CREW']],
+    [7, ['AVT Maxim', 'MAXIM CREW']],
+    [11, ['AVT Andrew', 'ANDREW CREW']],
+  ]);
+  const text = Array.from({ length: 15 }, (_, index) => {
+    const slot = index + 1;
+    const avatar = avatarSlots.get(slot);
+    if (avatar) {
+      const [label, teamName] = avatar;
+      return `⃟🩵 𝑨𝑽𝑻 ${label.slice(4).toLocaleUpperCase('pt-BR')}: ${teamName}`;
+    }
+    return `TIME ${String.fromCharCode(64 + slot)}: TEAM ${slot}`;
+  }).join('\n');
+  const parsed = parseMatchResultRoster(text);
+
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(
+    [parsed.roster[2], parsed.roster[6], parsed.roster[10]].map(team => [
+      team.slot,
+      team.label,
+      team.teamName,
+    ]),
+    [
+      [3, 'AVT KELLY', 'KELLY CREW'],
+      [7, 'AVT MAXIM', 'MAXIM CREW'],
+      [11, 'AVT ANDREW', 'ANDREW CREW'],
+    ],
+  );
+
+  const mapped = mapMatchResultTeamsToRoster({
+    teams: ['KELLY CREW', 'MAXIM CREW', 'ANDREW CREW'].map(teamName => ({ teamName })),
+  }, parsed.roster);
+  assert.deepEqual(
+    mapped.teams.map(team => [team.slot, team.slotLabel]),
+    [[3, 'AVT KELLY'], [7, 'AVT MAXIM'], [11, 'AVT ANDREW']],
+  );
+});
+
+test('extracts only slot assignments from a decorated Modo Liga announcement', () => {
+  const text = `ㅤㅤ 𝑴𝑶𝑫𝑶 𝑳𝑰𝑮𝑨 𝑭𝑹𝑬𝑰𝑻𝑨𝑺 » 22𝐇
+ㅤ┉────┉────┉────┉────┉
+🔐➺ 𝑺𝑨𝑳𝑨 𝑬 𝑺𝑬𝑵𝑯𝑨 𝟏𝟎𝑴𝑰𝑵 𝑨𝑵𝑻𝑬𝑺
+🏷️➺ 𝑹𝑬𝑮𝑹𝑨𝑺 𝑵𝑨 𝑫𝑬𝑺𝑪𝑹𝑰𝑪̧𝑨̃𝑶!
+⃟🩵 𝑻𝑰𝑴𝑬 𝑨: RANGERS SPORT A
+⃟🩵 𝑻𝑰𝑴𝑬 𝑩: RANGERS SPORTS B
+⃟🩵 𝑨𝑽𝑻 𝑲𝑬𝑳𝑳𝒀: TEAM KELLY
+⃟🩵 𝑻𝑰𝑴𝑬 𝑫: XTREM
+⃟🩵 𝑻𝑰𝑴𝑬 𝑬: VORTEX
+⃟🩵 𝑻𝑰𝑴𝑬 𝑭: TEAM F
+⃟🩵 𝑨𝑽𝑻 𝑴𝑨𝑿𝑰𝑴: TEAM MAXIM
+⃟🩵 𝑻𝑰𝑴𝑬 𝑯: VORTEX ESPORTS
+⃟🩵 𝑻𝑰𝑴𝑬 𝑰: TEAM I
+⃟🩵 𝑻𝑰𝑴𝑬 𝑱: TEAM J
+⃟🩵 𝑨𝑽𝑻 𝑨𝑵𝑫𝑹𝑬𝑾: TEAM ANDREW
+⃟🩵 𝑻𝑰𝑴𝑬 𝑳: TEAM L
+⃟🩵 𝑻𝑰𝑴𝑬 𝑴: TEAM M
+⃟🩵 𝑻𝑰𝑴𝑬 𝑵: TEAM N
+⃟🩵 𝑻𝑰𝑴𝑬 𝑶: TEAM O
+⌞📽️⌝ 𝑺𝑻𝑹𝑬𝑨𝑴𝑬𝑹: SMITHZEIRA
+⎾‣⏌FREITAS TV | @Xtreino_freitas`;
+  const parsed = parseMatchResultRoster(text);
+
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.lineCount, 15);
+  assert.equal(parsed.roster[0].teamName, 'RANGERS SPORT A');
+  assert.equal(parsed.roster[14].teamName, 'TEAM O');
+  assert.deepEqual(
+    [parsed.roster[2], parsed.roster[6], parsed.roster[10]].map(team => [
+      team.slot,
+      team.label,
+      team.teamName,
+    ]),
+    [
+      [3, 'AVT KELLY', 'TEAM KELLY'],
+      [7, 'AVT MAXIM', 'TEAM MAXIM'],
+      [11, 'AVT ANDREW', 'TEAM ANDREW'],
+    ],
+  );
+});
+
+test('accepts TIME P and later letter labels within the 15 roster positions', () => {
+  const text = Array.from({ length: 15 }, (_, index) => {
+    const slot = index + 1;
+    const label = slot === 14 ? 'TIME R' : slot === 15 ? 'TIME P' : `TIME ${String.fromCharCode(64 + slot)}`;
+    return `⃟🩵 ${label}: TEAM ${slot}`;
+  }).join('\n');
+  const parsed = parseMatchResultRoster(text);
+
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.lineCount, 15);
+  assert.deepEqual(
+    [parsed.roster[13], parsed.roster[14]].map(team => [team.slot, team.label, team.teamName]),
+    [
+      [14, 'TIME R', 'TEAM 14'],
+      [15, 'TIME P', 'TEAM 15'],
+    ],
+  );
+});
+
 test('matches exact names despite accents and generic esports suffixes', () => {
   assert.equal(resolveMatchResultTeam('NOX SPORTS', roster).team.teamName, 'NOX SPORTS');
   assert.equal(resolveMatchResultTeam('F2 ESPORTS', roster).team.teamName, 'F2 ESPORTS');

@@ -6199,7 +6199,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (modoLigaConfirmedDocs.length) {
         try {
           const { buildModoLigaExportAssignments } = await import(
-            './js/admin-modo-liga-export.mjs?v=modo-liga-manage-export-assignments-v1'
+            './js/admin-modo-liga-export.mjs?v=modo-liga-avatar-export-1'
           );
           const exportTeams = modoLigaConfirmedDocs.map(d => {
             const registration = d.data();
@@ -6511,14 +6511,17 @@ async function buildExportList(date, eventType, hour){
   const normalize = (s)=> String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   const evLower = normalize(eventType);
   const normalizeHour = (s)=>{ const m = String(s||'').match(/(\d{1,2})/); return m ? String(parseInt(m[1],10)).padStart(2,'0') : null; };
+  const matchesModoLigaExportEventType = evLower.includes('liga') || evLower.includes('acesso')
+    ? (await import('./js/admin-modo-liga-export.mjs?v=modo-liga-avatar-export-1')).matchesModoLigaExportEventType
+    : null;
   const teams = [];
   snap.forEach(d=>{
     const r = d.data();
     // Aplicar filtro por tipo de evento com sinônimos
     const rType = normalize(r.eventType);
     if (evLower){
-      if (evLower.includes('liga') || evLower.includes('acesso')) {
-        if (!(rType.includes('liga') || rType.includes('acesso'))) return;
+      if (matchesModoLigaExportEventType) {
+        if (!matchesModoLigaExportEventType(eventType, r.eventType)) return;
       } else if (evLower.includes('semanal')) { if (!rType.includes('semanal')) return; }
       else if (evLower.includes('camp')) { if (!rType.includes('camp')) return; }
       else if (evLower.includes('xtreino') || evLower.includes('tokens')) {
@@ -6539,6 +6542,7 @@ async function buildExportList(date, eventType, hour){
       slot: slotNum,
       createdAt: r.createdAt?.toDate?.() || new Date(0),
       specLetter: r.modoLigaSpecLetter || '',
+      modoLigaSpecAvatar: r.modoLigaSpecAvatar || '',
     });
   });
   // Ordenar por createdAt (chegada) — slotNumber como fallback
@@ -6583,7 +6587,7 @@ async function buildExportList(date, eventType, hour){
     const footer = `\n\n🛡️•𝑪𝑳𝑨𝑺𝑺𝑰𝐅𝐈𝐂𝐀𝐌 𝟔 𝑬𝑸𝑼𝐈𝐏𝐄𝐒 𝑷𝑹𝑨 𝑷𝑹𝑶́𝑿𝐈𝐌𝐀 𝑭𝐀𝐒𝐄!\n\n𝐁𝐎𝐀 𝐒𝐎𝐑𝐓𝐄 𝐀 𝐓𝐎𝐃𝐎𝐒!`;
     return `${header}\n${lines}\n${footer}`;
   } else if (type.includes('liga')) {
-    const { formatModoLigaExport } = await import('./js/admin-modo-liga-export.mjs?v=modo-liga-spec-position-15-v2');
+    const { formatModoLigaExport } = await import('./js/admin-modo-liga-export.mjs?v=modo-liga-avatar-export-1');
     return formatModoLigaExport(H, teams);
   } else {
     // XTreino normal (padrão)
@@ -15316,7 +15320,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionFreefireScoring':
-                    await import('./js/admin-freefire-scoring.mjs?v=individual-kills-authoritative-3')
+                    await import('./js/admin-freefire-scoring.mjs?v=matchresult-avatar-announcement-2')
                         .then(m => m.openFreefireScoringAdmin())
                         .catch(error => {
                             console.error('[Free Fire] Falha ao carregar o placar:', error);
@@ -15339,7 +15343,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionRanking':
-                    await import('./js/admin-freefire-scoring.mjs?v=individual-kills-authoritative-3')
+                    await import('./js/admin-freefire-scoring.mjs?v=matchresult-avatar-announcement-2')
                         .then(m => m.openFreefireRankingAdmin())
                         .catch(error => {
                             console.error('[Ranking] Falha ao carregar a seção:', error);
