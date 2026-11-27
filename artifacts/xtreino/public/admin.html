@@ -187,8 +187,8 @@
                             <i class="fas fa-dollar-sign text-white text-sm"></i>
                         </div>
                     </div>
-                    <div id="kpiToday" class="text-xl md:text-2xl font-bold text-green-800 mb-1">R$ 0,00</div>
-                    <div class="text-xs text-green-600">via MP / PIX · clique para detalhar</div>
+                    <div id="kpiToday" class="text-xl md:text-2xl font-bold text-green-800 mb-1" aria-live="polite">—</div>
+                    <div class="text-xs text-green-600">clique para carregar as vendas de hoje</div>
                 </div>
                 <!-- Vendas Mês -->
                 <div onclick="openMonthSalesModal()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openMonthSalesModal()}" role="button" tabindex="0" aria-label="Ver faturamento do mês atual e meses anteriores" class="cursor-pointer bg-gradient-to-br from-blue-50 to-indigo-100 border-l-4 border-blue-500 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-200 select-none">
@@ -198,8 +198,8 @@
                             <i class="fas fa-chart-line text-white text-sm"></i>
                         </div>
                     </div>
-                    <div id="kpiMonth" class="text-xl md:text-2xl font-bold text-blue-800 mb-1">R$ 0,00</div>
-                    <div class="text-xs text-blue-600">mês atual · clique para detalhar</div>
+                    <div id="kpiMonth" class="text-xl md:text-2xl font-bold text-blue-800 mb-1" aria-live="polite">—</div>
+                    <div class="text-xs text-blue-600">clique para carregar as vendas do mês</div>
                 </div>
 
                 <!-- A Receber -->
@@ -210,8 +210,8 @@
                             <i class="fas fa-clock text-white text-sm"></i>
                         </div>
                     </div>
-                    <div id="kpiReceivable" class="text-xl md:text-2xl font-bold text-yellow-800 mb-1">R$ 0,00</div>
-                    <div class="text-xs text-yellow-600">pendente</div>
+                    <div id="kpiReceivable" class="text-xl md:text-2xl font-bold text-yellow-800 mb-1" aria-live="polite">—</div>
+                    <div class="text-xs text-yellow-600">carregado ao abrir Vendas Mês</div>
                 </div>
                 <!-- Usuários Ativos -->
                 <div class="bg-gradient-to-br from-purple-50 to-violet-100 border-l-4 border-purple-500 rounded-xl p-4 shadow-sm hover:shadow-lg transition-all duration-200">
@@ -1725,7 +1725,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="js/admin-read-control.js"></script>
     <script src="js/brasilia-time.js?v=brasilia-schedule-1"></script>
-    <script src="admin.js?v=matchresult-blackpack-duplicate-guard-1"></script>
+    <script src="admin.js?v=overview-sales-on-click-1"></script>
     <script type="module" src="js/admin-market-reports.mjs"></script>
 
     <!-- Sidebar / Page Router -->

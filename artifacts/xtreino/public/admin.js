@@ -2827,21 +2827,35 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
   function brl(n){ try {return n.toLocaleString('pt-BR', {style:'currency',currency:'BRL'})} catch(_) {return `R$ ${Number(n||0).toFixed(2)}`;} }
 
-  async function loadMonthSalesCollection(period, collectionName) {
+  async function loadSalesCollection(period, collectionName) {
     const uid = window.firebaseAuth?.currentUser?.uid;
     if (!uid) throw new Error('Entre novamente no painel administrativo.');
     adminReportCache.setScope(uid);
+    const rangeKey = `${period.start.toISOString()}:${period.end.toISOString()}`;
 
-    return adminReportCache.read(`month-sales:${period.key}:${collectionName}`, async () => {
+    return adminReportCache.read(`sales-range:${rangeKey}:${collectionName}`, async () => {
       const { collection, query, where, getDocsFromServer } =
         await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-      const monthQuery = query(
+      const salesQuery = query(
         collection(window.firebaseDb, collectionName),
         where('createdAt', '>=', period.start),
         where('createdAt', '<', period.end)
       );
-      return getDocsFromServer(monthQuery);
+      return getDocsFromServer(salesQuery);
     });
+  }
+
+  const lazySalesKpiValues = { today: null, month: null, receivable: null };
+
+  function setSalesKpiValue(key, value) {
+    lazySalesKpiValues[key] = Number(value) || 0;
+    const elementId = {
+      today: 'kpiToday',
+      month: 'kpiMonth',
+      receivable: 'kpiReceivable',
+    }[key];
+    const element = elementId ? document.getElementById(elementId) : null;
+    if (element) element.textContent = brl(lazySalesKpiValues[key]);
   }
 
   async function loadKpis(){
@@ -2855,72 +2869,16 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const kpiActiveEl = document.getElementById('kpiActiveUsers');
     if (!kpiTodayEl || !kpiMonthEl || !kpiRecEl) return;
 
-    const { collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
-    const today = new Date(); today.setHours(0,0,0,0);
-    const firstMonth = new Date(); firstMonth.setDate(1); firstMonth.setHours(0,0,0,0);
-    const monthPeriod = getMonthSalesPeriod(firstMonth);
-
-    let sumToday = 0, sumMonth = 0, receivable = 0;
-
-    // ── Orders (produtos, camisas — não eventos, não tokens usados) ──
-    try {
-      const monthOrd = await loadMonthSalesCollection(monthPeriod, 'orders');
-      const todayOrd = monthOrd.docs.filter(d => {
-        const value = d.data().createdAt;
-        return (value?.toDate ? value.toDate() : new Date(value)) >= today;
-      });
-      todayOrd.forEach(d => {
-        const o = d.data();
-        if ((o.type || '').toLowerCase() === 'event') return;
-        if (o.paidWithTokens) return;
-        const status = (o.status || '').toLowerCase();
-        const isPaid = status === 'paid' || status === 'approved' || status === 'confirmed';
-        if (isPaid) sumToday += Number(o.amount || 0);
-      });
-      monthOrd.forEach(d => {
-        const o = d.data();
-        if ((o.type || '').toLowerCase() === 'event') return;
-        if (o.paidWithTokens) return;
-        const val = Number(o.amount || 0);
-        const status = (o.status || '').toLowerCase();
-        if (status === 'paid' || status === 'approved' || status === 'confirmed') sumMonth += val;
-        if (status === 'pending') receivable += val;
-      });
-    } catch(_){}
-
-    // ── Registrations (apenas MP/PIX — excluir paidWithTokens) ──
-    try {
-      const monthRegs = await loadMonthSalesCollection(monthPeriod, 'registrations');
-      const todayRegs = monthRegs.docs.filter(d => {
-        const value = d.data().createdAt;
-        return (value?.toDate ? value.toDate() : new Date(value)) >= today;
-      });
-      todayRegs.forEach(d => {
-        const r = d.data();
-        if (r.paidWithTokens) return;
-        const status = (r.status || '').toLowerCase();
-        const isPaid = status === 'paid' || status === 'approved' || status === 'confirmed';
-        if (isPaid) sumToday += Number(r.price || 0);
-      });
-      monthRegs.forEach(d => {
-        const r = d.data();
-        if (r.paidWithTokens) return;
-        const val = Number(r.price || 0);
-        const status = (r.status || '').toLowerCase();
-        if (status === 'paid' || status === 'approved' || status === 'confirmed') sumMonth += val;
-        if (status === 'pending') receivable += val;
-      });
-    } catch(_){}
-
-    kpiTodayEl.textContent = brl(sumToday);
-    kpiMonthEl.textContent = brl(sumMonth);
-    kpiRecEl.textContent = brl(receivable);
+    kpiTodayEl.textContent = lazySalesKpiValues.today === null ? '—' : brl(lazySalesKpiValues.today);
+    kpiMonthEl.textContent = lazySalesKpiValues.month === null ? '—' : brl(lazySalesKpiValues.month);
+    kpiRecEl.textContent = lazySalesKpiValues.receivable === null ? '—' : brl(lazySalesKpiValues.receivable);
 
     if (kpiActiveEl){
       const roleLower = (window.adminRoleLower||'').toLowerCase();
       if (roleLower==='ceo' || roleLower==='gerente' || roleLower==='socio'){
         try{
-          const { getCountFromServer } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+          const { collection, query, where, getCountFromServer } =
+            await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
           const thirtyDaysAgo = Date.now() - 30*24*60*60*1000;
           const usersCount = await getCountFromServer(query(collection(window.firebaseDb,'users'), where('lastLogin', '>=', thirtyDaysAgo)));
           kpiActiveEl.textContent = String(usersCount.data().count);
@@ -2937,6 +2895,21 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
     const label = start.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     return { start, end, key, label: label.charAt(0).toUpperCase() + label.slice(1) };
+  }
+
+  function getSalesDayPeriod(dateKey) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) return null;
+    const start = new Date(`${dateKey}T00:00:00`);
+    if (!Number.isFinite(start.getTime())) return null;
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const date = new Date(`${dateKey}T12:00:00`);
+    return {
+      start,
+      end,
+      key: dateKey,
+      label: date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+    };
   }
 
   function shiftMonthSalesDate(selected, offset, now = new Date()) {
@@ -3286,11 +3259,10 @@ window.showWarningToast = function(message, title = 'Atenção') {
   let selectedMonthSalesDate = null;
   let monthSalesRequestVersion = 0;
 
-  async function loadMonthSalesData(date) {
-    const period = getMonthSalesPeriod(date);
+  async function loadSalesDataForPeriod(period) {
     const [registrationsSnap, ordersSnap] = await Promise.all([
-      loadMonthSalesCollection(period, 'registrations'),
-      loadMonthSalesCollection(period, 'orders')
+      loadSalesCollection(period, 'registrations'),
+      loadSalesCollection(period, 'orders')
     ]);
     return {
       ...buildMonthSalesSummary(registrationsSnap, ordersSnap, period),
@@ -3298,6 +3270,29 @@ window.showWarningToast = function(message, title = 'Atenção') {
       ordersSnap,
       period,
     };
+  }
+
+  function loadMonthSalesData(date) {
+    return loadSalesDataForPeriod(getMonthSalesPeriod(date));
+  }
+
+  function calculateMonthReceivable(registrationsSnap, ordersSnap) {
+    let total = 0;
+    ordersSnap?.forEach(doc => {
+      const order = doc.data() || {};
+      if (String(order.type || '').toLowerCase() === 'event' || order.paidWithTokens) return;
+      if (String(order.status || '').toLowerCase() === 'pending') {
+        total += Number(order.amount ?? order.total ?? 0) || 0;
+      }
+    });
+    registrationsSnap?.forEach(doc => {
+      const registration = doc.data() || {};
+      if (registration.paidWithTokens) return;
+      if (String(registration.status || '').toLowerCase() === 'pending') {
+        total += Number(registration.price || 0) || 0;
+      }
+    });
+    return total;
   }
 
   function updateMonthSalesNavigation() {
@@ -3335,6 +3330,13 @@ window.showWarningToast = function(message, title = 'Atenção') {
       if (requestVersion !== monthSalesRequestVersion ||
           document.getElementById('monthSalesModal')?.hidden) return;
       if (totalEl) totalEl.textContent = brl(summary.total);
+      if (period.key === getMonthSalesPeriod(new Date()).key) {
+        setSalesKpiValue('month', summary.total);
+        setSalesKpiValue(
+          'receivable',
+          calculateMonthReceivable(summary.registrationsSnap, summary.ordersSnap),
+        );
+      }
       if (summary.entries.length === 0) {
         listEl.innerHTML = `<div class="month-sales-empty">Nenhuma venda confirmada em ${period.label}.</div>`;
         return;
@@ -3353,7 +3355,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }
   }
 
-  function renderMonthSalesDayDetail(detail, dayKey, eventNameMap = null) {
+  function renderMonthSalesDayDetail(detail, dayKey, eventNameMap = null, { showBack = true } = {}) {
     const isMonth = detail.scope === 'month';
     const date = new Date(`${dayKey}T12:00:00`);
     const dateLabel = isMonth
@@ -3611,11 +3613,14 @@ window.showWarningToast = function(message, title = 'Atenção') {
         <strong class="month-sales-transaction-amount">${brl(transaction.amount)}</strong>
       </article>`;
     }).join('');
+    const backButton = showBack
+      ? `<button type="button" class="month-sales-back" onclick="showMonthSalesDays()">
+          <i class="fas fa-arrow-left" aria-hidden="true"></i> Voltar aos dias
+        </button>`
+      : '';
 
     return `<div class="month-sales-day-details">
-      <button type="button" class="month-sales-back" onclick="showMonthSalesDays()">
-        <i class="fas fa-arrow-left" aria-hidden="true"></i> Voltar aos dias
-      </button>
+      ${backButton}
       <div class="month-sales-day-kpis">
         <div class="month-sales-day-kpi"><div class="month-sales-day-kpi-label">Faturamento confirmado</div><div class="month-sales-day-kpi-value">${brl(detail.total)}</div></div>
         <div class="month-sales-day-kpi"><div class="month-sales-day-kpi-label">Quantidade de vendas</div><div class="month-sales-day-kpi-value">${detail.transactionsCount}</div></div>
@@ -3685,18 +3690,50 @@ window.showWarningToast = function(message, title = 'Atenção') {
     }
   }
 
-  function openTodaySalesDetail() {
+  async function openTodaySalesDetail() {
     const modal = document.getElementById('monthSalesModal');
     if (!modal || !window.firebaseDb) return;
     const now = new Date();
     const fallbackDateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const todayKey = window.BrasiliaTime?.dateKey?.() || fallbackDateKey;
-    const today = new Date(`${todayKey}T12:00:00`);
-    if (!Number.isFinite(today.getTime())) return;
-
-    selectedMonthSalesDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    const dayPeriod = getSalesDayPeriod(todayKey);
+    const listEl = document.getElementById('monthSalesList');
+    if (!dayPeriod || !listEl) return;
+    const requestVersion = ++monthSalesRequestVersion;
+    const date = new Date(`${todayKey}T12:00:00`);
+    const headingEl = document.getElementById('monthSalesHeading');
+    const subtitleEl = document.getElementById('monthSalesSubtitle');
+    const navigationEl = document.getElementById('monthSalesNavigation');
+    const totalCardEl = document.getElementById('monthSalesTotalCard');
     modal.hidden = false;
-    void openMonthSalesDay(todayKey);
+    if (headingEl) headingEl.textContent = `Detalhes de ${date.toLocaleDateString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    })}`;
+    if (subtitleEl) subtitleEl.textContent = 'Vendas e indicadores de hoje';
+    if (navigationEl) navigationEl.hidden = true;
+    if (totalCardEl) totalCardEl.hidden = true;
+    listEl.innerHTML = '<div class="month-sales-empty"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i><span>Carregando vendas de hoje...</span></div>';
+
+    try {
+      const [dayData, eventNameMap] = await Promise.all([
+        loadSalesDataForPeriod(dayPeriod),
+        loadAdminEventNameMap(),
+      ]);
+      if (requestVersion !== monthSalesRequestVersion ||
+          document.getElementById('monthSalesModal')?.hidden) return;
+      const detail = buildMonthSalesDayDetail(
+        dayData.registrationsSnap,
+        dayData.ordersSnap,
+        dayPeriod,
+        todayKey,
+        eventNameMap,
+      );
+      setSalesKpiValue('today', detail.total);
+      listEl.innerHTML = renderMonthSalesDayDetail(detail, todayKey, eventNameMap, { showBack: false });
+    } catch (_) {
+      if (requestVersion !== monthSalesRequestVersion) return;
+      listEl.innerHTML = '<div class="month-sales-empty month-sales-error">Não foi possível carregar as vendas de hoje. Verifique a conexão e tente novamente.</div>';
+    }
   }
 
   async function openMonthSalesPeriodDetail() {
