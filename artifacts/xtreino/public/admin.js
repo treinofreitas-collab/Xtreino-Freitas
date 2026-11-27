@@ -1310,7 +1310,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
     const manualInput = document.getElementById('addPaidManual');
     const options = document.getElementById('addPaidTypeOptions');
     const contactInput = document.getElementById('addContact');
-    const avatarSection = document.getElementById('addModoLigaSpecAvatarsSection');
     const specHelp = document.getElementById('addModoLigaSpecHelp');
     const subtitle = document.getElementById('addModalSubtitle');
     const submitButton = document.getElementById('addTeamSaveBtn');
@@ -1328,11 +1327,8 @@ window.showWarningToast = function(message, title = 'Atenção') {
     setAddTeamSectionHidden('addContactField', isManualPaid);
     setAddTeamSectionHidden('addClientAccountSection', isManualPaid);
     setAddTeamSectionHidden('addOptionalFieldsSection', isManualPaid);
-    avatarSection?.classList.toggle('hidden', isManualPaid);
     if (specHelp) {
-      specHelp.textContent = isManualPaid
-        ? 'Escolha uma letra se enviar a logo. A logo é opcional; sem ela, a reserva será salva sem identificação SPEC.'
-        : 'Escolha uma letra ou avatar se for enviar a logo. A logo é opcional; sem ela, a reserva será salva sem identificação SPEC.';
+      specHelp.textContent = 'Escolha uma letra ou avatar se for enviar a logo. A logo é opcional; sem ela, a reserva será salva sem identificação SPEC.';
     }
     const specStatus = document.getElementById('addModoLigaSpecStatus');
     if (specStatus && addModoLigaSpecOptionsReady) {
@@ -1341,22 +1337,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
       const rawHour = String(document.getElementById('addHour')?.value || '').trim();
       const hourMatch = rawHour.match(/(\d{1,2})/);
       const hour = hourMatch ? `${String(Number(hourMatch[1])).padStart(2, '0')}H` : '';
-      specStatus.textContent = isManualPaid
-        ? `${lettersCount} letra(s) disponíveis${hour ? ` para ${hour}` : ''}.`
-        : `${lettersCount} letra(s) e ${avatarsCount} avatar(es) disponíveis${hour ? ` para ${hour}` : ''}.`;
-    }
-
-    if (isManualPaid && addModoLigaSpecSelected.startsWith('avatar:')) {
-      addModoLigaSpecSelected = '';
-      const selection = document.getElementById('addModoLigaSpecSelection');
-      const code = document.getElementById('addModoLigaSpecCode');
-      if (selection) selection.textContent = 'Escolha uma letra para vincular à logo';
-      if (code) code.textContent = '';
-      document.querySelectorAll('[data-add-modo-liga-spec-selection]').forEach(button => {
-        button.setAttribute('aria-pressed', 'false');
-        button.classList.remove('border-teal-700', 'bg-teal-700', 'text-white');
-        button.classList.add('border-slate-300', 'bg-white', 'text-slate-800');
-      });
+      specStatus.textContent = `${lettersCount} letra(s) e ${avatarsCount} avatar(es) disponíveis${hour ? ` para ${hour}` : ''}.`;
     }
 
     if (subtitle) {
@@ -1524,9 +1505,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     if (section) section.classList.toggle('hidden', !isAddModoLigaEvent());
     if (status) {
       status.textContent = isAddModoLigaEvent()
-        ? isManualModoLigaAdd()
-          ? 'Consultando letras disponíveis para este horário…'
-          : 'Consultando letras e avatares disponíveis para este horário…'
+        ? 'Consultando letras e avatares disponíveis para este horário…'
         : '';
       status.className = 'mt-3 text-xs text-slate-600';
     }
@@ -1622,9 +1601,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
     section?.classList.remove('hidden');
     if (fileInput) fileInput.required = false;
     if (status) {
-      status.textContent = isManualModoLigaAdd()
-        ? 'Consultando letras disponíveis para este horário…'
-        : 'Consultando letras e avatares disponíveis para este horário…';
+      status.textContent = 'Consultando letras e avatares disponíveis para este horário…';
       status.className = 'mt-3 text-xs text-slate-600';
     }
     if (lettersEl) lettersEl.innerHTML = '';
@@ -1697,9 +1674,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
           : '<p class="col-span-full rounded-lg bg-white p-3 text-xs text-slate-500">Nenhum avatar disponível neste horário.</p>';
       }
       if (status) {
-        status.textContent = isManualModoLigaAdd()
-          ? `${availableLetters.length} letra(s) disponíveis para ${hour}H.`
-          : `${availableLetters.length} letra(s) e ${availableAvatars.length} avatar(es) disponíveis para ${hour}H.`;
+        status.textContent = `${availableLetters.length} letra(s) e ${availableAvatars.length} avatar(es) disponíveis para ${hour}H.`;
         status.className = 'mt-3 text-xs font-medium text-teal-800';
       }
       if (addModoLigaSpecSelected && !addModoLigaSpecAvailable.has(addModoLigaSpecSelected)) {
@@ -1873,17 +1848,13 @@ window.showWarningToast = function(message, title = 'Atenção') {
           || null;
         if (specLogoFile) {
           specSelection = addModoLigaSpecSelected;
-          if (!specSelection || (isManualPaid && !/^[A-Z]$/.test(specSelection))) {
-            throw new Error(isManualPaid
-              ? 'Escolha uma letra disponível para vincular à logo.'
-              : 'Escolha uma letra ou avatar disponível para vincular à logo.');
-          }
+           if (!specSelection) {
+             throw new Error('Escolha uma letra ou avatar disponível para vincular à logo.');
+           }
           const latestOptions = await requestAddModoLigaSpecOptions();
           if (latestOptions?.error) throw latestOptions.error;
           if (!addModoLigaSpecAvailable.has(specSelection)) {
-            throw new Error(isManualPaid
-              ? 'A letra selecionada acabou de ficar indisponível. Atualize as opções e escolha outra.'
-              : 'A letra ou avatar selecionado acabou de ficar indisponível. Atualize as opções e escolha outro.');
+             throw new Error('A letra ou avatar selecionado acabou de ficar indisponível. Atualize as opções e escolha outro.');
           }
           specHour = String(latestOptions?.hours?.[0] || '').replace(/H$/i, '');
           if (!specHour) throw new Error('Não consegui confirmar o horário SPEC desta vaga.');
@@ -2000,7 +1971,7 @@ window.showWarningToast = function(message, title = 'Atenção') {
 
       const feedbackMessage = isManualPaid
         ? uploadedSpecLogo
-          ? `Pago manual cadastrado; logo vinculada à letra ${uploadedSpecLogo.letter}.`
+          ? `Pago manual cadastrado; logo vinculada a ${specLogoModule?.specLogoLabelForSelection?.(uploadedSpecLogo.selection) || 'uma opção SPEC'}.`
           : 'Pago manual cadastrado sem logo; nenhuma identificação SPEC foi vinculada.'
         : clientUserId
         ? 'Time adicionado e reserva vinculada à conta do cliente.'

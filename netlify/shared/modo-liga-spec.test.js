@@ -199,3 +199,47 @@ test("blocks SPEC selections already assigned to Modo Liga registrations for the
   assert.equal(options.availableLetters.length, 24);
   assert.equal(options.availableAvatars.some(avatar => avatar.selection === "avatar:maxim"), false);
 });
+test("keeps an avatar available at other hours when it is used at one hour", async () => {
+  const date = "2026-11-27";
+  const registration = {
+    date,
+    eventType: "modo-liga",
+    schedule: "19h",
+    status: "confirmed",
+    modoLigaSpecAvatar: "avatar:kelly",
+  };
+  const db = {
+    collection: name => ({
+      where: (field, operator, value) => ({
+        get: async () => {
+          if (name === "registrations") {
+            assert.equal(field, "date");
+            assert.equal(operator, "==");
+            assert.equal(value, date);
+            return { docs: [{ data: () => registration }] };
+          }
+          assert.equal(name, "modo_liga_spec_letter_locks");
+          assert.equal(field, "hour");
+          assert.equal(operator, "in");
+          return { docs: [] };
+        },
+      }),
+    }),
+  };
+  const bucket = {
+    getFiles: async ({ prefix }) => [[
+      ...(prefix.endsWith("/19H/")
+        ? [{ name: `${prefix}902000007.png` }]
+        : []),
+    ]],
+  };
+
+  const at19 = await getAvailableModoLigaSpecOptions({ db, bucket, hours: ["19"], date });
+  const at23 = await getAvailableModoLigaSpecOptions({ db, bucket, hours: ["23"], date });
+
+  assert.equal(at19.availableAvatars.some(avatar => avatar.selection === "avatar:kelly"), false);
+  assert.deepEqual(
+    at23.availableAvatars.map(avatar => avatar.selection),
+    ["avatar:kelly", "avatar:maxim", "avatar:andrew"],
+  );
+});
