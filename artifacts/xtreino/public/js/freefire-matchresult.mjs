@@ -168,6 +168,19 @@ export function resolveMatchResultTeam(teamName, roster) {
   if (exact.length === 1) return { status: 'exact', team: exact[0], candidates: exact };
   if (exact.length > 1) return { status: 'ambiguous', candidates: exact };
 
+  // MatchResult may omit spaces in a team name (BLACKPACK vs BLACK PACK).
+  // Treat spacing-only differences as exact, but keep collisions ambiguous.
+  const compactInputKey = inputKey.replace(/\s+/gu, '');
+  const compactMatches = entries.filter(entry =>
+    matchResultTeamKey(entry.teamName).replace(/\s+/gu, '') === compactInputKey,
+  );
+  if (compactMatches.length === 1) {
+    return { status: 'exact', team: compactMatches[0], candidates: compactMatches };
+  }
+  if (compactMatches.length > 1) {
+    return { status: 'ambiguous', candidates: compactMatches };
+  }
+
   const identityTokens = value => matchResultTeamKey(value)
     .split(' ')
     .filter(token => token.length > 1 && !GENERIC_TEAM_WORDS.has(token));
@@ -257,6 +270,7 @@ export function mapMatchResultTeamsToRoster(parsed, roster) {
   const errors = [];
   const ignored = [];
   const usedSlots = new Set();
+  const assignedMatchTypes = new Map();
   const results = Array.isArray(parsed?.teams) ? parsed.teams : [];
   const resolutions = results.map(result => resolveMatchResultTeam(result.teamName, roster));
   const mappedByIndex = new Map();
@@ -264,10 +278,19 @@ export function mapMatchResultTeamsToRoster(parsed, roster) {
 
   const assign = (index, team, matchType, contextual = false) => {
     if (usedSlots.has(team.slot)) {
+      if (matchType === 'partial' && assignedMatchTypes.get(team.slot) === 'exact') {
+        const result = results[index];
+        ignored.push(result.teamName);
+        warnings.push(
+          `"${result.teamName}" foi ignorado porque só corresponde parcialmente ao slot ${team.label || team.slot}, já identificado por correspondência exata. Confira se é outra equipe.`,
+        );
+        return false;
+      }
       errors.push(`Mais de um nome do log corresponde ao slot ${team.label || team.slot} (${team.teamName}).`);
       return false;
     }
     usedSlots.add(team.slot);
+    assignedMatchTypes.set(team.slot, matchType);
     const result = results[index];
     mappedByIndex.set(index, {
       ...result,
@@ -285,10 +308,14 @@ export function mapMatchResultTeamsToRoster(parsed, roster) {
     return true;
   };
 
-  // Reserve exact and uniquely partial matches first, regardless of their
-  // position in the log, so they can disambiguate a shared organization name.
+  // Reserve exact matches before considering partials, regardless of log order.
   resolutions.forEach((resolution, index) => {
-    if (resolution.status !== 'exact' && resolution.status !== 'partial') return;
+    if (resolution.status !== 'exact') return;
+    handled.add(index);
+    assign(index, resolution.team, resolution.status);
+  });
+  resolutions.forEach((resolution, index) => {
+    if (resolution.status !== 'partial') return;
     handled.add(index);
     assign(index, resolution.team, resolution.status);
   });

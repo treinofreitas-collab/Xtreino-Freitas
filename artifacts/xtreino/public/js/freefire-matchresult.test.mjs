@@ -153,6 +153,55 @@ test('matches exact names despite accents and generic esports suffixes', () => {
   assert.equal(resolveMatchResultTeam('F2 ESPORTS', roster).team.teamName, 'F2 ESPORTS');
 });
 
+test('maps BLACKPACK exactly and does not let BLACK DRAGONS claim its slot', () => {
+  const officialRoster = Array.from({ length: 15 }, (_, index) => ({
+    slot: index + 1,
+    label: `TIME ${String.fromCharCode(65 + index)}`,
+    teamName: index === 7 ? 'BLACK PACK' : '',
+  }));
+  const parsedDrop = {
+    teams: [
+      { teamName: 'black dragons', rank: 1, kills: 4 },
+      { teamName: 'BLACKPACK', rank: 2, kills: 3 },
+    ],
+  };
+
+  assert.equal(resolveMatchResultTeam('BLACKPACK', officialRoster).status, 'exact');
+  const mapped = mapMatchResultTeamsToRoster(parsedDrop, officialRoster);
+  assert.deepEqual(
+    mapped.teams.map(team => [team.sourceTeamName, team.teamName, team.slot]),
+    [['BLACKPACK', 'BLACK PACK', 8]],
+  );
+  assert.deepEqual(mapped.ignored, ['black dragons']);
+  assert.deepEqual(mapped.errors, []);
+  assert.ok(mapped.warnings.some(warning => warning.includes('correspondência exata')));
+});
+
+test('adds the same BLACKPACK team across separate match logs', () => {
+  const officialRoster = [{ slot: 8, label: 'TIME H', teamName: 'BLACK PACK' }];
+  const firstDrop = mapMatchResultTeamsToRoster({
+    teams: [{ teamName: 'BLACKPACK', rank: 1, kills: 4 }],
+  }, officialRoster);
+  const secondDrop = mapMatchResultTeamsToRoster({
+    teams: [{ teamName: 'BLACKPACK', rank: 2, kills: 3 }],
+  }, officialRoster);
+  const standings = calculateMatchResultStandings(
+    [
+      { index: 0, parsed: firstDrop },
+      { index: 1, parsed: secondDrop },
+    ],
+    2,
+    officialRoster,
+  );
+
+  assert.deepEqual(
+    standings.map(({ teamName, slot, wins, kills, points }) => ({
+      teamName, slot, wins, kills, points,
+    })),
+    [{ teamName: 'BLACK PACK', slot: 8, wins: 1, kills: 7, points: 28 }],
+  );
+});
+
 test('matches a unique exact keyword in an abbreviated or expanded team name', () => {
   assert.equal(resolveMatchResultTeam('LINE CEO', roster).team.teamName, '4S-CEO');
   assert.equal(resolveMatchResultTeam('MAFIA ALPHA', roster).team.teamName, 'Máfia');
