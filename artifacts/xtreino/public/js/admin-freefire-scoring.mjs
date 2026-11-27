@@ -9,7 +9,7 @@ import {
   parseMatchResultLog,
   matchResultTeamKey,
   resolveMatchResultTeam,
-} from './freefire-matchresult.mjs?v=matchresult-avatar-announcement-2';
+} from './freefire-matchresult.mjs?v=matchresult-tropa-generic-guard-1';
 import {
   SPEC_LOGO_HOURS,
   loadModoLigaSpecLogoCatalog,

@@ -158,6 +158,27 @@ test('matches a unique exact keyword in an abbreviated or expanded team name', (
   assert.equal(resolveMatchResultTeam('MAFIA ALPHA', roster).team.teamName, 'Máfia');
 });
 
+test('does not match different teams by the shared generic word TROPA', () => {
+  const officialRoster = [
+    { slot: 5, label: 'TIME E', teamName: 'TROPA DOS PP' },
+  ];
+  const mapped = mapMatchResultTeamsToRoster({
+    teams: [
+      { teamName: 'Tropa do badu', rank: 10 },
+      { teamName: 'TROPA DOS PP', rank: 11 },
+    ],
+  }, officialRoster);
+
+  assert.equal(resolveMatchResultTeam('Tropa do badu', officialRoster).status, 'unmatched');
+  assert.equal(resolveMatchResultTeam('TROPA DOS PP', officialRoster).status, 'exact');
+  assert.deepEqual(
+    mapped.teams.map(team => [team.sourceTeamName, team.teamName, team.matchType]),
+    [['TROPA DOS PP', 'TROPA DOS PP', 'exact']],
+  );
+  assert.deepEqual(mapped.ignored, ['Tropa do badu']);
+  assert.deepEqual(mapped.errors, []);
+});
+
 test('matches a one-character-short team name when there is only one candidate', () => {
   assert.equal(resolveMatchResultTeam('KONOH + TIME F', roster).team.teamName, 'Konoha');
 });

@@ -10,7 +10,7 @@ export const LBFF_PLACEMENT_POINTS_15 = [12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0,
 export const MAX_MATCHRESULT_FILE_BYTES = 2 * 1024 * 1024;
 const TEAM_HEADER = /^TeamName:\s*(.*?)\s+Rank:\s*(-?\d+)\s+KillScore:\s*(-?\d+)\s+RankScore:\s*(-?\d+)\s+TotalScore:\s*(-?\d+)\s*$/u;
 const PLAYER_ROW = /^NAME:\s*(.*?)\s+ID:\s*(\d+)\s+KILL:\s*(-?\d+)\s*$/u;
-const GENERIC_TEAM_WORDS = new Set(['team', 'time', 'equipe', 'esport', 'esports', 'sport', 'sports', 'org']);
+const GENERIC_TEAM_WORDS = new Set(['team', 'time', 'equipe', 'esport', 'esports', 'sport', 'sports', 'org', 'tropa']);
 
 export function matchResultTeamKey(name) {
   return String(name ?? '')
