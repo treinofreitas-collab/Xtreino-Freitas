@@ -6535,11 +6535,13 @@ function addTeam() {
     updateReservationsSummary();
 }
 
+const MAX_TEAM_LOGO_FILE_BYTES = 10 * 1024 * 1024;
+
 function previewTeamLogo(teamId, input) {
     const file = input.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-        alert('A logo deve ter no máximo 2 MB.');
+    if (file.size > MAX_TEAM_LOGO_FILE_BYTES) {
+        alert('A logo deve ter no máximo 10 MB.');
         input.value = '';
         return;
     }
