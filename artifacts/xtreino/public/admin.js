@@ -6070,9 +6070,27 @@ window.showWarningToast = function(message, title = 'Atenção') {
       // posIdx: índice posicional (1-based) dentro do grupo ordenado — igual ao "ver detalhes > Inscritos"
       const makeRow = (d, r, isPending, isFreeManual, posIdx) => {
         const _adminLogoUrl = r.teamLogoUrl || r.teamLogoThumb || null;
-        const logoHtml = _adminLogoUrl
-          ? `<img src="${_adminLogoUrl}" class="w-7 h-7 rounded object-cover flex-shrink-0">`
+        const _isLigaRow = isModoLigaRegistration(r);
+        const canEditModoLigaLogo = _isLigaRow
+          && !isPending
+          && !_adminLogoUrl
+          && ['ceo', 'gerente'].includes(String(window.adminRoleLower || '').toLowerCase().trim());
+        const logoPlaceholder = _adminLogoUrl
+          ? `<img src="${_adminLogoUrl}" class="w-7 h-7 rounded object-cover flex-shrink-0" alt="Logo do time">`
           : `<div class="w-7 h-7 rounded bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0 text-xs">${(r.teamName||'?').charAt(0).toUpperCase()}</div>`;
+        const logoHtml = _adminLogoUrl
+          ? logoPlaceholder
+          : canEditModoLigaLogo
+            ? `<div class="relative h-8 w-8 flex-shrink-0">
+                 ${logoPlaceholder}
+                 <button type="button" data-upload-spec-logo title="Enviar logo para este time"
+                   aria-label="Enviar logo para este time"
+                   class="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-white bg-teal-600 text-white shadow hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500">
+                   <i class="fas fa-pencil-alt text-[10px]" aria-hidden="true"></i>
+                 </button>
+                 <input type="file" data-upload-spec-logo-input accept="image/png,image/jpeg,image/webp" class="hidden">
+               </div>`
+            : logoPlaceholder;
         const isLisagemGratis = r.status === 'lisagem_gratis';
         const statusBadge = isLisagemGratis
           ? '<span class="text-xs bg-slate-100 text-slate-600 border border-slate-300 rounded px-1.5 py-0.5 font-bold">🆓 LISAGEM GRÁTIS</span>'
@@ -6084,7 +6102,6 @@ window.showWarningToast = function(message, title = 'Atenção') {
         const _mgEmail = r.email || r.clientEmail || '';
         const _mgPhone = r.contact || r.phone || '';
         // Modo Liga: mantém a letra SPEC atribuída; sem atribuição, mostra a posição atual.
-        const _isLigaRow = isModoLigaRegistration(r);
         const _storedSpecLetter = String(r.modoLigaSpecLetter || '').trim().toUpperCase();
         const _storedSpecAvatar = String(r.modoLigaSpecAvatar || '').trim().toLowerCase();
         const _specAvatarNames = {
@@ -6160,6 +6177,155 @@ window.showWarningToast = function(message, title = 'Atenção') {
               id: d.id,
               _modoLigaLogoDownload: isModoLigaRegistration(r),
             }, logoDownloadBtn);
+          });
+        }
+        const uploadSpecLogoButton = row.querySelector('[data-upload-spec-logo]');
+        const uploadSpecLogoInput = row.querySelector('[data-upload-spec-logo-input]');
+        if (uploadSpecLogoButton && uploadSpecLogoInput) {
+          uploadSpecLogoButton.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            uploadSpecLogoInput.click();
+          });
+          uploadSpecLogoInput.addEventListener('change', async () => {
+            const file = uploadSpecLogoInput.files?.[0];
+            uploadSpecLogoInput.value = '';
+            if (!file) return;
+
+            const originalButtonHtml = uploadSpecLogoButton.innerHTML;
+            uploadSpecLogoButton.disabled = true;
+            uploadSpecLogoButton.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px]" aria-hidden="true"></i>';
+            try {
+              if (!['19', '20', '21', '22', '23', '00'].includes(targetHH)) {
+                throw new Error('O envio de logos SPEC está disponível para os horários 19h, 20h, 21h, 22h, 23h e 00h.');
+              }
+              if (!/^image\/(png|jpeg|webp)$/i.test(file.type || '')) {
+                throw new Error('Envie a logo em PNG, JPG ou WebP.');
+              }
+              if (file.size > 10 * 1024 * 1024) {
+                throw new Error('A logo do time ultrapassa o limite de 10 MB.');
+              }
+
+              const currentUser = window.firebaseAuth?.currentUser;
+              if (!currentUser) throw new Error('Entre novamente no painel para enviar a logo.');
+              const token = await currentUser.getIdToken();
+              const availabilityResponse = await fetch('/.netlify/functions/modo-liga-spec-letters', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  eventType: eventType || rawEventId || eventName || 'modo-liga',
+                  hours: [targetHH],
+                  date,
+                }),
+              });
+              const availability = await availabilityResponse.json().catch(() => ({}));
+              if (!availabilityResponse.ok) {
+                throw new Error(availability.message || 'Não foi possível consultar as opções SPEC deste horário.');
+              }
+
+              const specLogos = await import('./js/admin-spec-logos.mjs?v=modo-liga-logo-upload-pencil-1');
+              const availableSelections = [
+                ...(Array.isArray(availability.availableLetters) ? availability.availableLetters : []),
+                ...(Array.isArray(availability.availableAvatars)
+                  ? availability.availableAvatars.map(avatar => avatar?.selection)
+                  : []),
+              ].map(value => specLogos.normalizeModoLigaSpecSelection(value)).filter(Boolean);
+              const previousSelection = specLogos.normalizeModoLigaSpecSelection(
+                r.modoLigaSpecSelection || r.modoLigaSpecLetter || r.modoLigaSpecAvatar || '',
+              );
+              const previousSelectionHour = normalizeHour(r.modoLigaSpecHour || '')
+                || normalizeHour(r.schedule || '')
+                || normalizeHour(r.hour || '');
+              const sameHourPreviousSelection = previousSelection
+                && previousSelectionHour === targetHH
+                ? previousSelection
+                : '';
+              // Se a inscrição já reservou um código mas ficou sem logo, permita
+              // recuperar somente esse mesmo código, nunca tomar outro horário.
+              const selectionChoices = sameHourPreviousSelection
+                ? [sameHourPreviousSelection]
+                : [...new Set(availableSelections)];
+              if (!selectionChoices.length) {
+                throw new Error('Não há letras ou avatares livres neste horário para vincular a logo.');
+              }
+
+              const choiceList = selectionChoices
+                .map(selection => `${specLogos.specLogoLabelForSelection(selection)} (${selection})`)
+                .join('\n');
+              const typedSelection = window.prompt(
+                `Escolha uma letra ou avatar SPEC livre para ${targetHH}H:\n\n${choiceList}\n\nDigite a letra ou o código do avatar:`,
+                sameHourPreviousSelection || '',
+              );
+              if (typedSelection === null) return;
+              const typedValue = typedSelection.trim().toLowerCase();
+              const selection = specLogos.normalizeModoLigaSpecSelection(typedValue)
+                || selectionChoices.find(value => (
+                  specLogos.specLogoLabelForSelection(value).toLowerCase() === typedValue
+                  || specLogos.specLogoLabelForSelection(value).replace(/^avatar /i, '').toLowerCase() === typedValue
+                ))
+                || '';
+              if (!selection || !selectionChoices.includes(selection)) {
+                throw new Error('Escolha uma das opções disponíveis listadas na janela.');
+              }
+
+              const uploadResult = await specLogos.saveManualModoLigaLogoToSpec(file, {
+                hour: targetHH,
+                selection,
+                registrationId: d.id,
+                teamName: r.teamName || r.name || '',
+                previousSelection: sameHourPreviousSelection,
+                allowReplaceOwnedLogo: Boolean(sameHourPreviousSelection),
+                onProgress: message => {
+                  uploadSpecLogoButton.title = message;
+                },
+              });
+              if (uploadResult.cancelled) return;
+
+              const { doc: firestoreDoc, updateDoc } =
+                await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+              try {
+                await updateDoc(firestoreDoc(window.firebaseDb, 'registrations', d.id), {
+                  modoLigaSpecSelection: uploadResult.selection,
+                  modoLigaSpecLetter: uploadResult.letter || null,
+                  modoLigaSpecAvatar: uploadResult.avatar || null,
+                  modoLigaSpecCode: uploadResult.code,
+                  modoLigaSpecHour: uploadResult.hour,
+                  modoLigaSpecStoragePath: uploadResult.path,
+                  modoLigaSpecStatus: 'uploaded',
+                  modoLigaSpecAssignedAt: Date.now(),
+                  teamLogoUrl: uploadResult.downloadUrl,
+                  logoOriginalUrl: uploadResult.downloadUrl,
+                });
+              } catch (writeError) {
+                if (!uploadResult.replacedExistingOwnedFile) {
+                  try {
+                    await specLogos.removeManualModoLigaLogoFromSpec({
+                      hour: uploadResult.hour,
+                      selection: uploadResult.selection,
+                      registrationId: d.id,
+                    });
+                  } catch (cleanupError) {
+                    console.error('[Modo Liga] Não foi possível limpar a logo após falha ao atualizar a inscrição.', cleanupError);
+                  }
+                }
+                throw writeError;
+              }
+              showToast(
+                'success',
+                `Logo vinculada ao time e ao código ${uploadResult.code} para ${targetHH}H. A vaga e o pagamento foram mantidos.`,
+                'Logo adicionada',
+              );
+              openManageHourModal(date, eventType, hour, rawEventId, evFieldType, eventName);
+            } catch (error) {
+              showToast('error', error.message || 'Não foi possível enviar a logo deste time.', 'Erro na logo');
+            } finally {
+              uploadSpecLogoButton.disabled = false;
+              uploadSpecLogoButton.innerHTML = originalButtonHtml;
+              uploadSpecLogoButton.removeAttribute('title');
+            }
           });
         }
         return row;

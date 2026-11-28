@@ -999,6 +999,8 @@ export async function saveManualModoLigaLogoToSpec(file, {
   selection,
   registrationId,
   teamName,
+  previousSelection,
+  allowReplaceOwnedLogo = false,
   onProgress,
 } = {}) {
   if (!canUpload()) {
@@ -1014,6 +1016,10 @@ export async function saveManualModoLigaLogoToSpec(file, {
   if (!normalizedSelection) {
     throw new Error('Escolha uma letra ou avatar válido para o Modo Liga.');
   }
+  const normalizedRegistrationId = String(registrationId || '').trim();
+  if (!normalizedRegistrationId) {
+    throw new Error('Não foi possível identificar a inscrição deste time.');
+  }
   if (!file || !/^image\/(png|jpeg|webp)$/i.test(file.type || '')) {
     throw new Error('Envie a logo em PNG, JPG ou WebP.');
   }
@@ -1025,9 +1031,20 @@ export async function saveManualModoLigaLogoToSpec(file, {
   const path = storagePath(normalizedHour, code);
   const { ref, uploadBytes, getMetadata, getDownloadURL } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js');
   const target = ref(window.firebaseStorage, path);
+  const normalizedPreviousSelection = normalizeModoLigaSpecSelection(previousSelection);
+  let replacedExistingOwnedFile = false;
   try {
-    await getMetadata(target);
-    throw new Error(`${labelForSelection(normalizedSelection)} já está ocupada em ${normalizedHour}H. Atualize as opções e escolha outra.`);
+    const existingMetadata = await getMetadata(target);
+    const isOwnedReplacement = allowReplaceOwnedLogo
+      && normalizedPreviousSelection === normalizedSelection
+      && existingMetadata.customMetadata?.sourceRegistrationId === normalizedRegistrationId
+      && ['modo-liga-registration', 'manual-modo-liga-admin'].includes(
+        existingMetadata.customMetadata?.source || '',
+      );
+    if (!isOwnedReplacement) {
+      throw new Error(`${labelForSelection(normalizedSelection)} já está ocupada em ${normalizedHour}H. Atualize as opções e escolha outra.`);
+    }
+    replacedExistingOwnedFile = true;
   } catch (error) {
     if (error?.code !== 'storage/object-not-found') {
       if (error?.code === 'storage/unauthorized') {
@@ -1048,7 +1065,7 @@ export async function saveManualModoLigaLogoToSpec(file, {
     cacheControl: 'public,max-age=60',
     customMetadata: {
       source: 'manual-modo-liga-admin',
-      sourceRegistrationId: String(registrationId || '').slice(0, 128),
+      sourceRegistrationId: normalizedRegistrationId.slice(0, 128),
       teamName: String(teamName || '').slice(0, 100),
       selection: normalizedSelection,
       letter,
@@ -1070,6 +1087,7 @@ export async function saveManualModoLigaLogoToSpec(file, {
     code,
     path,
     downloadUrl: await getDownloadURL(uploaded.ref),
+    replacedExistingOwnedFile,
     methodDescription,
   };
 }
