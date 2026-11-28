@@ -207,6 +207,26 @@ test('matches a unique exact keyword in an abbreviated or expanded team name', (
   assert.equal(resolveMatchResultTeam('MAFIA ALPHA', roster).team.teamName, 'Máfia');
 });
 
+test('treats EQP as EQUIPE and maps the exact team instead of a competing name', () => {
+  const officialRoster = [
+    { slot: 1, label: 'TIME A', teamName: 'EQP MAL' },
+    { slot: 2, label: 'TIME B', teamName: 'EQUIPE RIPA' },
+  ];
+  const resolution = resolveMatchResultTeam('Eqp ripa', officialRoster);
+  const mapped = mapMatchResultTeamsToRoster({
+    teams: [{ teamName: 'Eqp ripa', rank: 1, kills: 5 }],
+  }, officialRoster);
+
+  assert.equal(resolution.status, 'exact');
+  assert.equal(resolution.team.teamName, 'EQUIPE RIPA');
+  assert.deepEqual(
+    mapped.teams.map(team => [team.sourceTeamName, team.teamName, team.slot, team.matchType]),
+    [['Eqp ripa', 'EQUIPE RIPA', 2, 'exact']],
+  );
+  assert.deepEqual(mapped.ignored, []);
+  assert.deepEqual(mapped.warnings, []);
+});
+
 test('does not match different teams by the shared generic word TROPA', () => {
   const officialRoster = [
     { slot: 5, label: 'TIME E', teamName: 'TROPA DOS PP' },

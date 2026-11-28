@@ -15494,7 +15494,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionFreefireScoring':
-                    await import('./js/admin-freefire-scoring.mjs?v=matchresult-blackpack-duplicate-guard-1')
+                    await import('./js/admin-freefire-scoring.mjs?v=matchresult-eqp-alias-1')
                         .then(m => m.openFreefireScoringAdmin())
                         .catch(error => {
                             console.error('[Free Fire] Falha ao carregar o placar:', error);
@@ -15517,7 +15517,7 @@ window.loadPageData = async function(page, requestedSectionId) {
                         });
                     break;
                 case 'sectionRanking':
-                    await import('./js/admin-freefire-scoring.mjs?v=matchresult-blackpack-duplicate-guard-1')
+                    await import('./js/admin-freefire-scoring.mjs?v=matchresult-eqp-alias-1')
                         .then(m => m.openFreefireRankingAdmin())
                         .catch(error => {
                             console.error('[Ranking] Falha ao carregar a seção:', error);

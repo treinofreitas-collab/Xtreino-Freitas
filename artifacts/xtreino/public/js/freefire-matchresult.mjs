@@ -23,7 +23,8 @@ export function matchResultTeamKey(name) {
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .replace(/\s+/g, ' ')
-    .toLocaleLowerCase('pt-BR');
+    .toLocaleLowerCase('pt-BR')
+    .replace(/(^| )eqp(?= |$)/gu, '$1equipe');
 }
 
 function cleanRosterTeamName(name) {
